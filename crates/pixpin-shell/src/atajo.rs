@@ -85,11 +85,19 @@ impl Atajo {
     }
 
     /// Codigo de tecla virtual tal como lo espera `RegisterHotKey`.
+    ///
+    /// Los campos de `Tecla` son publicos (lo exige el spec), asi que esta
+    /// funcion no puede asumir que sus valores vinieron de `FromStr`. Toda la
+    /// aritmetica se hace en `u32` (nunca en `u8`) para que un valor fuera de
+    /// rango construido a mano (p. ej. `Tecla::Funcion(0)`) de un resultado
+    /// definido en vez de entrar en panico o desbordar en silencio.
     pub fn tecla_win32(&self) -> u32 {
         match self.tecla {
-            Tecla::Letra(c) => c as u32,
-            Tecla::Digito(d) => u32::from(b'0' + d),
-            Tecla::Funcion(n) => VK_F1 + u32::from(n - 1),
+            // Se normaliza a mayuscula por si se construye `Tecla::Letra`
+            // a mano con una minuscula.
+            Tecla::Letra(c) => c.to_ascii_uppercase() as u32,
+            Tecla::Digito(d) => u32::from(b'0') + u32::from(d),
+            Tecla::Funcion(n) => VK_F1 + u32::from(n).saturating_sub(1),
             Tecla::Imprimir => VK_SNAPSHOT,
             Tecla::Insertar => VK_INSERT,
         }
@@ -235,6 +243,25 @@ mod pruebas {
     }
 
     #[test]
+    fn canonicaliza_el_orden_de_los_modificadores_al_escribir() {
+        // A diferencia del test de arriba, aqui la ENTRADA no esta en orden
+        // canonico: si `Display` se limitara a repetir el orden de entrada
+        // en vez de canonicalizar, este test lo detectaria.
+        for (entrada, canonico) in [
+            ("Win+Alt+9", "Alt+Win+9"),
+            ("Shift+Ctrl+X", "Ctrl+Shift+X"),
+            ("Win+Shift+Alt+Ctrl+F1", "Ctrl+Alt+Shift+Win+F1"),
+        ] {
+            let a: Atajo = entrada.parse().unwrap();
+            assert_eq!(
+                a.to_string(),
+                canonico,
+                "\"{entrada}\" deberia canonicalizarse a \"{canonico}\""
+            );
+        }
+    }
+
+    #[test]
     fn no_distingue_mayusculas_al_leer() {
         let a: Atajo = "ctrl+alt+x".parse().unwrap();
         let b: Atajo = "CTRL+ALT+X".parse().unwrap();
@@ -269,6 +296,70 @@ mod pruebas {
         let f: Atajo = "Ctrl+Shift+F12".parse().unwrap();
         // VK_F1 = 0x70, luego F12 = 0x7B
         assert_eq!(f.tecla_win32(), 0x7B);
+
+        let d: Atajo = "Ctrl+5".parse().unwrap();
+        assert_eq!(d.tecla, Tecla::Digito(5));
+        // El codigo virtual de un digito es su caracter ASCII.
+        assert_eq!(d.tecla_win32(), '5' as u32);
+        assert_eq!(d.to_string(), "Ctrl+5", "no sobrevive la ida y vuelta");
+        assert_eq!("Ctrl+5".parse::<Atajo>().unwrap(), d);
+
+        let p: Atajo = "Ctrl+Impr".parse().unwrap();
+        assert_eq!(p.tecla, Tecla::Imprimir);
+        assert_eq!(p.tecla_win32(), 0x2C); // VK_SNAPSHOT
+        assert_eq!(p.to_string(), "Ctrl+Impr", "no sobrevive la ida y vuelta");
+        assert_eq!("Ctrl+Impr".parse::<Atajo>().unwrap(), p);
+
+        let i: Atajo = "Ctrl+Ins".parse().unwrap();
+        assert_eq!(i.tecla, Tecla::Insertar);
+        assert_eq!(i.tecla_win32(), 0x2D); // VK_INSERT
+        assert_eq!(i.to_string(), "Ctrl+Ins", "no sobrevive la ida y vuelta");
+        assert_eq!("Ctrl+Ins".parse::<Atajo>().unwrap(), i);
+    }
+
+    #[test]
+    fn tecla_win32_no_entra_en_panico_con_valores_fuera_de_rango() {
+        // Los campos de Tecla son publicos (lo exige el spec), asi que se
+        // pueden construir valores que `parsear_tecla` nunca produciria
+        // (Funcion solo sale de ahi en el rango 1..=24). tecla_win32() debe
+        // devolver algo definido, no entrar en panico ni desbordar en
+        // silencio.
+        let sin_pasar_por_el_parser = Atajo {
+            modificadores: Modificadores {
+                ctrl: true,
+                ..Default::default()
+            },
+            tecla: Tecla::Funcion(0),
+        };
+        // n.saturating_sub(1) con n = 0 da 0, asi que el resultado es VK_F1.
+        assert_eq!(sin_pasar_por_el_parser.tecla_win32(), 0x70);
+
+        // Digito con un valor que desbordaria un u8 si la suma se hiciera en
+        // espacio u8 (b'0' + d con d >= 208).
+        let digito_grande = Atajo {
+            modificadores: Modificadores {
+                ctrl: true,
+                ..Default::default()
+            },
+            tecla: Tecla::Digito(250),
+        };
+        assert_eq!(digito_grande.tecla_win32(), u32::from(b'0') + 250);
+    }
+
+    #[test]
+    fn tecla_win32_normaliza_letras_minusculas_construidas_a_mano() {
+        // El comentario en la definicion de Tecla::Letra dice "siempre en
+        // mayuscula", pero el campo es publico: si alguien lo construye a
+        // mano con una minuscula, tecla_win32() debe normalizar en vez de
+        // devolver un codigo de tecla equivocado en silencio.
+        let minuscula = Atajo {
+            modificadores: Modificadores {
+                ctrl: true,
+                ..Default::default()
+            },
+            tecla: Tecla::Letra('x'),
+        };
+        assert_eq!(minuscula.tecla_win32(), 'X' as u32);
     }
 
     #[test]
