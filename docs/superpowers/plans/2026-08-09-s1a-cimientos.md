@@ -26,6 +26,8 @@ Estas reglas aplican a **todas** las tareas de este plan. No se repiten en cada 
 - **Idiomas:** `es-ES` y `en-US`. Todo texto visible al usuario pasa por el catálogo Fluent, nunca literal en el código.
 - **Comentarios y nombres en español**, como en el proyecto Android. Los identificadores públicos van en español (`Ajustes`, `resolver`, `Ubicacion`).
 - **Commits frecuentes.** Cada tarea termina en commit.
+- **Identificadores sin acentos ni eñes.** Los nombres van en español pero en ASCII: `Espanol`, `se_anade_y_se_retira`, `deberia`. Rust admite identificadores Unicode, pero con `-D warnings` en CI un identificador poco común puede convertirse en error de compilación, y no merece la pena arriesgar el build por una tilde. **Los comentarios, los mensajes de error y los textos traducidos sí llevan acentos normales** — ahí no hay ningún riesgo.
+- **Los tests corren con `-- --test-threads=1`.** Varios toman recursos globales del sistema (el mutex de instancia única, la clase de ventana, el icono de bandeja) y compiten entre sí en paralelo.
 
 ---
 
@@ -405,8 +407,12 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
+      # --test-threads=1 no es opcional: varios tests toman recursos globales
+      # del sistema (el mutex de instancia unica, la clase de ventana, el icono
+      # de bandeja) y compiten entre si en paralelo. Sin esto, CI fallaria de
+      # forma intermitente, que es la peor manera de descubrirlo.
       - name: Tests
-        run: cargo test --workspace
+        run: cargo test --workspace -- --test-threads=1
 
   licencias:
     runs-on: ubuntu-latest
@@ -1022,7 +1028,7 @@ store necesita serializar atajos, asi que el tipo tiene que estar debajo."
 - Produces:
   - `pub struct Ajustes { pub idioma: PreferenciaIdioma, pub atajos: Atajos, pub carpeta_capturas: Option<PathBuf>, pub formato_color: FormatoColor, pub arranque_con_windows: bool, pub limite_scroll_px: u32 }`
   - `pub struct Atajos { pub region: Atajo, pub copiar: Atajo, pub scroll: Atajo, pub cuentagotas: Atajo }`
-  - `pub enum PreferenciaIdioma { Sistema, Español, Ingles }`
+  - `pub enum PreferenciaIdioma { Sistema, Espanol, Ingles }`
   - `pub enum FormatoColor { Hex, Rgb, Hsl }`
   - `pub fn cargar(ubicacion: &Ubicacion) -> Result<Ajustes, ErrorAjustes>`
   - `pub fn guardar(ubicacion: &Ubicacion, ajustes: &Ajustes) -> Result<(), ErrorAjustes>`
@@ -1194,7 +1200,7 @@ pub enum PreferenciaIdioma {
     #[default]
     Sistema,
     #[serde(rename = "es")]
-    Español,
+    Espanol,
     #[serde(rename = "en")]
     Ingles,
 }
@@ -1327,7 +1333,7 @@ verificados por test contra el documento de diseño de S1."
 **Interfaces:**
 - Consumes: `PreferenciaIdioma` (Task 4).
 - Produces:
-  - `pub enum Idioma { Español, Ingles }`
+  - `pub enum Idioma { Espanol, Ingles }`
   - `pub fn resolver_idioma(locale_sistema: &str, preferencia: PreferenciaIdioma) -> Idioma`
   - `pub struct Catalogo`
   - `impl Catalogo { pub fn nuevo(idioma: Idioma) -> Self; pub fn t(&self, clave: &str) -> String; pub fn t_args(&self, clave: &str, args: &FluentArgs) -> String }`
@@ -1395,13 +1401,13 @@ mod pruebas {
     #[test]
     fn la_preferencia_explicita_gana_al_sistema() {
         assert_eq!(resolver_idioma("es-ES", PreferenciaIdioma::Ingles), Idioma::Ingles);
-        assert_eq!(resolver_idioma("en-US", PreferenciaIdioma::Español), Idioma::Español);
+        assert_eq!(resolver_idioma("en-US", PreferenciaIdioma::Espanol), Idioma::Espanol);
     }
 
     #[test]
     fn en_modo_sistema_se_mira_el_locale() {
-        assert_eq!(resolver_idioma("es-ES", PreferenciaIdioma::Sistema), Idioma::Español);
-        assert_eq!(resolver_idioma("es-MX", PreferenciaIdioma::Sistema), Idioma::Español);
+        assert_eq!(resolver_idioma("es-ES", PreferenciaIdioma::Sistema), Idioma::Espanol);
+        assert_eq!(resolver_idioma("es-MX", PreferenciaIdioma::Sistema), Idioma::Espanol);
         assert_eq!(resolver_idioma("en-GB", PreferenciaIdioma::Sistema), Idioma::Ingles);
     }
 
@@ -1416,7 +1422,7 @@ mod pruebas {
 
     #[test]
     fn los_dos_catalogos_devuelven_texto_traducido() {
-        let es = Catalogo::nuevo(Idioma::Español);
+        let es = Catalogo::nuevo(Idioma::Espanol);
         let en = Catalogo::nuevo(Idioma::Ingles);
 
         assert_eq!(es.t("bandeja-salir"), "Salir");
@@ -1430,7 +1436,7 @@ mod pruebas {
     fn una_clave_que_falta_devuelve_la_propia_clave() {
         // Devolver la clave en vez de entrar en panico: un texto que falta es
         // feo, pero una aplicacion que se cierra por eso es inaceptable.
-        let es = Catalogo::nuevo(Idioma::Español);
+        let es = Catalogo::nuevo(Idioma::Espanol);
         assert_eq!(es.t("clave-que-no-existe"), "clave-que-no-existe");
     }
 
@@ -1492,21 +1498,21 @@ const FTL_EN: &str = include_str!("../i18n/en-US/main.ftl");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Idioma {
-    Español,
+    Espanol,
     Ingles,
 }
 
 impl Idioma {
     fn etiqueta(self) -> &'static str {
         match self {
-            Idioma::Español => "es-ES",
+            Idioma::Espanol => "es-ES",
             Idioma::Ingles => "en-US",
         }
     }
 
     fn fuente(self) -> &'static str {
         match self {
-            Idioma::Español => FTL_ES,
+            Idioma::Espanol => FTL_ES,
             Idioma::Ingles => FTL_EN,
         }
     }
@@ -1515,12 +1521,12 @@ impl Idioma {
 /// Decide el idioma final. La preferencia explicita del usuario siempre gana.
 pub fn resolver_idioma(locale_sistema: &str, preferencia: PreferenciaIdioma) -> Idioma {
     match preferencia {
-        PreferenciaIdioma::Español => Idioma::Español,
+        PreferenciaIdioma::Espanol => Idioma::Espanol,
         PreferenciaIdioma::Ingles => Idioma::Ingles,
         // Solo miramos la parte de idioma: es-MX y es-ES comparten catalogo.
         PreferenciaIdioma::Sistema => {
             if locale_sistema.split(['-', '_']).next().unwrap_or("") == "es" {
-                Idioma::Español
+                Idioma::Espanol
             } else {
                 Idioma::Ingles
             }
@@ -2366,7 +2372,7 @@ mod pruebas {
     use crate::ventana::VentanaMensajes;
 
     #[test]
-    fn se_añade_y_se_retira_el_icono() {
+    fn se_anade_y_se_retira_el_icono() {
         let v = VentanaMensajes::nueva().unwrap();
         let b = Bandeja::nueva(v.handle(), "PixPin Max — prueba").expect("deberia añadirse");
         drop(b);
