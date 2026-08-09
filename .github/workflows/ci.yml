@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # Todo lo que vive en L0/L2 puro corre aqui: rapido y sin GPU.
+  pruebas:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Formato
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      # --test-threads=1 no es opcional: varios tests toman recursos globales
+      # del sistema (el mutex de instancia unica, la clase de ventana, el icono
+      # de bandeja) y compiten entre si en paralelo. Sin esto, CI fallaria de
+      # forma intermitente, que es la peor manera de descubrirlo.
+      - name: Tests
+        run: cargo test --workspace -- --test-threads=1
+
+  licencias:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources
