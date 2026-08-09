@@ -147,7 +147,7 @@ mod pruebas {
     }
 
     #[test]
-    fn los_valores_por_defecto_son_los_del_diseño() {
+    fn los_valores_por_defecto_son_los_del_diseno() {
         let a = Ajustes::default();
         assert_eq!(a.atajos.region.to_string(), "Ctrl+Alt+X");
         assert_eq!(a.atajos.copiar.to_string(), "Ctrl+Alt+C");
@@ -159,14 +159,16 @@ mod pruebas {
     }
 
     #[test]
-    // El brief construye el valor paso a paso para que quede claro que campo
-    // se esta cambiando; no es una inicializacion perdida de vista.
-    #[allow(clippy::field_reassign_with_default)]
     fn sobrevive_la_ida_y_vuelta_por_toml() {
-        let mut original = Ajustes::default();
-        original.idioma = PreferenciaIdioma::Ingles;
-        original.arranque_con_windows = true;
-        original.atajos.region = "Ctrl+Shift+F1".parse().unwrap();
+        let original = Ajustes {
+            idioma: PreferenciaIdioma::Ingles,
+            arranque_con_windows: true,
+            atajos: Atajos {
+                region: "Ctrl+Shift+F1".parse().unwrap(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
 
         let texto = toml::to_string_pretty(&original).unwrap();
         let vuelta: Ajustes = toml::from_str(&texto).unwrap();
