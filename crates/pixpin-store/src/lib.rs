@@ -4,3 +4,7 @@
 //! señal de que la frontera de capas se ha roto y hay que arreglar el diseño,
 //! no relajar la regla.
 #![forbid(unsafe_code)]
+
+pub mod rutas;
+
+pub use rutas::{NOMBRE_AJUSTES, Ubicacion, resolver};
