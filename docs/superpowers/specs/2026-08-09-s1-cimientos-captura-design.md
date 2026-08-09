@@ -182,12 +182,28 @@ Tres problemas que se resuelven en el diseño, no al descubrirlos:
 | Pieza | Decisión |
 |---|---|
 | **Ajustes** | TOML. **La existencia de `pixpinmax.toml` junto al `.exe` decide el modo portable**, sin banderas ni instaladores distintos. Si no está, se usa `%APPDATA%\PixPinMax\`. |
-| **Atajos globales** | `RegisterHotKey`, todos reasignables. Por defecto: `Ctrl+Alt+X` región · `Ctrl+Alt+C` capturar y copiar directo · `Ctrl+Alt+S` captura con scroll · `Ctrl+Alt+D` cuentagotas. |
+| **Atajos globales** | `RegisterHotKey`, todos reasignables. Ver 5.1. |
 | **Bandeja** | Icono con menú: capturar, ajustes, salir. |
 | **Instancia única** | Mutex con nombre; la segunda instancia envía el mensaje a la primera y termina. Evita dos aplicaciones peleando por el mismo atajo global. |
 | **Idiomas** | Fluent, `es-ES` y `en-US`, detectado del sistema y forzable en ajustes. |
 | **Registro** | `tracing` a fichero rotativo local y volcado de fallos, equivalente a `CrashLog.kt` del Android. **Nada sale del equipo.** |
 | **Arranque con Windows** | Opcional, desactivado por defecto. |
+
+### 5.1 Atajos por defecto y qué hace cada uno
+
+En la v0.1 todavía no existe editor, así que hay que distinguir explícitamente qué ocurre al
+confirmar la selección; si no, dos atajos harían lo mismo.
+
+| Atajo | Acción | Al confirmar |
+|---|---|---|
+| `Ctrl+Alt+X` | Capturar región | Aparece una **barra de resultado** junto a la selección: copiar, guardar como, guardar en la carpeta por defecto, descartar |
+| `Ctrl+Alt+C` | Capturar y copiar | Va **directo al portapapeles** y el overlay desaparece, sin barra ni confirmación |
+| `Ctrl+Alt+S` | Captura con scroll | Igual que `Ctrl+Alt+X`, pero tras completar el recorrido y coser |
+| `Ctrl+Alt+D` | Cuentagotas | Copia el color bajo el cursor en el formato configurado y cierra |
+
+La barra de resultado es la que en S2 crecerá hasta ser la entrada al editor, y en S3 ganará el
+botón de pinear. En S1 se diseña ya con ese crecimiento en mente, pero sólo se implementan las
+cuatro acciones de arriba.
 
 ---
 
@@ -230,6 +246,7 @@ seguridad.
 - [ ] Congelar y alternar a modo en vivo
 - [ ] Lupa con zoom 8× y cuentagotas con HEX/RGB
 - [ ] Captura con scroll, con cabeceras fijas resueltas y parada automática
+- [ ] Barra de resultado con copiar, guardar como, guardar en carpeta y descartar
 - [ ] Copiar al portapapeles y guardar a PNG/JPG/WebP
 - [ ] Funcionar con tres monitores de escalado distinto
 - [ ] Modo portable sin tocar el registro
