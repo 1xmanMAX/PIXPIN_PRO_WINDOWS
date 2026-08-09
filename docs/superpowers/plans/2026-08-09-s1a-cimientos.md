@@ -1073,7 +1073,7 @@ mod pruebas {
     }
 
     #[test]
-    fn los_valores_por_defecto_son_los_del_diseño() {
+    fn los_valores_por_defecto_son_los_del_diseno() {
         let a = Ajustes::default();
         assert_eq!(a.atajos.region.to_string(), "Ctrl+Alt+X");
         assert_eq!(a.atajos.copiar.to_string(), "Ctrl+Alt+C");
