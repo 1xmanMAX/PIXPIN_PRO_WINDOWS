@@ -177,6 +177,15 @@ extern "system" fn procedimiento(
             ID_MENU_SALIR => Some(Evento::MenuSalir),
             _ => None,
         },
+        // Esta comparacion asume la semantica "clasica" de Shell_NotifyIconW,
+        // donde lParam es directamente el mensaje del raton (WM_LBUTTONUP,
+        // etc). Si en el futuro el icono de la bandeja se registra con
+        // NOTIFYICON_VERSION_4 (via Shell_NotifyIconW + NIM_SETVERSION),
+        // lParam pasa a llevar las coordenadas del cursor empaquetadas en la
+        // palabra baja/alta en vez del mensaje, y esta igualdad exacta deja
+        // de reconocer el clic sin dar ningun error visible. Quien conecte
+        // la bandeja (tarea futura) debe revisar esto si cambia la version
+        // notificada.
         WM_BANDEJA if (lparam.0 as u32) == WM_LBUTTONUP => Some(Evento::IconoPulsado),
         WM_DESTROY => {
             // SAFETY: llamada sin argumentos que solo encola WM_QUIT en la
@@ -201,12 +210,41 @@ extern "system" fn procedimiento(
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    use windows::Win32::UI::WindowsAndMessaging::IsWindow;
 
     #[test]
     fn se_crea_y_se_destruye_sin_fugas() {
         let v = VentanaMensajes::nueva().expect("deberia poder crearse");
-        assert!(!v.handle().is_invalid(), "el handle no puede ser invalido");
+        let hwnd = v.handle();
+        assert!(!hwnd.is_invalid(), "el handle no puede ser invalido");
+
+        // SAFETY: `hwnd` viene de CreateWindowExW y sigue vivo (v todavia no
+        // se ha soltado). Consultar con IsWindow un handle vivo es siempre
+        // valido y no toma posesion de nada.
+        let sigue_viva = unsafe { IsWindow(Some(hwnd)) }.as_bool();
+        assert!(
+            sigue_viva,
+            "la ventana debe existir para Windows mientras v esta viva"
+        );
+
         drop(v);
+
+        // Este es el aserto que hace real el nombre del test: comprueba que
+        // Drop destruyo de verdad la ventana, no solo que el handle guardado
+        // dejo de ser invalido (eso ya lo era desde el principio y no lo
+        // cambia soltar `v`). Sin esto, un Drop que nunca llamara a
+        // DestroyWindow pasaria el test igual.
+        //
+        // SAFETY: `hwnd` es el valor numerico de un handle que ya se destruyo;
+        // consultar un handle destruido con IsWindow es una operacion valida
+        // que precisamente sirve para comprobar que ya no existe, no un uso
+        // despues de liberar memoria (IsWindow no dereferencia el puntero,
+        // solo busca la entrada en la tabla de ventanas del sistema).
+        let sigue_reconocida = unsafe { IsWindow(Some(hwnd)) }.as_bool();
+        assert!(
+            !sigue_reconocida,
+            "tras soltar v, Windows ya no debe reconocer el handle"
+        );
 
         // Crear una segunda tras destruir la primera comprueba que la clase de
         // ventana se registra de forma reentrante y que no queda basura.
