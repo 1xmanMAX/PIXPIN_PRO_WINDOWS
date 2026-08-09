@@ -119,7 +119,9 @@ Dependencias vcpkg: `libjpeg-turbo`, `libwebp` (simd), `libavif` (dav1d), `libjx
 | D7 | **Orden de trabajo** | Documento maestro primero, luego S1 | Petición explícita del usuario. |
 | D8 | **Formato de archivo** | **`.excalidraw` / `.excalidraw.gz`**, sin contenedor propio | Es lo que ya usa el Android. Da compatibilidad de ida y vuelta gratis e interoperabilidad con excalidraw.com. Ver 0.2 y 3.1. |
 | D9 | **Traducción offline** | **Modelos locales descargables a demanda** | Instalador ligero; el usuario baja sólo los pares de idiomas que quiera (~40-80 MB cada uno). Preserva la promesa de privacidad total. |
-| D10 | **Windows mínimo** | **Windows 10 21H2** (compilación 19044) | Cubre casi todo el parque. En equipos anteriores a la compilación 20348 se usa DXGI Desktop Duplication como respaldo para evitar el borde amarillo de WGC. |
+| D10 | **Windows mínimo** | **Windows 10 21H2** (compilación 19044) | Cubre casi todo el parque. Donde WGC no pueda suprimir el borde amarillo se usa DXGI Desktop Duplication como respaldo. *Refinado por S1-6: el respaldo se decide preguntando al sistema si la capacidad existe, no comparando números de compilación.* |
+| D11 | **Nombre** | **PixPin Max**, ejecutable `pixpinmax.exe` | Recoge el nombre de la carpeta de trabajo y se diferencia algo más de la marca ajena. Se mantiene la nota sobre DepthPixel. |
+| D12 | **Idiomas en v1** | **Español (`es-ES`) e inglés (`en-US`)**, con Fluent | Español porque es el idioma del autor y de toda la documentación; inglés porque sin él el proyecto no existe fuera de su círculo. Añadir más idiomas después es añadir ficheros. |
 
 ### 1.1 Justificación de D4 — el reparto de lenguajes
 
@@ -404,11 +406,12 @@ Interfaz con Fluent (`fluent-rs`), que maneja plurales y géneros correctamente 
 
 ---
 
-## 5. Siguientes pasos
+## 5. Estado y siguientes pasos
 
-1. **Revisión de este documento por el usuario.**
-2. Decidir si `F:\THE FORGE\PIXPIN PC VERSION MAX` se inicializa como repositorio git — *pendiente de preguntar; no se ha hecho nada sin permiso*.
-3. Brainstorming propio de **S1** → especificación → plan → implementación.
+1. ~~Revisión de este documento por el usuario~~ — **aprobado el 2026-08-09**.
+2. ~~Inicializar el repositorio git~~ — **hecho**, rama `main`, commit inicial `a884aed`.
+3. ~~Brainstorming y especificación de **S1**~~ — **hecha**: [`2026-08-09-s1-cimientos-captura-design.md`](2026-08-09-s1-cimientos-captura-design.md).
+4. **Siguiente:** plan de implementación de S1, y a escribir Rust.
 
 ### Tareas de arranque de S1
 
@@ -421,6 +424,6 @@ Interfaz con Fluent (`fluent-rs`), que maneja plurales y géneros correctamente 
 
 ### Preguntas abiertas
 
-- Nombre definitivo del producto y del ejecutable (se asume `pixpin-pc` como nombre del workspace).
-- Idiomas de la interfaz en la v1 (la documentación del Android está en español).
-- El sistema de plugins de la familia Extensibilidad no tiene sub-proyecto asignado: sólo entra el CLI y el formato documentado en S4. Los plugins quedan para después de la v1.0.
+- ~~Nombre definitivo del producto y del ejecutable~~ — resuelto en D11: **PixPin Max**, `pixpinmax.exe`.
+- ~~Idiomas de la interfaz en la v1~~ — resuelto en D12: **español e inglés**.
+- El sistema de plugins de la familia Extensibilidad sigue sin sub-proyecto asignado: en S4 sólo entran el CLI y el formato documentado. Los plugins quedan **para después de la v1.0** y necesitarán su propio diseño.
