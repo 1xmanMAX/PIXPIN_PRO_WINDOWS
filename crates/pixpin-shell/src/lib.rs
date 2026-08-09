@@ -5,11 +5,13 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod atajo;
+pub mod atajos;
 pub mod entorno;
 pub mod instancia;
 pub mod ventana;
 
 pub use atajo::{Atajo, ErrorAtajo, Modificadores, Tecla};
+pub use atajos::{AtajosRegistrados, ID_COPIAR, ID_CUENTAGOTAS, ID_REGION, ID_SCROLL, registrar};
 pub use entorno::{appdata, directorio_del_ejecutable, locale_del_sistema};
 pub use instancia::{ErrorInstanciaUnica, InstanciaUnica, adquirir_instancia_unica};
 pub use ventana::{
