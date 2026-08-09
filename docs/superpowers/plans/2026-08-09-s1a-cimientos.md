@@ -201,6 +201,13 @@ fn ninguna_dependencia_sube_de_capa() {
 }
 ```
 
+> **Nota tras la ejecución (2026-08-09).** El test de arriba, tal como está escrito, tiene dos huecos que la revisión detectó y que se cerraron en el commit `983a181`. El código en el repositorio es el bueno; este bloque queda como registro de lo que se planificó:
+>
+> 1. Comparaba contra la **clave** de la tabla TOML, no contra el paquete resuelto. Una dependencia escrita `disfrazado = { package = "pixpin-shell", path = "…" }` hacía que `capa("disfrazado")` diese `None` y el `continue` se saltase la comprobación **en silencio**. Se corrigió leyendo el campo `package` cuando existe.
+> 2. No recorría las tablas bajo `[target.*]`, forma que en un proyecto de Windows se usa con seguridad. Se corrigió recorriéndolas.
+>
+> La lección para los planes S1-B y S1-C: un test que sólo se ha visto pasar no está probado. Exige siempre la secuencia rojo→verde.
+
 - [ ] **Step 2: Ejecutar el test y comprobar que falla**
 
 Run: `cargo test -p pixpin --test capas`
