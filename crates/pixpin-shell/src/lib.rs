@@ -7,7 +7,12 @@
 pub mod atajo;
 pub mod entorno;
 pub mod instancia;
+pub mod ventana;
 
 pub use atajo::{Atajo, ErrorAtajo, Modificadores, Tecla};
 pub use entorno::{appdata, directorio_del_ejecutable, locale_del_sistema};
 pub use instancia::{ErrorInstanciaUnica, InstanciaUnica, adquirir_instancia_unica};
+pub use ventana::{
+    Continuar, Evento, ID_MENU_AJUSTES, ID_MENU_CAPTURAR, ID_MENU_SALIR, VentanaMensajes,
+    WM_BANDEJA,
+};
