@@ -5,5 +5,9 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod atajo;
+pub mod entorno;
+pub mod instancia;
 
 pub use atajo::{Atajo, ErrorAtajo, Modificadores, Tecla};
+pub use entorno::{appdata, directorio_del_ejecutable, locale_del_sistema};
+pub use instancia::{InstanciaUnica, YaHayOtraInstancia, adquirir_instancia_unica};
