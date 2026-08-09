@@ -1765,9 +1765,14 @@ pub fn appdata() -> std::io::Result<PathBuf> {
     unsafe {
         let ruta: PWSTR = SHGetKnownFolderPath(&FOLDERID_RoamingAppData, KF_FLAG_DEFAULT, None)
             .map_err(|e| std::io::Error::other(format!("SHGetKnownFolderPath fallo: {e}")))?;
-        let texto = ruta.to_string().map_err(std::io::Error::other)?;
+
+        // El orden importa: convertir a un valor propio, liberar SIEMPRE, y solo
+        // despues decidir si se propaga el error. Escribirlo al reves —convertir
+        // con `?` y liberar en la linea siguiente— filtra el buffer cuando la
+        // conversion falla, porque el `?` sale de la funcion antes del free.
+        let convertida = ruta.to_string();
         CoTaskMemFree(Some(ruta.0 as *const _));
-        Ok(PathBuf::from(texto))
+        Ok(PathBuf::from(convertida.map_err(std::io::Error::other)?))
     }
 }
 
@@ -2890,14 +2895,19 @@ use pixpin_store::{Catalogo, Ubicacion, ajustes, idioma, rutas};
 
 fn main() -> Result<()> {
     // 1. Una sola copia a la vez.
+    //
+    // Los dos casos de error se tratan distinto a proposito. Que ya haya otra
+    // instancia no es un fallo: el usuario pulso el icono dos veces. Que
+    // `CreateMutexW` falle de verdad si lo es, y confundirlos manda a quien
+    // depure a buscar una segunda copia que no existe.
     let _instancia = match adquirir_instancia_unica() {
         Ok(i) => i,
-        Err(_) => {
-            // No se puede avisar con un dialogo traducido porque todavia no se
-            // han leido los ajustes. Salir en silencio es el comportamiento
-            // correcto: el usuario pulso el icono dos veces, nada mas.
+        Err(pixpin_shell::instancia::ErrorInstanciaUnica::YaHayOtraInstancia) => {
+            // Todavia no se han leido los ajustes, asi que no hay catalogo con
+            // el que traducir un dialogo. Salir en silencio es lo correcto.
             return Ok(());
         }
+        Err(e) => return Err(anyhow::Error::new(e).context("no se pudo comprobar la instancia unica")),
     };
 
     // 2. Donde vivimos y que nos han configurado.
