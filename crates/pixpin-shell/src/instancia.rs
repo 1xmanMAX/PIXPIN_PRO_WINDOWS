@@ -8,10 +8,25 @@ use windows::Win32::Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError
 use windows::Win32::System::Threading::CreateMutexW;
 use windows::core::w;
 
-/// Devuelto cuando ya hay otra copia en marcha.
+/// Errores posibles al pedir la instancia unica.
+///
+/// Se distinguen a proposito dos casos que no tienen nada que ver entre si:
+/// que ya haya otra copia corriendo es el resultado esperado la mayoria de
+/// las veces (el usuario probo a abrir PixPin Max dos veces); que
+/// `CreateMutexW` falle por otra razon (permisos, recursos agotados) es un
+/// fallo real que hay que reportar. Confundir el segundo caso con el primero
+/// dejaria a quien depure buscando una segunda copia que no existe.
 #[derive(Debug, thiserror::Error)]
-#[error("ya hay otra instancia de PixPin Max en marcha")]
-pub struct YaHayOtraInstancia;
+pub enum ErrorInstanciaUnica {
+    /// Ya hay otra copia de PixPin Max en marcha: no es un fallo.
+    #[error("ya hay otra instancia de PixPin Max en marcha")]
+    YaHayOtraInstancia,
+
+    /// `CreateMutexW` fallo por una razon distinta a que el mutex ya
+    /// existiera.
+    #[error("no se pudo crear el mutex de instancia unica: {0}")]
+    Windows(#[from] windows::core::Error),
+}
 
 /// Mientras este valor viva, ninguna otra copia puede arrancar.
 pub struct InstanciaUnica {
@@ -28,7 +43,7 @@ impl Drop for InstanciaUnica {
     }
 }
 
-pub fn adquirir_instancia_unica() -> Result<InstanciaUnica, YaHayOtraInstancia> {
+pub fn adquirir_instancia_unica() -> Result<InstanciaUnica, ErrorInstanciaUnica> {
     // El prefijo Local\ limita el ambito a la sesion del usuario: dos usuarios
     // distintos en el mismo equipo si pueden tener cada uno su PixPin Max.
     let nombre = w!(r"Local\PixPinMax-instancia-unica");
@@ -37,7 +52,7 @@ pub fn adquirir_instancia_unica() -> Result<InstanciaUnica, YaHayOtraInstancia> 
     // CreateMutexW devuelve un handle valido o un error; GetLastError se
     // consulta inmediatamente despues, antes de cualquier otra llamada.
     let (handle, ya_existia) = unsafe {
-        let handle = CreateMutexW(None, true, nombre).map_err(|_| YaHayOtraInstancia)?;
+        let handle = CreateMutexW(None, true, nombre)?;
         let ya_existia = GetLastError() == ERROR_ALREADY_EXISTS;
         (handle, ya_existia)
     };
@@ -47,7 +62,7 @@ pub fn adquirir_instancia_unica() -> Result<InstanciaUnica, YaHayOtraInstancia> 
         unsafe {
             let _ = CloseHandle(handle);
         }
-        return Err(YaHayOtraInstancia);
+        return Err(ErrorInstanciaUnica::YaHayOtraInstancia);
     }
 
     Ok(InstanciaUnica { handle })
@@ -77,6 +92,30 @@ mod pruebas {
         assert!(
             adquirir_instancia_unica().is_ok(),
             "al liberarse la primera, el nombre debe quedar disponible"
+        );
+    }
+
+    #[test]
+    fn un_fallo_real_de_windows_no_se_confunde_con_ya_hay_otra_instancia() {
+        // No forzamos un fallo real de CreateMutexW: conseguirlo de verdad
+        // (agotar el limite de handles del proceso, revocar permisos sobre
+        // el objeto con nombre...) exige manipular el entorno del proceso de
+        // pruebas de forma artificial y muy fragil. En su lugar probamos la
+        // conversion `From<windows::core::Error> for ErrorInstanciaUnica`,
+        // que es exactamente la que usa `adquirir_instancia_unica` en su
+        // camino de error via `?` cuando `CreateMutexW` falla de verdad.
+        let error_de_windows =
+            windows::core::Error::from_hresult(windows::Win32::Foundation::E_ACCESSDENIED);
+        let error: ErrorInstanciaUnica = error_de_windows.into();
+
+        assert!(
+            matches!(error, ErrorInstanciaUnica::Windows(_)),
+            "un fallo real de Windows no debe convertirse en YaHayOtraInstancia"
+        );
+        assert_ne!(
+            error.to_string(),
+            ErrorInstanciaUnica::YaHayOtraInstancia.to_string(),
+            "los dos casos deben tener mensajes distintos para no confundir a quien depure"
         );
     }
 }

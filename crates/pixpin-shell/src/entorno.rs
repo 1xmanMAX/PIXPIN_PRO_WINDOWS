@@ -24,14 +24,19 @@ pub fn directorio_del_ejecutable() -> std::io::Result<PathBuf> {
 /// variable se puede manipular y no siempre esta presente en sesiones de
 /// servicio.
 pub fn appdata() -> std::io::Result<PathBuf> {
-    // SAFETY: SHGetKnownFolderPath escribe un puntero a cadena UTF-16
-    // terminada en cero que debemos liberar con CoTaskMemFree. Se lee antes de
-    // liberar y no se guarda ninguna referencia despues.
+    // SAFETY: SHGetKnownFolderPath devuelve un puntero a cadena UTF-16
+    // terminada en cero que hay que liberar con CoTaskMemFree exactamente una
+    // vez. Por eso la conversion a String se hace primero y se guarda en una
+    // variable local (sin propagar el error todavia): CoTaskMemFree se llama
+    // despues, en todos los caminos, tanto si la conversion salio bien como
+    // si no. Solo entonces se decide si propagar el error de la conversion.
+    // Tras liberar no queda ninguna referencia viva al puntero.
     unsafe {
         let ruta: PWSTR = SHGetKnownFolderPath(&FOLDERID_RoamingAppData, KF_FLAG_DEFAULT, None)
             .map_err(|e| std::io::Error::other(format!("SHGetKnownFolderPath fallo: {e}")))?;
-        let texto = ruta.to_string().map_err(std::io::Error::other)?;
+        let convertida = ruta.to_string();
         CoTaskMemFree(Some(ruta.0 as *const _));
+        let texto = convertida.map_err(std::io::Error::other)?;
         Ok(PathBuf::from(texto))
     }
 }
