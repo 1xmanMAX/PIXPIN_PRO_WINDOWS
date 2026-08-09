@@ -178,6 +178,42 @@ mod pruebas {
     }
 
     #[test]
+    fn t_args_sustituye_el_argumento_y_no_deja_marcas_de_aislamiento() {
+        // set_use_isolating(false) existe para esto: sin ella, Fluent envuelve
+        // cada argumento interpolado entre U+2068 y U+2069 (marcas de
+        // aislamiento direccional, utiles en arabe o hebreo). Son invisibles
+        // en pantalla, asi que dos cadenas que "se ven iguales" pueden diferir
+        // en bytes. Este test compara la cadena exacta para que quien quite
+        // esa linea lo vea aqui, no en un bug reportado por un usuario.
+        let es = Catalogo::nuevo(Idioma::Espanol);
+        let en = Catalogo::nuevo(Idioma::Ingles);
+
+        let mut args = FluentArgs::new();
+        args.set("atajo", "Ctrl+Alt+X");
+
+        let texto_es = es.t_args("error-atajo-ocupado", &args);
+        let texto_en = en.t_args("error-atajo-ocupado", &args);
+
+        assert_eq!(
+            texto_es,
+            "No se pudo registrar Ctrl+Alt+X: otra aplicación lo está usando."
+        );
+        assert_eq!(
+            texto_en,
+            "Could not register Ctrl+Alt+X: another application is using it."
+        );
+
+        for (idioma, texto) in [("es-ES", &texto_es), ("en-US", &texto_en)] {
+            assert!(
+                !texto.contains('\u{2068}') && !texto.contains('\u{2069}'),
+                "el texto de {idioma} lleva marcas de aislamiento direccional \
+                 (U+2068/U+2069) alrededor del argumento interpolado; falta \
+                 `bundle.set_use_isolating(false)` en Catalogo::nuevo. Texto: {texto:?}"
+            );
+        }
+    }
+
+    #[test]
     fn los_dos_catalogos_tienen_exactamente_las_mismas_claves() {
         // Este test es la red que impide que una traduccion se quede atras.
         let claves_es = claves_de(include_str!("../i18n/es-ES/main.ftl"));
@@ -194,6 +230,10 @@ mod pruebas {
 
     /// Extrae los identificadores de un fichero .ftl sin usar el parser de
     /// Fluent: basta con las lineas que empiezan por identificador y `=`.
+    ///
+    /// Limitacion conocida: no reconoce valores multilinea ni atributos
+    /// (`.attr = ...`). Ningun catalogo actual los usa; si se añaden, este
+    /// helper habra que revisarlo.
     fn claves_de(ftl: &str) -> std::collections::BTreeSet<String> {
         ftl.lines()
             .filter(|l| !l.trim_start().starts_with('#') && !l.starts_with(char::is_whitespace))
