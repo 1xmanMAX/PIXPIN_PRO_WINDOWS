@@ -30,6 +30,40 @@ pub struct Bandeja {
     datos: NOTIFYICONDATAW,
 }
 
+/// Copia `titulo` a `destino` como UTF-16, dejando sitio para el cero final.
+///
+/// `destino` tiene 128 posiciones; se usan como maximo 127 para dejar la
+/// ultima siempre a cero (el NUL que Windows espera al final de `szTip`).
+///
+/// La capacidad se comprueba por caracter completo (`char::len_utf16`), no
+/// por unidad UTF-16 suelta: un caracter fuera del plano basico multilingue
+/// ocupa dos unidades (una pareja subrogada), y si no caben las dos enteras
+/// en el hueco que queda, el caracter no se escribe en absoluto. Cortar a
+/// mitad de una pareja subrogada dejaria el sustituto alto suelto justo
+/// antes del cero final: una secuencia UTF-16 invalida aunque el array
+/// siguiera terminando en NUL.
+fn copiar_titulo(destino: &mut [u16; 128], titulo: &str) {
+    let mut escritos = 0usize;
+    for caracter in titulo.chars() {
+        let ancho = caracter.len_utf16();
+        if escritos + ancho > 127 {
+            break;
+        }
+        let mut buf = [0u16; 2];
+        for unidad in caracter.encode_utf16(&mut buf) {
+            destino[escritos] = *unidad;
+            escritos += 1;
+        }
+    }
+
+    // Aseguramos el cero final explicitamente en vez de asumir que `destino`
+    // ya llegaba a cero: esta funcion no debe depender de que su llamador lo
+    // haya preinicializado.
+    for slot in destino.iter_mut().skip(escritos) {
+        *slot = 0;
+    }
+}
+
 impl Bandeja {
     pub fn nueva(hwnd: HWND, titulo: &str) -> WinResult<Self> {
         // SAFETY: IDI_APPLICATION es un icono del sistema siempre disponible;
@@ -46,23 +80,7 @@ impl Bandeja {
             ..Default::default()
         };
 
-        // szTip es un array de 128 u16 terminado en cero (Default lo deja a
-        // cero entero, asi que basta con no escribir en la ultima posicion
-        // para garantizar el terminador). Se copian caracteres completos, no
-        // unidades UTF-16 sueltas: cortar a mitad de una pareja subrogada
-        // dejaria un `char` partido justo antes del cero final, que aunque
-        // seguiria terminando en NUL formaria una secuencia UTF-16 invalida.
-        let mut escritos = 0usize;
-        'copia: for caracter in titulo.chars() {
-            let mut buf = [0u16; 2];
-            for unidad in caracter.encode_utf16(&mut buf) {
-                if escritos >= 127 {
-                    break 'copia;
-                }
-                datos.szTip[escritos] = *unidad;
-                escritos += 1;
-            }
-        }
+        copiar_titulo(&mut datos.szTip, titulo);
 
         // SAFETY: `datos` esta completamente inicializada, su cbSize es
         // correcto y hWnd es una ventana valida de este proceso.
@@ -161,6 +179,52 @@ impl Drop for Bandeja {
 mod pruebas {
     use super::*;
     use crate::ventana::VentanaMensajes;
+
+    #[test]
+    fn copiar_titulo_no_parte_una_pareja_subrogada() {
+        // El caso exacto que reprodujo la revision: 126 caracteres ASCII
+        // (llenan justo hasta la posicion 125, escritos=126) seguidos de un
+        // emoji de una sola pareja subrogada, cuyas dos unidades UTF-16 caen
+        // a caballo del corte de 127.
+        let mut titulo = String::new();
+        for _ in 0..126 {
+            titulo.push('a');
+        }
+        titulo.push('\u{1F600}');
+
+        let mut destino = [0u16; 128];
+        copiar_titulo(&mut destino, &titulo);
+
+        assert_eq!(
+            destino[127], 0,
+            "szTip debe terminar en cero en la ultima posicion"
+        );
+
+        // Ninguna unidad debe quedar como sustituto alto o bajo suelto: todo
+        // sustituto alto (0xD800..=0xDBFF) debe ir seguido de su pareja baja
+        // (0xDC00..=0xDFFF), y ningun sustituto bajo debe aparecer sin un
+        // alto justo delante.
+        let mut i = 0;
+        while i < destino.len() {
+            let unidad = destino[i];
+            if (0xD800..=0xDBFF).contains(&unidad) {
+                let siguiente = destino.get(i + 1).copied().unwrap_or(0);
+                assert!(
+                    (0xDC00..=0xDFFF).contains(&siguiente),
+                    "sustituto alto suelto en la posicion {i} (0x{unidad:04x}), \
+                     seguido de 0x{siguiente:04x} en vez de su pareja baja"
+                );
+                i += 2;
+            } else if (0xDC00..=0xDFFF).contains(&unidad) {
+                panic!(
+                    "sustituto bajo suelto en la posicion {i} (0x{unidad:04x}) \
+                     sin un sustituto alto delante"
+                );
+            } else {
+                i += 1;
+            }
+        }
+    }
 
     #[test]
     fn se_anade_y_se_retira_el_icono() {
