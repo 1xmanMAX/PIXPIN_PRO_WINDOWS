@@ -6,9 +6,11 @@
 #![forbid(unsafe_code)]
 
 pub mod ajustes;
+pub mod idioma;
 pub mod rutas;
 
 pub use ajustes::{
     Ajustes, Atajos, ErrorAjustes, FormatoColor, PreferenciaIdioma, cargar, guardar,
 };
+pub use idioma::{Catalogo, Idioma, resolver_idioma};
 pub use rutas::{NOMBRE_AJUSTES, Ubicacion, resolver};
