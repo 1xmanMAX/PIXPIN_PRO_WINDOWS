@@ -5,6 +5,10 @@
 //! no relajar la regla.
 #![forbid(unsafe_code)]
 
+pub mod ajustes;
 pub mod rutas;
 
+pub use ajustes::{
+    Ajustes, Atajos, ErrorAjustes, FormatoColor, PreferenciaIdioma, cargar, guardar,
+};
 pub use rutas::{NOMBRE_AJUSTES, Ubicacion, resolver};
