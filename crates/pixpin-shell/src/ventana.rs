@@ -278,25 +278,29 @@ mod pruebas {
         assert!(!otra.handle().is_invalid());
     }
 
-    /// Prueba directa del hallazgo 2 de la revision final: antes, `ejecutar`
-    /// tomaba `self` por valor, asi que devolver del bucle destruia la
-    /// ventana (via su `Drop`) *dentro* de esa llamada, antes de que
-    /// `main` recuperase el control. `bandeja` y los atajos, declarados
-    /// despues en `main` y por tanto soltados antes en el orden inverso
-    /// normal, se soltaban entonces contra un `HWND` ya muerto, y
-    /// `Shell_NotifyIconW(NIM_DELETE)` / `UnregisterHotKey` fallaban en
-    /// silencio (sus resultados se descartan con `let _ =`).
+    /// Comprueba la PRECONDICION de la que depende el arreglo del hallazgo
+    /// 2, no el arreglo en si.
     ///
-    /// Este test reproduce el mismo orden de declaracion que `main()`
-    /// (ventana, bandeja, atajos) y comprueba con `IsWindow`, en cada paso
-    /// de la caida inversa, que la ventana sigue viva cuando `Bandeja` y
-    /// `AtajosRegistrados` se sueltan, y que solo deja de existir cuando la
-    /// propia `VentanaMensajes` se suelta al final. Con la firma antigua
-    /// (`ejecutar(self, ...)`) este test no habria detectado el problema
-    /// directamente porque aqui no se llama a `ejecutar`; lo que prueba es
-    /// la precondicion que hace correcto el arreglo: que el orden de
-    /// declaracion por si solo, sin que nada mueva `ventana` fuera de su
-    /// sitio, ya basta para que Rust suelte hotkeys -> bandeja -> ventana.
+    /// Importante, para no prometer mas de lo que da: este test **no llama
+    /// a `ejecutar`**. Suelta `registrados`, `bandeja` y `ventana` a mano,
+    /// en el mismo orden en que `main()` los declara. Con eso comprueba,
+    /// via `IsWindow` en cada paso de la caida, que ese orden de
+    /// declaracion por si solo -- sin que nada mueva `ventana` fuera de su
+    /// sitio -- ya basta para que Rust suelte hotkeys -> bandeja -> ventana
+    /// (la ventana sigue viva cuando `Bandeja` y `AtajosRegistrados` se
+    /// sueltan, y solo deja de existir cuando `VentanaMensajes` se suelta al
+    /// final). Pasaria igual con la firma antigua `ejecutar(self, ...)`,
+    /// porque esa firma no interviene aqui en absoluto.
+    ///
+    /// Lo que de verdad arreglo el hallazgo 2 -- que `ejecutar` tomaba
+    /// `self` por valor, asi que devolver del bucle destruia la ventana
+    /// *dentro* de esa llamada, antes de que `main` recuperase el control,
+    /// y `bandeja`/`atajos` se soltaban entonces contra un `HWND` ya muerto
+    /// -- es la firma `pub fn ejecutar(&self, ...)` de mas arriba en este
+    /// mismo fichero; no hay un test que ejercite ese camino exacto (haria
+    /// falta lanzar el bucle real y cerrarlo desde dentro). Este test cubre
+    /// la mitad verificable sin eso: que la precondicion sobre la que se
+    /// apoya el arreglo es cierta.
     ///
     /// Necesita una sesion de escritorio interactiva (bandeja de Explorer,
     /// RegisterHotKey), igual que las pruebas de `bandeja.rs` y

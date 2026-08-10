@@ -19,16 +19,35 @@
 //!
 //! Todo el cuerpo vive en [`arrancar`], que devuelve `Result`. `main` solo
 //! llama a `arrancar` y, si falla, ademas de dejar constancia en el
-//! registro (si ya se pudo abrir) muestra un `MessageBoxW`: es el unico
+//! registro (si ya se pudo abrir) muestra un cuadro de error: es el unico
 //! canal que le queda a esta aplicacion sin consola para avisar al usuario
 //! de un fallo de arranque que ocurrio antes de tener bandeja con la que
 //! decirlo. El catalogo de idiomas puede no estar cargado todavia cuando
 //! esto pasa, asi que el mensaje puede salir sin traducir; es aceptable,
 //! mejor eso que un fallo mudo.
+//!
+//! El guardia del registro (`WorkerGuard`) lo posee `main`, no `arrancar`:
+//! `arrancar` recibe un `&mut Option<WorkerGuard>` y lo rellena en cuanto
+//! sabe donde escribir. Si el guardia viviera dentro de `arrancar`, se
+//! soltaria (cerrando el hilo de escritura no bloqueante) al salir con
+//! `Err`, *antes* de que `main` pudiera registrar el error -- ese fue
+//! exactamente el fallo que la re-revision encontro ejecutando el
+//! programa con un `pixpinmax.toml` corrupto: el `tracing::error!` de
+//! `main` se ejecutaba, pero el escritor ya estaba cerrado y la linea
+//! nunca llegaba al fichero.
 
 // Sin consola: es una aplicacion de bandeja, no una herramienta de linea de
 // comandos. Sin esto se abriria una ventana negra al arrancar.
 #![windows_subsystem = "windows"]
+// Este ejecutable no esta en la lista de crates auditados para `unsafe` del
+// documento maestro (esa es `pixpin-shell`, la unica que habla con Win32 de
+// forma revisada). Sin este `forbid`, añadir una dependencia como `windows`
+// aqui -- como paso por error en la revision anterior, para un unico
+// `MessageBoxW` que ya se movio a `pixpin-shell::dialogo` -- crearia
+// `unsafe` sin auditar por omision, no por decision, y ningun test de capas
+// lo detectaria porque esas pruebas ignoran los crates externos. Este
+// atributo es la unica guarda que lo habria detectado.
+#![forbid(unsafe_code)]
 
 use anyhow::{Context, Result};
 use pixpin_shell::{
@@ -38,40 +57,28 @@ use pixpin_shell::{
 use pixpin_store::{Catalogo, Ubicacion, ajustes, idioma, rutas};
 
 fn main() -> Result<()> {
-    if let Err(error) = arrancar() {
-        // Si el registro a fichero ya se pudo abrir (paso 3 de arriba) esto
-        // ademas queda escrito ahi; si el fallo ocurrio antes de eso (p. ej.
-        // al comprobar la instancia unica), `tracing::error!` sin un
-        // subscriber inicializado simplemente no hace nada, no entra en
-        // panico.
+    // Vive aqui, no dentro de `arrancar`, precisamente para que sobreviva a
+    // un `Err`: ver el comentario de modulo de mas arriba.
+    let mut guardia_registro: Option<tracing_appender::non_blocking::WorkerGuard> = None;
+
+    if let Err(error) = arrancar(&mut guardia_registro) {
+        // `guardia_registro` sigue vivo aqui (es local a `main`, y `arrancar`
+        // solo tiene un prestamo), asi que si el registro a fichero ya se
+        // pudo abrir esto queda escrito de verdad. Si el fallo ocurrio antes
+        // de eso (p. ej. al comprobar la instancia unica, que es antes del
+        // paso 3), `guardia_registro` sigue en `None` y `tracing::error!`
+        // sin un subscriber inicializado simplemente no hace nada, no entra
+        // en panico.
         tracing::error!(?error, "PixPin Max no pudo arrancar");
-        mostrar_error_arranque(&error);
+        pixpin_shell::mostrar_error_fatal("PixPin Max", &format!("{error:#}"));
         return Err(error);
     }
     Ok(())
 }
 
-/// Ultimo recurso para que un fallo de arranque no sea completamente mudo.
-///
-/// Sin consola (paso 1 del modulo) y sin catalogo de idiomas garantizado
-/// todavia, un `MessageBoxW` con el texto del error tal cual, sin traducir,
-/// es preferible a que el usuario solo vea que el icono nunca aparecio.
-fn mostrar_error_arranque(error: &anyhow::Error) {
-    use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
-    use windows::core::HSTRING;
-
-    let mensaje = HSTRING::from(format!("{error:#}"));
-    let titulo = HSTRING::from("PixPin Max");
-
-    // SAFETY: `mensaje` y `titulo` son HSTRING propias, vivas durante toda la
-    // llamada; None como ventana propietaria es un uso valido y documentado
-    // de MessageBoxW (crea un cuadro sin padre).
-    unsafe {
-        let _ = MessageBoxW(None, &mensaje, &titulo, MB_OK | MB_ICONERROR);
-    }
-}
-
-fn arrancar() -> Result<()> {
+fn arrancar(
+    guardia_registro: &mut Option<tracing_appender::non_blocking::WorkerGuard>,
+) -> Result<()> {
     // 1. Una sola copia a la vez.
     //
     // Los dos casos de error se tratan distinto a proposito. Que ya haya otra
@@ -97,7 +104,10 @@ fn arrancar() -> Result<()> {
 
     // 3. Registro a fichero, antes de leer los ajustes: si el TOML esta mal
     // escrito, el fallo de mas abajo queda documentado en vez de perderse.
-    let _guardia_registro = iniciar_registro(&ubicacion);
+    // Se guarda en el `Option` que paso `main`, no en una variable local de
+    // esta funcion, para que siga vivo aunque `arrancar` devuelva `Err` mas
+    // abajo (ver el comentario de modulo).
+    *guardia_registro = Some(iniciar_registro(&ubicacion));
     tracing::info!(
         portable = ubicacion.es_portable(),
         raiz = ?ubicacion.raiz(),

@@ -11,9 +11,9 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, GetSystemMetrics, HICON,
-    IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, LoadIconW, LoadImageW, MF_SEPARATOR, MF_STRING,
-    PostMessageW, SM_CXSMICON, SM_CYSMICON, SetForegroundWindow, TPM_RIGHTBUTTON, TrackPopupMenu,
-    WM_NULL,
+    IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, LR_SHARED, LoadIconW, LoadImageW, MF_SEPARATOR,
+    MF_STRING, PostMessageW, SM_CXSMICON, SM_CYSMICON, SetForegroundWindow, TPM_RIGHTBUTTON,
+    TrackPopupMenu, WM_NULL,
 };
 use windows::core::{HSTRING, PCWSTR, Result as WinResult};
 
@@ -100,6 +100,17 @@ fn cargar_icono_incrustado() -> Option<HICON> {
     // parezca (ni a Clippy) un puntero colgante por error de tipeo.
     let identificador_recurso: *const u16 = std::ptr::without_provenance(1);
 
+    // LR_SHARED es obligatorio, no opcional: sin el, LoadImageW devuelve un
+    // HICON del que el llamante es propietario y que hay que liberar con
+    // DestroyIcon. La primera version de este arreglo (revision final,
+    // hallazgo 4) no lo tenia y fugaba un HICON en cada Bandeja::nueva,
+    // porque Bandeja::drop solo hace NIM_DELETE, nunca DestroyIcon; la
+    // re-revision lo encontro ejecutando. Con LR_SHARED el sistema cachea el
+    // icono y conserva su propiedad -- el mismo motivo por el que
+    // IDI_APPLICATION (via LoadIconW, mas abajo en cargar_icono_app) tampoco
+    // necesita liberarse. Es un uso estandar de LR_SHARED: el icono se carga
+    // desde un recurso del modulo (no de un fichero) a un tamaño de sistema
+    // fijo, exactamente el caso para el que MSDN lo recomienda.
     // SAFETY: `instancia` es el modulo de este mismo proceso, valido durante
     // toda la llamada. `identificador_recurso` es el puntero-numero
     // construido justo arriba, valido como MAKEINTRESOURCE.
@@ -110,7 +121,7 @@ fn cargar_icono_incrustado() -> Option<HICON> {
             IMAGE_ICON,
             GetSystemMetrics(SM_CXSMICON),
             GetSystemMetrics(SM_CYSMICON),
-            LR_DEFAULTCOLOR,
+            LR_DEFAULTCOLOR | LR_SHARED,
         )
     };
 
