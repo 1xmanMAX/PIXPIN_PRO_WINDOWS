@@ -4,15 +4,18 @@
 //! capturando. Se retira en `Drop` para que cerrar la aplicacion no deje un
 //! icono fantasma que solo desaparece al pasar el raton por encima.
 
-use windows::Win32::Foundation::{HWND, POINT};
+use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, IDI_APPLICATION, LoadIconW,
-    MF_SEPARATOR, MF_STRING, SetForegroundWindow, TPM_RIGHTBUTTON, TrackPopupMenu,
+    AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, GetSystemMetrics, HICON,
+    IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, LoadIconW, LoadImageW, MF_SEPARATOR, MF_STRING,
+    PostMessageW, SM_CXSMICON, SM_CYSMICON, SetForegroundWindow, TPM_RIGHTBUTTON, TrackPopupMenu,
+    WM_NULL,
 };
-use windows::core::{HSTRING, Result as WinResult};
+use windows::core::{HSTRING, PCWSTR, Result as WinResult};
 
 use crate::ventana::{ID_MENU_AJUSTES, ID_MENU_CAPTURAR, ID_MENU_SALIR, WM_BANDEJA};
 
@@ -64,11 +67,60 @@ fn copiar_titulo(destino: &mut [u16; 128], titulo: &str) {
     }
 }
 
+/// Carga el icono propio de PixPin Max: el recurso entero 1, que
+/// `apps/pixpin/pixpinmax.rc` incrusta como `1 ICON recursos/pixpinmax.ico`.
+///
+/// Si no se puede cargar -- en particular en los tests de este mismo crate,
+/// que se compilan sin ese `.rc` enlazado, porque solo el binario final de
+/// `apps/pixpin` lo incrusta -- se cae en el icono generico de Windows
+/// (`IDI_APPLICATION`) en vez de fallar: un icono de bandeja generico es
+/// muchisimo mejor que no tener bandeja en absoluto.
+fn cargar_icono_app() -> WinResult<HICON> {
+    if let Some(icono) = cargar_icono_incrustado() {
+        return Ok(icono);
+    }
+
+    // SAFETY: IDI_APPLICATION es un icono del sistema siempre disponible;
+    // pasar None como instancia indica que es predefinido.
+    unsafe { LoadIconW(None, IDI_APPLICATION) }
+}
+
+/// El recurso 1 del propio ejecutable, si existe. `None` si el modulo actual
+/// no lo tiene (p. ej. en un binario de pruebas sin `.rc` enlazado).
+fn cargar_icono_incrustado() -> Option<HICON> {
+    // SAFETY: GetModuleHandleW(None) devuelve el modulo del proceso actual,
+    // que siempre existe mientras el proceso vive.
+    let instancia = unsafe { GetModuleHandleW(None) }.ok()?;
+
+    // `identificador_recurso` nunca se dereferencia: Win32 (la tecnica
+    // MAKEINTRESOURCE) usa el valor entero de la direccion, no una cadena,
+    // para pasar un identificador de recurso -- aqui 1, que es con el que
+    // `pixpinmax.rc` incrusta el icono. `ptr::without_provenance` es la
+    // forma moderna y explicita de construir ese puntero-numero sin que
+    // parezca (ni a Clippy) un puntero colgante por error de tipeo.
+    let identificador_recurso: *const u16 = std::ptr::without_provenance(1);
+
+    // SAFETY: `instancia` es el modulo de este mismo proceso, valido durante
+    // toda la llamada. `identificador_recurso` es el puntero-numero
+    // construido justo arriba, valido como MAKEINTRESOURCE.
+    let cargado = unsafe {
+        LoadImageW(
+            Some(instancia.into()),
+            PCWSTR(identificador_recurso),
+            IMAGE_ICON,
+            GetSystemMetrics(SM_CXSMICON),
+            GetSystemMetrics(SM_CYSMICON),
+            LR_DEFAULTCOLOR,
+        )
+    };
+
+    let handle = cargado.ok()?;
+    Some(HICON(handle.0))
+}
+
 impl Bandeja {
     pub fn nueva(hwnd: HWND, titulo: &str) -> WinResult<Self> {
-        // SAFETY: IDI_APPLICATION es un icono del sistema siempre disponible;
-        // pasar None como instancia indica que es predefinido.
-        let icono = unsafe { LoadIconW(None, IDI_APPLICATION)? };
+        let icono = cargar_icono_app()?;
 
         let mut datos = NOTIFYICONDATAW {
             cbSize: size_of::<NOTIFYICONDATAW>() as u32,
@@ -82,8 +134,10 @@ impl Bandeja {
 
         copiar_titulo(&mut datos.szTip, titulo);
 
-        // SAFETY: `datos` esta completamente inicializada, su cbSize es
-        // correcto y hWnd es una ventana valida de este proceso.
+        // SAFETY: `datos` esta completamente inicializada y su cbSize es
+        // correcto. El llamante de `Bandeja::nueva` debe garantizar que
+        // `hwnd` (y por tanto `datos.hWnd`) es una ventana valida de este
+        // proceso; esta funcion lo recibe sin comprobarlo.
         unsafe {
             Shell_NotifyIconW(NIM_ADD, &datos).ok()?;
         }
@@ -150,6 +204,18 @@ impl Bandeja {
                 TrackPopupMenu(menu, TPM_RIGHTBUTTON, punto.x, punto.y, None, hwnd, None)
             };
 
+            // El otro medio del workaround documentado por Microsoft para
+            // TrackPopupMenu con iconos de notificacion (el primero es el
+            // SetForegroundWindow de mas arriba, que va antes). Sin este
+            // WM_NULL de mas, en ciertas combinaciones el menu puede no
+            // cerrarse del todo si el usuario no mueve el raton tras hacer
+            // clic en un elemento o fuera del menu. Tiene que ir despues de
+            // TrackPopupMenu, no antes.
+            // SAFETY: `hwnd` es la ventana propia, valida mientras dure la
+            // llamada; WM_NULL no lleva ningun payload que pueda ser
+            // invalido.
+            let _ = unsafe { PostMessageW(Some(hwnd), WM_NULL, WPARAM(0), LPARAM(0)) };
+
             Ok(())
         })();
 
@@ -168,7 +234,14 @@ impl Bandeja {
 impl Drop for Bandeja {
     fn drop(&mut self) {
         // SAFETY: `datos` describe un icono añadido por nosotros con NIM_ADD y
-        // aun no retirado; este tipo no es Clone ni Copy.
+        // aun no retirado; este tipo no es Clone ni Copy, asi que se retira
+        // exactamente una vez. Ademas, quien posea este valor debe
+        // garantizar que `datos.hWnd` sigue siendo una ventana viva en este
+        // momento: NIM_DELETE contra un HWND ya destruido no falla de forma
+        // ruidosa, simplemente no limpia nada. Por eso en `main()` el orden
+        // de declaracion deja que `Bandeja` se suelte antes que
+        // `VentanaMensajes` (Rust destruye en orden inverso al de
+        // declaracion).
         unsafe {
             let _ = Shell_NotifyIconW(NIM_DELETE, &self.datos);
         }
@@ -227,6 +300,11 @@ mod pruebas {
     }
 
     #[test]
+    // Shell_NotifyIconW(NIM_ADD) lo atiende el shell (Explorer) de una
+    // sesion de escritorio interactiva; un runner de CI hospedado no suele
+    // tener una, y la llamada puede fallar ahi de forma nada representativa
+    // de un fallo real. Se ejecuta a mano con `cargo test -- --ignored`.
+    #[ignore = "necesita una sesion de escritorio interactiva con Explorer. cargo test -- --ignored"]
     fn se_anade_y_se_retira_el_icono() {
         let v = VentanaMensajes::nueva().unwrap();
         let b = Bandeja::nueva(v.handle(), "PixPin Max — prueba").expect("deberia añadirse");

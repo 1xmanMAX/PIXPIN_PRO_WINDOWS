@@ -118,7 +118,17 @@ impl VentanaMensajes {
 
     /// Bucle principal. Bloquea el hilo hasta que `al_recibir` devuelve
     /// `Continuar::No` o llega `WM_QUIT`.
-    pub fn ejecutar(self, mut al_recibir: impl FnMut(Evento) -> Continuar) {
+    ///
+    /// Toma `&self`, no `self`: si consumiera la ventana, este metodo la
+    /// destruiria (via su `Drop`) en cuanto el bucle terminara, es decir
+    /// antes de que `main` recupere el control. `bandeja` y los atajos
+    /// registrados, que en `main` se declaran despues de la ventana y por
+    /// tanto se sueltan antes en el orden inverso normal de Rust, se
+    /// habrian soltado entonces contra un `HWND` ya destruido. Con `&self`
+    /// la ventana sigue viva hasta que `main` termina de verdad, y el orden
+    /// de caida natural (atajos, luego bandeja, luego ventana) es el
+    /// correcto.
+    pub fn ejecutar(&self, mut al_recibir: impl FnMut(Evento) -> Continuar) {
         let mut mensaje = MSG::default();
         loop {
             // SAFETY: `mensaje` es una estructura propia y valida.
@@ -137,10 +147,26 @@ impl VentanaMensajes {
                 DispatchMessageW(&mensaje);
             }
 
-            let eventos: Vec<Evento> = PENDIENTES.with(|p| p.borrow_mut().drain(..).collect());
-            for evento in eventos {
-                if al_recibir(evento) == Continuar::No {
-                    return;
+            // Se drena en bucle, no de una sola vez. `DispatchMessageW` de
+            // arriba puede haber ejecutado codigo que a su vez entra en un
+            // bucle de mensajes anidado (TrackPopupMenu, en
+            // bandeja.rs::mostrar_menu, es exactamente eso), y ese bucle
+            // anidado puede repartir un WM_COMMAND que el WndProc encola en
+            // PENDIENTES mientras el `al_recibir` de mas abajo todavia esta
+            // en marcha para el evento que abrio el menu. Con un solo drain
+            // ese evento quedaria en la cola hasta el siguiente mensaje de
+            // Win32 -- que con `GetMessageW` puede tardar en llegar -- y la
+            // aplicacion parece ignorar el clic. Volver a drenar aqui,
+            // sin pasar otra vez por `GetMessageW`, lo recoge de inmediato.
+            loop {
+                let eventos: Vec<Evento> = PENDIENTES.with(|p| p.borrow_mut().drain(..).collect());
+                if eventos.is_empty() {
+                    break;
+                }
+                for evento in eventos {
+                    if al_recibir(evento) == Continuar::No {
+                        return;
+                    }
                 }
             }
         }
@@ -250,5 +276,88 @@ mod pruebas {
         // ventana se registra de forma reentrante y que no queda basura.
         let otra = VentanaMensajes::nueva().expect("la segunda tambien");
         assert!(!otra.handle().is_invalid());
+    }
+
+    /// Prueba directa del hallazgo 2 de la revision final: antes, `ejecutar`
+    /// tomaba `self` por valor, asi que devolver del bucle destruia la
+    /// ventana (via su `Drop`) *dentro* de esa llamada, antes de que
+    /// `main` recuperase el control. `bandeja` y los atajos, declarados
+    /// despues en `main` y por tanto soltados antes en el orden inverso
+    /// normal, se soltaban entonces contra un `HWND` ya muerto, y
+    /// `Shell_NotifyIconW(NIM_DELETE)` / `UnregisterHotKey` fallaban en
+    /// silencio (sus resultados se descartan con `let _ =`).
+    ///
+    /// Este test reproduce el mismo orden de declaracion que `main()`
+    /// (ventana, bandeja, atajos) y comprueba con `IsWindow`, en cada paso
+    /// de la caida inversa, que la ventana sigue viva cuando `Bandeja` y
+    /// `AtajosRegistrados` se sueltan, y que solo deja de existir cuando la
+    /// propia `VentanaMensajes` se suelta al final. Con la firma antigua
+    /// (`ejecutar(self, ...)`) este test no habria detectado el problema
+    /// directamente porque aqui no se llama a `ejecutar`; lo que prueba es
+    /// la precondicion que hace correcto el arreglo: que el orden de
+    /// declaracion por si solo, sin que nada mueva `ventana` fuera de su
+    /// sitio, ya basta para que Rust suelte hotkeys -> bandeja -> ventana.
+    ///
+    /// Necesita una sesion de escritorio interactiva (bandeja de Explorer,
+    /// RegisterHotKey), igual que las pruebas de `bandeja.rs` y
+    /// `atajos.rs`. Se ejecuta a mano con `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "necesita una sesion de escritorio interactiva. cargo test -- --ignored"]
+    fn bandeja_y_atajos_se_sueltan_con_la_ventana_todavia_viva() {
+        use crate::atajo::Atajo;
+        use crate::atajos;
+        use crate::bandeja::Bandeja;
+
+        let ventana = VentanaMensajes::nueva().expect("deberia poder crearse");
+        let hwnd = ventana.handle();
+
+        let bandeja =
+            Bandeja::nueva(hwnd, "PixPin Max — prueba de orden").expect("deberia añadirse");
+
+        let raro: Atajo = "Ctrl+Alt+Shift+F21".parse().unwrap();
+        let (registrados, fallidos) = atajos::registrar(hwnd, &[(atajos::ID_REGION, raro)]);
+        assert!(fallidos.is_empty(), "no deberia chocar: {fallidos:?}");
+
+        // Orden de declaracion: ventana, bandeja, registrados. Soltamos en
+        // el orden inverso que Rust usaria al final del scope (y que main()
+        // usa de verdad), pero paso a paso para poder comprobar el estado
+        // de la ventana entre medias.
+
+        // SAFETY: `hwnd` sigue vivo (nada lo ha destruido todavia);
+        // consultar con IsWindow un handle vivo es siempre valido.
+        let viva_al_empezar = unsafe { IsWindow(Some(hwnd)) }.as_bool();
+        assert!(
+            viva_al_empezar,
+            "precondicion: la ventana debe existir antes de soltar nada"
+        );
+
+        drop(registrados);
+        // SAFETY: `hwnd` sigue siendo la ventana de `ventana`, que todavia
+        // no se ha soltado.
+        let viva_tras_atajos = unsafe { IsWindow(Some(hwnd)) }.as_bool();
+        assert!(
+            viva_tras_atajos,
+            "hallazgo 2: tras soltar los atajos (UnregisterHotKey), la \
+             ventana debe seguir existiendo"
+        );
+
+        drop(bandeja);
+        // SAFETY: igual que arriba: `ventana` sigue viva.
+        let viva_tras_bandeja = unsafe { IsWindow(Some(hwnd)) }.as_bool();
+        assert!(
+            viva_tras_bandeja,
+            "hallazgo 2: tras soltar la bandeja (Shell_NotifyIconW NIM_DELETE), \
+             la ventana debe seguir existiendo"
+        );
+
+        drop(ventana);
+        // SAFETY: `hwnd` es el valor numerico de un handle ya destruido;
+        // consultarlo con IsWindow es la operacion valida que comprueba
+        // precisamente eso.
+        let reconocida_tras_ventana = unsafe { IsWindow(Some(hwnd)) }.as_bool();
+        assert!(
+            !reconocida_tras_ventana,
+            "tras soltar la ventana, ya no debe existir"
+        );
     }
 }

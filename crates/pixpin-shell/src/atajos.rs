@@ -46,8 +46,10 @@ pub fn registrar(
     let mut fallidos = Vec::new();
 
     for (id, atajo) in peticiones {
-        // SAFETY: `hwnd` es una ventana valida de este hilo; los codigos vienen
-        // de `Atajo`, que solo produce combinaciones bien formadas.
+        // SAFETY: el llamante debe garantizar que `hwnd` es una ventana
+        // valida de este hilo; esta funcion lo recibe sin comprobarlo. Los
+        // codigos vienen de `Atajo`, que solo produce combinaciones bien
+        // formadas.
         let ok = unsafe {
             RegisterHotKey(
                 Some(hwnd),
@@ -73,6 +75,11 @@ mod pruebas {
     use crate::ventana::VentanaMensajes;
 
     #[test]
+    // RegisterHotKey necesita una sesion de escritorio interactiva (una
+    // estacion de ventanas con acceso de entrada); un runner de CI hospedado
+    // normalmente no la tiene, asi que este test se deja fuera de la
+    // ejecucion normal. Se ejecuta a mano con `cargo test -- --ignored`.
+    #[ignore = "necesita una sesion de escritorio interactiva. cargo test -- --ignored"]
     fn registra_y_libera_una_combinacion_poco_usada() {
         let v = VentanaMensajes::nueva().unwrap();
         // Combinacion rara a proposito para no chocar con nada real.
@@ -90,6 +97,7 @@ mod pruebas {
     }
 
     #[test]
+    #[ignore = "necesita una sesion de escritorio interactiva. cargo test -- --ignored"]
     fn un_atajo_ocupado_se_informa_en_vez_de_abortar() {
         // Registrar dos veces la misma combinacion: la segunda choca.
         let v = VentanaMensajes::nueva().unwrap();

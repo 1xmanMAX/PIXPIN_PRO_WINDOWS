@@ -10,7 +10,17 @@ env:
   RUSTFLAGS: "-D warnings"
 
 jobs:
-  # Todo lo que vive en L0/L2 puro corre aqui: rapido y sin GPU.
+  # Todo lo que vive en L0/L2 puro corre aqui: rapido y sin GPU. No cubre el
+  # icono de bandeja real, el registro de atajos globales ni la escritura en
+  # HKCU\...\Run: esos tests estan marcados #[ignore] porque necesitan una
+  # sesion de escritorio interactiva (Shell_NotifyIconW lo atiende Explorer,
+  # RegisterHotKey necesita una estacion de ventanas con entrada) que
+  # windows-latest, al ser un runner hospedado sin sesion interactiva, no
+  # ofrece de forma fiable. Esos tests se ejecutan a mano en una maquina de
+  # desarrollo con `cargo test -- --ignored`; lo que si corre aqui es la
+  # logica pura: parseo de atajos, resolucion de rutas, ida y vuelta de
+  # ajustes TOML, Fluent, y la creacion/destruccion de la ventana
+  # solo-mensajes (que si funciona sin sesion interactiva).
   pruebas:
     runs-on: windows-latest
     steps:

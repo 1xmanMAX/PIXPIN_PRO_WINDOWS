@@ -29,16 +29,18 @@ pub fn appdata() -> std::io::Result<PathBuf> {
     // vez. Por eso la conversion a String se hace primero y se guarda en una
     // variable local (sin propagar el error todavia): CoTaskMemFree se llama
     // despues, en todos los caminos, tanto si la conversion salio bien como
-    // si no. Solo entonces se decide si propagar el error de la conversion.
-    // Tras liberar no queda ninguna referencia viva al puntero.
-    unsafe {
+    // si no. Tras liberar no queda ninguna referencia viva al puntero. Solo
+    // estas tres llamadas son realmente inseguras; decidir si propagar el
+    // error de la conversion es logica normal y vive fuera del bloque.
+    let convertida = unsafe {
         let ruta: PWSTR = SHGetKnownFolderPath(&FOLDERID_RoamingAppData, KF_FLAG_DEFAULT, None)
             .map_err(|e| std::io::Error::other(format!("SHGetKnownFolderPath fallo: {e}")))?;
         let convertida = ruta.to_string();
         CoTaskMemFree(Some(ruta.0 as *const _));
-        let texto = convertida.map_err(std::io::Error::other)?;
-        Ok(PathBuf::from(texto))
-    }
+        convertida
+    };
+    let texto = convertida.map_err(std::io::Error::other)?;
+    Ok(PathBuf::from(texto))
 }
 
 /// Etiqueta de idioma del usuario, por ejemplo `es-ES`.

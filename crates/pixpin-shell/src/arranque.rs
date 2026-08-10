@@ -160,6 +160,13 @@ mod pruebas {
     }
 
     #[test]
+    // Este test escribe y borra de verdad un valor en
+    // HKCU\...\CurrentVersion\Run. En un runner de CI sin sesion de
+    // escritorio interactiva el registro de usuario puede no estar
+    // disponible de la misma forma (o simplemente no tiene sentido
+    // verificar arranque-con-Windows ahi), asi que se deja fuera de la
+    // ejecucion normal. Se ejecuta a mano con `cargo test -- --ignored`.
+    #[ignore = "escribe en HKCU\\...\\Run; necesita una sesion de escritorio interactiva. cargo test -- --ignored"]
     fn en_modo_instalado_activar_y_desactivar_es_reversible() {
         let exe = Path::new(r"C:\NoExiste\pixpinmax.exe");
         let _limpiar = LimpiarAlSalir { exe };
@@ -172,6 +179,7 @@ mod pruebas {
     }
 
     #[test]
+    #[ignore = "escribe en HKCU\\...\\Run; necesita una sesion de escritorio interactiva. cargo test -- --ignored"]
     fn borrar_una_entrada_que_no_existe_en_modo_instalado_no_es_fallo() {
         // El usuario pidio "no arranques solo": si ya no hay entrada, ese
         // resultado ya se cumple. Que RegDeleteValueW devuelva "no

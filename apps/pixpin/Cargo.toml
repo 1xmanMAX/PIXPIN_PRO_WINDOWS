@@ -16,6 +16,10 @@ pixpin-store = { version = "0.1.0", path = "../../crates/pixpin-store" }
 tracing = "0.1.44"
 tracing-appender = "0.2.5"
 tracing-subscriber = "0.3.23"
+# Solo para MessageBoxW: el unico recurso que queda para avisar al usuario de
+# un fallo de arranque cuando #![windows_subsystem = "windows"] no deja stderr
+# y el registro a fichero puede no haberse podido abrir todavia.
+windows = { version = "0.62.2", features = ["Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 toml = "0.8"
