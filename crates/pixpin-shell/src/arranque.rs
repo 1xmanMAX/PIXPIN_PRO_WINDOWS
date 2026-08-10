@@ -143,14 +143,53 @@ mod pruebas {
         assert!(establecer(false, true, Path::new(r"C:\x\pixpinmax.exe")).is_ok());
     }
 
+    /// Este test escribe una entrada real en HKCU\...\Run. Si un `assert!` de
+    /// en medio entra en panico, dejar la entrada puesta haria que PixPin Max
+    /// arrancara solo en esta maquina para siempre. `LimpiarAlSalir` la borra
+    /// en su `Drop`, que Rust ejecuta durante el desenrollado del panico
+    /// (el perfil de test usa unwind, no abort; `panic = "abort"` solo se fija
+    /// en `[profile.release]` del Cargo.toml raiz).
+    struct LimpiarAlSalir<'a> {
+        exe: &'a Path,
+    }
+
+    impl Drop for LimpiarAlSalir<'_> {
+        fn drop(&mut self) {
+            let _ = establecer(false, false, self.exe);
+        }
+    }
+
     #[test]
     fn en_modo_instalado_activar_y_desactivar_es_reversible() {
         let exe = Path::new(r"C:\NoExiste\pixpinmax.exe");
+        let _limpiar = LimpiarAlSalir { exe };
 
         establecer(true, false, exe).unwrap();
         assert!(esta_activo(), "tras activar deberia estar activo");
 
         establecer(false, false, exe).unwrap();
         assert!(!esta_activo(), "tras desactivar no deberia estar activo");
+    }
+
+    #[test]
+    fn borrar_una_entrada_que_no_existe_en_modo_instalado_no_es_fallo() {
+        // El usuario pidio "no arranques solo": si ya no hay entrada, ese
+        // resultado ya se cumple. Que RegDeleteValueW devuelva "no
+        // encontrado" no debe traducirse en un Err.
+        let exe = Path::new(r"C:\NoExiste\pixpinmax.exe");
+
+        // No asumimos el orden de ejecucion de los demas tests: forzamos el
+        // estado de partida sin comprobar su resultado.
+        let _ = establecer(false, false, exe);
+        assert!(
+            !esta_activo(),
+            "precondicion: no debe haber entrada antes de este test"
+        );
+
+        assert!(
+            establecer(false, false, exe).is_ok(),
+            "borrar un valor ausente no debe fallar"
+        );
+        assert!(!esta_activo());
     }
 }
