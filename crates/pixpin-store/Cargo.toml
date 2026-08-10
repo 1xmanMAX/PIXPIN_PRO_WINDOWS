@@ -1,0 +1,15 @@
+[package]
+name = "pixpin-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+fluent-bundle = "0.16.0"
+pixpin-shell = { version = "0.1.0", path = "../pixpin-shell" }
+serde = { version = "1.0.229", features = ["derive"] }
+thiserror = "2.0.20"
+toml = "1.1.4"
+tracing = "0.1.44"
+unic-langid = "0.9.6"

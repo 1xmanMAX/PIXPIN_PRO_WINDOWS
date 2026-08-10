@@ -1,0 +1,16 @@
+//! pixpin-store — ver docs/superpowers/specs/2026-08-09-pixpin-pc-master-design.md
+//!
+//! Este crate no puede contener `unsafe`. Si alguna vez lo necesitara, seria
+//! señal de que la frontera de capas se ha roto y hay que arreglar el diseño,
+//! no relajar la regla.
+#![forbid(unsafe_code)]
+
+pub mod ajustes;
+pub mod idioma;
+pub mod rutas;
+
+pub use ajustes::{
+    Ajustes, Atajos, ErrorAjustes, FormatoColor, PreferenciaIdioma, cargar, guardar,
+};
+pub use idioma::{Catalogo, Idioma, resolver_idioma};
+pub use rutas::{NOMBRE_AJUSTES, Ubicacion, resolver};

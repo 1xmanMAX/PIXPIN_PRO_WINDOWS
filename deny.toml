@@ -1,0 +1,31 @@
+# Puerta de licencias. Protege la decision D2/D3 del documento maestro:
+# PixPin Max es MIT y no puede heredar copyleft de ninguna dependencia.
+# QuickView (GPL-3.0) es referencia de tecnicas, nunca de codigo.
+
+[licenses]
+# Solo licencias permisivas compatibles con MIT.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "MPL-2.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+# Cualquier copyleft fuerte es un fallo de build, no un aviso.
+deny = []
+multiple-versions = "warn"
+
+[advisories]
+yanked = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

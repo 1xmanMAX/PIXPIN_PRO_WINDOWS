@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "apps/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+authors = ["Max Anthony Mamani Maquera"]
+repository = "https://github.com/1xmanMAX/pixpin-max"
+
+[workspace.dependencies]
+# Internas
+pixpin-geom = { path = "crates/pixpin-geom" }
+pixpin-model = { path = "crates/pixpin-model" }
+pixpin-shell = { path = "crates/pixpin-shell" }
+pixpin-render = { path = "crates/pixpin-render" }
+pixpin-gpu = { path = "crates/pixpin-gpu" }
+pixpin-codec = { path = "crates/pixpin-codec" }
+pixpin-capture = { path = "crates/pixpin-capture" }
+pixpin-pin = { path = "crates/pixpin-pin" }
+pixpin-pdf = { path = "crates/pixpin-pdf" }
+pixpin-ocr = { path = "crates/pixpin-ocr" }
+pixpin-record = { path = "crates/pixpin-record" }
+pixpin-store = { path = "crates/pixpin-store" }
+pixpin-ui = { path = "crates/pixpin-ui" }
+pixpin-flow = { path = "crates/pixpin-flow" }
+pixpin-plugin = { path = "crates/pixpin-plugin" }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = 3

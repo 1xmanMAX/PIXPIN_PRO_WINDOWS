@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # Todo lo que vive en L0/L2 puro corre aqui: rapido y sin GPU. No cubre el
+  # icono de bandeja real, el registro de atajos globales ni la escritura en
+  # HKCU\...\Run: esos tests estan marcados #[ignore] porque necesitan una
+  # sesion de escritorio interactiva (Shell_NotifyIconW lo atiende Explorer,
+  # RegisterHotKey necesita una estacion de ventanas con entrada) que
+  # windows-latest, al ser un runner hospedado sin sesion interactiva, no
+  # ofrece de forma fiable. Esos tests se ejecutan a mano en una maquina de
+  # desarrollo con `cargo test -- --ignored`; lo que si corre aqui es la
+  # logica pura: parseo de atajos, resolucion de rutas, ida y vuelta de
+  # ajustes TOML, Fluent, y la creacion/destruccion de la ventana
+  # solo-mensajes (que si funciona sin sesion interactiva).
+  pruebas:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Formato
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      # --test-threads=1 no es opcional: varios tests toman recursos globales
+      # del sistema (el mutex de instancia unica, la clase de ventana, el icono
+      # de bandeja) y compiten entre si en paralelo. Sin esto, CI fallaria de
+      # forma intermitente, que es la peor manera de descubrirlo.
+      - name: Tests
+        run: cargo test --workspace -- --test-threads=1
+
+  licencias:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check licenses bans sources
