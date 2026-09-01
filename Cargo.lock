@@ -425,6 +425,7 @@ dependencies = [
 name = "pixpin-shell"
 version = "0.1.0"
 dependencies = [
+ "pixpin-geom",
  "pixpin-nivel",
  "serde",
  "serde_json",

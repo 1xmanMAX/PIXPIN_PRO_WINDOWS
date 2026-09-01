@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+pixpin-geom = { version = "0.1.0", path = "../pixpin-geom" }
 pixpin-nivel = { version = "0.1.0", path = "../pixpin-nivel" }
 serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.20"

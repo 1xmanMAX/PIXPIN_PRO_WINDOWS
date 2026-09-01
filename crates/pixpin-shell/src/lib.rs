@@ -12,6 +12,7 @@ pub mod dialogo;
 pub mod entorno;
 pub mod hechos;
 pub mod instancia;
+pub mod overlay;
 pub mod ventana;
 
 pub use arranque::ErrorArranque;
