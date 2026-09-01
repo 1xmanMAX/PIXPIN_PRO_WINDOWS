@@ -229,6 +229,11 @@ dependencies = [
 [[package]]
 name = "pixpin-capture"
 version = "0.1.0"
+dependencies = [
+ "pixpin-geom",
+ "thiserror",
+ "windows",
+]
 
 [[package]]
 name = "pixpin-codec"
