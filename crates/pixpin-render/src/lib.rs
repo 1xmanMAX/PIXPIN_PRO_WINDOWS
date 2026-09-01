@@ -10,6 +10,9 @@ pub mod motor;
 
 pub use motor::{Color, ErrorRender, MotorRender};
 
+pub mod lienzo;
 pub mod superficie;
 
 pub use superficie::Superficie;
+
+pub use lienzo::{Pintor, RectF};

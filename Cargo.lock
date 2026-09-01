@@ -345,9 +345,12 @@ dependencies = [
  "fluent-bundle",
  "pixpin-capture",
  "pixpin-codec",
+ "pixpin-geom",
  "pixpin-nivel",
+ "pixpin-render",
  "pixpin-shell",
  "pixpin-store",
+ "pixpin-ui",
  "toml 0.8.23",
  "tracing",
  "tracing-appender",
@@ -419,6 +422,7 @@ version = "0.1.0"
 dependencies = [
  "thiserror",
  "windows",
+ "windows-numerics",
 ]
 
 [[package]]

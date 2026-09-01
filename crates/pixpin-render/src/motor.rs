@@ -85,7 +85,7 @@ impl Color {
 }
 
 pub struct MotorRender {
-    _fabrica: ID2D1Factory1,
+    fabrica: ID2D1Factory1,
     _dispositivo: ID2D1Device,
     contexto: ID2D1DeviceContext,
     dwrite: IDWriteFactory,
@@ -108,11 +108,15 @@ impl MotorRender {
         // precondiciones.
         let dwrite: IDWriteFactory = unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED)? };
         Ok(Self {
-            _fabrica: fabrica,
+            fabrica,
             _dispositivo: dispositivo,
             contexto,
             dwrite,
         })
+    }
+
+    pub(crate) fn fabrica(&self) -> &ID2D1Factory1 {
+        &self.fabrica
     }
 
     pub fn contexto(&self) -> &ID2D1DeviceContext {

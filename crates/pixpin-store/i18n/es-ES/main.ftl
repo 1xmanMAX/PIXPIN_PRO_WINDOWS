@@ -17,3 +17,8 @@ error-atajo-ocupado = No se pudo registrar { $atajo }: otra aplicación lo está
 
 captura-guardada = Captura guardada en { $ruta }
 captura-fallo = No se pudo capturar la pantalla: { $motivo }
+
+barra-copiar = Copiar
+barra-guardar = Guardar
+barra-guardar-como = Guardar como…
+barra-descartar = Descartar

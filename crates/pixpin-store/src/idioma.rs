@@ -124,6 +124,21 @@ mod pruebas {
     }
 
     #[test]
+    fn los_textos_de_la_barra_estan_en_los_dos_idiomas() {
+        let es = Catalogo::nuevo(Idioma::Espanol);
+        let en = Catalogo::nuevo(Idioma::Ingles);
+        for clave in [
+            "barra-copiar",
+            "barra-guardar",
+            "barra-guardar-como",
+            "barra-descartar",
+        ] {
+            assert_ne!(es.t(clave), clave, "falta {clave} en es-ES");
+            assert_ne!(en.t(clave), clave, "falta {clave} en en-US");
+        }
+    }
+
+    #[test]
     fn la_preferencia_explicita_gana_al_sistema() {
         assert_eq!(
             resolver_idioma("es-ES", PreferenciaIdioma::Ingles),
