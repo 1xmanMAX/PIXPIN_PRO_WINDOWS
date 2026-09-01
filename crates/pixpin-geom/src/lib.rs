@@ -7,11 +7,13 @@
 //! carisimo reproducir en hardware.
 #![forbid(unsafe_code)]
 
+pub mod ajuste;
 pub mod monitores;
 pub mod punto;
 pub mod rect;
 pub mod seleccion;
 
+pub use ajuste::{Candidato, resolver_ajuste};
 pub use monitores::{DisposicionMonitores, Monitor};
 pub use punto::Punto;
 pub use rect::Rect;
