@@ -13,9 +13,10 @@ use windows::Win32::Graphics::Direct2D::Common::{
     D2D1_ALPHA_MODE_IGNORE, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F, D2D1_PIXEL_FORMAT,
 };
 use windows::Win32::Graphics::Direct2D::{
-    D2D1_BITMAP_OPTIONS, D2D1_BITMAP_OPTIONS_NONE, D2D1_BITMAP_OPTIONS_TARGET,
-    D2D1_BITMAP_PROPERTIES1, D2D1_DEVICE_CONTEXT_OPTIONS_NONE, D2D1_FACTORY_TYPE_SINGLE_THREADED,
-    D2D1CreateFactory, ID2D1Bitmap1, ID2D1Device, ID2D1DeviceContext, ID2D1Factory1,
+    D2D1_BITMAP_OPTIONS, D2D1_BITMAP_OPTIONS_CANNOT_DRAW, D2D1_BITMAP_OPTIONS_NONE,
+    D2D1_BITMAP_OPTIONS_TARGET, D2D1_BITMAP_PROPERTIES1, D2D1_DEVICE_CONTEXT_OPTIONS_NONE,
+    D2D1_FACTORY_TYPE_SINGLE_THREADED, D2D1CreateFactory, ID2D1Bitmap1, ID2D1Device,
+    ID2D1DeviceContext, ID2D1Factory1,
 };
 use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11Texture2D};
 use windows::Win32::Graphics::DirectWrite::{
@@ -133,6 +134,19 @@ impl MotorRender {
         self.envolver(t, D2D1_BITMAP_OPTIONS_TARGET)
     }
 
+    /// Envuelve el backbuffer de un swapchain como destino.
+    ///
+    /// Los buferes de un swapchain exigen `TARGET | CANNOT_DRAW`: no pueden
+    /// usarse como fuente de dibujo, y D2D rechaza con E_INVALIDARG el
+    /// intento de envolverlos solo como TARGET — se descubrio ejecutando el
+    /// test de la superficie, no leyendo documentacion.
+    pub fn destino_backbuffer(&self, t: &ID3D11Texture2D) -> Result<ID2D1Bitmap1, ErrorRender> {
+        self.envolver(
+            t,
+            D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+        )
+    }
+
     fn envolver(
         &self,
         t: &ID3D11Texture2D,
@@ -142,9 +156,12 @@ impl MotorRender {
         let propiedades = D2D1_BITMAP_PROPERTIES1 {
             pixelFormat: D2D1_PIXEL_FORMAT {
                 format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                // La captura no trae alfa util; ignorarlo evita que el velo
-                // se componga contra basura del canal alfa.
-                alphaMode: if opciones == D2D1_BITMAP_OPTIONS_TARGET {
+                // Todo destino de dibujo va premultiplicado (los swapchain de
+                // composicion lo exigen); las fuentes ignoran el alfa porque
+                // la captura no trae un canal alfa util y componer contra esa
+                // basura mancharia el velo. La comprobacion es por BIT, no
+                // por igualdad: el backbuffer lleva TARGET | CANNOT_DRAW.
+                alphaMode: if (opciones.0 & D2D1_BITMAP_OPTIONS_TARGET.0) != 0 {
                     D2D1_ALPHA_MODE_PREMULTIPLIED
                 } else {
                     D2D1_ALPHA_MODE_IGNORE

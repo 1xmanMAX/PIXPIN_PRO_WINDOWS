@@ -9,3 +9,7 @@
 pub mod motor;
 
 pub use motor::{Color, ErrorRender, MotorRender};
+
+pub mod superficie;
+
+pub use superficie::Superficie;
