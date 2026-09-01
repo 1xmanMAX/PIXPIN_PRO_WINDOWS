@@ -12,8 +12,10 @@
 
 pub mod dispositivo;
 pub mod instantanea;
+pub mod mapa;
 pub mod monitores;
 
 pub use dispositivo::{Dispositivo, ErrorCaptura};
 pub use instantanea::{Instantanea, capturar_monitor};
+pub use mapa::a_imagen;
 pub use monitores::{enumerar_monitores, handle_de_monitor};

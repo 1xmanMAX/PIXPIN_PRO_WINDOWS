@@ -323,6 +323,38 @@ mod pruebas {
 
     #[test]
     #[ignore = "necesita GPU y sesion de escritorio; ejecutar con --ignored"]
+    fn la_bajada_a_cpu_respeta_el_relleno_de_fila() {
+        // El fallo clasico aqui es copiar el buffer de golpe ignorando el
+        // RowPitch, que casi nunca vale ancho*4. El sintoma es una imagen
+        // inclinada. Se detecta comprobando que el numero de bytes es
+        // exactamente ancho*alto*4, sin el relleno.
+        use crate::mapa::a_imagen;
+        asegurar_dpi_fisico();
+        let disp = Dispositivo::nuevo().unwrap();
+        let monitores = crate::monitores::enumerar_monitores().unwrap();
+        let principal = *monitores.principal().unwrap();
+        let inst = capturar_monitor(&disp, principal.id, principal.area).unwrap();
+        // Un ancho deliberadamente raro para forzar relleno.
+        let region = Rect {
+            x: principal.area.x,
+            y: principal.area.y,
+            ancho: 37,
+            alto: 11,
+        };
+        let recorte = inst.recortar(&disp, region).unwrap();
+
+        let img = a_imagen(&disp, &recorte).unwrap();
+        assert_eq!(img.ancho, 37);
+        assert_eq!(img.alto, 11);
+        assert_eq!(
+            img.pixeles.len(),
+            37 * 11 * 4,
+            "quedo relleno de fila en el buffer"
+        );
+    }
+
+    #[test]
+    #[ignore = "necesita GPU y sesion de escritorio; ejecutar con --ignored"]
     fn un_monitor_inexistente_da_error_en_vez_de_entrar_en_panico() {
         asegurar_dpi_fisico();
         let disp = Dispositivo::nuevo().unwrap();
