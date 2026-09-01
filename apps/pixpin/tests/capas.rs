@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 /// Capa de cada crate. Numero menor = mas abajo en la arquitectura.
 fn capa(nombre: &str) -> Option<u8> {
     Some(match nombre {
-        "pixpin-geom" | "pixpin-model" => 0,
+        "pixpin-geom" | "pixpin-model" | "pixpin-nivel" => 0,
         "pixpin-shell" | "pixpin-render" | "pixpin-gpu" | "pixpin-codec" => 1,
         "pixpin-capture" | "pixpin-pin" | "pixpin-pdf" | "pixpin-ocr" | "pixpin-record"
         | "pixpin-store" => 2,
@@ -48,12 +48,12 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_dieciseis_paquetes() {
+fn estan_los_diecisiete_paquetes() {
     let encontrados = manifiestos();
     assert_eq!(
         encontrados.len(),
-        16,
-        "se esperan 15 crates de libreria mas el ejecutable, encontrados: {:?}",
+        17,
+        "se esperan 16 crates de libreria mas el ejecutable, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }

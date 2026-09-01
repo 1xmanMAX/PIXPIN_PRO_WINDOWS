@@ -14,6 +14,7 @@ repository = "https://github.com/1xmanMAX/pixpin-max"
 # Internas
 pixpin-geom = { path = "crates/pixpin-geom" }
 pixpin-model = { path = "crates/pixpin-model" }
+pixpin-nivel = { path = "crates/pixpin-nivel" }
 pixpin-shell = { path = "crates/pixpin-shell" }
 pixpin-render = { path = "crates/pixpin-render" }
 pixpin-gpu = { path = "crates/pixpin-gpu" }

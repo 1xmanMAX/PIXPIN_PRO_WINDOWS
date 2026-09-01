@@ -251,6 +251,10 @@ name = "pixpin-model"
 version = "0.1.0"
 
 [[package]]
+name = "pixpin-nivel"
+version = "0.1.0"
+
+[[package]]
 name = "pixpin-ocr"
 version = "0.1.0"
 
