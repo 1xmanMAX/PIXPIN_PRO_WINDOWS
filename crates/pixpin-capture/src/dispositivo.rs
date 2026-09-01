@@ -27,6 +27,15 @@ pub enum ErrorCaptura {
     SinDispositivo(#[source] windows::core::Error),
     #[error("error de Windows durante la captura: {0}")]
     Windows(#[from] windows::core::Error),
+    #[error("no llego ningun fotograma antes del tiempo limite")]
+    SinFotograma,
+    #[error("no existe ningun monitor con el identificador {0}")]
+    MonitorDesconocido(u32),
+    #[error("la region {region:?} no cabe en la instantanea {disponible:?}")]
+    RegionFuera {
+        region: pixpin_geom::Rect,
+        disponible: pixpin_geom::Rect,
+    },
 }
 
 pub struct Dispositivo {
