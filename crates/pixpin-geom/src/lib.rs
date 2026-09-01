@@ -10,7 +10,9 @@
 pub mod monitores;
 pub mod punto;
 pub mod rect;
+pub mod seleccion;
 
 pub use monitores::{DisposicionMonitores, Monitor};
 pub use punto::Punto;
 pub use rect::Rect;
+pub use seleccion::{Seleccion, Tirador};
