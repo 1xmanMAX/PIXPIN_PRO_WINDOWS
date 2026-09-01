@@ -69,6 +69,8 @@ pub enum ErrorCodec {
         #[source]
         fuente: image::ImageError,
     },
+    #[error("no se pudo escribir en el portapapeles de Windows")]
+    Portapapeles,
 }
 
 /// Escribe la imagen a disco en el formato indicado.

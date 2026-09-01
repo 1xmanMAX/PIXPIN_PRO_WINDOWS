@@ -5,5 +5,7 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod imagen;
+pub mod portapapeles;
 
 pub use imagen::{ErrorCodec, FormatoImagen, ImagenRgba, guardar};
+pub use portapapeles::copiar_imagen;
