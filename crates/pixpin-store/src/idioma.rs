@@ -112,6 +112,18 @@ mod pruebas {
     use super::*;
 
     #[test]
+    fn los_textos_de_captura_estan_en_los_dos_idiomas() {
+        // El test de paridad ya comprueba que las claves coinciden, pero no
+        // que existan. Este falla si alguien las olvida en ambos catalogos.
+        let es = Catalogo::nuevo(Idioma::Espanol);
+        let en = Catalogo::nuevo(Idioma::Ingles);
+        for clave in ["captura-guardada", "captura-fallo"] {
+            assert_ne!(es.t(clave), clave, "falta {clave} en es-ES");
+            assert_ne!(en.t(clave), clave, "falta {clave} en en-US");
+        }
+    }
+
+    #[test]
     fn la_preferencia_explicita_gana_al_sistema() {
         assert_eq!(
             resolver_idioma("es-ES", PreferenciaIdioma::Ingles),

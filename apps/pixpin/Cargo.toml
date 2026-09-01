@@ -11,6 +11,10 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.104"
+fluent-bundle = "0.16.0"
+pixpin-capture = { version = "0.1.0", path = "../../crates/pixpin-capture" }
+pixpin-codec = { version = "0.1.0", path = "../../crates/pixpin-codec" }
+pixpin-nivel = { version = "0.1.0", path = "../../crates/pixpin-nivel" }
 pixpin-shell = { version = "0.1.0", path = "../../crates/pixpin-shell" }
 pixpin-store = { version = "0.1.0", path = "../../crates/pixpin-store" }
 tracing = "0.1.44"

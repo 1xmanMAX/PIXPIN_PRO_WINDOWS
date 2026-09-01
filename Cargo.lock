@@ -342,6 +342,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "embed-resource",
+ "fluent-bundle",
+ "pixpin-capture",
+ "pixpin-codec",
+ "pixpin-nivel",
  "pixpin-shell",
  "pixpin-store",
  "toml 0.8.23",
