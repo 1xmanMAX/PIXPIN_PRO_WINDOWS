@@ -161,12 +161,39 @@ impl EstadoOverlay {
             Fase::Moviendo => {
                 self.seleccion
                     .desplazar(p.x - self.ultimo_cursor.x, p.y - self.ultimo_cursor.y);
-                self.seleccion.sujetar_a(&self.disposicion);
+                self.deslizar_dentro();
                 self.ultimo_cursor = p;
                 Efecto::Redibujar
             }
             _ => Efecto::Redibujar,
         }
+    }
+
+    /// Sujeta un DESPLAZAMIENTO: desliza la seleccion de vuelta al interior
+    /// del escritorio SIN cambiarle el tamano.
+    ///
+    /// No confundir con `sujetar_a`, que RECORTA (correcto al terminar un
+    /// trazado que sobresale, destructivo aqui): empujar con las flechas
+    /// contra el borde iba encogiendo la seleccion hasta vaciarla — el caso
+    /// negativo del test lo cazo.
+    fn deslizar_dentro(&mut self) {
+        let v = self.disposicion.escritorio_virtual();
+        let r = self.seleccion.rect();
+        if v.esta_vacio() || r.esta_vacio() {
+            return;
+        }
+        let x = r.x.clamp(
+            v.izquierda(),
+            (v.derecha() - r.ancho as i32).max(v.izquierda()),
+        );
+        let y =
+            r.y.clamp(v.arriba(), (v.abajo() - r.alto as i32).max(v.arriba()));
+        self.seleccion.establecer(Rect {
+            x,
+            y,
+            ancho: r.ancho,
+            alto: r.alto,
+        });
     }
 
     fn boton_pulsado(&mut self, p: Punto) -> Efecto {
@@ -238,7 +265,7 @@ impl EstadoOverlay {
             TeclaOverlay::Flecha { dx, dy } => {
                 if self.fase == Fase::Lista {
                     self.seleccion.desplazar(dx, dy);
-                    self.seleccion.sujetar_a(&self.disposicion);
+                    self.deslizar_dentro();
                     Efecto::Redibujar
                 } else {
                     Efecto::Nada
