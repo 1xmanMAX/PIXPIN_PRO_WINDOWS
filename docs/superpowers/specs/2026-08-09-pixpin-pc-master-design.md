@@ -135,6 +135,9 @@ Premisa corregida durante el diseño: **Rust habla con el hardware exactamente i
 
 Toolchain propio: **sólo `cargo`**. Sin vcpkg, sin CMake, sin clang-cl.
 
+*Nota (2026-08-31, D17):* llegar «directo al hardware» no autoriza a subir el baseline del procesador.
+Se compila para `x86-64` a secas y el SIMD moderno se despacha en tiempo de ejecución — ver 4.5.
+
 ### 1.2 Librerías Rust candidatas
 
 `windows` (Win32/D2D/DWrite/DComp/WGC/Media Foundation) · `kurbo` (curvas Bézier, suavizado de trazo) · `lyon` (teselación) · `serde_json` (formato Excalidraw) · `flate2` (gzip) · `jxl-oxide` (JXL) · `dav1d` (AVIF) · `zune-jpeg` / libjpeg-turbo · `rawler` (RAW) · `resvg` (SVG) · `pdf-writer` (PDF multipágina, de Typst) · `pdfium-render` o `mupdf` (lectura PDF) · `fluent-rs` (i18n) · `tracing` (registro) · `thiserror` / `anyhow` (errores)
@@ -171,6 +174,7 @@ Toolchain propio: **sólo `cargo`**. Sin vcpkg, sin CMake, sin clang-cl.
    L0  PURO   (cero dependencias del SO -- aqui viven los tests)
        pixpin-model     elementos, capas, estilos, undo/redo, formato
        pixpin-geom      kurbo, transformaciones, hit-testing, suavizado
+       pixpin-nivel     nivel de rendimiento y presupuesto de recursos
    ------------------------------------------------------------
 
    Regla: una capa solo depende de capas inferiores. Sin ciclos.
@@ -362,22 +366,24 @@ Estrategia en dos carriles:
 
 ### 4.4 Presupuesto de rendimiento
 
-Puertas de calidad, no aspiraciones. Se miden en CI donde se pueda.
+Puertas de calidad, no aspiraciones.
 
-| Métrica | Objetivo |
-|---|---|
-| Arranque en frío hasta bandeja | < 300 ms |
-| Atajo global → overlay visible | < 50 ms |
-| Latencia de trazo | < 8 ms (un fotograma a 120 Hz) |
-| CPU en reposo | 0% (render dirigido por eventos) |
-| RAM en reposo | < 40 MB |
-| RAM con 10 pines abiertos | < 150 MB |
-| Mosaico sobre región 4K | < 5 ms (shader HLSL) |
-| Tamaño del binario | < 30 MB |
+**Sustituida el 2026-08-31** por el presupuesto de dos niveles (`Completo`/`Ligero`) de
+[`2026-08-31-rendimiento-equipos-modestos-design.md`](2026-08-31-rendimiento-equipos-modestos-design.md),
+§8.3, que es el normativo. Decisiones D13-D19 en ese documento. Cambios de fondo respecto a la tabla
+original: la latencia de trazo pasa de «< 8 ms» a **un fotograma del refresco real del monitor**; el
+presupuesto de memoria se expresa en **copias vivas de la imagen**, no en megabytes absolutos; y la
+máquina suelo normativa es un **Core i3 de 3.ª generación con 4 GB y HD 4000**, donde se miden los
+números.
 
 ### 4.5 Build, CI y puerta de licencias
 
 `cargo` únicamente. Rust estable, sin nightly. Objetivos `x86_64-pc-windows-msvc` y `aarch64-pc-windows-msvc`. En release: LTO completo, `codegen-units = 1`, `panic = "abort"`, símbolos despojados.
+
+**Baseline del procesador (D17): `target-cpu=x86-64`, fijado explícitamente en `.cargo/config.toml` y
+vigilado por un test.** La máquina suelo (Ivy Bridge) no tiene AVX2 ni FMA3: `target-cpu=native` o
+`x86-64-v2/v3` producirían un binario que muere con instrucción ilegal. El SIMD por encima del baseline
+se despacha en tiempo de ejecución con `is_x86_feature_detected!`, con ruta SSE2 de respaldo.
 
 CI en GitHub Actions:
 - Los tests de L0 corren sin GPU ni Windows, en segundos.
@@ -387,9 +393,9 @@ CI en GitHub Actions:
 
 ### 4.6 Fronteras `unsafe`
 
-Los 15 crates se reparten en dos grupos, sin excepciones ni casos intermedios:
+Los 16 crates *(15 en origen; `pixpin-nivel` se añadió el 2026-08-31 por D16)* se reparten en dos grupos, sin excepciones ni casos intermedios:
 
-- **`#![forbid(unsafe_code)]` — 6 crates:** `pixpin-geom`, `pixpin-model`, `pixpin-flow`, `pixpin-store`, `pixpin-ui`, `pixpin-plugin`. El compilador impide el `unsafe`, no lo desaconseja.
+- **`#![forbid(unsafe_code)]` — 7 crates:** `pixpin-geom`, `pixpin-model`, `pixpin-nivel`, `pixpin-flow`, `pixpin-store`, `pixpin-ui`, `pixpin-plugin`. El compilador impide el `unsafe`, no lo desaconseja.
 - **`unsafe` permitido, auditado y documentado con `// SAFETY:` — 9 crates:** `pixpin-shell`, `pixpin-render`, `pixpin-gpu`, `pixpin-codec`, `pixpin-capture`, `pixpin-record`, `pixpin-pin`, `pixpin-ocr`, `pixpin-pdf`. Son exactamente los que hablan con el sistema operativo o con librerías C.
 
 `pixpin-ui` puede estar en el primer grupo porque dibuja a través de `pixpin-render` y nunca llama a Win32 por su cuenta. Si algún día necesitase hacerlo, es señal de que la frontera se ha roto y hay que arreglar el diseño, no relajar la regla.
