@@ -17,8 +17,10 @@ use pixpin_geom::{Punto, Rect};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{InvalidateRect, ValidateRect};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+// En windows 0.62, AttachThreadInput vive en System::Threading.
+use windows::Win32::System::Threading::AttachThreadInput;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, ReleaseCapture, SetCapture, VK_SHIFT,
+    GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
@@ -39,6 +41,8 @@ pub enum EventoOverlay {
     CambioDpi,
     /// MSG_DESPIERTA recibido: hay trabajo de otro hilo esperando.
     Despierta,
+    /// WM_CLOSE (Alt+F4): el usuario quiere cerrar; tratar como cancelar.
+    Cerrar,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -114,6 +118,40 @@ impl VentanaOverlay {
         // SAFETY: la ventana es propia y esta viva.
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_SHOW);
+        }
+    }
+
+    /// Toma el foco de teclado. Sin esto, Esc/Enter/flechas van a la
+    /// aplicacion que estaba activa y el overlay es sordo al teclado — el
+    /// primer bug real que encontro la prueba de extremo a extremo.
+    ///
+    /// `SetForegroundWindow` a secas es NO DETERMINISTA: Windows deniega
+    /// robar el primer plano segun quien tuviera la ultima entrada (funciono
+    /// a las 21:49 y fallo a las 21:52 con el mismo binario). El adjunto
+    /// temporal al hilo del primer plano es el remedio clasico: mientras
+    /// dura, ambos hilos comparten el permiso de foco.
+    pub fn enfocar(&self) {
+        use windows::Win32::System::Threading::GetCurrentThreadId;
+        // SAFETY: consultas de solo lectura sobre el estado global, adjunto
+        // simetrico (true/false) entre hilos vivos, y foco sobre ventana
+        // propia; si el primer plano cambia entre medias, lo peor es que el
+        // foco no llegue, que es el estado del que partiamos.
+        unsafe {
+            let primer_plano = GetForegroundWindow();
+            if primer_plano.is_invalid() {
+                let _ = SetForegroundWindow(self.hwnd);
+                return;
+            }
+            let hilo_fg = GetWindowThreadProcessId(primer_plano, None);
+            let hilo_yo = GetCurrentThreadId();
+            if hilo_fg != hilo_yo {
+                let _ = AttachThreadInput(hilo_yo, hilo_fg, true);
+            }
+            let _ = SetForegroundWindow(self.hwnd);
+            let _ = SetFocus(Some(self.hwnd));
+            if hilo_fg != hilo_yo {
+                let _ = AttachThreadInput(hilo_yo, hilo_fg, false);
+            }
         }
     }
 
@@ -280,6 +318,13 @@ extern "system" fn procedimiento_overlay(
                 }
             }
             LRESULT(1)
+        }
+        WM_CLOSE => {
+            // Alt+F4 sobre el overlay: cancelar limpiamente, NUNCA destruir
+            // la ventana por debajo del bucle modal — dejaria un overlay
+            // zombi invisible con el bucle vivo.
+            encolar(EventoOverlay::Cerrar);
+            LRESULT(0)
         }
         m if m == MSG_DESPIERTA => {
             encolar(EventoOverlay::Despierta);
