@@ -7,8 +7,10 @@
 //! relajar la regla.
 #![forbid(unsafe_code)]
 
+pub mod barra;
 pub mod lupa;
 pub mod overlay;
 
+pub use barra::{AccionBarra, Barra};
 pub use lupa::{FormatoColorLupa, Lupa, texto_color};
 pub use overlay::{Efecto, EstadoOverlay, EventoEntrada, Fase, FormaCursor, TeclaOverlay};
