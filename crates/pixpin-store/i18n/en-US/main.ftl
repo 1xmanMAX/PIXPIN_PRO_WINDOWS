@@ -13,3 +13,6 @@ resultado-descartar = Discard
 
 error-otra-instancia = PixPin Max is already running.
 error-atajo-ocupado = Could not register { $atajo }: another application is using it.
+
+captura-guardada = Screenshot saved to { $ruta }
+captura-fallo = Could not capture the screen: { $motivo }

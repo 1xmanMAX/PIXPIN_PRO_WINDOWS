@@ -50,10 +50,12 @@
 #![forbid(unsafe_code)]
 
 use anyhow::{Context, Result};
+use pixpin_nivel::{Nivel, Preferencia};
 use pixpin_shell::{
     Bandeja, Continuar, EtiquetasMenu, Evento, VentanaMensajes, adquirir_instancia_unica, arranque,
     atajos, entorno,
 };
+use pixpin_store::ajustes::PreferenciaNivel;
 use pixpin_store::{Catalogo, Ubicacion, ajustes, idioma, rutas};
 
 fn main() -> Result<()> {
@@ -139,6 +141,21 @@ fn arrancar(
         Err(e) => tracing::warn!(?e, "no se pudo aplicar el arranque con Windows"),
     }
 
+    // 5b. Nivel de rendimiento (D13-D19): se decide UNA vez, se registra con
+    // sus razones y viaja por parametro. Sin globals. En S1-B1 la captura no
+    // cambia con el nivel —los bytes son sagrados y los efectos no existen
+    // aun—, pero la decision y su registro son lo que permitira diagnosticar
+    // un "me va lento" sin adivinar. El primer consumidor real del
+    // presupuesto sera el overlay de S1-B2.
+    let hechos = pixpin_shell::hechos::recolectar();
+    let preferencia = match config.rendimiento.nivel {
+        PreferenciaNivel::Auto => Preferencia::Auto,
+        PreferenciaNivel::Completo => Preferencia::Forzado(Nivel::Completo),
+        PreferenciaNivel::Ligero => Preferencia::Forzado(Nivel::Ligero),
+    };
+    let decision = pixpin_nivel::decidir(&hechos, preferencia);
+    tracing::info!(?hechos, ?decision, "nivel de rendimiento decidido");
+
     // 6. Idioma, antes de crear nada con texto.
     let lengua = idioma::resolver_idioma(&entorno::locale_del_sistema(), config.idioma);
     let textos = Catalogo::nuevo(lengua);
@@ -167,6 +184,24 @@ fn arrancar(
         salir: textos.t("bandeja-salir"),
     };
 
+    // 7b. Precalentamiento diferido (5.3 del diseno de rendimiento): cargar
+    // los DLL del driver es la parte cara del primer atajo del dia; se paga
+    // ya, en un hilo aparte, creando y soltando un dispositivo. No se
+    // retiene: compartir un dispositivo D3D11 entre hilos pide una
+    // disciplina que traera el overlay de S1-B2, y el beneficio de hoy esta
+    // en calentar el driver, no en guardar el objeto. Sin SetThreadPriority:
+    // este ejecutable es forbid(unsafe_code) y bajar la prioridad de un
+    // trabajo de ~150 ms no justifica abrir un agujero en pixpin-shell.
+    std::thread::spawn(|| match pixpin_capture::Dispositivo::nuevo() {
+        Ok(_) => tracing::debug!("dispositivo D3D11 precalentado"),
+        Err(e) => {
+            tracing::debug!(
+                ?e,
+                "precalentamiento fallido; el primer atajo pagara el camino lento"
+            );
+        }
+    });
+
     // 8. A dormir hasta que pase algo.
     let hwnd = ventana.handle();
     ventana.ejecutar(|evento| match evento {
@@ -180,10 +215,26 @@ fn arrancar(
             }
             Continuar::Si
         }
+        Evento::Atajo(id) if id == atajos::ID_REGION => {
+            // S1-B2 sustituira esto por el overlay de seleccion. De momento se
+            // captura el monitor principal entero, que ya ejercita toda la
+            // tuberia.
+            match capturar_escritorio(&ubicacion) {
+                Ok(ruta) => {
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("ruta", ruta.display().to_string());
+                    tracing::info!("{}", textos.t_args("captura-guardada", &args));
+                }
+                Err(e) => {
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("motivo", e.to_string());
+                    tracing::warn!("{}", textos.t_args("captura-fallo", &args));
+                }
+            }
+            Continuar::Si
+        }
         Evento::Atajo(id) => {
-            // S1-B conecta esto con la captura. Por ahora solo se registra,
-            // que ya permite comprobar de verdad que los atajos funcionan.
-            tracing::info!(id, "atajo pulsado");
+            tracing::info!(id, "atajo pulsado, todavia sin accion");
             Continuar::Si
         }
         Evento::MenuCapturar => {
@@ -198,6 +249,52 @@ fn arrancar(
 
     tracing::info!("PixPin Max terminado limpiamente");
     Ok(())
+}
+
+/// Captura el monitor principal entero, lo guarda y lo copia al portapapeles.
+///
+/// Es el andamio de S1-B1: prueba la tuberia completa —enumerar, capturar,
+/// recortar, bajar a CPU, codificar, copiar— antes de que exista el overlay
+/// de seleccion. S1-B2 lo sustituira por la seleccion interactiva.
+fn capturar_escritorio(ubicacion: &Ubicacion) -> Result<std::path::PathBuf> {
+    let dispositivo = pixpin_capture::Dispositivo::nuevo()?;
+    let disposicion = pixpin_capture::enumerar_monitores()?;
+    let principal = disposicion
+        .principal()
+        .copied()
+        .ok_or_else(|| anyhow::anyhow!("no se encontro ningun monitor principal"))?;
+
+    let instantanea = pixpin_capture::capturar_monitor(&dispositivo, principal.id, principal.area)?;
+    let imagen = pixpin_capture::a_imagen(&dispositivo, &instantanea)?;
+
+    let carpeta = ubicacion.raiz().join("capturas");
+    std::fs::create_dir_all(&carpeta)?;
+
+    // Nombre por contador y no por fecha: `main` no tiene reloj inyectado y
+    // S1-C traera las plantillas de nombre configurables. Esto es andamio.
+    let mut n = 1u32;
+    let ruta = loop {
+        let candidata = carpeta.join(format!("captura-{n:04}.png"));
+        if !candidata.exists() {
+            break candidata;
+        }
+        n += 1;
+        if n > 9999 {
+            anyhow::bail!("demasiadas capturas en {}", carpeta.display());
+        }
+    };
+
+    pixpin_codec::guardar(&imagen, &ruta, pixpin_codec::FormatoImagen::Png)?;
+    // Que el portapapeles falle no debe perder la captura, que ya esta en
+    // disco: se registra y se sigue.
+    if let Err(e) = pixpin_codec::copiar_imagen(&imagen) {
+        tracing::warn!(
+            ?e,
+            "la captura se guardo pero no se pudo copiar al portapapeles"
+        );
+    }
+
+    Ok(ruta)
 }
 
 /// Registro rotativo diario junto a los ajustes. Nada sale del equipo.

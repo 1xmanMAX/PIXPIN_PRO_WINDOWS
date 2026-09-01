@@ -14,3 +14,6 @@ resultado-descartar = Descartar
 
 error-otra-instancia = PixPin Max ya se está ejecutando.
 error-atajo-ocupado = No se pudo registrar { $atajo }: otra aplicación lo está usando.
+
+captura-guardada = Captura guardada en { $ruta }
+captura-fallo = No se pudo capturar la pantalla: { $motivo }

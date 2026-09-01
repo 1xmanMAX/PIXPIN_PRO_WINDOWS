@@ -6,3 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+pixpin-codec = { version = "0.1.0", path = "../pixpin-codec" }
+pixpin-geom = { version = "0.1.0", path = "../pixpin-geom" }
+thiserror = "2.0.20"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_System_WinRT_Direct3D11", "Graphics_Capture", "Graphics_DirectX_Direct3D11", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi", "Foundation_Metadata", "Win32_System_WinRT_Graphics_Capture"] }

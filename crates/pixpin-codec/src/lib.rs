@@ -1,5 +1,11 @@
-//! pixpin-codec — ver docs/superpowers/specs/2026-08-09-pixpin-pc-master-design.md
+//! pixpin-codec — codificacion y decodificacion de imagen.
 //!
-//! Este crate habla con el sistema operativo o con librerias C. El `unsafe`
-//! esta permitido, pero cada bloque lleva su comentario `// SAFETY:`.
+//! Este crate habla con librerias C. El `unsafe` esta permitido, pero cada
+//! bloque lleva su comentario `// SAFETY:`.
 #![deny(clippy::undocumented_unsafe_blocks)]
+
+pub mod imagen;
+pub mod portapapeles;
+
+pub use imagen::{ErrorCodec, FormatoImagen, ImagenRgba, guardar};
+pub use portapapeles::copiar_imagen;

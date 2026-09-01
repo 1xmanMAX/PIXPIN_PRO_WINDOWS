@@ -10,6 +10,7 @@ pub mod atajos;
 pub mod bandeja;
 pub mod dialogo;
 pub mod entorno;
+pub mod hechos;
 pub mod instancia;
 pub mod ventana;
 
