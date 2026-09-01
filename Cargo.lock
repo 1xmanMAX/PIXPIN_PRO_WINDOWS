@@ -416,6 +416,10 @@ version = "0.1.0"
 [[package]]
 name = "pixpin-render"
 version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "windows",
+]
 
 [[package]]
 name = "pixpin-shell"
