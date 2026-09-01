@@ -7,8 +7,10 @@
 //! carisimo reproducir en hardware.
 #![forbid(unsafe_code)]
 
+pub mod monitores;
 pub mod punto;
 pub mod rect;
 
+pub use monitores::{DisposicionMonitores, Monitor};
 pub use punto::Punto;
 pub use rect::Rect;
