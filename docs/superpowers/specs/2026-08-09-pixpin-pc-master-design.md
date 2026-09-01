@@ -197,9 +197,9 @@ La exportación de imagen no necesita crate propio: la codificación vive en `pi
 ```
 S1  CIMIENTOS + CAPTURA          -> v0.1  ya capturas y guardas
                 |
-S2  MOTOR DE ANOTACION + EDITOR  -> v0.2  ya anotas
+S2  PINES + ALMACEN              -> v0.2  el alma de PixPin
                 |
-S3  PINES + MINI-APPS            -> v0.3  el alma de PixPin
+S3  ANOTACION + CANVAS + CHAT    -> v0.3  ya anotas; feed tipo chat organiza el almacen
                 |
 S4  SALIDAS + AUTOMATIZACION     -> v0.4  herramienta de trabajo diario
                 |
@@ -208,7 +208,16 @@ S5  OCR + TRADUCCION + GRABACION -> v0.5  lo que no existia en Android
 S6  VISOR PRO + PDF COMPLETO     -> v1.0  supera a QuickView
 ```
 
-Cada flecha es una dependencia real: sin captura no hay nada que anotar; sin motor de anotación no hay pin con contenido; el visor pro y el PDF reutilizan el pipeline de tiles y el motor de anotación ya maduros, por eso van al final.
+**Reordenado el 2026-09-01 (D20, ver [`2026-09-01-s2-pines-almacen-design.md`](2026-09-01-s2-pines-almacen-design.md)):**
+los pines pasan por delante del motor de anotación — valor visible antes, y el pin es el contenedor
+natural del canvas. Los pines v1 salen sin anotar; el canvas de S3 se monta sobre ellos. S3 gana
+además la **interfaz tipo chat** que organiza el almacén que S2 deja poblado. El contenido de los
+bloques descritos abajo (secciones «S2 — Motor de anotación» y «S3 — Pines») no cambia, solo su
+orden y numeración; las mini-apps de los pines se aplazan dentro del nuevo S2.
+
+Cada flecha es una dependencia real: sin captura no hay nada que pinear; el canvas anota sobre los
+pines ya existentes; el visor pro y el PDF reutilizan el pipeline de tiles y el motor de anotación
+ya maduros, por eso van al final.
 
 Cada sub-proyecto tendrá su propia especificación y su propio plan. Lo que no está escrito en su bloque, no se construye en esa fase.
 
