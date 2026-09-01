@@ -13,6 +13,7 @@ pub mod entorno;
 pub mod hechos;
 pub mod instancia;
 pub mod overlay;
+pub mod uia;
 pub mod ventana;
 
 pub use arranque::ErrorArranque;
