@@ -444,6 +444,9 @@ dependencies = [
 [[package]]
 name = "pixpin-ui"
 version = "0.1.0"
+dependencies = [
+ "pixpin-geom",
+]
 
 [[package]]
 name = "png"

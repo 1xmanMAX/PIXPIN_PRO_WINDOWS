@@ -6,3 +6,4 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+pixpin-geom = { version = "0.1.0", path = "../pixpin-geom" }

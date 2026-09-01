@@ -1,6 +1,12 @@
-//! pixpin-ui — ver docs/superpowers/specs/2026-08-09-pixpin-pc-master-design.md
+//! pixpin-ui — la interaccion como logica pura.
 //!
-//! Este crate no puede contener `unsafe`. Si alguna vez lo necesitara, seria
-//! señal de que la frontera de capas se ha roto y hay que arreglar el diseño,
-//! no relajar la regla.
+//! Nada de este crate llama a Win32. Dibuja a traves de `pixpin-render` y
+//! recibe eventos ya traducidos, de modo que el comportamiento del overlay
+//! completo se prueba en milisegundos y sin escritorio. Si algun dia este
+//! crate necesitase Win32, la frontera se ha roto: arreglar el diseno, no
+//! relajar la regla.
 #![forbid(unsafe_code)]
+
+pub mod overlay;
+
+pub use overlay::{Efecto, EstadoOverlay, EventoEntrada, Fase, FormaCursor, TeclaOverlay};
