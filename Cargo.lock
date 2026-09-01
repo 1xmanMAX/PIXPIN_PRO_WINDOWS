@@ -282,6 +282,7 @@ version = "0.1.0"
 name = "pixpin-shell"
 version = "0.1.0"
 dependencies = [
+ "pixpin-nivel",
  "serde",
  "serde_json",
  "thiserror",

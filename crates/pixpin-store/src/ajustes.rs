@@ -50,6 +50,26 @@ pub enum PreferenciaIdioma {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
+pub enum PreferenciaNivel {
+    /// La aplicacion mide el equipo al arrancar y decide.
+    #[default]
+    Auto,
+    Completo,
+    Ligero,
+}
+
+/// Seccion `[rendimiento]` del fichero de ajustes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Rendimiento {
+    /// `auto` deja decidir a los hechos; `completo` y `ligero` fuerzan el
+    /// nivel. Forzar `ligero` en una maquina potente es legitimo y util:
+    /// es como se prueba la ruta ligera sin tener hardware flojo delante.
+    pub nivel: PreferenciaNivel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
 pub enum FormatoColor {
     #[default]
     Hex,
@@ -91,6 +111,7 @@ pub struct Ajustes {
     /// Si es `None` se usa la carpeta Imagenes del usuario.
     pub carpeta_capturas: Option<PathBuf>,
     pub formato_color: FormatoColor,
+    pub rendimiento: Rendimiento,
     pub arranque_con_windows: bool,
     /// Tope de altura de la captura con scroll. Sin el, una pagina infinita
     /// capturaria hasta agotar la memoria.
@@ -104,6 +125,7 @@ impl Default for Ajustes {
             atajos: Atajos::default(),
             carpeta_capturas: None,
             formato_color: FormatoColor::default(),
+            rendimiento: Rendimiento::default(),
             arranque_con_windows: false,
             limite_scroll_px: 30_000,
         }
@@ -223,6 +245,24 @@ mod pruebas {
             e.to_string().contains("NoEsUnAtajo"),
             "el error debe decir que valor concreto esta mal, dijo: {e}"
         );
+    }
+
+    #[test]
+    fn el_nivel_de_rendimiento_se_lee_y_por_defecto_es_auto() {
+        let ajustes: Ajustes = toml::from_str("[rendimiento]\nnivel = \"ligero\"").unwrap();
+        assert_eq!(ajustes.rendimiento.nivel, PreferenciaNivel::Ligero);
+        // Un fichero sin la seccion conserva el valor por defecto: la regla
+        // de "todo campo que falte se rellena" tambien vale para secciones.
+        let vacios: Ajustes = toml::from_str("").unwrap();
+        assert_eq!(vacios.rendimiento.nivel, PreferenciaNivel::Auto);
+    }
+
+    #[test]
+    fn un_nivel_desconocido_da_error_en_vez_de_adivinar() {
+        // Caso negativo: "turbo" no existe. Adivinar seria peor que fallar,
+        // porque el usuario cree haber forzado algo que no esta pasando.
+        let resultado = toml::from_str::<Ajustes>("[rendimiento]\nnivel = \"turbo\"");
+        assert!(resultado.is_err());
     }
 
     #[test]
