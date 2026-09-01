@@ -11,5 +11,7 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod dispositivo;
+pub mod monitores;
 
 pub use dispositivo::{Dispositivo, ErrorCaptura};
+pub use monitores::{enumerar_monitores, handle_de_monitor};
