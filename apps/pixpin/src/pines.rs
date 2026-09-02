@@ -279,7 +279,10 @@ impl Pines {
     /// Como se ensena un archivo por referencia (D62/D65): video si la
     /// extension lo dice y el dispositivo puede reproducirlo; si no,
     /// documento cuando la Shell tiene miniatura, y ficha en ultimo caso.
-    fn contenido_de_archivo(&self, ruta: &Path) -> Contenido {
+    /// `tamano_guardado`: al restaurar, el rect del pin ya esta en el indice y
+    /// no hace falta pedir la miniatura del video para saber su proporcion
+    /// (ahorra cientos de ms por video al arrancar).
+    fn contenido_de_archivo(&self, ruta: &Path, tamano_guardado: bool) -> Contenido {
         let nombre = ruta
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -291,16 +294,20 @@ impl Pines {
             // La proporcion de la miniatura decide el tamano al nacer; el
             // tamano nativo llega con los metadatos y solo afecta al 100 %.
             // Sin miniatura, el provisional (D71).
-            let (ancho, alto) = miniatura_de(ruta, 512)
-                .map(|m| {
-                    let base = 960.0;
-                    let f = base / m.ancho.max(1) as f32;
-                    (
-                        (m.ancho as f32 * f).round() as u32,
-                        (m.alto as f32 * f).round() as u32,
-                    )
-                })
-                .unwrap_or((0, 0));
+            let (ancho, alto) = if tamano_guardado {
+                None
+            } else {
+                miniatura_de(ruta, 512)
+            }
+            .map(|m| {
+                let base = 960.0;
+                let f = base / m.ancho.max(1) as f32;
+                (
+                    (m.ancho as f32 * f).round() as u32,
+                    (m.alto as f32 * f).round() as u32,
+                )
+            })
+            .unwrap_or((0, 0));
             return Contenido::Video {
                 nombre,
                 ruta: ruta.to_path_buf(),
@@ -369,7 +376,7 @@ impl Pines {
     /// La ficha de un archivo o carpeta, por referencia (D28).
     pub fn pinear_archivo(&mut self, ruta: &Path, monitor: &Monitor) -> Result<()> {
         let t0 = std::time::Instant::now();
-        let contenido = self.contenido_de_archivo(ruta);
+        let contenido = self.contenido_de_archivo(ruta, false);
         let tipo = match &contenido {
             Contenido::Video { .. } => "video",
             Contenido::Documento { .. } => "documento",
@@ -507,7 +514,7 @@ impl Pines {
                 // encontrado" (D28): esconderla perderia el rastro de algo
                 // que el usuario dejo pineado a proposito.
                 TipoEntrada::Archivo => match &p.ruta {
-                    Some(r) => self.contenido_de_archivo(r),
+                    Some(r) => self.contenido_de_archivo(r, true),
                     None => {
                         tracing::warn!(id, "entrada de archivo sin ruta; se ignora");
                         continue;
