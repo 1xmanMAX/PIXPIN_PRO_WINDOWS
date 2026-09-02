@@ -8,7 +8,7 @@
 
 pub mod motor;
 
-pub use motor::{Color, ErrorRender, MotorRender};
+pub use motor::{Color, ErrorRender, MotorRender, validar_tamano_rgba};
 
 pub mod lienzo;
 pub mod superficie;

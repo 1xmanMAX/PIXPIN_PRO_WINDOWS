@@ -88,6 +88,8 @@ pub struct Atajos {
     pub scroll: Atajo,
     /// Cuentagotas global.
     pub cuentagotas: Atajo,
+    /// Recortar y dejar flotando como pin (S2).
+    pub pin: Atajo,
 }
 
 impl Default for Atajos {
@@ -99,6 +101,7 @@ impl Default for Atajos {
             copiar: "Ctrl+Alt+C".parse().expect("atajo por defecto valido"),
             scroll: "Ctrl+Alt+S".parse().expect("atajo por defecto valido"),
             cuentagotas: "Ctrl+Alt+D".parse().expect("atajo por defecto valido"),
+            pin: "Ctrl+Alt+F".parse().expect("atajo por defecto valido"),
         }
     }
 }
@@ -175,6 +178,7 @@ mod pruebas {
         assert_eq!(a.atajos.copiar.to_string(), "Ctrl+Alt+C");
         assert_eq!(a.atajos.scroll.to_string(), "Ctrl+Alt+S");
         assert_eq!(a.atajos.cuentagotas.to_string(), "Ctrl+Alt+D");
+        assert_eq!(a.atajos.pin.to_string(), "Ctrl+Alt+F");
         assert_eq!(a.idioma, PreferenciaIdioma::Sistema);
         assert_eq!(a.formato_color, FormatoColor::Hex);
         assert!(!a.arranque_con_windows);

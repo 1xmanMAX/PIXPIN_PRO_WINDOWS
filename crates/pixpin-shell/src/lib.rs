@@ -19,7 +19,9 @@ pub mod ventana;
 
 pub use arranque::ErrorArranque;
 pub use atajo::{Atajo, ErrorAtajo, Modificadores, Tecla};
-pub use atajos::{AtajosRegistrados, ID_COPIAR, ID_CUENTAGOTAS, ID_REGION, ID_SCROLL, registrar};
+pub use atajos::{
+    AtajosRegistrados, ID_COPIAR, ID_CUENTAGOTAS, ID_PIN, ID_REGION, ID_SCROLL, registrar,
+};
 pub use bandeja::{Bandeja, EtiquetasMenu};
 pub use dialogo::mostrar_error_fatal;
 pub use entorno::{appdata, directorio_del_ejecutable, locale_del_sistema};

@@ -25,9 +25,11 @@ use pixpin_ui::{
     AccionBarra, Barra, Efecto, EstadoOverlay, EventoEntrada, Fase, FormaCursor, FormatoColorLupa,
     Lupa, TeclaOverlay, texto_color,
 };
+use std::rc::Rc;
 use std::time::Instant;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
+use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 
 /// Codigos de tecla virtuales que el overlay traduce. Numericos y con
 /// nombre para no arrastrar mas features del crate windows al ejecutable.
@@ -45,6 +47,8 @@ pub enum ModoConfirmacion {
     ConBarra,
     /// Confirmar copia al portapapeles y cierra, sin barra (Ctrl+Alt+C).
     DirectoAlPortapapeles,
+    /// Confirmar deja el recorte flotando como pin, sin barra (Ctrl+Alt+F).
+    Pinear,
 }
 
 /// Lo que el overlay decidio. La imagen ya esta recortada y en CPU.
@@ -52,6 +56,11 @@ pub enum AccionFinal {
     Copiar(ImagenRgba),
     Guardar(ImagenRgba),
     GuardarComo(ImagenRgba),
+    /// El pin nace 1:1 exactamente donde se recorto (D26): la region viaja.
+    Pinear {
+        imagen: ImagenRgba,
+        region: Rect,
+    },
     Nada,
 }
 
@@ -129,7 +138,8 @@ impl Pieza<'_> {
 /// solo paga congelar (milisegundos) y ensenar ventanas ya hechas.
 pub struct Recursos {
     dispositivo: Dispositivo,
-    motor: MotorRender,
+    /// En `Rc` porque los pines lo comparten: un solo motor D2D para todo.
+    motor: Rc<MotorRender>,
     duplicadores: Vec<(u32, Duplicador)>,
     bases: Vec<PiezaBase>,
 }
@@ -140,10 +150,20 @@ impl Recursos {
         let motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
         Ok(Recursos {
             dispositivo,
-            motor,
+            motor: Rc::new(motor),
             duplicadores: Vec::new(),
             bases: Vec::new(),
         })
+    }
+
+    /// El dispositivo D3D compartido. Clonar la interfaz es contar una
+    /// referencia, no copiar nada.
+    pub fn d3d(&self) -> ID3D11Device {
+        self.dispositivo.d3d().clone()
+    }
+
+    pub fn motor(&self) -> Rc<MotorRender> {
+        Rc::clone(&self.motor)
     }
 
     /// Deja `bases` con exactamente una ventana por monitor actual. Si la
@@ -236,7 +256,7 @@ pub fn ejecutar_overlay(
     //    el bitmap fresco de cada monitor.
     recursos.preparar_bases(disposicion.monitores())?;
     let dispositivo = &recursos.dispositivo;
-    let motor = &recursos.motor;
+    let motor = &*recursos.motor;
     let bases = &recursos.bases;
     let t_motor = t0.elapsed().as_millis() as u64;
     let mut piezas: Vec<Pieza> = Vec::new();
@@ -341,6 +361,7 @@ pub fn ejecutar_overlay(
                 QueAccion::Copiar => AccionFinal::Copiar(imagen),
                 QueAccion::Guardar => AccionFinal::Guardar(imagen),
                 QueAccion::GuardarComo => AccionFinal::GuardarComo(imagen),
+                QueAccion::Pinear => AccionFinal::Pinear { imagen, region },
             })
         }
         None => Ok(AccionFinal::Nada),
@@ -354,6 +375,7 @@ enum QueAccion {
     Copiar,
     Guardar,
     GuardarComo,
+    Pinear,
 }
 
 thread_local! {
@@ -620,6 +642,10 @@ fn aplicar_efecto(
         Efecto::Confirmar(region) => match modo {
             ModoConfirmacion::DirectoAlPortapapeles => {
                 PENDIENTE.poner(QueAccion::Copiar, region);
+                Continuar::No
+            }
+            ModoConfirmacion::Pinear => {
+                PENDIENTE.poner(QueAccion::Pinear, region);
                 Continuar::No
             }
             ModoConfirmacion::ConBarra => {

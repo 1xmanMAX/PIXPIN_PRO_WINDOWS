@@ -7,5 +7,5 @@
 pub mod imagen;
 pub mod portapapeles;
 
-pub use imagen::{ErrorCodec, FormatoImagen, ImagenRgba, guardar};
+pub use imagen::{ErrorCodec, FormatoImagen, ImagenRgba, cargar, codificar_png, guardar};
 pub use portapapeles::copiar_imagen;

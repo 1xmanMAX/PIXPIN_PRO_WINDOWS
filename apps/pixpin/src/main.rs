@@ -50,16 +50,18 @@
 #![forbid(unsafe_code)]
 
 mod overlay;
+mod pines;
 
 use anyhow::{Context, Result};
 use overlay::{AccionFinal, ModoConfirmacion, Recursos, TextosBarra, ejecutar_overlay};
+use pines::Pines;
 use pixpin_nivel::{Nivel, Preferencia};
 use pixpin_shell::{
     Bandeja, Continuar, EtiquetasMenu, Evento, VentanaMensajes, adquirir_instancia_unica, arranque,
     atajos, entorno,
 };
 use pixpin_store::ajustes::PreferenciaNivel;
-use pixpin_store::{Catalogo, Ubicacion, ajustes, idioma, rutas};
+use pixpin_store::{Almacen, Catalogo, Ubicacion, ajustes, idioma, rutas};
 use pixpin_ui::FormatoColorLupa;
 
 fn main() -> Result<()> {
@@ -185,6 +187,7 @@ fn arrancar(
         (atajos::ID_COPIAR, config.atajos.copiar),
         (atajos::ID_SCROLL, config.atajos.scroll),
         (atajos::ID_CUENTAGOTAS, config.atajos.cuentagotas),
+        (atajos::ID_PIN, config.atajos.pin),
     ];
     let (_registrados, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
     for (id, atajo) in &fallidos {
@@ -221,73 +224,155 @@ fn arrancar(
     // (dispositivo, motor, duplicadores) se crean en el primer atajo y
     // viven entre capturas: son la diferencia entre 200 ms y menos de 50.
     let mut recursos_overlay: Option<Recursos> = None;
+    let mut pines: Option<Pines> = None;
+
+    // 8b. Restauracion al arrancar (spec S2 5.2): el coste de crear los
+    // recursos solo se paga si el almacen tiene pines abiertos, y la
+    // bandeja ya esta visible, asi que el presupuesto de arranque no se
+    // toca. Un almacen ilegible no impide arrancar: se registra y se sigue.
+    match Almacen::abrir(ubicacion.raiz()) {
+        Ok(a) if a.entradas().iter().any(|e| e.pin.is_some()) => {
+            drop(a); // Pines::nuevos abre el suyo; no dos indices vivos.
+            let t = std::time::Instant::now();
+            let restaurado = preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion)
+                .and_then(|p| {
+                    let d = pixpin_capture::enumerar_monitores()
+                        .context("sin monitores para restaurar")?;
+                    Ok(p.restaurar(&d))
+                });
+            match restaurado {
+                Ok(restaurados) => tracing::info!(
+                    restaurados,
+                    ms = t.elapsed().as_millis() as u64,
+                    "pines restaurados al arrancar"
+                ),
+                Err(e) => tracing::warn!(?e, "no se pudieron restaurar los pines"),
+            }
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(?e, "no se pudo abrir el almacen al arrancar"),
+    }
+
     let hwnd = ventana.handle();
-    ventana.ejecutar(|evento| match evento {
-        Evento::MenuSalir => {
-            tracing::info!("salida pedida por el usuario");
-            Continuar::No
-        }
-        Evento::IconoPulsado => {
-            if let Err(e) = bandeja.mostrar_menu(hwnd, &etiquetas) {
-                tracing::warn!(?e, "no se pudo mostrar el menu de bandeja");
+    ventana.ejecutar(|evento| {
+        let seguir = match evento {
+            Evento::MenuSalir => {
+                tracing::info!("salida pedida por el usuario");
+                Continuar::No
             }
-            Continuar::Si
-        }
-        Evento::Atajo(id) if id == atajos::ID_REGION || id == atajos::ID_COPIAR => {
-            let modo = if id == atajos::ID_REGION {
-                ModoConfirmacion::ConBarra
-            } else {
-                ModoConfirmacion::DirectoAlPortapapeles
-            };
-            let etiquetas_barra = TextosBarra {
-                copiar: textos.t("barra-copiar"),
-                guardar: textos.t("barra-guardar"),
-                guardar_como: textos.t("barra-guardar-como"),
-                descartar: textos.t("barra-descartar"),
-            };
-            let formato = match config.formato_color {
-                ajustes::FormatoColor::Hex => FormatoColorLupa::Hex,
-                ajustes::FormatoColor::Rgb => FormatoColorLupa::Rgb,
-                ajustes::FormatoColor::Hsl => FormatoColorLupa::Hsl,
-            };
-            let listo = match &mut recursos_overlay {
-                Some(r) => Ok(r),
-                nada => Recursos::nuevos().map(|r| nada.insert(r)),
-            };
-            match listo
-                .and_then(|r| ejecutar_overlay(r, decision.nivel, modo, &etiquetas_barra, formato))
-                .and_then(|accion| ejecutar_accion(accion, &ubicacion, hwnd))
+            Evento::IconoPulsado => {
+                if let Err(e) = bandeja.mostrar_menu(hwnd, &etiquetas) {
+                    tracing::warn!(?e, "no se pudo mostrar el menu de bandeja");
+                }
+                Continuar::Si
+            }
+            Evento::Atajo(id)
+                if id == atajos::ID_REGION || id == atajos::ID_COPIAR || id == atajos::ID_PIN =>
             {
-                Ok(Some(ruta)) => {
-                    let mut args = fluent_bundle::FluentArgs::new();
-                    args.set("ruta", ruta.display().to_string());
-                    tracing::info!("{}", textos.t_args("captura-guardada", &args));
+                let modo = if id == atajos::ID_REGION {
+                    ModoConfirmacion::ConBarra
+                } else if id == atajos::ID_PIN {
+                    ModoConfirmacion::Pinear
+                } else {
+                    ModoConfirmacion::DirectoAlPortapapeles
+                };
+                let etiquetas_barra = TextosBarra {
+                    copiar: textos.t("barra-copiar"),
+                    guardar: textos.t("barra-guardar"),
+                    guardar_como: textos.t("barra-guardar-como"),
+                    descartar: textos.t("barra-descartar"),
+                };
+                let formato = match config.formato_color {
+                    ajustes::FormatoColor::Hex => FormatoColorLupa::Hex,
+                    ajustes::FormatoColor::Rgb => FormatoColorLupa::Rgb,
+                    ajustes::FormatoColor::Hsl => FormatoColorLupa::Hsl,
+                };
+                let accion = match &mut recursos_overlay {
+                    Some(r) => Ok(r),
+                    nada => Recursos::nuevos().map(|r| nada.insert(r)),
                 }
-                Ok(None) => {}
-                Err(e) => {
-                    let mut args = fluent_bundle::FluentArgs::new();
-                    args.set("motivo", e.to_string());
-                    tracing::warn!("{}", textos.t_args("captura-fallo", &args));
+                .and_then(|r| ejecutar_overlay(r, decision.nivel, modo, &etiquetas_barra, formato));
+                let resultado = accion.and_then(|accion| match accion {
+                    AccionFinal::Pinear { imagen, region } => {
+                        // El gestor consume la accion aqui, no en
+                        // ejecutar_accion: el pin nace 1:1 en la region del
+                        // recorte (D26), con la escala de su monitor.
+                        let p = preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion)?;
+                        p.pinear(&imagen, region, escala_del_monitor(region))?;
+                        tracing::info!(abiertos = p.abiertos(), "pin creado");
+                        Ok(None)
+                    }
+                    otra => ejecutar_accion(otra, &ubicacion, hwnd),
+                });
+                match resultado {
+                    Ok(Some(ruta)) => {
+                        let mut args = fluent_bundle::FluentArgs::new();
+                        args.set("ruta", ruta.display().to_string());
+                        tracing::info!("{}", textos.t_args("captura-guardada", &args));
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        let mut args = fluent_bundle::FluentArgs::new();
+                        args.set("motivo", e.to_string());
+                        tracing::warn!("{}", textos.t_args("captura-fallo", &args));
+                    }
                 }
+                Continuar::Si
             }
-            Continuar::Si
+            Evento::Atajo(id) => {
+                tracing::info!(id, "atajo pulsado, todavia sin accion");
+                Continuar::Si
+            }
+            Evento::MenuCapturar => {
+                tracing::info!("capturar pedido desde el menu");
+                Continuar::Si
+            }
+            Evento::MenuAjustes => {
+                tracing::info!("ajustes pedidos desde el menu");
+                Continuar::Si
+            }
+        };
+        // Un pin cerrado desde su propio WndProc solo apunta su id; aqui
+        // se saca de la lista. Barato: nada que hacer si no cerro ninguno.
+        if let Some(p) = &mut pines {
+            p.purgar();
         }
-        Evento::Atajo(id) => {
-            tracing::info!(id, "atajo pulsado, todavia sin accion");
-            Continuar::Si
-        }
-        Evento::MenuCapturar => {
-            tracing::info!("capturar pedido desde el menu");
-            Continuar::Si
-        }
-        Evento::MenuAjustes => {
-            tracing::info!("ajustes pedidos desde el menu");
-            Continuar::Si
-        }
+        seguir
     });
 
     tracing::info!("PixPin Max terminado limpiamente");
     Ok(())
+}
+
+/// Recursos y Pines comparten creacion perezosa: los pines necesitan el
+/// dispositivo y el motor que viven en los recursos del overlay.
+fn preparar_pines<'a>(
+    recursos: &mut Option<Recursos>,
+    pines: &'a mut Option<Pines>,
+    ubicacion: &Ubicacion,
+) -> Result<&'a mut Pines> {
+    if pines.is_none() {
+        let r = match recursos {
+            Some(r) => r,
+            nada => nada.insert(Recursos::nuevos()?),
+        };
+        *pines = Some(Pines::nuevos(ubicacion.raiz(), r.d3d(), r.motor())?);
+    }
+    Ok(pines.as_mut().expect("recien comprobado o creado"))
+}
+
+/// La escala del monitor que contiene la region; la del principal si no
+/// toca ninguno; 100 como ultimo recurso si no se pueden enumerar.
+fn escala_del_monitor(region: pixpin_geom::Rect) -> u32 {
+    match pixpin_capture::enumerar_monitores() {
+        Ok(d) => d
+            .monitores()
+            .iter()
+            .find(|m| m.area.interseccion(region).is_some())
+            .or_else(|| d.principal())
+            .map_or(100, |m| m.escala_por_cien),
+        Err(_) => 100,
+    }
 }
 
 /// Ejecuta la accion que el overlay decidio. Devuelve la ruta si se guardo.
@@ -306,6 +391,12 @@ fn ejecutar_accion(
             let ruta = ruta_captura_libre(ubicacion)?;
             pixpin_codec::guardar(&imagen, &ruta, pixpin_codec::FormatoImagen::Png)?;
             Ok(Some(ruta))
+        }
+        AccionFinal::Pinear { .. } => {
+            // El bucle intercepta Pinear antes de llamar aqui (el gestor
+            // vive alli); llegar seria un error de cableado.
+            tracing::warn!("Pinear llego a ejecutar_accion; se ignora");
+            Ok(None)
         }
         AccionFinal::GuardarComo(imagen) => {
             match pixpin_shell::guardar::pedir_ruta_guardado(hwnd, "captura.png") {

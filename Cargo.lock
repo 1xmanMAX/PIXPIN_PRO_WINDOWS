@@ -347,6 +347,7 @@ dependencies = [
  "pixpin-codec",
  "pixpin-geom",
  "pixpin-nivel",
+ "pixpin-pin",
  "pixpin-render",
  "pixpin-shell",
  "pixpin-store",
@@ -408,6 +409,13 @@ version = "0.1.0"
 [[package]]
 name = "pixpin-pin"
 version = "0.1.0"
+dependencies = [
+ "pixpin-codec",
+ "pixpin-geom",
+ "pixpin-render",
+ "thiserror",
+ "windows",
+]
 
 [[package]]
 name = "pixpin-plugin"
@@ -445,6 +453,7 @@ dependencies = [
  "fluent-bundle",
  "pixpin-shell",
  "serde",
+ "serde_json",
  "thiserror",
  "toml 1.1.4+spec-1.1.0",
  "tracing",

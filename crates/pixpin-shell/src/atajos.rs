@@ -16,6 +16,8 @@ pub const ID_REGION: u32 = 1;
 pub const ID_COPIAR: u32 = 2;
 pub const ID_SCROLL: u32 = 3;
 pub const ID_CUENTAGOTAS: u32 = 4;
+/// Recortar y dejar flotando como pin (S2, D26).
+pub const ID_PIN: u32 = 5;
 
 /// Mientras esto viva, los atajos siguen registrados.
 pub struct AtajosRegistrados {

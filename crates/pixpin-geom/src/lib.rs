@@ -9,12 +9,14 @@
 
 pub mod ajuste;
 pub mod monitores;
+pub mod pin_geometria;
 pub mod punto;
 pub mod rect;
 pub mod seleccion;
 
 pub use ajuste::{Candidato, resolver_ajuste};
 pub use monitores::{DisposicionMonitores, Monitor};
+pub use pin_geometria::{Esquina, esquina_en, recolocar_en_area, redimension_proporcional};
 pub use punto::Punto;
 pub use rect::Rect;
 pub use seleccion::{Seleccion, Tirador};

@@ -71,6 +71,56 @@ pub enum ErrorCodec {
     },
     #[error("no se pudo escribir en el portapapeles de Windows")]
     Portapapeles,
+    #[error("no se pudo leer {ruta}: {fuente}")]
+    Lectura {
+        ruta: std::path::PathBuf,
+        #[source]
+        fuente: image::ImageError,
+    },
+}
+
+/// Lee una imagen del disco a RGBA. La pareja de `guardar`.
+pub fn cargar(ruta: &Path) -> Result<ImagenRgba, ErrorCodec> {
+    let dinamica = image::open(ruta).map_err(|fuente| ErrorCodec::Lectura {
+        ruta: ruta.to_path_buf(),
+        fuente,
+    })?;
+    let rgba = dinamica.to_rgba8();
+    Ok(ImagenRgba {
+        ancho: rgba.width(),
+        alto: rgba.height(),
+        pixeles: rgba.into_raw(),
+    })
+}
+
+/// PNG en memoria: para el almacen, que guarda bytes, no rutas.
+pub fn codificar_png(imagen: &ImagenRgba) -> Result<Vec<u8>, ErrorCodec> {
+    if imagen.ancho == 0 || imagen.alto == 0 {
+        return Err(ErrorCodec::Vacia {
+            ancho: imagen.ancho,
+            alto: imagen.alto,
+        });
+    }
+    let espera = imagen.bytes_esperados();
+    if imagen.pixeles.len() != espera {
+        return Err(ErrorCodec::TamanoIncoherente {
+            ancho: imagen.ancho,
+            alto: imagen.alto,
+            tiene: imagen.pixeles.len(),
+            espera,
+        });
+    }
+    let buffer: image::RgbaImage =
+        image::ImageBuffer::from_raw(imagen.ancho, imagen.alto, imagen.pixeles.clone())
+            .expect("el tamano se acaba de comprobar");
+    let mut salida = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(buffer)
+        .write_to(&mut salida, image::ImageFormat::Png)
+        .map_err(|fuente| ErrorCodec::Escritura {
+            ruta: std::path::PathBuf::from("<memoria>"),
+            fuente,
+        })?;
+    Ok(salida.into_inner())
 }
 
 /// Escribe la imagen a disco en el formato indicado.
@@ -206,6 +256,46 @@ mod pruebas {
             pixeles: vec![0, 0, 0, 0],
         };
         assert!(guardar(&mala, &dir.join("x.png"), FormatoImagen::Png).is_err());
+    }
+
+    #[test]
+    fn cargar_devuelve_lo_guardado() {
+        let dir = temporal("cargar");
+        let ruta = dir.join("ida-vuelta.png");
+        let original = imagen_de_prueba();
+        guardar(&original, &ruta, FormatoImagen::Png).unwrap();
+        let leida = cargar(&ruta).unwrap();
+        assert_eq!(leida, original, "PNG es sin perdida: la vuelta es identica");
+    }
+
+    #[test]
+    fn cargar_una_ruta_inexistente_da_error_con_la_ruta() {
+        let e = cargar(std::path::Path::new("Z:/no/existe.png")).unwrap_err();
+        assert!(
+            e.to_string().contains("existe.png"),
+            "el error debe decir cual: {e}"
+        );
+    }
+
+    #[test]
+    fn codificar_png_en_memoria_equivale_a_guardar() {
+        let original = imagen_de_prueba();
+        let en_memoria = codificar_png(&original).unwrap();
+        // No se exige igualdad byte a byte con el fichero (el encoder puede
+        // variar entre rutas), sino la ida y vuelta: decodificar lo
+        // codificado devuelve la imagen exacta.
+        let vuelta = image::load_from_memory(&en_memoria).unwrap().to_rgba8();
+        assert_eq!(vuelta.as_raw(), &original.pixeles);
+    }
+
+    #[test]
+    fn codificar_una_imagen_vacia_da_error() {
+        let vacia = ImagenRgba {
+            ancho: 0,
+            alto: 0,
+            pixeles: vec![],
+        };
+        assert!(codificar_png(&vacia).is_err());
     }
 
     #[test]
