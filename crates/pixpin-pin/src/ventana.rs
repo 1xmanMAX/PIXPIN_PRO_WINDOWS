@@ -142,6 +142,8 @@ pub enum ErrorPin {
     Creacion(#[source] windows::core::Error),
     #[error("no se pudo preparar el dibujo del pin: {0}")]
     Dibujo(#[from] pixpin_render::ErrorRender),
+    #[error("no se pudo abrir el reproductor de video: {0}")]
+    Video(#[source] windows::core::Error),
 }
 
 /// Rect de VENTANA para un contenido: el margen de sombra a cada lado.

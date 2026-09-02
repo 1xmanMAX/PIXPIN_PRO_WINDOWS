@@ -13,6 +13,7 @@ pub mod icono;
 pub mod menu;
 pub mod paleta;
 pub mod ventana;
+pub mod video;
 
 pub use contenido::{
     Contenido, DOCUMENTO_FRANJA_LOGICA, FICHA_ALTO_LOGICO, FICHA_ANCHO_LOGICO, Presentacion,
@@ -28,3 +29,4 @@ pub use paleta::{Paleta, PintorPaleta};
 pub use ventana::{
     CambioPin, ErrorPin, LupaPin, MARGEN_SOMBRA_LOGICO, Pin, contenido_desde_ventana, rect_ventana,
 };
+pub use video::Reproductor;
