@@ -23,3 +23,23 @@ barra-guardar-como = Save as…
 barra-descartar = Discard
 
 pin-no-encontrado = Not found
+
+pin-copiar = Copy
+pin-guardar-como = Save as…
+pin-abrir-ubicacion = Open file location
+pin-tamano-original = Original size
+pin-grupo = Group
+pin-sin-grupo = No group
+pin-color-rojo = Red
+pin-color-naranja = Orange
+pin-color-ambar = Amber
+pin-color-verde = Green
+pin-color-cian = Cyan
+pin-color-azul = Blue
+pin-color-violeta = Violet
+pin-color-rosa = Pink
+pin-ocultar-grupo = Hide this group
+pin-cerrar = Close
+pin-eliminar = Delete from store…
+pin-eliminar-confirmar = This will permanently delete it from the store. Are you sure?
+grupos-ocultos = Hidden groups

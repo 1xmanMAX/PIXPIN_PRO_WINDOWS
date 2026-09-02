@@ -4,6 +4,7 @@
 //! esta permitido, pero cada bloque lleva su comentario `// SAFETY:`.
 #![deny(clippy::undocumented_unsafe_blocks)]
 
+pub mod abrir;
 pub mod arranque;
 pub mod atajo;
 pub mod atajos;
@@ -17,6 +18,7 @@ pub mod overlay;
 pub mod uia;
 pub mod ventana;
 
+pub use abrir::{abrir, abrir_ubicacion};
 pub use arranque::ErrorArranque;
 pub use atajo::{Atajo, ErrorAtajo, Modificadores, Tecla};
 pub use atajos::{
@@ -24,7 +26,7 @@ pub use atajos::{
     registrar,
 };
 pub use bandeja::{Bandeja, EtiquetasMenu};
-pub use dialogo::mostrar_error_fatal;
+pub use dialogo::{confirmar_destructivo, mostrar_error_fatal};
 pub use entorno::{
     appdata, directorio_del_ejecutable, locale_del_sistema, posicion_del_cursor, tema_claro,
 };

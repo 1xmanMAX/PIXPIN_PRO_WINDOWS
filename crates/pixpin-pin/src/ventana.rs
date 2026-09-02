@@ -18,8 +18,14 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
 use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 use windows::Win32::Graphics::Gdi::ValidateRect;
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_ESCAPE};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetKeyState, ReleaseCapture, SetCapture, VK_CONTROL, VK_DOWN, VK_ESCAPE, VK_LEFT, VK_RIGHT,
+    VK_SHIFT, VK_UP,
+};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
@@ -34,6 +40,65 @@ pub enum CambioPin {
     Movido(Rect),
     Redimensionado(Rect),
     Cerrado,
+    /// `Ctrl+C` sobre el pin enfocado (spec 4.2). Que significa copiar
+    /// depende del tipo, y eso lo sabe el gestor, no la ventana.
+    CopiarPedido,
+    /// Menu: guardar el contenido en un fichero elegido por el usuario.
+    GuardarComoPedido,
+    /// Doble clic sobre una ficha, o menu: abrir con la app predeterminada.
+    AbrirPedido,
+    /// Menu de una ficha: abrir el Explorador con el fichero seleccionado.
+    AbrirUbicacionPedido,
+    /// Menu: `None` quita el grupo; `Some(i)` es el indice 0-7 en la paleta.
+    GrupoPedido(Option<u8>),
+    /// Menu: ocultar en bloque el grupo de este pin (D24).
+    OcultarGrupoPedido,
+    /// Menu: la unica accion destructiva; el gestor pide confirmacion.
+    EliminarPedido,
+}
+
+/// Identificador del temporizador que agrupa el guardado tras una rafaga de
+/// flechas, y su retardo (spec 5.2: 300 ms tras el ultimo cambio).
+const ID_TEMPORIZADOR_GUARDADO: usize = 1;
+const RETARDO_GUARDADO_MS: u32 = 300;
+/// Distancia a la que el borde del area de trabajo atrae al pin (px logicos).
+const IMAN_LOGICO: i32 = 8;
+
+fn es_flecha(vk: u32) -> bool {
+    [VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN]
+        .iter()
+        .any(|t| t.0 as u32 == vk)
+}
+
+fn tecla_pulsada(vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY) -> bool {
+    // SAFETY: consulta pura del estado de teclado; sin precondiciones.
+    unsafe { (GetKeyState(vk.0 as i32) as u16 & 0x8000) != 0 }
+}
+
+/// Pega el rect al borde del area de trabajo del monitor donde esta la
+/// ventana, si queda a tiro (spec 4.1).
+fn con_iman(hwnd: HWND, rect: Rect, escala_por_cien: u32) -> Rect {
+    let mut info = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: `info` es propia con su cbSize correcto; el handle es de una
+    // ventana viva y MonitorFromWindow nunca falla (cae al mas cercano).
+    let ok = unsafe {
+        let mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        GetMonitorInfoW(mon, &mut info).as_bool()
+    };
+    if !ok {
+        return rect;
+    }
+    let trabajo = Rect {
+        x: info.rcWork.left,
+        y: info.rcWork.top,
+        ancho: (info.rcWork.right - info.rcWork.left).max(0) as u32,
+        alto: (info.rcWork.bottom - info.rcWork.top).max(0) as u32,
+    };
+    let umbral = (IMAN_LOGICO * escala_por_cien as i32 / 100).max(1);
+    pixpin_geom::iman_de_bordes(rect, trabajo, umbral)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -81,6 +146,16 @@ struct PinInterno {
     bitmap: Option<ID2D1Bitmap1>,
     contenido: Contenido,
     tema_claro: bool,
+    /// RGB del grupo, que tiñe la sombra (D24/D30). `None` = sin grupo,
+    /// sombra negra. El pin recibe el color ya resuelto: `ColorGrupo` vive
+    /// en `pixpin-store`, que es su misma capa y no puede ver.
+    color_sombra: Option<(f32, f32, f32)>,
+    /// La sombra del enfocado es mas intensa: asi se sabe a quien cerrara
+    /// `Esc` sin necesidad de un solo borde (D30).
+    enfocado: bool,
+    /// Etiquetas del menu, ya traducidas. Sin ellas no hay menu: es
+    /// preferible no ofrecerlo a ofrecerlo en el idioma equivocado.
+    textos: Option<crate::menu::TextosPin>,
     al_cambiar: Box<dyn Fn(CambioPin)>,
 }
 
@@ -159,6 +234,9 @@ impl Pin {
             bitmap,
             contenido,
             tema_claro,
+            color_sombra: None,
+            enfocado: false,
+            textos: None,
             al_cambiar,
         });
         // SAFETY: la ventana es propia y viva; el Box se cede al USERDATA y
@@ -194,6 +272,27 @@ impl Pin {
 
     fn repintar(&self) {
         if let Some(i) = interno_de(self.hwnd) {
+            pintar(i);
+        }
+    }
+
+    /// Tiñe la sombra con el color del grupo, o la devuelve a negra con
+    /// `None`. El gestor traduce `ColorGrupo` a RGB: este crate no puede
+    /// ver `pixpin-store` (misma capa).
+    /// Entrega las etiquetas del menu, ya traducidas. Hasta que llegan, el
+    /// clic derecho no abre nada: mejor mudo que en otro idioma.
+    pub fn poner_textos(&self, textos: crate::menu::TextosPin) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.textos = Some(textos);
+        }
+    }
+
+    pub fn poner_color(&self, color: Option<(f32, f32, f32)>) {
+        // Los pines viven en el hilo de interfaz, el mismo desde el que se
+        // llama esto, asi que se toca el interno directamente: mandar un
+        // mensaje solo anadiria un salto sin ganar nada.
+        if let Some(i) = interno_de(self.hwnd) {
+            i.color_sombra = color;
             pintar(i);
         }
     }
@@ -251,8 +350,12 @@ fn pintar(i: &PinInterno) {
         // suficiente para el look de recorte elevado (D30). El cache por
         // bitmap de la spec queda para S2-B.
         let desplome = 2.0 * escala;
+        // Sin grupo la sombra es negra; con grupo toma su color (D24). El
+        // pin enfocado la lleva mas intensa y algo mas amplia.
+        let (sr, sg, sb) = i.color_sombra.unwrap_or((0.0, 0.0, 0.0));
+        let refuerzo = if i.enfocado { 1.7 } else { 1.0 };
         for (paso, alfa) in [0.10f32, 0.08, 0.06, 0.045, 0.03, 0.02].iter().enumerate() {
-            let crece = (paso as f32 + 1.0) * 2.0 * escala;
+            let crece = (paso as f32 + 1.0) * 2.0 * escala * if i.enfocado { 1.25 } else { 1.0 };
             p.rellenar_redondeado(
                 RectF {
                     x: m - crece,
@@ -262,10 +365,10 @@ fn pintar(i: &PinInterno) {
                 },
                 radio + crece,
                 Color {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 0.0,
-                    a: *alfa,
+                    r: sr,
+                    g: sg,
+                    b: sb,
+                    a: (*alfa * refuerzo).min(1.0),
                 },
             );
         }
@@ -455,7 +558,14 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
             }
         }
         EfectoPin::GestoTerminado(contenido) => {
-            (i.al_cambiar)(CambioPin::Movido(contenido));
+            // El iman actua AL SOLTAR, no durante el arrastre: pegarse a
+            // media pasada peleaba con el raton y se sentia como un tiron.
+            let pegado = con_iman(hwnd, contenido, i.escala_por_cien);
+            if pegado != contenido {
+                i.estado.poner_rect(pegado);
+                aplicar(hwnd, EfectoPin::Mover(pegado));
+            }
+            (i.al_cambiar)(CambioPin::Movido(pegado));
         }
         EfectoPin::Cerrar => {
             (i.al_cambiar)(CambioPin::Cerrado);
@@ -521,8 +631,62 @@ extern "system" fn procedimiento_pin(
         }
         WM_LBUTTONDBLCLK => {
             if let Some(i) = interno_de(hwnd) {
-                let e = i.estado.procesar(EventoPin::DobleClic);
-                aplicar(hwnd, e);
+                // En una ficha, doble clic ABRE el archivo (spec 4.1); en
+                // imagen y nota alterna el tamano.
+                if matches!(i.contenido, Contenido::Archivo { .. }) {
+                    (i.al_cambiar)(CambioPin::AbrirPedido);
+                } else {
+                    let e = i.estado.procesar(EventoPin::DobleClic);
+                    aplicar(hwnd, e);
+                }
+            }
+            LRESULT(0)
+        }
+        WM_RBUTTONUP => {
+            if let Some(i) = interno_de(hwnd) {
+                let Some(t) = i.textos.clone() else {
+                    return LRESULT(0);
+                };
+                match crate::menu::mostrar(hwnd, &i.contenido, i.color_sombra.is_some(), &t) {
+                    None => {}
+                    // Las dos que puede resolver la propia ventana se
+                    // resuelven aqui: pedirselas al gestor solo daria un
+                    // rodeo para volver al mismo sitio.
+                    Some(crate::menu::CMD_TAMANO_ORIGINAL) => {
+                        aplicar(hwnd, EfectoPin::AlternarTamano)
+                    }
+                    Some(crate::menu::CMD_CERRAR) => aplicar(hwnd, EfectoPin::Cerrar),
+                    Some(cmd) => {
+                        let cambio = match cmd {
+                            crate::menu::CMD_COPIAR => Some(CambioPin::CopiarPedido),
+                            crate::menu::CMD_GUARDAR_COMO => Some(CambioPin::GuardarComoPedido),
+                            crate::menu::CMD_ABRIR_UBICACION => {
+                                Some(CambioPin::AbrirUbicacionPedido)
+                            }
+                            crate::menu::CMD_OCULTAR_GRUPO => Some(CambioPin::OcultarGrupoPedido),
+                            crate::menu::CMD_ELIMINAR => Some(CambioPin::EliminarPedido),
+                            crate::menu::CMD_SIN_GRUPO => Some(CambioPin::GrupoPedido(None)),
+                            c if (crate::menu::CMD_COLOR_BASE..crate::menu::CMD_COLOR_BASE + 8)
+                                .contains(&c) =>
+                            {
+                                Some(CambioPin::GrupoPedido(Some(
+                                    (c - crate::menu::CMD_COLOR_BASE) as u8,
+                                )))
+                            }
+                            _ => None,
+                        };
+                        if let Some(c) = cambio {
+                            (i.al_cambiar)(c);
+                        }
+                    }
+                }
+            }
+            LRESULT(0)
+        }
+        WM_SETFOCUS | WM_KILLFOCUS => {
+            if let Some(i) = interno_de(hwnd) {
+                i.enfocado = mensaje == WM_SETFOCUS;
+                pintar(i);
             }
             LRESULT(0)
         }
@@ -530,6 +694,61 @@ extern "system" fn procedimiento_pin(
             if let Some(i) = interno_de(hwnd) {
                 let e = i.estado.procesar(EventoPin::Escape);
                 aplicar(hwnd, e);
+            }
+            LRESULT(0)
+        }
+        WM_KEYDOWN if es_flecha(wparam.0 as u32) => {
+            // Las flechas mueven ya y agrupan la persistencia: una rafaga
+            // de veinte pulsaciones no puede escribir veinte veces el
+            // indice (D34). El temporizador emite un solo Movido al parar.
+            if let Some(i) = interno_de(hwnd) {
+                let paso = if tecla_pulsada(VK_SHIFT) { 10 } else { 1 };
+                let paso = (paso * i.escala_por_cien / 100).max(1) as i32;
+                let r = i.estado.rect();
+                let (dx, dy) = match wparam.0 as u32 {
+                    x if x == VK_LEFT.0 as u32 => (-paso, 0),
+                    x if x == VK_RIGHT.0 as u32 => (paso, 0),
+                    x if x == VK_UP.0 as u32 => (0, -paso),
+                    _ => (0, paso),
+                };
+                let nuevo = Rect {
+                    x: r.x + dx,
+                    y: r.y + dy,
+                    ..r
+                };
+                i.estado.poner_rect(nuevo);
+                aplicar(hwnd, EfectoPin::Mover(nuevo));
+                // SAFETY: temporizador sobre ventana propia; se mata en el
+                // WM_TIMER de mas abajo.
+                unsafe {
+                    SetTimer(
+                        Some(hwnd),
+                        ID_TEMPORIZADOR_GUARDADO,
+                        RETARDO_GUARDADO_MS,
+                        None,
+                    );
+                }
+            }
+            LRESULT(0)
+        }
+        WM_TIMER if wparam.0 == ID_TEMPORIZADOR_GUARDADO => {
+            // SAFETY: mata el temporizador propio armado arriba.
+            unsafe {
+                let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_GUARDADO);
+            }
+            if let Some(i) = interno_de(hwnd) {
+                let pegado = con_iman(hwnd, i.estado.rect(), i.escala_por_cien);
+                if pegado != i.estado.rect() {
+                    i.estado.poner_rect(pegado);
+                    aplicar(hwnd, EfectoPin::Mover(pegado));
+                }
+                (i.al_cambiar)(CambioPin::Movido(i.estado.rect()));
+            }
+            LRESULT(0)
+        }
+        WM_KEYDOWN if wparam.0 as u32 == b'C' as u32 && tecla_pulsada(VK_CONTROL) => {
+            if let Some(i) = interno_de(hwnd) {
+                (i.al_cambiar)(CambioPin::CopiarPedido);
             }
             LRESULT(0)
         }

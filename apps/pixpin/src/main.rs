@@ -197,10 +197,12 @@ fn arrancar(
         tracing::warn!(id, %atajo, "no se pudo registrar el atajo; otra aplicacion lo tiene");
     }
 
-    let etiquetas = EtiquetasMenu {
+    let etiquetas_base = |ocultos: Vec<(u32, String)>| EtiquetasMenu {
         capturar: textos.t("bandeja-capturar"),
         ajustes: textos.t("bandeja-ajustes"),
         salir: textos.t("bandeja-salir"),
+        grupos_ocultos: textos.t("grupos-ocultos"),
+        ocultos,
     };
 
     // 7b. Precalentamiento diferido (5.3 del diseno de rendimiento): cargar
@@ -262,7 +264,14 @@ fn arrancar(
                 Continuar::No
             }
             Evento::IconoPulsado => {
-                if let Err(e) = bandeja.mostrar_menu(hwnd, &etiquetas) {
+                // La lista de grupos ocultos se monta AL ABRIR el menu, no
+                // al arrancar: si no, ocultar un grupo no aparecería hasta
+                // reiniciar.
+                let ocultos = pines
+                    .as_ref()
+                    .map(|p| p.grupos_ocultos(&textos))
+                    .unwrap_or_default();
+                if let Err(e) = bandeja.mostrar_menu(hwnd, &etiquetas_base(ocultos)) {
                     tracing::warn!(?e, "no se pudo mostrar el menu de bandeja");
                 }
                 Continuar::Si
@@ -351,6 +360,19 @@ fn arrancar(
                 tracing::info!("ajustes pedidos desde el menu");
                 Continuar::Si
             }
+            Evento::MostrarGrupo(id_grupo) => {
+                match pixpin_capture::enumerar_monitores() {
+                    Ok(d) => {
+                        let vueltos = pines
+                            .as_mut()
+                            .map(|p| p.mostrar_grupo(id_grupo, &d))
+                            .unwrap_or(0);
+                        tracing::info!(id_grupo, vueltos, "grupo mostrado de nuevo");
+                    }
+                    Err(e) => tracing::warn!(?e, "sin monitores para mostrar el grupo"),
+                }
+                Continuar::Si
+            }
         };
         // Un pin cerrado desde su propio WndProc solo apunta su id; aqui
         // se saca de la lista. Barato: nada que hacer si no cerro ninguno.
@@ -382,9 +404,37 @@ fn preparar_pines<'a>(
             r.d3d(),
             r.motor(),
             textos.t("pin-no-encontrado"),
+            textos_del_pin(textos),
+            textos.t("pin-eliminar-confirmar"),
         )?);
     }
     Ok(pines.as_mut().expect("recien comprobado o creado"))
+}
+
+/// Las etiquetas del menu del pin, traducidas de una vez.
+fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
+    pixpin_pin::TextosPin {
+        copiar: textos.t("pin-copiar"),
+        guardar_como: textos.t("pin-guardar-como"),
+        abrir_ubicacion: textos.t("pin-abrir-ubicacion"),
+        tamano_original: textos.t("pin-tamano-original"),
+        grupo: textos.t("pin-grupo"),
+        sin_grupo: textos.t("pin-sin-grupo"),
+        colores: [
+            textos.t("pin-color-rojo"),
+            textos.t("pin-color-naranja"),
+            textos.t("pin-color-ambar"),
+            textos.t("pin-color-verde"),
+            textos.t("pin-color-cian"),
+            textos.t("pin-color-azul"),
+            textos.t("pin-color-violeta"),
+            textos.t("pin-color-rosa"),
+        ],
+        ocultar_grupo: textos.t("pin-ocultar-grupo"),
+        cerrar: textos.t("pin-cerrar"),
+        eliminar: textos.t("pin-eliminar"),
+        no_encontrado: textos.t("pin-no-encontrado"),
+    }
 }
 
 /// Crea un pin por cada cosa del portapapeles, en el monitor del cursor.

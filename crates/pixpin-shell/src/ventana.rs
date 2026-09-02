@@ -27,6 +27,9 @@ pub const WM_BANDEJA: u32 = WM_APP + 1;
 pub const ID_MENU_CAPTURAR: u32 = 1;
 pub const ID_MENU_AJUSTES: u32 = 2;
 pub const ID_MENU_SALIR: u32 = 3;
+/// Primer identificador de la seccion «Grupos ocultos»: al elegir uno, el
+/// numero de grupo sale de restar esta base (spec 4.3).
+pub const ID_MENU_GRUPO_BASE: u32 = 200;
 
 /// Lo que le puede pasar a la aplicacion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +40,8 @@ pub enum Evento {
     MenuCapturar,
     MenuAjustes,
     MenuSalir,
+    /// Se eligio un grupo oculto en la bandeja: vuelve a la pantalla (D24).
+    MostrarGrupo(u32),
     /// Clic izquierdo en el icono de la bandeja.
     IconoPulsado,
 }
@@ -201,6 +206,7 @@ extern "system" fn procedimiento(
             ID_MENU_CAPTURAR => Some(Evento::MenuCapturar),
             ID_MENU_AJUSTES => Some(Evento::MenuAjustes),
             ID_MENU_SALIR => Some(Evento::MenuSalir),
+            c if c >= ID_MENU_GRUPO_BASE => Some(Evento::MostrarGrupo(c - ID_MENU_GRUPO_BASE)),
             _ => None,
         },
         // Esta comparacion asume la semantica "clasica" de Shell_NotifyIconW,

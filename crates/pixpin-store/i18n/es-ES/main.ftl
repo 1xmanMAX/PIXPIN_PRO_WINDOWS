@@ -24,3 +24,23 @@ barra-guardar-como = Guardar como…
 barra-descartar = Descartar
 
 pin-no-encontrado = No encontrado
+
+pin-copiar = Copiar
+pin-guardar-como = Guardar como…
+pin-abrir-ubicacion = Abrir ubicación
+pin-tamano-original = Tamaño original
+pin-grupo = Grupo
+pin-sin-grupo = Sin grupo
+pin-color-rojo = Rojo
+pin-color-naranja = Naranja
+pin-color-ambar = Ámbar
+pin-color-verde = Verde
+pin-color-cian = Cian
+pin-color-azul = Azul
+pin-color-violeta = Violeta
+pin-color-rosa = Rosa
+pin-ocultar-grupo = Ocultar este grupo
+pin-cerrar = Cerrar
+pin-eliminar = Eliminar del almacén…
+pin-eliminar-confirmar = Se borrará del almacén para siempre. ¿Seguro?
+grupos-ocultos = Grupos ocultos

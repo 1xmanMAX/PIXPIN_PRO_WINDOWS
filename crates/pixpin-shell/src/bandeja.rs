@@ -11,9 +11,9 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, GetSystemMetrics, HICON,
-    IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, LR_SHARED, LoadIconW, LoadImageW, MF_SEPARATOR,
-    MF_STRING, PostMessageW, SM_CXSMICON, SM_CYSMICON, SetForegroundWindow, TPM_RIGHTBUTTON,
-    TrackPopupMenu, WM_NULL,
+    IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, LR_SHARED, LoadIconW, LoadImageW, MF_POPUP,
+    MF_SEPARATOR, MF_STRING, PostMessageW, SM_CXSMICON, SM_CYSMICON, SetForegroundWindow,
+    TPM_RIGHTBUTTON, TrackPopupMenu, WM_NULL,
 };
 use windows::core::{HSTRING, PCWSTR, Result as WinResult};
 
@@ -27,6 +27,11 @@ pub struct EtiquetasMenu {
     pub capturar: String,
     pub ajustes: String,
     pub salir: String,
+    /// Titulo de la seccion de grupos ocultos, ya traducido.
+    pub grupos_ocultos: String,
+    /// Un grupo oculto: su identificador y la etiqueta ya montada
+    /// («● Verde (3)»). Vacio = la seccion no aparece.
+    pub ocultos: Vec<(u32, String)>,
 }
 
 pub struct Bandeja {
@@ -185,6 +190,28 @@ impl Bandeja {
                     ID_MENU_AJUSTES as usize,
                     &HSTRING::from(etiquetas.ajustes.as_str()),
                 )?;
+                // Los grupos ocultos, si los hay: es la UNICA via de vuelta
+                // para unos pines que ya no estan en pantalla (D24).
+                if !etiquetas.ocultos.is_empty() {
+                    AppendMenuW(menu, MF_SEPARATOR, 0, None)?;
+                    let sub = CreatePopupMenu()?;
+                    for (id, etiqueta) in &etiquetas.ocultos {
+                        AppendMenuW(
+                            sub,
+                            MF_STRING,
+                            (crate::ventana::ID_MENU_GRUPO_BASE + id) as usize,
+                            &HSTRING::from(etiqueta.as_str()),
+                        )?;
+                    }
+                    // El submenu pasa a ser del padre: se destruye con el.
+                    AppendMenuW(
+                        menu,
+                        MF_POPUP,
+                        sub.0 as usize,
+                        &HSTRING::from(etiquetas.grupos_ocultos.as_str()),
+                    )?;
+                }
+
                 AppendMenuW(menu, MF_SEPARATOR, 0, None)?;
                 AppendMenuW(
                     menu,
