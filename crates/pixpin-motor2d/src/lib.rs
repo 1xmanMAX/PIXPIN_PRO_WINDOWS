@@ -16,9 +16,19 @@
 #![forbid(unsafe_code)]
 
 pub mod azar;
+pub mod elemento;
+pub mod escena;
+pub mod formas;
+pub mod formato;
+pub mod impacto;
 pub mod trazo;
 pub mod vector;
 
 pub use azar::Azar;
+pub use elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+pub use escena::Escena;
+pub use formas::{elipse, linea, punta_flecha, rectangulo};
+pub use formato::{EXTENSION, ErrorFormato, cargar, guardar};
+pub use impacto::{TOLERANCIA, elemento_en, toca};
 pub use trazo::{Ajustes, PuntoTrazo, contorno, linea_central, poligono};
 pub use vector::{Punto2, distancia_a_segmento};
