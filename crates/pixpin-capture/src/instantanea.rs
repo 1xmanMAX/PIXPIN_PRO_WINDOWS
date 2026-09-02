@@ -42,6 +42,12 @@ pub struct Instantanea {
 }
 
 impl Instantanea {
+    /// Construccion interna para las vias que ya tienen la textura lista
+    /// (duplicador). La textura DEBE medir exactamente area.ancho x alto.
+    pub(crate) fn desde_partes(textura: ID3D11Texture2D, area: Rect) -> Instantanea {
+        Instantanea { textura, area }
+    }
+
     pub fn textura(&self) -> &ID3D11Texture2D {
         &self.textura
     }
@@ -110,6 +116,83 @@ impl Instantanea {
             area: region,
         })
     }
+}
+
+/// Compone una region del escritorio virtual a partir de varias
+/// instantaneas, EN LA GPU: la seleccion puede cruzar monitores y cada
+/// instantanea aporta su trozo con CopySubresourceRegion.
+pub fn componer_region(
+    dispositivo: &Dispositivo,
+    fuentes: &[Instantanea],
+    region: Rect,
+) -> Result<Instantanea, ErrorCaptura> {
+    // El caso de un solo monitor es el recorte de siempre.
+    if let Some(fuente) = fuentes
+        .iter()
+        .find(|f| f.area.interseccion(region) == Some(region))
+    {
+        return fuente.recortar(dispositivo, region);
+    }
+    if region.esta_vacio() {
+        return Err(ErrorCaptura::RegionFuera {
+            region,
+            disponible: Rect {
+                x: 0,
+                y: 0,
+                ancho: 0,
+                alto: 0,
+            },
+        });
+    }
+
+    let destino = crear_textura(dispositivo, region.ancho, region.alto)?;
+    let mut algo = false;
+    for fuente in fuentes {
+        let Some(trozo) = region.interseccion(fuente.area) else {
+            continue;
+        };
+        algo = true;
+        let fx = (trozo.x - fuente.area.x) as u32;
+        let fy = (trozo.y - fuente.area.y) as u32;
+        let caja = D3D11_BOX {
+            left: fx,
+            top: fy,
+            front: 0,
+            right: fx + trozo.ancho,
+            bottom: fy + trozo.alto,
+            back: 1,
+        };
+        // SAFETY: la caja esta contenida en la fuente por construccion
+        // (viene de la interseccion) y el destino tiene sitio porque el
+        // offset es trozo - region, ambos dentro de region.
+        unsafe {
+            dispositivo.contexto().CopySubresourceRegion(
+                &destino,
+                0,
+                (trozo.x - region.x) as u32,
+                (trozo.y - region.y) as u32,
+                0,
+                fuente.textura(),
+                0,
+                Some(&caja),
+            );
+        }
+    }
+    if !algo {
+        return Err(ErrorCaptura::RegionFuera {
+            region,
+            disponible: fuentes.first().map(|f| f.area).unwrap_or(Rect {
+                x: 0,
+                y: 0,
+                ancho: 0,
+                alto: 0,
+            }),
+        });
+    }
+    Ok(Instantanea {
+        textura: destino,
+        area: region,
+    })
 }
 
 /// Captura un fotograma del monitor indicado.
@@ -199,7 +282,7 @@ pub fn capturar_monitor(
     Ok(Instantanea { textura, area })
 }
 
-fn crear_textura(
+pub(crate) fn crear_textura(
     dispositivo: &Dispositivo,
     ancho: u32,
     alto: u32,

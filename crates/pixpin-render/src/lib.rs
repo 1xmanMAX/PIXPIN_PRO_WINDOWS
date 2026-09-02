@@ -1,5 +1,18 @@
-//! pixpin-render — ver docs/superpowers/specs/2026-08-09-pixpin-pc-master-design.md
+//! pixpin-render — el backend de dibujo Direct2D + DirectWrite.
 //!
-//! Este crate habla con el sistema operativo o con librerias C. El `unsafe`
-//! esta permitido, pero cada bloque lleva su comentario `// SAFETY:`.
+//! Frontera unica de dibujo del proyecto: todo lo que se pinta pasa por
+//! aqui. Este crate habla con el sistema; `unsafe` permitido con `// SAFETY:`
+//! en cada bloque. El bucle de render es dirigido por eventos, nunca por
+//! fotogramas: sin trabajo no se dibuja nada, y de ahi sale el 0% de CPU.
 #![deny(clippy::undocumented_unsafe_blocks)]
+
+pub mod motor;
+
+pub use motor::{Color, ErrorRender, MotorRender};
+
+pub mod lienzo;
+pub mod superficie;
+
+pub use superficie::Superficie;
+
+pub use lienzo::{Pintor, RectF};

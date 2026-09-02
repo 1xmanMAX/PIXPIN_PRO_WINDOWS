@@ -49,7 +49,10 @@
 // atributo es la unica guarda que lo habria detectado.
 #![forbid(unsafe_code)]
 
+mod overlay;
+
 use anyhow::{Context, Result};
+use overlay::{AccionFinal, ModoConfirmacion, Recursos, TextosBarra, ejecutar_overlay};
 use pixpin_nivel::{Nivel, Preferencia};
 use pixpin_shell::{
     Bandeja, Continuar, EtiquetasMenu, Evento, VentanaMensajes, adquirir_instancia_unica, arranque,
@@ -57,8 +60,20 @@ use pixpin_shell::{
 };
 use pixpin_store::ajustes::PreferenciaNivel;
 use pixpin_store::{Catalogo, Ubicacion, ajustes, idioma, rutas};
+use pixpin_ui::FormatoColorLupa;
 
 fn main() -> Result<()> {
+    // Con panic = "abort" y sin consola, un panico moria MUDO: ni log ni
+    // dialogo (costo una sesion de depuracion a ciegas). El hook escribe al
+    // registro antes del abort; tracing puede no estar inicializado aun, y
+    // entonces simplemente no hace nada, que ya es lo que habia.
+    std::panic::set_hook(Box::new(|info| {
+        tracing::error!(%info, "panico fatal");
+        // Darle al escritor no bloqueante un instante para volcar la linea
+        // antes de que abort() se lleve el proceso por delante.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }));
+
     // Vive aqui, no dentro de `arrancar`, precisamente para que sobreviva a
     // un `Err`: ver el comentario de modulo de mas arriba.
     let mut guardia_registro: Option<tracing_appender::non_blocking::WorkerGuard> = None;
@@ -202,7 +217,10 @@ fn arrancar(
         }
     });
 
-    // 8. A dormir hasta que pase algo.
+    // 8. A dormir hasta que pase algo. Los recursos caros del overlay
+    // (dispositivo, motor, duplicadores) se crean en el primer atajo y
+    // viven entre capturas: son la diferencia entre 200 ms y menos de 50.
+    let mut recursos_overlay: Option<Recursos> = None;
     let hwnd = ventana.handle();
     ventana.ejecutar(|evento| match evento {
         Evento::MenuSalir => {
@@ -215,16 +233,37 @@ fn arrancar(
             }
             Continuar::Si
         }
-        Evento::Atajo(id) if id == atajos::ID_REGION => {
-            // S1-B2 sustituira esto por el overlay de seleccion. De momento se
-            // captura el monitor principal entero, que ya ejercita toda la
-            // tuberia.
-            match capturar_escritorio(&ubicacion) {
-                Ok(ruta) => {
+        Evento::Atajo(id) if id == atajos::ID_REGION || id == atajos::ID_COPIAR => {
+            let modo = if id == atajos::ID_REGION {
+                ModoConfirmacion::ConBarra
+            } else {
+                ModoConfirmacion::DirectoAlPortapapeles
+            };
+            let etiquetas_barra = TextosBarra {
+                copiar: textos.t("barra-copiar"),
+                guardar: textos.t("barra-guardar"),
+                guardar_como: textos.t("barra-guardar-como"),
+                descartar: textos.t("barra-descartar"),
+            };
+            let formato = match config.formato_color {
+                ajustes::FormatoColor::Hex => FormatoColorLupa::Hex,
+                ajustes::FormatoColor::Rgb => FormatoColorLupa::Rgb,
+                ajustes::FormatoColor::Hsl => FormatoColorLupa::Hsl,
+            };
+            let listo = match &mut recursos_overlay {
+                Some(r) => Ok(r),
+                nada => Recursos::nuevos().map(|r| nada.insert(r)),
+            };
+            match listo
+                .and_then(|r| ejecutar_overlay(r, decision.nivel, modo, &etiquetas_barra, formato))
+                .and_then(|accion| ejecutar_accion(accion, &ubicacion, hwnd))
+            {
+                Ok(Some(ruta)) => {
                     let mut args = fluent_bundle::FluentArgs::new();
                     args.set("ruta", ruta.display().to_string());
                     tracing::info!("{}", textos.t_args("captura-guardada", &args));
                 }
+                Ok(None) => {}
                 Err(e) => {
                     let mut args = fluent_bundle::FluentArgs::new();
                     args.set("motivo", e.to_string());
@@ -251,50 +290,58 @@ fn arrancar(
     Ok(())
 }
 
-/// Captura el monitor principal entero, lo guarda y lo copia al portapapeles.
+/// Ejecuta la accion que el overlay decidio. Devuelve la ruta si se guardo.
+fn ejecutar_accion(
+    accion: AccionFinal,
+    ubicacion: &Ubicacion,
+    hwnd: windows::Win32::Foundation::HWND,
+) -> Result<Option<std::path::PathBuf>> {
+    match accion {
+        AccionFinal::Nada => Ok(None),
+        AccionFinal::Copiar(imagen) => {
+            pixpin_codec::copiar_imagen(&imagen).context("no se pudo copiar al portapapeles")?;
+            Ok(None)
+        }
+        AccionFinal::Guardar(imagen) => {
+            let ruta = ruta_captura_libre(ubicacion)?;
+            pixpin_codec::guardar(&imagen, &ruta, pixpin_codec::FormatoImagen::Png)?;
+            Ok(Some(ruta))
+        }
+        AccionFinal::GuardarComo(imagen) => {
+            match pixpin_shell::guardar::pedir_ruta_guardado(hwnd, "captura.png") {
+                None => Ok(None), // cancelado: la imagen se descarta sin drama
+                Some(ruta) => {
+                    let formato = ruta
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .and_then(pixpin_codec::FormatoImagen::por_extension)
+                        .unwrap_or(pixpin_codec::FormatoImagen::Png);
+                    pixpin_codec::guardar(&imagen, &ruta, formato)?;
+                    Ok(Some(ruta))
+                }
+            }
+        }
+    }
+}
+
+/// La siguiente ruta `captura-NNNN.png` libre en la carpeta de capturas.
 ///
-/// Es el andamio de S1-B1: prueba la tuberia completa —enumerar, capturar,
-/// recortar, bajar a CPU, codificar, copiar— antes de que exista el overlay
-/// de seleccion. S1-B2 lo sustituira por la seleccion interactiva.
-fn capturar_escritorio(ubicacion: &Ubicacion) -> Result<std::path::PathBuf> {
-    let dispositivo = pixpin_capture::Dispositivo::nuevo()?;
-    let disposicion = pixpin_capture::enumerar_monitores()?;
-    let principal = disposicion
-        .principal()
-        .copied()
-        .ok_or_else(|| anyhow::anyhow!("no se encontro ningun monitor principal"))?;
-
-    let instantanea = pixpin_capture::capturar_monitor(&dispositivo, principal.id, principal.area)?;
-    let imagen = pixpin_capture::a_imagen(&dispositivo, &instantanea)?;
-
+/// Nombre por contador y no por fecha: `main` no tiene reloj inyectado y
+/// S1-C traera las plantillas de nombre configurables.
+fn ruta_captura_libre(ubicacion: &Ubicacion) -> Result<std::path::PathBuf> {
     let carpeta = ubicacion.raiz().join("capturas");
     std::fs::create_dir_all(&carpeta)?;
-
-    // Nombre por contador y no por fecha: `main` no tiene reloj inyectado y
-    // S1-C traera las plantillas de nombre configurables. Esto es andamio.
     let mut n = 1u32;
-    let ruta = loop {
+    loop {
         let candidata = carpeta.join(format!("captura-{n:04}.png"));
         if !candidata.exists() {
-            break candidata;
+            return Ok(candidata);
         }
         n += 1;
         if n > 9999 {
             anyhow::bail!("demasiadas capturas en {}", carpeta.display());
         }
-    };
-
-    pixpin_codec::guardar(&imagen, &ruta, pixpin_codec::FormatoImagen::Png)?;
-    // Que el portapapeles falle no debe perder la captura, que ya esta en
-    // disco: se registra y se sigue.
-    if let Err(e) = pixpin_codec::copiar_imagen(&imagen) {
-        tracing::warn!(
-            ?e,
-            "la captura se guardo pero no se pudo copiar al portapapeles"
-        );
     }
-
-    Ok(ruta)
 }
 
 /// Registro rotativo diario junto a los ajustes. Nada sale del equipo.

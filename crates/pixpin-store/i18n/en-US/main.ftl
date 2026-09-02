@@ -16,3 +16,8 @@ error-atajo-ocupado = Could not register { $atajo }: another application is usin
 
 captura-guardada = Screenshot saved to { $ruta }
 captura-fallo = Could not capture the screen: { $motivo }
+
+barra-copiar = Copy
+barra-guardar = Save
+barra-guardar-como = Save as…
+barra-descartar = Discard

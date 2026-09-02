@@ -345,13 +345,17 @@ dependencies = [
  "fluent-bundle",
  "pixpin-capture",
  "pixpin-codec",
+ "pixpin-geom",
  "pixpin-nivel",
+ "pixpin-render",
  "pixpin-shell",
  "pixpin-store",
+ "pixpin-ui",
  "toml 0.8.23",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "windows",
 ]
 
 [[package]]
@@ -416,11 +420,17 @@ version = "0.1.0"
 [[package]]
 name = "pixpin-render"
 version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "windows",
+ "windows-numerics",
+]
 
 [[package]]
 name = "pixpin-shell"
 version = "0.1.0"
 dependencies = [
+ "pixpin-geom",
  "pixpin-nivel",
  "serde",
  "serde_json",
@@ -444,6 +454,9 @@ dependencies = [
 [[package]]
 name = "pixpin-ui"
 version = "0.1.0"
+dependencies = [
+ "pixpin-geom",
+]
 
 [[package]]
 name = "png"
