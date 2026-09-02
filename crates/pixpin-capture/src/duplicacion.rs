@@ -10,8 +10,6 @@
 //! TIMEOUT — y la copia cacheada sigue siendo EXACTAMENTE la pantalla
 //! actual, asi que se devuelve esa. WGC queda para el modo en vivo.
 
-use std::time::Duration;
-
 use pixpin_geom::Rect;
 use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
@@ -167,7 +165,7 @@ mod pruebas {
     use crate::dispositivo::Dispositivo;
     use crate::monitores::enumerar_monitores;
     use crate::pruebas_util::con_movimiento;
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
 
     #[test]
     #[ignore = "necesita GPU y sesion de escritorio; ejecutar con --ignored"]

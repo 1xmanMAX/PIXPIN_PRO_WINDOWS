@@ -305,8 +305,8 @@ pub fn ejecutar_overlay(
             &mut muestra_color,
             &piezas,
             &uia,
-            &dispositivo,
-            &motor,
+            dispositivo,
+            motor,
             nivel,
             modo,
             textos,
@@ -333,10 +333,10 @@ pub fn ejecutar_overlay(
     // donde la seleccion cruza a la CPU.
     match PENDIENTE.take() {
         Some((que, region)) => {
-            let recorte = componer_region(&dispositivo, &fuentes, region)
+            let recorte = componer_region(dispositivo, &fuentes, region)
                 .context("no se pudo recortar la seleccion")?;
             let imagen =
-                a_imagen(&dispositivo, &recorte).context("no se pudo bajar la seleccion a CPU")?;
+                a_imagen(dispositivo, &recorte).context("no se pudo bajar la seleccion a CPU")?;
             Ok(match que {
                 QueAccion::Copiar => AccionFinal::Copiar(imagen),
                 QueAccion::Guardar => AccionFinal::Guardar(imagen),
