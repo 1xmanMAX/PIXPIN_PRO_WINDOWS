@@ -53,6 +53,7 @@ mod caja_dibujo;
 mod capa;
 mod overlay;
 mod pines;
+mod scroll;
 
 use anyhow::{Context, Result};
 use overlay::{AccionFinal, ModoConfirmacion, Recursos, TextosBarra, ejecutar_overlay};
@@ -294,12 +295,20 @@ fn arrancar(
                 Continuar::Si
             }
             Evento::Atajo(id)
-                if id == atajos::ID_REGION || id == atajos::ID_COPIAR || id == atajos::ID_PIN =>
+                if id == atajos::ID_REGION
+                    || id == atajos::ID_COPIAR
+                    || id == atajos::ID_PIN
+                    || id == atajos::ID_SCROLL
+                    || id == atajos::ID_CUENTAGOTAS =>
             {
                 let modo = if id == atajos::ID_REGION {
                     ModoConfirmacion::ConBarra
                 } else if id == atajos::ID_PIN {
                     ModoConfirmacion::Pinear
+                } else if id == atajos::ID_SCROLL {
+                    ModoConfirmacion::Scroll
+                } else if id == atajos::ID_CUENTAGOTAS {
+                    ModoConfirmacion::Cuentagotas
                 } else {
                     ModoConfirmacion::DirectoAlPortapapeles
                 };
@@ -320,6 +329,37 @@ fn arrancar(
                 }
                 .and_then(|r| ejecutar_overlay(r, decision.nivel, modo, &etiquetas_barra, formato));
                 let resultado = accion.and_then(|accion| match accion {
+                    // La captura con scroll (D75/D77): el overlay ya esta
+                    // oculto; ahora se recorre la region y la pagina cosida
+                    // va al portapapeles y se queda como pin.
+                    AccionFinal::Scroll { region } => {
+                        let imagen = {
+                            let r = recursos_overlay
+                                .as_mut()
+                                .context("sin recursos para la captura con scroll")?;
+                            scroll::ejecutar_scroll(r, region)?
+                        };
+                        let Some(imagen) = imagen else {
+                            tracing::info!("captura con scroll sin resultado");
+                            return Ok(None);
+                        };
+                        if let Err(e) = pixpin_codec::copiar_imagen(&imagen) {
+                            tracing::warn!(?e, "la pagina cosida no se pudo copiar");
+                        }
+                        let p = preparar_pines(
+                            &mut recursos_overlay,
+                            &mut pines,
+                            &ubicacion,
+                            &textos,
+                            hwnd,
+                            ritmo_video,
+                        )?;
+                        let d = pixpin_capture::enumerar_monitores()?;
+                        let m = d.principal().context("sin monitor")?.to_owned();
+                        p.pinear_imagen_centrada(&imagen, &m)?;
+                        tracing::info!(alto = imagen.alto, "pagina cosida pineada");
+                        Ok(None)
+                    }
                     AccionFinal::Pinear { imagen, region } => {
                         // El gestor consume la accion aqui, no en
                         // ejecutar_accion: el pin nace 1:1 en la region del
@@ -597,10 +637,10 @@ fn ejecutar_accion(
             pixpin_codec::guardar(&imagen, &ruta, pixpin_codec::FormatoImagen::Png)?;
             Ok(Some(ruta))
         }
-        AccionFinal::Pinear { .. } => {
-            // El bucle intercepta Pinear antes de llamar aqui (el gestor
-            // vive alli); llegar seria un error de cableado.
-            tracing::warn!("Pinear llego a ejecutar_accion; se ignora");
+        AccionFinal::Pinear { .. } | AccionFinal::Scroll { .. } => {
+            // El bucle intercepta Pinear y Scroll antes de llamar aqui (el
+            // gestor vive alli); llegar seria un error de cableado.
+            tracing::warn!("Pinear o Scroll llego a ejecutar_accion; se ignora");
             Ok(None)
         }
         AccionFinal::GuardarComo(imagen) => {

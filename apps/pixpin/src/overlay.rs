@@ -49,6 +49,12 @@ pub enum ModoConfirmacion {
     DirectoAlPortapapeles,
     /// Confirmar deja el recorte flotando como pin, sin barra (Ctrl+Alt+F).
     Pinear,
+    /// Confirmar cierra el overlay y arranca la captura con scroll de la
+    /// region (Ctrl+Alt+S, D75).
+    Scroll,
+    /// Sin recuadro: un clic copia el color bajo el cursor y cierra
+    /// (Ctrl+Alt+D, D78).
+    Cuentagotas,
 }
 
 /// Lo que el overlay decidio. La imagen ya esta recortada y en CPU.
@@ -59,6 +65,11 @@ pub enum AccionFinal {
     /// El pin nace 1:1 exactamente donde se recorto (D26): la region viaja.
     Pinear {
         imagen: ImagenRgba,
+        region: Rect,
+    },
+    /// La region elegida para la captura con scroll (D75). No hay imagen:
+    /// se captura muchas veces DESPUES, con el overlay ya oculto.
+    Scroll {
         region: Rect,
     },
     Nada,
@@ -362,6 +373,9 @@ pub fn ejecutar_overlay(
     // La imagen se materializa UNA vez, aqui, al final: es el unico punto
     // donde la seleccion cruza a la CPU.
     match PENDIENTE.take() {
+        // La captura con scroll no materializa nada aqui: se captura muchas
+        // veces despues, con las ventanas ya ocultas (D75).
+        Some((QueAccion::Scroll, region)) => Ok(AccionFinal::Scroll { region }),
         Some((que, region)) => {
             let recorte = componer_region(dispositivo, &fuentes, region)
                 .context("no se pudo recortar la seleccion")?;
@@ -372,6 +386,7 @@ pub fn ejecutar_overlay(
                 QueAccion::Guardar => AccionFinal::Guardar(imagen),
                 QueAccion::GuardarComo => AccionFinal::GuardarComo(imagen),
                 QueAccion::Pinear => AccionFinal::Pinear { imagen, region },
+                QueAccion::Scroll => AccionFinal::Scroll { region },
             })
         }
         None => Ok(AccionFinal::Nada),
@@ -386,6 +401,7 @@ enum QueAccion {
     Guardar,
     GuardarComo,
     Pinear,
+    Scroll,
 }
 
 thread_local! {
@@ -469,6 +485,12 @@ fn procesar_evento(
             Continuar::Si
         }
         EventoOverlay::BotonPulsado(p) => {
+            // El cuentagotas (D78): el clic copia el color que la lupa esta
+            // ensenando y cierra. No hay recuadro que empezar.
+            if matches!(modo, ModoConfirmacion::Cuentagotas) {
+                copiar_color(formato_color, *muestra_color);
+                return Continuar::No;
+            }
             if let Some(b) = barra {
                 if b.origen.contiene(p) {
                     // El clic se resuelve al soltar; tragarse el pulsado
@@ -503,6 +525,17 @@ fn procesar_evento(
             )
         }
         EventoOverlay::Tecla { vk, shift } => {
+            // Cuentagotas: Enter copia como el clic; Escape cancela.
+            if matches!(modo, ModoConfirmacion::Cuentagotas) {
+                match vk {
+                    VK_RETURN => {
+                        copiar_color(formato_color, *muestra_color);
+                        return Continuar::No;
+                    }
+                    VK_ESCAPE => return Continuar::No,
+                    _ => return Continuar::Si,
+                }
+            }
             if barra.is_some() {
                 match vk {
                     VK_RETURN => {
@@ -587,6 +620,16 @@ fn procesar_evento(
     }
 }
 
+/// El cuentagotas (D78): el color bajo el cursor, en el formato configurado,
+/// al portapapeles. Un fallo del portapapeles se registra y se cierra igual.
+fn copiar_color(formato: FormatoColorLupa, muestra: [u8; 4]) {
+    let texto = texto_color(formato, muestra);
+    match pixpin_codec::copiar_texto(&texto) {
+        Ok(()) => tracing::info!(color = %texto, "color copiado"),
+        Err(e) => tracing::warn!(?e, color = %texto, "no se pudo copiar el color"),
+    }
+}
+
 fn decidir_accion(accion: AccionBarra, region: Rect) -> Continuar {
     match accion {
         AccionBarra::Copiar => PENDIENTE.poner(QueAccion::Copiar, region),
@@ -666,6 +709,13 @@ fn aplicar_efecto(
                 PENDIENTE.poner(QueAccion::Pinear, region);
                 Continuar::No
             }
+            ModoConfirmacion::Scroll => {
+                PENDIENTE.poner(QueAccion::Scroll, region);
+                Continuar::No
+            }
+            // El cuentagotas no confirma regiones: su clic se resuelve al
+            // pulsar, antes de llegar aqui.
+            ModoConfirmacion::Cuentagotas => Continuar::No,
             ModoConfirmacion::ConBarra => {
                 let monitor = piezas
                     .iter()
