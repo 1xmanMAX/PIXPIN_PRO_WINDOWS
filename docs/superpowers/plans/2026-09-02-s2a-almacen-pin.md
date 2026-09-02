@@ -76,7 +76,7 @@ crates/pixpin-shell/src/atajos.rs         ID_PIN (Task 6)
   - `pub fn redimension_proporcional(original: Rect, esquina: Esquina, cursor: Punto, minimo: u32) -> Rect` — ancla la esquina OPUESTA, conserva la proporción de `original` (D23), nunca baja de `minimo` en ninguna dimensión. `original` y `cursor` en coordenadas del escritorio virtual.
   - `pub fn recolocar_en_area(rect: Rect, area_trabajo: Rect) -> Rect` — desliza el rect dentro del área SIN cambiar su tamaño; si es más grande que el área, lo alinea a la esquina superior izquierda. Para restaurar pines cuyo monitor desapareció (spec §5.2).
 
-- [ ] **Step 1: Escribir los tests que fallan**
+- [x] **Step 1: Escribir los tests que fallan**
 
 Crear `crates/pixpin-geom/src/pin_geometria.rs` con sólo las pruebas:
 
@@ -160,12 +160,12 @@ mod pruebas {
 }
 ```
 
-- [ ] **Step 2: Ejecutar y comprobar que falla**
+- [x] **Step 2: Ejecutar y comprobar que falla**
 
 Run: `cargo test -p pixpin-geom pin_geometria -- --test-threads=1`
 Expected: FAIL — no existe `Esquina`.
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 Añadir encima de las pruebas:
 
@@ -284,12 +284,12 @@ pub mod pin_geometria;
 pub use pin_geometria::{Esquina, esquina_en, recolocar_en_area, redimension_proporcional};
 ```
 
-- [ ] **Step 4: Ejecutar y comprobar que pasa**
+- [x] **Step 4: Ejecutar y comprobar que pasa**
 
 Run: `cargo test -p pixpin-geom -- --test-threads=1`
 Expected: PASS — los 6 nuevos más los 33 existentes.
 
-- [ ] **Step 5: Puerta y commit**
+- [x] **Step 5: Puerta y commit**
 
 Run: `cargo fmt --all --check && cargo test --workspace -- --test-threads=1` y `E=$(cargo clippy --workspace --all-targets -- -D warnings 2>&1 | grep -cE "^error"); [ "$E" = "0" ]`
 
@@ -325,7 +325,7 @@ esta cubierto: un clamp ingenuo con min > max entra en panico."
   - `pub enum ErrorAlmacen { Io(std::io::Error, PathBuf), Indice(serde_json::Error), NoExiste(u64) }` (con `thiserror`).
 - **Persistencia atómica:** el índice SIEMPRE se escribe a `indice.json.tmp` + `rename`. Los objetos nunca se reescriben.
 
-- [ ] **Step 1: Dependencia y tests que fallan**
+- [x] **Step 1: Dependencia y tests que fallan**
 
 ```bash
 cargo add serde_json -p pixpin-store
@@ -443,12 +443,12 @@ mod pruebas {
 }
 ```
 
-- [ ] **Step 2: Ejecutar y comprobar que falla**
+- [x] **Step 2: Ejecutar y comprobar que falla**
 
 Run: `cargo test -p pixpin-store almacen -- --test-threads=1`
 Expected: FAIL — no existe `Almacen`.
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 Añadir encima de las pruebas:
 
@@ -661,12 +661,12 @@ pub mod almacen;
 pub use almacen::{Almacen, Entrada, ErrorAlmacen, PinGuardado, TipoEntrada};
 ```
 
-- [ ] **Step 4: Ejecutar y comprobar que pasa**
+- [x] **Step 4: Ejecutar y comprobar que pasa**
 
 Run: `cargo test -p pixpin-store -- --test-threads=1`
 Expected: PASS — los 6 del almacén más los existentes.
 
-- [ ] **Step 5: Puerta y commit**
+- [x] **Step 5: Puerta y commit**
 
 Run: la puerta estándar (fmt + clippy contando errores + tests workspace).
 
@@ -698,7 +698,7 @@ Las dos primitivas que el pin necesita y que hoy no existen: `pixpin-codec` sabe
   - `pixpin_codec::cargar(ruta: &Path) -> Result<ImagenRgba, ErrorCodec>` (variante nueva `ErrorCodec::Lectura { ruta, fuente: image::ImageError }`)
   - `MotorRender::bitmap_desde_pixeles(&self, ancho: u32, alto: u32, rgba: &[u8]) -> Result<ID2D1Bitmap1, ErrorRender>` — convierte RGBA→BGRA premultiplicado... no: D2D acepta `DXGI_FORMAT_R8G8B8A8_UNORM` con alfa ignorado, así que se sube TAL CUAL sin conversión. Variante nueva `ErrorRender::TamanoIncoherente`.
 
-- [ ] **Step 1: Tests que fallan**
+- [x] **Step 1: Tests que fallan**
 
 Añadir al módulo de pruebas de `crates/pixpin-codec/src/imagen.rs`:
 
@@ -762,9 +762,9 @@ Y a `crates/pixpin-render/src/motor.rs` (módulo de pruebas):
     }
 ```
 
-- [ ] **Step 2: Comprobar que falla** — `cargo test -p pixpin-codec cargar -- --test-threads=1` y `cargo build -p pixpin-render`: FAIL/no compila.
+- [x] **Step 2: Comprobar que falla** — `cargo test -p pixpin-codec cargar -- --test-threads=1` y `cargo build -p pixpin-render`: FAIL/no compila.
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 En `pixpin-codec/src/imagen.rs`:
 
@@ -854,12 +854,12 @@ con la variante y los imports (`DXGI_FORMAT_R8G8B8A8_UNORM`, `D2D_SIZE_U`):
 
 y reexport `validar_tamano_rgba` en `lib.rs`. **Si `CreateBitmap` difiere en windows 0.62** (orden de argumentos o `Option`), ajusta mecánicamente y repórtalo.
 
-- [ ] **Step 4: Ejecutar y comprobar que pasa**
+- [x] **Step 4: Ejecutar y comprobar que pasa**
 
 Run: `cargo test -p pixpin-codec -- --test-threads=1` y `cargo test -p pixpin-render --lib -- --test-threads=1 --ignored`
 Expected: PASS ambos.
 
-- [ ] **Step 5: Puerta y commit**
+- [x] **Step 5: Puerta y commit**
 
 ```bash
 git add crates/pixpin-codec crates/pixpin-render
@@ -888,7 +888,7 @@ dos pixeles conocidos y los lee de vuelta en BGRA."
   - `pub enum EfectoPin { Nada, Mover(Rect), Redimensionar(Rect), AlternarTamano, Cerrar, GestoTerminado(Rect) }` — `Mover`/`Redimensionar` piden recolocar la ventana YA; `GestoTerminado` es la señal de persistir (la escritura-al-soltar del plan)
   - `pub struct EstadoPin { … }` con `pub fn nuevo(rect: Rect, escala_por_cien: u32) -> Self; pub fn procesar(&mut self, e: EventoPin) -> EfectoPin; pub fn rect(&self) -> Rect; pub fn sobre_esquina(&self, p: Punto) -> bool` (para el cursor diagonal)
 
-- [ ] **Step 1: Escribir los tests que fallan**
+- [x] **Step 1: Escribir los tests que fallan**
 
 Crear `crates/pixpin-pin/src/estado.rs` con sólo las pruebas:
 
@@ -970,7 +970,7 @@ mod pruebas {
 }
 ```
 
-- [ ] **Step 2: Ejecutar y comprobar que falla**
+- [x] **Step 2: Ejecutar y comprobar que falla**
 
 ```bash
 cargo add pixpin-geom --path crates/pixpin-geom -p pixpin-pin
@@ -979,7 +979,7 @@ cargo add pixpin-geom --path crates/pixpin-geom -p pixpin-pin
 Run: `cargo test -p pixpin-pin estado -- --test-threads=1`
 Expected: FAIL — no existe `EstadoPin`. Y `cargo test -p pixpin --test capas -- --test-threads=1` PASS (L2→L0).
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 ```rust
 //! La interaccion del pin como maquina pura (D23).
@@ -1113,9 +1113,9 @@ pub mod estado;
 pub use estado::{EfectoPin, EstadoPin, EventoPin, MINIMO_LOGICO, ZONA_ESQUINA_LOGICA};
 ```
 
-- [ ] **Step 4: Ejecutar y comprobar que pasa** — `cargo test -p pixpin-pin -- --test-threads=1`: los 6 en verde.
+- [x] **Step 4: Ejecutar y comprobar que pasa** — `cargo test -p pixpin-pin -- --test-threads=1`: los 6 en verde.
 
-- [ ] **Step 5: Puerta y commit**
+- [x] **Step 5: Puerta y commit**
 
 ```bash
 git add crates/pixpin-pin Cargo.lock
@@ -1158,7 +1158,7 @@ veces por segundo."
 - Cursor: `WM_SETCURSOR` pone la diagonal (`IDC_SIZENWSE`/`IDC_SIZENESW`) si `estado.sobre_esquina`, `IDC_SIZEALL` si no.
 - Teclado: el pin recibe `WM_KEYDOWN` sólo si tiene foco (clic previo). `Esc` → efecto `Cerrar`. Exactamente lo que pide D23: `Esc` cierra **el enfocado**.
 
-- [ ] **Step 1: Tests que fallan**
+- [x] **Step 1: Tests que fallan**
 
 Crear `crates/pixpin-pin/src/ventana.rs` con sólo las pruebas:
 
@@ -1258,9 +1258,9 @@ mod pruebas {
 }
 ```
 
-- [ ] **Step 2: Comprobar que falla** — `cargo test -p pixpin-pin ventana -- --test-threads=1`: no compila.
+- [x] **Step 2: Comprobar que falla** — `cargo test -p pixpin-pin ventana -- --test-threads=1`: no compila.
 
-- [ ] **Step 3: Implementar**
+- [x] **Step 3: Implementar**
 
 ```bash
 cargo add pixpin-render --path crates/pixpin-render -p pixpin-pin
@@ -1363,12 +1363,12 @@ pub struct Pin {
 
 Añadir a `lib.rs`: `pub mod ventana;` y `pub use ventana::{CambioPin, ErrorPin, MARGEN_SOMBRA_LOGICO, Pin, contenido_desde_ventana, rect_ventana};`
 
-- [ ] **Step 4: Ejecutar y comprobar que pasa**
+- [x] **Step 4: Ejecutar y comprobar que pasa**
 
 Run: `cargo test -p pixpin-pin -- --test-threads=1` (el puro del margen) y `cargo test -p pixpin-pin -- --test-threads=1 --ignored` (el de escritorio).
 Expected: PASS ambos.
 
-- [ ] **Step 5: Puerta y commit**
+- [x] **Step 5: Puerta y commit**
 
 ```bash
 git add crates/pixpin-pin Cargo.lock
@@ -1400,7 +1400,7 @@ elevado; el cache por bitmap de la spec queda anotado para S2-B."
   - `ModoConfirmacion::Pinear` — como `DirectoAlPortapapeles` pero la acción final lleva la **región** (el pin nace 1:1 en su sitio, D26)
   - `AccionFinal::Pinear { imagen: ImagenRgba, region: Rect }`
 
-- [ ] **Step 1: Test del ajuste que falla**
+- [x] **Step 1: Test del ajuste que falla**
 
 En el módulo de pruebas de `ajustes.rs`, ampliar `los_valores_por_defecto_son_los_del_diseno` con:
 
@@ -1410,7 +1410,7 @@ En el módulo de pruebas de `ajustes.rs`, ampliar `los_valores_por_defecto_son_l
 
 Run: `cargo test -p pixpin-store ajustes -- --test-threads=1` → FAIL (no existe el campo).
 
-- [ ] **Step 2: Implementar**
+- [x] **Step 2: Implementar**
 
 - `atajos.rs`: `pub const ID_PIN: u32 = 5;` (y al reexport de `lib.rs` del crate).
 - `ajustes.rs`: campo `pub pin: Atajo` en `Atajos` con default `"Ctrl+Alt+F".parse().expect("atajo por defecto valido")` — cuidado: `Atajos` tiene `#[serde(default)]` por struct, así que el `impl Default` manual es el único sitio a tocar además del campo.
@@ -1421,7 +1421,7 @@ Run: `cargo test -p pixpin-store ajustes -- --test-threads=1` → FAIL (no exist
   - En la materialización final: `QueAccion::Pinear => AccionFinal::Pinear { imagen, region }`.
 - `main.rs`: registrar `(atajos::ID_PIN, config.atajos.pin)` en `peticiones`, y en el `match` de atajos añadir `id == atajos::ID_PIN` con `ModoConfirmacion::Pinear`. El manejo de `AccionFinal::Pinear` lo cablea la Task 7 — hasta entonces, `ejecutar_accion` lo registra con `tracing::info!("pinear pendiente de la Task 7")` y devuelve `Ok(None)` para que este commit compile y funcione solo.
 
-- [ ] **Step 3: Verificar y confirmar**
+- [x] **Step 3: Verificar y confirmar**
 
 Run: `cargo test --workspace -- --test-threads=1` PASS · puerta estándar.
 
@@ -1455,7 +1455,7 @@ gestor; de momento queda registrado en el log."
 
 **Decisión de dueño de la textura:** la restauración carga el PNG y crea el pin **secuencialmente** en S2-A (la paralelización con el pool y la puerta de <200 ms del primer pin se miden en la Task 8 y, si no se cumple, se ataca ahí con los números delante — no antes).
 
-- [ ] **Step 1: Test de `codificar_png` que falla**
+- [x] **Step 1: Test de `codificar_png` que falla**
 
 En pruebas de `pixpin-codec/src/imagen.rs`:
 
@@ -1512,7 +1512,7 @@ pub fn codificar_png(imagen: &ImagenRgba) -> Result<Vec<u8>, ErrorCodec> {
 }
 ```
 
-- [ ] **Step 2: Escribir `pines.rs`**
+- [x] **Step 2: Escribir `pines.rs`**
 
 Estructura completa (es cableado de piezas probadas; la invariante con test propio es la recolocación, que ya la tiene la Task 1):
 
@@ -1675,7 +1675,7 @@ impl Pines {
 }
 ```
 
-- [ ] **Step 3: Cablear `main.rs`**
+- [x] **Step 3: Cablear `main.rs`**
 
 - `mod pines;` + `use pines::Pines;`.
 - Tras crear `recursos_overlay`… los pines necesitan `d3d` y `motor`, que viven en `Recursos`. **Cambio pequeño en `overlay.rs`:** `Recursos` gana `pub fn d3d(&self) -> ID3D11Device` (clona la interfaz, es un puntero contado) y `pub fn motor(&self) -> Rc<MotorRender>`… `MotorRender` no está en `Rc` dentro de `Recursos`. Cambiar el campo `motor: MotorRender` a `motor: Rc<MotorRender>` en `Recursos` (los usos internos pasan de `&self.motor` a `&*self.motor` sólo donde el compilador lo pida; `Pieza`/`pintar` reciben `&MotorRender` igual).
@@ -1684,11 +1684,11 @@ impl Pines {
 - Tras cada evento del bucle: `if let Some(p) = &mut pines { p.purgar(); }`.
 - El log al restaurar: `tracing::info!(restaurados, ms = t.elapsed()...)` — alimenta la puerta de la Task 8.
 
-- [ ] **Step 4: Verificación completa**
+- [x] **Step 4: Verificación completa**
 
 Run: workspace + `--ignored` + puerta estándar.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/pixpin crates/pixpin-codec Cargo.lock
@@ -1711,7 +1711,7 @@ arrancar cuando hay algo que restaurar."
 - Create: `medidas/AAAA-MM-DD-<maquina>-s2a.md` (fecha real)
 - Modify: el plan (casillas) y, si algún número se desmiente, la spec de S2.
 
-- [ ] **Step 1: Comprobación manual del flujo completo**
+- [x] **Step 1: Comprobación manual del flujo completo**
 
 Con el binario release (cada punto, si falla, se anota exactamente qué se vio):
 
@@ -1722,7 +1722,7 @@ Con el binario release (cada punto, si falla, se anota exactamente qué se vio):
 5. Abrir `%APPDATA%\PixPinMax\almacen\` con el Explorador: los PNG están ahí, navegables; `indice.json` es legible.
 6. `pixpinmax.toml` con `nivel = "ligero"`: todo lo anterior funciona igual (el nivel no cambia el pin en S2-A).
 
-- [ ] **Step 2: Medir las puertas de la spec §7 aplicables a S2-A**
+- [x] **Step 2: Medir las puertas de la spec §7 aplicables a S2-A**
 
 | Métrica | Objetivo | Cómo |
 |---|---|---|
@@ -1733,7 +1733,7 @@ Con el binario release (cada punto, si falla, se anota exactamente qué se vio):
 
 **Anota los valores reales aunque no cumplan.** Si el primer pin no baja de 200 ms, la paralelización con el pool (spec §7) se implementa entonces, con los números delante.
 
-- [ ] **Step 3: Cerrar**
+- [x] **Step 3: Cerrar**
 
 Run: suite completa + `--ignored` + `cargo deny` + push y PR.
 
@@ -1746,12 +1746,12 @@ git commit -m "Puertas de S2-A medidas y anotadas"
 
 ## Definición de terminado para S2-A
 
-- [ ] Puerta estándar en verde (fmt, clippy contando errores, tests, `--ignored`, deny, capas, baseline)
-- [ ] `Ctrl+Alt+F` deja el recorte flotando 1:1 en su sitio, con sombra y sin cromo
-- [ ] Mover desde cualquier punto (bordes incluidos), esquinas proporcionales con cursor diagonal, doble clic alterna, `Esc` cierra el enfocado
-- [ ] Cerrar un pin NO borra su entrada del almacén (test) y cerrar la app no pierde nada
-- [ ] Al reiniciar, los pines reaparecen donde estaban; si su monitor no existe, recolocados en el principal
-- [ ] El almacén es navegable con el Explorador; el índice se escribe por temporal+rename (test)
-- [ ] Las métricas del Step 2 de la Task 8 anotadas con valores reales en `medidas/`
+- [x] Puerta estándar en verde (fmt, clippy contando errores, tests, `--ignored`, deny, capas, baseline)
+- [x] `Ctrl+Alt+F` deja el recorte flotando 1:1 en su sitio, con sombra y sin cromo
+- [x] Mover desde cualquier punto (bordes incluidos), esquinas proporcionales con cursor diagonal, doble clic alterna, `Esc` cierra el enfocado
+- [x] Cerrar un pin NO borra su entrada del almacén (test) y cerrar la app no pierde nada
+- [x] Al reiniciar, los pines reaparecen donde estaban; si su monitor no existe, recolocados en el principal
+- [x] El almacén es navegable con el Explorador; el índice se escribe por temporal+rename (test)
+- [x] Las métricas del Step 2 de la Task 8 anotadas con valores reales en `medidas/`
 
 **Lo siguiente:** S2-B — notas, fichas de archivo, portapapeles con atajo (`Ctrl+Alt+V`), menú contextual completo, grupos con sombra de color y ocultar/mostrar, imán de bordes, `Ctrl+C`, y la auditoría de los topes de RAM con 10 pines.
