@@ -10,7 +10,8 @@
 //! `pixpin-render` es L1: recibe `&ID3D11Device` y no sabe de donde sale.
 
 use windows::Win32::Graphics::Direct2D::Common::{
-    D2D1_ALPHA_MODE_IGNORE, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F, D2D1_PIXEL_FORMAT,
+    D2D_SIZE_U, D2D1_ALPHA_MODE_IGNORE, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F,
+    D2D1_PIXEL_FORMAT,
 };
 use windows::Win32::Graphics::Direct2D::{
     D2D1_BITMAP_OPTIONS, D2D1_BITMAP_OPTIONS_CANNOT_DRAW, D2D1_BITMAP_OPTIONS_NONE,
@@ -22,7 +23,9 @@ use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11Texture2D};
 use windows::Win32::Graphics::DirectWrite::{
     DWRITE_FACTORY_TYPE_SHARED, DWriteCreateFactory, IDWriteFactory,
 };
-use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
+use windows::Win32::Graphics::Dxgi::Common::{
+    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM,
+};
 use windows::Win32::Graphics::Dxgi::{IDXGIDevice, IDXGISurface};
 use windows::core::Interface;
 
@@ -32,6 +35,27 @@ pub enum ErrorRender {
     Windows(#[from] windows::core::Error),
     #[error("la textura no expone una superficie DXGI")]
     SinDxgi,
+    #[error("el buffer tiene {tiene} bytes pero {ancho}x{alto} necesita {espera}")]
+    TamanoIncoherente {
+        ancho: u32,
+        alto: u32,
+        tiene: usize,
+        espera: usize,
+    },
+}
+
+/// Validacion pura del buffer RGBA, separada para probarse sin GPU.
+pub fn validar_tamano_rgba(ancho: u32, alto: u32, bytes: usize) -> Result<(), ErrorRender> {
+    let espera = ancho as usize * alto as usize * 4;
+    if ancho == 0 || alto == 0 || bytes != espera {
+        return Err(ErrorRender::TamanoIncoherente {
+            ancho,
+            alto,
+            tiene: bytes,
+            espera,
+        });
+    }
+    Ok(())
 }
 
 /// Color RGBA en coma flotante 0..1, el idioma nativo de Direct2D.
@@ -136,6 +160,41 @@ impl MotorRender {
     /// Envuelve una textura como DESTINO de dibujo (`SetTarget`).
     pub fn destino_desde_textura(&self, t: &ID3D11Texture2D) -> Result<ID2D1Bitmap1, ErrorRender> {
         self.envolver(t, D2D1_BITMAP_OPTIONS_TARGET)
+    }
+
+    /// Sube pixeles RGBA de CPU como bitmap D2D. Para los pines: la imagen
+    /// viene del almacen (PNG en disco), no de una textura de captura.
+    pub fn bitmap_desde_pixeles(
+        &self,
+        ancho: u32,
+        alto: u32,
+        rgba: &[u8],
+    ) -> Result<ID2D1Bitmap1, ErrorRender> {
+        validar_tamano_rgba(ancho, alto, rgba.len())?;
+        let propiedades = D2D1_BITMAP_PROPERTIES1 {
+            pixelFormat: D2D1_PIXEL_FORMAT {
+                format: DXGI_FORMAT_R8G8B8A8_UNORM,
+                alphaMode: D2D1_ALPHA_MODE_IGNORE,
+            },
+            dpiX: 96.0,
+            dpiY: 96.0,
+            bitmapOptions: D2D1_BITMAP_OPTIONS_NONE,
+            colorContext: std::mem::ManuallyDrop::new(None),
+        };
+        // SAFETY: el puntero y el paso describen exactamente `rgba`, que
+        // vive durante la llamada; D2D copia los datos al crear el bitmap.
+        let bitmap = unsafe {
+            self.contexto.CreateBitmap(
+                D2D_SIZE_U {
+                    width: ancho,
+                    height: alto,
+                },
+                Some(rgba.as_ptr() as *const _),
+                ancho * 4,
+                &propiedades,
+            )?
+        };
+        Ok(bitmap)
     }
 
     /// Envuelve el backbuffer de un swapchain como destino.
@@ -338,6 +397,48 @@ mod pruebas {
         // Caso negativo: si Clear no funcionara o el rect lo cubriera todo,
         // este pixel tambien seria rojo.
         assert_eq!(pixel(&d3d, &ctx, &destino, 50, 50), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    #[ignore = "necesita GPU real; ejecutar con --ignored"]
+    fn un_bitmap_desde_pixeles_dibuja_esos_pixeles() {
+        let (d3d, ctx) = dispositivo_de_prueba();
+        let motor = MotorRender::nuevo(&d3d).unwrap();
+        // 2x1: rojo, verde (RGBA).
+        let bitmap = motor
+            .bitmap_desde_pixeles(2, 1, &[255, 0, 0, 255, 0, 255, 0, 255])
+            .expect("deberia subir");
+        let destino_tex = textura(&d3d, 2, 1);
+        let destino = motor.destino_desde_textura(&destino_tex).unwrap();
+        motor
+            .dibujar(&destino, |p| {
+                p.bitmap(
+                    &bitmap,
+                    crate::lienzo::RectF {
+                        x: 0.0,
+                        y: 0.0,
+                        ancho: 2.0,
+                        alto: 1.0,
+                    },
+                    None,
+                    true,
+                );
+            })
+            .unwrap();
+        // El destino es BGRA: rojo = [0,0,255,255].
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 0, 0), [0, 0, 255, 255]);
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 1, 0), [0, 255, 0, 255]);
+    }
+
+    #[test]
+    fn un_buffer_incoherente_no_llega_a_la_gpu() {
+        // Caso negativo y ademas corre SIN GPU: la validacion es previa.
+        assert!(
+            validar_tamano_rgba(2, 2, 7).is_err(),
+            "7 bytes no son 2x2x4"
+        );
+        assert!(validar_tamano_rgba(0, 2, 0).is_err(), "ancho cero no vale");
+        assert!(validar_tamano_rgba(2, 2, 16).is_ok());
     }
 
     #[test]
