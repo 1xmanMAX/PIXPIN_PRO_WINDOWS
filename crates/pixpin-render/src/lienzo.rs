@@ -292,6 +292,60 @@ impl Pintor<'_> {
         }
     }
 
+    /// Rellena `marco` dejando sin pintar el poligono `hueco`: es el foco
+    /// de D51. Dos figuras cerradas en una misma geometria y la regla de
+    /// relleno alternada de Direct2D hacen el agujero sin recortes ni
+    /// capas.
+    pub fn velo(&self, marco: RectF, hueco: &[(f32, f32)], color: Color) {
+        use windows::Win32::Graphics::Direct2D::Common::{
+            D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, D2D1_FILL_MODE_ALTERNATE,
+        };
+        if hueco.len() < 3 {
+            self.rellenar(marco, color);
+            return;
+        }
+        let esquinas = [
+            (marco.x, marco.y),
+            (marco.x + marco.ancho, marco.y),
+            (marco.x + marco.ancho, marco.y + marco.alto),
+            (marco.x, marco.y + marco.alto),
+        ];
+        // SAFETY: igual que `geometria`: crear, rellenar entre Open/Close y
+        // descartar si algo falla a mitad, sin usarla nunca a medias.
+        let geometria = unsafe {
+            let Ok(geometria) = self.motor.fabrica().CreatePathGeometry() else {
+                return;
+            };
+            let Ok(sumidero) = geometria.Open() else {
+                return;
+            };
+            sumidero.SetFillMode(D2D1_FILL_MODE_ALTERNATE);
+            for figura in [&esquinas[..], hueco] {
+                sumidero.BeginFigure(
+                    Vector2 {
+                        X: figura[0].0,
+                        Y: figura[0].1,
+                    },
+                    D2D1_FIGURE_BEGIN_FILLED,
+                );
+                let resto: Vec<Vector2> = figura[1..]
+                    .iter()
+                    .map(|(x, y)| Vector2 { X: *x, Y: *y })
+                    .collect();
+                sumidero.AddLines(&resto);
+                sumidero.EndFigure(D2D1_FIGURE_END_CLOSED);
+            }
+            if sumidero.Close().is_err() {
+                return;
+            }
+            geometria
+        };
+        if let Some(p) = self.pincel(color) {
+            // SAFETY: dentro del fotograma; geometria y pincel vivos.
+            unsafe { self.motor.contexto().FillGeometry(&geometria, &p, None) };
+        }
+    }
+
     /// Traza una polilinea abierta de grosor constante.
     pub fn polilinea(&self, vertices: &[(f32, f32)], grosor: f32, color: Color) {
         if vertices.len() < 2 {
@@ -524,6 +578,45 @@ mod pruebas {
         // SAFETY: empareja el Map de arriba.
         unsafe { ctx.Unmap(&e, 0) };
         v
+    }
+
+    #[test]
+    #[ignore = "necesita GPU real; ejecutar con --ignored"]
+    fn el_velo_oscurece_fuera_del_hueco_y_deja_el_hueco_intacto() {
+        // D51: si la regla de relleno no fuera la alternada, el hueco se
+        // pintaria tambien y el foco oscureceria justo lo que se ensena.
+        let (d3d, ctx) = dispositivo();
+        let motor = MotorRender::nuevo(&d3d).unwrap();
+        let destino_tex = textura(&d3d, 128, 128);
+        let destino = motor.destino_desde_textura(&destino_tex).unwrap();
+        motor
+            .dibujar(&destino, |p| {
+                p.limpiar(Color {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 1.0,
+                    a: 1.0,
+                });
+                p.velo(
+                    RectF {
+                        x: 0.0,
+                        y: 0.0,
+                        ancho: 128.0,
+                        alto: 128.0,
+                    },
+                    &[(32.0, 32.0), (96.0, 32.0), (96.0, 96.0), (32.0, 96.0)],
+                    Color {
+                        r: 1.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 1.0,
+                    },
+                );
+            })
+            .unwrap();
+        // BGRA: fuera del hueco, rojo opaco; dentro, el azul de la limpieza.
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 8, 8), [0, 0, 255, 255]);
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 64, 64), [255, 0, 0, 255]);
     }
 
     #[test]

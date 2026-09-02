@@ -49,6 +49,8 @@
 // atributo es la unica guarda que lo habria detectado.
 #![forbid(unsafe_code)]
 
+mod caja_dibujo;
+mod capa;
 mod overlay;
 mod pines;
 
@@ -189,6 +191,8 @@ fn arrancar(
         (atajos::ID_CUENTAGOTAS, config.atajos.cuentagotas),
         (atajos::ID_PIN, config.atajos.pin),
         (atajos::ID_PORTAPAPELES, config.atajos.portapapeles),
+        (atajos::ID_ANOTAR, config.atajos.anotar),
+        (atajos::ID_ANOTAR_CONGELADA, config.atajos.anotar_congelada),
     ];
     let (_registrados, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
     for (id, atajo) in &fallidos {
@@ -333,6 +337,53 @@ fn arrancar(
                         args.set("motivo", e.to_string());
                         tracing::warn!("{}", textos.t_args("captura-fallo", &args));
                     }
+                }
+                Continuar::Si
+            }
+            Evento::Atajo(id) if id == atajos::ID_ANOTAR || id == atajos::ID_ANOTAR_CONGELADA => {
+                let modo = if id == atajos::ID_ANOTAR {
+                    capa::ModoCapa::Viva
+                } else {
+                    capa::ModoCapa::Congelada
+                };
+                let listo = match &mut recursos_overlay {
+                    Some(r) => Ok(r),
+                    nada => Recursos::nuevos().map(|r| nada.insert(r)),
+                };
+                match listo.and_then(|r| capa::ejecutar_capa(r, modo, decision.nivel)) {
+                    // D54: cerrar sin avisar tirando cinco minutos de
+                    // anotaciones es el peor fallo posible aqui. Se pregunta
+                    // con la capa ya cerrada, para que el cuadro no salga en
+                    // la captura.
+                    Ok(Some(_))
+                        if !pixpin_shell::preguntar(
+                            hwnd,
+                            &textos.t("capa-guardar-titulo"),
+                            &textos.t("capa-guardar-pregunta"),
+                        ) =>
+                    {
+                        tracing::info!("anotacion de pantalla descartada por el usuario");
+                    }
+                    Ok(Some(imagen)) => {
+                        let hecho = preparar_pines(
+                            &mut recursos_overlay,
+                            &mut pines,
+                            &ubicacion,
+                            &textos,
+                            hwnd,
+                        )
+                        .and_then(|p| {
+                            let d = pixpin_capture::enumerar_monitores()?;
+                            let m = d.principal().context("sin monitor")?.to_owned();
+                            p.pinear_imagen_centrada(&imagen, &m)
+                        });
+                        match hecho {
+                            Ok(()) => tracing::info!("anotacion de pantalla pineada"),
+                            Err(e) => tracing::warn!(?e, "no se pudo pinear la anotacion"),
+                        }
+                    }
+                    Ok(None) => tracing::info!("capa viva cerrada sin dibujo"),
+                    Err(e) => tracing::warn!(?e, "no se pudo abrir la capa viva"),
                 }
                 Continuar::Si
             }

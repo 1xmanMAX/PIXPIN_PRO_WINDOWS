@@ -64,6 +64,12 @@ pub enum Figura {
     },
     Rectangulo,
     Elipse,
+    /// Oscurece todo menos su caja (D51). El motor entrega el hueco; quien
+    /// pinta sabe cuanto mide el lienzo y oscurece el resto.
+    Foco {
+        #[serde(default)]
+        elipse: bool,
+    },
     Texto {
         texto: String,
         tam: f32,

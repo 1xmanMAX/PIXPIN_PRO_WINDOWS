@@ -44,3 +44,6 @@ pin-cerrar = Cerrar
 pin-eliminar = Eliminar del almacén…
 pin-eliminar-confirmar = Se borrará del almacén para siempre. ¿Seguro?
 grupos-ocultos = Grupos ocultos
+
+capa-guardar-titulo = Anotación de pantalla
+capa-guardar-pregunta = ¿Guardar lo dibujado como un pin?

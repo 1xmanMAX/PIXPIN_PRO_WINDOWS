@@ -37,7 +37,7 @@ niveles Completo/Ligero de `pixpin-nivel`. Los tres intocables: atajo→overlay
 | [ ] | S1-B3 scroll + cuentagotas | Ctrl+Alt+S y Ctrl+Alt+D activos | 2026-08-09-s1 | (escribir al llegar) |
 | [x] | S3-A motor 2D | `pixpin-motor2d`: elementos, trazo a mano, rugosidad determinista, texto, hit-test, `.pixpin2d` | (escribir spec desde `docs/investigacion/2026-09-02-excalidraw-analisis.md`) | (escribir al llegar) |
 | [x] | S3-B anotar el pin | doble clic → editar dentro del pin: lápiz, resaltador, líneas, formas, texto, imágenes | (spec S3) | (escribir al llegar) |
-| [ ] | S3-C anotar la pantalla | dos modos: congelada (captura estática) y **capa viva** sobre la pantalla en movimiento, con paso de clics conmutable | (spec S3) | (escribir al llegar) |
+| [x] | S3-C anotar la pantalla | dos modos: congelada (captura estática) y **capa viva** sobre la pantalla en movimiento, con paso de clics conmutable; foco, lupa, texto in situ, paleta del pin | 2026-09-02-s3bc-anotacion-design.md (D56–D61) | 2026-09-02-s3c-anotar-pantalla.md |
 | [ ] | S3-D ajustes visuales | ventana de configuración: atajos reasignables, tema, carpetas, rendimiento, arranque | (spec S3) | (escribir al llegar) |
 | [ ] | S3-E chat | feed tipo mensajería que organiza el almacén | (spec S3) | (escribir al llegar) |
 | [ ] | S4 salidas + automatización | guardado configurable, OLE drag-out | maestro §S4 | (escribir al llegar) |

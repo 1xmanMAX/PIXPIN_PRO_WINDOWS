@@ -9,7 +9,7 @@
 //! WS_EX_NOREDIRECTIONBITMAP: la ventana no tiene superficie GDI; todo lo
 //! visible lo presenta la Superficie de pixpin-render por DirectComposition.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::sync::Once;
 
@@ -28,6 +28,26 @@ use windows::core::w;
 /// WM_APP+1: otros hilos lo PostMessage-an para despertar el bucle modal.
 pub const MSG_DESPIERTA: u32 = WM_APP + 1;
 
+/// Espera a que el compositor haya presentado lo ultimo que se dibujo.
+/// Dos vueltas: la primera cierra el fotograma en curso, la segunda
+/// garantiza que el nuestro ya esta en pantalla y, por tanto, en la
+/// captura que venga despues (D59).
+pub fn esperar_composicion() {
+    use windows::Win32::Graphics::Dwm::DwmFlush;
+    // SAFETY: sin precondiciones; un fallo (sin DWM) solo significa no
+    // esperar.
+    unsafe {
+        let _ = DwmFlush();
+        let _ = DwmFlush();
+    }
+}
+
+thread_local! {
+    /// La mitad alta de un par subrogado UTF-16 a la espera de su mitad
+    /// baja (WM_CHAR entrega los dos por separado).
+    static MITAD_ALTA: Cell<Option<u16>> = const { Cell::new(None) };
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventoOverlay {
     RatonMovido(Punto),
@@ -43,6 +63,18 @@ pub enum EventoOverlay {
     Despierta,
     /// WM_CLOSE (Alt+F4): el usuario quiere cerrar; tratar como cancelar.
     Cerrar,
+    /// Rueda del raton, positivo hacia arriba. La capa viva la usa para el
+    /// grosor del trazo y el aumento de la lupa (D55).
+    Rueda(i32),
+    /// Un caracter escrito, ya compuesto (WM_CHAR, IME incluido) (D57).
+    Caracter(char),
+    /// Una tecla soltada (WM_KEYUP). La capa viva lo usa para el pasante
+    /// temporal con Ctrl mantenido (D50).
+    TeclaSoltada(u32),
+    /// Un atajo global pulsado MIENTRAS el overlay esta abierto. Llega aqui
+    /// en vez de quedarse en la cola de la ventana principal, donde se
+    /// atenderia al cerrar y volveria a abrir el overlay.
+    Atajo(u32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,6 +154,74 @@ impl VentanaOverlay {
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
         }
+    }
+
+    /// Deja pasar los clics a la aplicacion de abajo, o vuelve a
+    /// recogerlos (D50).
+    ///
+    /// Es lo que hace posible la capa viva: dibujas encima de lo que estas
+    /// haciendo, y cuando quieres seguir trabajando la vuelves pasante — el
+    /// dibujo se sigue viendo, pero el raton lo atraviesa como si no
+    /// estuviera. Sin esto, una capa a pantalla completa secuestra el
+    /// escritorio entero.
+    ///
+    /// `WS_EX_TRANSPARENT` afecta SOLO al raton. El teclado sigue llegando
+    /// mientras la ventana tenga el foco, que es lo que permite volver a
+    /// activar el dibujo con el mismo atajo.
+    pub fn poner_pasante(&self, pasante: bool) {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GWL_EXSTYLE, GetWindowLongPtrW, SetWindowLongPtrW, WS_EX_LAYERED, WS_EX_TRANSPARENT,
+        };
+        // WS_EX_TRANSPARENT solo deja pasar el raton en una ventana LAYERED:
+        // sin el segundo bit, el estilo se lee como puesto pero los clics
+        // siguen llegando a la capa. Lo encontro la prueba de extremo a
+        // extremo: un clic "pasante" abria un texto in situ.
+        let bits = WS_EX_LAYERED.0 | WS_EX_TRANSPARENT.0;
+        // SAFETY: lee y escribe el estilo extendido de una ventana propia.
+        unsafe {
+            let actual = GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) as u32;
+            let nuevo = if pasante {
+                actual | bits
+            } else {
+                actual & !bits
+            };
+            SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, nuevo as isize);
+        }
+    }
+
+    /// Coloca la ventana de composicion del IME donde se escribe (D57):
+    /// sin esto el japones o el chino se componen en la esquina de la
+    /// pantalla, lejos de donde mira el usuario. `p` es local a la ventana.
+    pub fn poner_posicion_ime(&self, p: Punto) {
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::UI::Input::Ime::{
+            CFS_POINT, COMPOSITIONFORM, ImmGetContext, ImmReleaseContext, ImmSetCompositionWindow,
+        };
+        // SAFETY: contexto del IME de una ventana propia, tomado y devuelto
+        // en la misma llamada; la estructura es local y valida.
+        unsafe {
+            let ctx = ImmGetContext(self.hwnd);
+            if ctx.is_invalid() {
+                return;
+            }
+            let forma = COMPOSITIONFORM {
+                dwStyle: CFS_POINT,
+                ptCurrentPos: POINT { x: p.x, y: p.y },
+                ..Default::default()
+            };
+            let _ = ImmSetCompositionWindow(ctx, &forma);
+            let _ = ImmReleaseContext(self.hwnd, ctx);
+        }
+    }
+
+    /// Si ahora mismo los clics la atraviesan.
+    pub fn es_pasante(&self) -> bool {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GWL_EXSTYLE, GetWindowLongPtrW, WS_EX_TRANSPARENT,
+        };
+        // SAFETY: consulta de solo lectura sobre ventana propia.
+        let actual = unsafe { GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) as u32 };
+        actual & WS_EX_TRANSPARENT.0 != 0
     }
 
     /// Esconde la ventana sin destruirla. El overlay retiene sus ventanas
@@ -221,6 +321,15 @@ pub fn bucle_modal(
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
+        // Los atajos globales que el WndProc de la ventana principal haya
+        // encolado durante el Dispatch se entregan AQUI: si se quedaran en
+        // su cola, se atenderian al cerrar el overlay y lo reabririan.
+        for id in crate::ventana::tomar_atajos_pendientes() {
+            if callback(HWND::default(), EventoOverlay::Atajo(id)) == crate::ventana::Continuar::No
+            {
+                return;
+            }
+        }
         // Drenar lo que el WndProc haya encolado durante el Dispatch.
         loop {
             let siguiente = PENDIENTES_OVERLAY.with(|p| p.borrow_mut().pop_front());
@@ -276,6 +385,12 @@ extern "system" fn procedimiento_overlay(
             encolar(EventoOverlay::RatonMovido(punto(lparam)));
             LRESULT(0)
         }
+        WM_MOUSEWHEEL => {
+            // La palabra alta del wparam trae el giro con signo.
+            let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            encolar(EventoOverlay::Rueda(delta));
+            LRESULT(0)
+        }
         WM_LBUTTONDOWN => {
             // SAFETY: SetCapture sobre ventana propia: el arrastre no se
             // pierde al salir del borde.
@@ -298,6 +413,33 @@ extern "system" fn procedimiento_overlay(
                 vk: wparam.0 as u32,
                 shift,
             });
+            LRESULT(0)
+        }
+        WM_KEYUP => {
+            encolar(EventoOverlay::TeclaSoltada(wparam.0 as u32));
+            LRESULT(0)
+        }
+        WM_CHAR => {
+            // WM_CHAR trae unidades UTF-16: un emoji llega en dos mensajes.
+            // La mitad alta se guarda hasta que llega la baja. El IME
+            // entrega por aqui el texto ya compuesto, asi que el japones o
+            // el chino no necesitan nada mas.
+            let unidad = wparam.0 as u16;
+            let caracter = MITAD_ALTA.with(|alta| {
+                if (0xD800..0xDC00).contains(&unidad) {
+                    alta.set(Some(unidad));
+                    None
+                } else if (0xDC00..0xE000).contains(&unidad) {
+                    let a = alta.take()?;
+                    char::decode_utf16([a, unidad]).next()?.ok()
+                } else {
+                    alta.set(None);
+                    char::from_u32(unidad as u32)
+                }
+            });
+            if let Some(c) = caracter {
+                encolar(EventoOverlay::Caracter(c));
+            }
             LRESULT(0)
         }
         WM_PAINT => {
@@ -356,6 +498,53 @@ extern "system" fn procedimiento_overlay(
 mod pruebas {
     use super::*;
     use pixpin_geom::Rect;
+
+    #[test]
+    #[ignore = "necesita sesion de escritorio; ejecutar con --ignored"]
+    fn el_modo_pasante_se_activa_y_se_quita() {
+        // D50: es lo que permite dibujar encima de lo que estas haciendo y
+        // luego seguir trabajando sin cerrar la capa. Se comprueba contra el
+        // estilo REAL de la ventana, no contra una variable propia: si
+        // Windows no aplicara el cambio, un booleano nuestro mentiria.
+        let v = VentanaOverlay::nueva(Rect {
+            x: 0,
+            y: 0,
+            ancho: 300,
+            alto: 200,
+        })
+        .expect("la ventana deberia crearse");
+
+        assert!(!v.es_pasante(), "una capa nace recogiendo el raton");
+        v.poner_pasante(true);
+        assert!(v.es_pasante(), "los clics deberian atravesarla");
+        v.poner_pasante(false);
+        assert!(!v.es_pasante(), "y volver a recogerse");
+    }
+
+    #[test]
+    #[ignore = "necesita sesion de escritorio; ejecutar con --ignored"]
+    fn poner_pasante_no_borra_los_demas_estilos() {
+        // Caso negativo de la escritura del estilo: un SetWindowLongPtrW que
+        // asignara el estilo en vez de combinarlo dejaria la ventana sin
+        // TOPMOST ni NOREDIRECTIONBITMAP, y la capa dejaria de componerse.
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GWL_EXSTYLE, GetWindowLongPtrW, WS_EX_TOPMOST,
+        };
+        let v = VentanaOverlay::nueva(Rect {
+            x: 0,
+            y: 0,
+            ancho: 300,
+            alto: 200,
+        })
+        .unwrap();
+        v.poner_pasante(true);
+        // SAFETY: consulta de solo lectura sobre la ventana del test.
+        let estilo = unsafe { GetWindowLongPtrW(v.handle(), GWL_EXSTYLE) as u32 };
+        assert!(
+            estilo & WS_EX_TOPMOST.0 != 0,
+            "la capa perdio el TOPMOST al volverse pasante"
+        );
+    }
 
     #[test]
     #[ignore = "necesita sesion de escritorio; ejecutar con --ignored"]

@@ -54,3 +54,23 @@ pub fn confirmar_destructivo(propietaria: HWND, titulo: &str, mensaje: &str) -> 
     };
     r == IDYES
 }
+
+/// Pregunta de si/no con el icono de pregunta y Si como opcion por defecto:
+/// para «¿guardar lo dibujado?» (D54), donde perder el trabajo es peor que
+/// crear un pin de mas.
+pub fn preguntar(propietaria: HWND, titulo: &str, mensaje: &str) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{IDYES, MB_ICONQUESTION, MB_YESNO};
+
+    let mensaje = HSTRING::from(mensaje);
+    let titulo = HSTRING::from(titulo);
+    // SAFETY: HSTRING propias vivas durante la llamada; la ventana
+    // propietaria es del llamante y esta viva mientras el cuadro es modal.
+    unsafe {
+        MessageBoxW(
+            Some(propietaria),
+            &mensaje,
+            &titulo,
+            MB_YESNO | MB_ICONQUESTION,
+        ) == IDYES
+    }
+}

@@ -10,12 +10,17 @@ use std::rc::Rc;
 
 use anyhow::{Context, Result};
 use pixpin_codec::{ImagenRgba, cargar, codificar_png};
-use pixpin_geom::{DisposicionMonitores, Monitor, Rect, recolocar_en_area};
+use pixpin_geom::{DisposicionMonitores, Monitor, Punto, Rect, recolocar_en_area};
 use pixpin_motor2d::Escena;
-use pixpin_pin::{CambioPin, Contenido, Pin, TextosPin, icono_de, tamano_humano, tamano_natural};
+use pixpin_pin::{
+    CambioPin, Contenido, LupaPin, Paleta, Pin, TextosPin, icono_de, tamano_humano, tamano_natural,
+};
 use pixpin_render::MotorRender;
 use pixpin_store::{Almacen, ColorGrupo, PinGuardado, TipoEntrada};
-use pixpin_ui::{Anotador, EfectoAnotador, EventoAnotador, TeclaAnotador};
+use pixpin_ui::{
+    Anotador, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, Herramienta, Lupa,
+    TeclaAnotador,
+};
 use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 
 /// La paleta de grupos en RGB (D35). Vive aqui porque es la traduccion
@@ -93,6 +98,14 @@ struct Anotacion {
     /// El elemento que se esta arrastrando ahora mismo: se pinta pero no
     /// esta en la escena todavia, asi que no se guarda ni se deshace.
     en_curso: Option<pixpin_motor2d::Elemento>,
+    /// La caja de herramientas junto al pin y la ventana que la muestra
+    /// (D58). La paleta muere con la anotacion: su `Drop` la destruye.
+    caja: CajaHerramientas,
+    paleta: Paleta,
+    escala_por_cien: u32,
+    /// Donde estaba el raton la ultima vez, en coordenadas del contenido:
+    /// la lupa se recalcula desde aqui cuando la rueda cambia el aumento.
+    ultimo_cursor: Punto,
 }
 
 impl Anotacion {
@@ -465,6 +478,14 @@ impl Pines {
             CambioPin::EscapeAnotando => {
                 self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Escape))
             }
+            CambioPin::CaracterAnotando(c) => self.anotar(id, EventoAnotador::Caracter(c)),
+            CambioPin::EnterAnotando => {
+                self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Enter))
+            }
+            CambioPin::RetrocesoAnotando => {
+                self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Retroceso))
+            }
+            CambioPin::PaletaPulsada(p) => self.paleta_pulsada(id, p),
             // Movido, Redimensionado y Cerrado los resuelve el callback.
             _ => Ok(()),
         }
@@ -484,6 +505,7 @@ impl Pines {
 
     /// Doble clic: entra en modo anotacion cargando lo que ya hubiera.
     fn entrar_a_anotar(&mut self, id: u64) -> Result<()> {
+        let t0 = std::time::Instant::now();
         // Salir del anterior guardando: dos pines anotandose a la vez no
         // significa nada y enredaria el foco del teclado.
         self.salir_de_anotar()?;
@@ -495,17 +517,100 @@ impl Pines {
         // La semilla arranca del id: dos pines distintos no dibujan igual.
         let anotador = Anotador::nuevo((id as u32).wrapping_mul(2_654_435_761) | 1);
 
-        if let Some(pin) = self.vivos.get(&id) {
-            pin.poner_modo_anotacion(true);
-            pin.poner_anotaciones(pixpin_motor2d::ordenes_de_escena(&escena));
-        }
+        let pin = self.vivos.get(&id).context("el pin no esta en pantalla")?;
+        // La paleta se coloca respecto al contenido del pin y al area de
+        // trabajo de SU monitor: en otro monitor se saldria de la pantalla.
+        let contenido = pin.rect_contenido();
+        let disposicion = pixpin_capture::enumerar_monitores().context("sin monitores")?;
+        let monitor = disposicion
+            .monitores()
+            .iter()
+            .find(|m| {
+                m.area.contiene(Punto {
+                    x: contenido.x,
+                    y: contenido.y,
+                })
+            })
+            .or_else(|| disposicion.principal())
+            .copied()
+            .context("sin monitor para la paleta")?;
+        let caja =
+            CajaHerramientas::colocar(contenido, monitor.area_trabajo, monitor.escala_por_cien);
+        let pedidos = Rc::clone(&self.pedidos);
+        let hwnd_app = self.hwnd_app;
+        let paleta = Paleta::nueva(
+            &self.d3d,
+            Rc::clone(&self.motor),
+            caja.marco,
+            Box::new(move |p| {
+                // Mismo camino que el menu del pin: se apunta y se despierta
+                // al bucle, que lo atiende fuera del prestamo.
+                pedidos.borrow_mut().push((id, CambioPin::PaletaPulsada(p)));
+                pixpin_shell::despertar(hwnd_app);
+            }),
+        )
+        .context("no se pudo crear la paleta del pin")?;
+
+        pin.poner_modo_anotacion(true);
+        pin.poner_anotaciones(pixpin_motor2d::ordenes_de_escena(&escena));
         self.anotacion = Some(Anotacion {
             id,
             escena,
             anotador,
             en_curso: None,
+            caja,
+            paleta,
+            escala_por_cien: monitor.escala_por_cien,
+            ultimo_cursor: Punto { x: 0, y: 0 },
         });
-        tracing::info!(id, "modo anotacion");
+        self.repintar_paleta();
+        tracing::info!(id, ms = t0.elapsed().as_millis() as u64, "modo anotacion");
+        Ok(())
+    }
+
+    /// Vuelve a pintar la paleta con la herramienta activa resaltada. El
+    /// pintor captura COPIAS: la paleta lo reusa en cada `WM_PAINT`.
+    fn repintar_paleta(&self) {
+        let Some(a) = &self.anotacion else {
+            return;
+        };
+        let caja = a.caja;
+        let activa = a.anotador.herramienta();
+        let escala = a.escala_por_cien;
+        let origen = Punto {
+            x: caja.marco.x,
+            y: caja.marco.y,
+        };
+        a.paleta.poner_pintor(Box::new(move |p| {
+            crate::caja_dibujo::pintar_caja(p, &caja, activa, escala, origen);
+        }));
+    }
+
+    /// Un clic en la paleta, en coordenadas de la paleta (D58).
+    fn paleta_pulsada(&mut self, id: u64, p: Punto) -> Result<()> {
+        let Some(a) = self.anotacion.as_ref().filter(|a| a.id == id) else {
+            return Ok(());
+        };
+        let global = Punto {
+            x: p.x + a.caja.marco.x,
+            y: p.y + a.caja.marco.y,
+        };
+        let Some(boton) = a.caja.boton_en(global) else {
+            return Ok(());
+        };
+        match boton {
+            BotonCaja::Elegir(h) => {
+                self.anotar(id, EventoAnotador::CambiarHerramienta(h))?;
+                self.repintar_paleta();
+            }
+            BotonCaja::Deshacer => {
+                self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Deshacer))?
+            }
+            BotonCaja::Rehacer => self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Rehacer))?,
+            // La paleta de colores llega con los ajustes visuales (S3-D).
+            BotonCaja::Color => {}
+            BotonCaja::Salir => self.salir_de_anotar()?,
+        }
         Ok(())
     }
 
@@ -534,6 +639,12 @@ impl Pines {
         let Some(a) = self.anotacion.as_mut().filter(|a| a.id == id) else {
             return Ok(());
         };
+        if let EventoAnotador::Mover(p) | EventoAnotador::Pulsar(p) = &evento {
+            a.ultimo_cursor = Punto {
+                x: p.x as i32,
+                y: p.y as i32,
+            };
+        }
         let efecto = a.anotador.procesar(evento);
         let mut repintar = true;
         let mut salir = false;
@@ -557,18 +668,52 @@ impl Pines {
             EfectoAnotador::Rehacer => {
                 a.escena.rehacer();
             }
-            // El editor de texto in situ llega con S3-C, que trae la
-            // infraestructura de entrada de texto (IME incluido).
-            EfectoAnotador::PedirTexto(_) => {
-                tracing::info!("el texto llega con S3-C");
-                repintar = false;
-            }
             EfectoAnotador::Salir => salir = true,
         }
 
         if repintar && !salir {
             let ordenes = a.ordenes();
+            let escribiendo = a.anotador.editando_texto();
+            let con_lupa = a.anotador.herramienta() == Herramienta::Lupa;
+            let aumento = a.anotador.lupa();
+            let cursor = a.ultimo_cursor;
+            let escala = a.escala_por_cien;
             if let Some(pin) = self.vivos.get(&id) {
+                // Con un texto abierto, el IME compone al lado (D57).
+                if let Some(p) = escribiendo {
+                    pin.poner_posicion_ime(Punto {
+                        x: p.x as i32,
+                        y: p.y as i32,
+                    });
+                }
+                // La lupa (D52): la aritmetica aqui, los pixeles en el pin.
+                // Se coloca DENTRO del contenido, huyendo del cursor.
+                let r = pin.rect_contenido();
+                let l = Lupa::con_aumento(escala, aumento);
+                // En un pin mas pequeno que la lupa no cabe: sin lupa, en
+                // vez de una lupa que tape el pin entero.
+                let cabe = r.ancho > l.diametro && r.alto > l.diametro;
+                let lupa = if con_lupa && cabe {
+                    let local = Rect {
+                        x: 0,
+                        y: 0,
+                        ancho: r.ancho,
+                        alto: r.alto,
+                    };
+                    let pos = l.colocar(cursor, local);
+                    Some(LupaPin {
+                        fuente: l.region_fuente(cursor, local),
+                        destino: Rect {
+                            x: pos.x,
+                            y: pos.y,
+                            ancho: l.diametro,
+                            alto: l.diametro,
+                        },
+                    })
+                } else {
+                    None
+                };
+                pin.poner_lupa(lupa);
                 pin.poner_anotaciones(ordenes);
             }
         }
@@ -601,7 +746,12 @@ impl Pines {
         pin.poner_rect(nuevo);
         self.almacen
             .borrow_mut()
-            .actualizar_pin(id, Some(Pines::guardado_desde(nuevo, 100)))
+            // Con la escala REAL del pin: guardar 100 en un monitor al 150 %
+            // hacia que el pin volviera 1,5 veces mas grande tras reiniciar.
+            .actualizar_pin(
+                id,
+                Some(Pines::guardado_desde(nuevo, pin.escala_por_cien())),
+            )
             .ok();
         Ok(())
     }

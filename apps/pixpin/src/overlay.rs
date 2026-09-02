@@ -166,6 +166,16 @@ impl Recursos {
         Rc::clone(&self.motor)
     }
 
+    pub fn dispositivo(&self) -> &Dispositivo {
+        &self.dispositivo
+    }
+
+    /// La pantalla de un monitor AHORA, por la via que este disponible.
+    /// La usa la capa viva para quedarse con lo que el usuario veia.
+    pub fn congelar_monitor(&mut self, m: &Monitor) -> Result<Instantanea> {
+        self.congelar(m)
+    }
+
     /// Deja `bases` con exactamente una ventana por monitor actual. Si la
     /// disposicion no cambio, no hace nada; si cambio (monitor conectado,
     /// resolucion nueva), reconstruye solo entonces.
@@ -566,6 +576,14 @@ fn procesar_evento(
         EventoOverlay::CambioDpi => Continuar::Si,
         // Alt+F4 sobre el overlay: cancelar limpiamente.
         EventoOverlay::Cerrar => Continuar::No,
+        // El overlay de captura no usa la rueda, ni escribe texto, ni
+        // reacciona a las teclas soltadas; la capa de anotacion de S3-C si.
+        // Un atajo global pulsado con el overlay abierto se descarta: si
+        // volviera a la cola principal, reabriria el overlay al cerrarlo.
+        EventoOverlay::Rueda(_)
+        | EventoOverlay::Caracter(_)
+        | EventoOverlay::TeclaSoltada(_)
+        | EventoOverlay::Atajo(_) => Continuar::Si,
     }
 }
 

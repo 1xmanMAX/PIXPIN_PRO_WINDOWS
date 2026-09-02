@@ -9,6 +9,7 @@
 //! Este WndProc JAMAS llama a PostQuitMessage — tercera vez que la mina de
 //! S1-A esta a punto de pisarse, tercera vez que el comentario lo impide.
 
+use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Once;
 
@@ -26,6 +27,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, VK_CONTROL, VK_DOWN, VK_ESCAPE, VK_LEFT, VK_RIGHT,
     VK_SHIFT, VK_UP,
 };
+use windows::Win32::UI::Input::KeyboardAndMouse::{VK_BACK, VK_RETURN};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
@@ -68,6 +70,26 @@ pub enum CambioPin {
     RuedaGirada(i32),
     /// Escape mientras se anota: lo interpreta la maquina, no la ventana.
     EscapeAnotando,
+    /// Un caracter escrito mientras se anota, ya compuesto (WM_CHAR, IME
+    /// incluido) (D57).
+    CaracterAnotando(char),
+    /// Enter mientras se anota: confirma el texto en curso.
+    EnterAnotando,
+    /// Retroceso mientras se anota: borra el ultimo caracter.
+    RetrocesoAnotando,
+    /// Un clic en la paleta flotante del pin, en coordenadas de la paleta
+    /// (D58). Lo produce la paleta, no esta ventana, pero viaja por la
+    /// misma cola del gestor.
+    PaletaPulsada(Punto),
+}
+
+/// La lupa dentro del pin (D52): que trozo del contenido se amplia y donde
+/// se dibuja, las dos en coordenadas del contenido. La aritmetica la hace el
+/// gestor (la `Lupa` de `pixpin-ui` es L3); el pin solo copia pixeles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LupaPin {
+    pub fuente: Rect,
+    pub destino: Rect,
 }
 
 /// Identificador del temporizador que agrupa el guardado tras una rafaga de
@@ -175,6 +197,9 @@ struct PinInterno {
     /// En modo anotacion el pin NO se mueve ni se redimensiona: arrastrar
     /// dibuja. Sin un modo explicito, el gesto seria ambiguo (D47).
     anotando: bool,
+    /// La lupa, mientras la herramienta activa sea la lupa. No es un
+    /// elemento: no se guarda (D52).
+    lupa: Option<LupaPin>,
     al_cambiar: Box<dyn Fn(CambioPin)>,
 }
 
@@ -183,6 +208,12 @@ pub struct Pin {
 }
 
 static REGISTRO: Once = Once::new();
+
+thread_local! {
+    /// La mitad alta de un par subrogado UTF-16 a la espera de su mitad
+    /// baja: WM_CHAR entrega un emoji en dos mensajes.
+    static MITAD_ALTA: Cell<Option<u16>> = const { Cell::new(None) };
+}
 
 impl Pin {
     /// Crea el pin visible (sin robar el foco: spec 4.4) con su contenido ya
@@ -258,6 +289,7 @@ impl Pin {
             textos: None,
             anotaciones: Vec::new(),
             anotando: false,
+            lupa: None,
             al_cambiar,
         });
         // SAFETY: la ventana es propia y viva; el Box se cede al USERDATA y
@@ -321,12 +353,59 @@ impl Pin {
         interno_de(self.hwnd).is_some_and(|i| i.anotando)
     }
 
+    /// La escala con la que nacio el pin (la de su monitor).
+    pub fn escala_por_cien(&self) -> u32 {
+        interno_de(self.hwnd).map_or(100, |i| i.escala_por_cien)
+    }
+
+    /// Coloca la ventana de composicion del IME donde se escribe (D57).
+    /// `p` esta en coordenadas del contenido; se suma el margen de sombra.
+    pub fn poner_posicion_ime(&self, p: Punto) {
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::UI::Input::Ime::{
+            CFS_POINT, COMPOSITIONFORM, ImmGetContext, ImmReleaseContext, ImmSetCompositionWindow,
+        };
+        let Some(i) = interno_de(self.hwnd) else {
+            return;
+        };
+        let m = (MARGEN_SOMBRA_LOGICO * i.escala_por_cien / 100) as i32;
+        // SAFETY: contexto del IME de una ventana propia, tomado y devuelto
+        // en la misma llamada; la estructura es local y valida.
+        unsafe {
+            let ctx = ImmGetContext(self.hwnd);
+            if ctx.is_invalid() {
+                return;
+            }
+            let forma = COMPOSITIONFORM {
+                dwStyle: CFS_POINT,
+                ptCurrentPos: POINT {
+                    x: p.x + m,
+                    y: p.y + m,
+                },
+                ..Default::default()
+            };
+            let _ = ImmSetCompositionWindow(ctx, &forma);
+            let _ = ImmReleaseContext(self.hwnd, ctx);
+        }
+    }
+
     /// Cambia lo que hay dibujado encima y repinta. Las ordenes vienen del
     /// motor 2D, que es quien sabe convertir elementos en geometria.
     pub fn poner_anotaciones(&self, ordenes: Vec<pixpin_motor2d::Orden>) {
         if let Some(i) = interno_de(self.hwnd) {
             i.anotaciones = ordenes;
             pintar(i);
+        }
+    }
+
+    /// Pone o quita la lupa (D52). Solo repinta si algo cambio: la lupa se
+    /// actualiza con cada movimiento del raton y repintar en balde cuesta.
+    pub fn poner_lupa(&self, lupa: Option<LupaPin>) {
+        if let Some(i) = interno_de(self.hwnd) {
+            if i.lupa != lupa {
+                i.lupa = lupa;
+                pintar(i);
+            }
         }
     }
 
@@ -539,6 +618,29 @@ fn pintar(i: &PinInterno) {
         // contenido original nunca se toca (D48). Se dibujan en coordenadas
         // del contenido, asi que hay que sumarles el margen de la sombra.
         pintar_anotaciones(p, i, m);
+
+        // La lupa amplia el bitmap NATIVO del pin: si el pin esta escalado,
+        // la fuente en pixeles del contenido se convierte a pixeles de la
+        // imagen, y la lupa ensena detalle real, no pixeles ya estirados.
+        if let (Some(l), Some(b)) = (&i.lupa, &i.bitmap) {
+            let (nw, nh) = i.imagen_nativa;
+            let fx = nw as f32 / w.max(1.0);
+            let fy = nh as f32 / h.max(1.0);
+            let fuente = RectF {
+                x: l.fuente.x as f32 * fx,
+                y: l.fuente.y as f32 * fy,
+                ancho: l.fuente.ancho as f32 * fx,
+                alto: l.fuente.alto as f32 * fy,
+            };
+            let destino = RectF {
+                x: l.destino.x as f32 + m,
+                y: l.destino.y as f32 + m,
+                ancho: l.destino.ancho as f32,
+                alto: l.destino.alto as f32,
+            };
+            p.bitmap(b, destino, Some(fuente), true);
+            p.trazar(destino, 2.0 * escala, Color::ACENTO);
+        }
     });
     let _ = i.superficie.presentar();
 }
@@ -585,8 +687,21 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
                 ancho_max,
                 ..
             } => p.texto_ajustado(texto, x + margen, y + margen, *tam, *ancho_max, color(*c)),
-            // Las imagenes incrustadas llegan con S3-C, cuando haya de donde
-            // sacar sus bitmaps.
+            // El velo del foco (D51) cubre el CONTENIDO del pin, no la
+            // ventana entera: la sombra queda fuera del oscurecido.
+            Orden::Velo { hueco, color: c } => {
+                let r = i.estado.rect();
+                let marco = RectF {
+                    x: margen,
+                    y: margen,
+                    ancho: r.ancho as f32,
+                    alto: r.alto as f32,
+                };
+                let v: Vec<(f32, f32)> = hueco.iter().map(mover).collect();
+                p.velo(marco, &v, color(*c));
+            }
+            // Las imagenes incrustadas quedan para S6 (D61), cuando haya un
+            // almacen de bitmaps por anotacion de donde sacarlas.
             Orden::Imagen { .. } => {}
         }
     }
@@ -823,6 +938,46 @@ extern "system" fn procedimiento_pin(
             if let Some(i) = interno_de(hwnd) {
                 i.enfocado = mensaje == WM_SETFOCUS;
                 pintar(i);
+            }
+            LRESULT(0)
+        }
+        WM_CHAR => {
+            // Solo anotando: fuera de ese modo el pin no escribe nada. WM_CHAR
+            // trae unidades UTF-16 y un emoji llega en dos; el IME entrega
+            // por aqui el texto ya compuesto (D57).
+            if let Some(i) = interno_de(hwnd) {
+                if i.anotando {
+                    let unidad = wparam.0 as u16;
+                    let caracter = MITAD_ALTA.with(|alta| {
+                        if (0xD800..0xDC00).contains(&unidad) {
+                            alta.set(Some(unidad));
+                            None
+                        } else if (0xDC00..0xE000).contains(&unidad) {
+                            let a = alta.take()?;
+                            char::decode_utf16([a, unidad]).next()?.ok()
+                        } else {
+                            alta.set(None);
+                            char::from_u32(unidad as u32)
+                        }
+                    });
+                    if let Some(c) = caracter {
+                        (i.al_cambiar)(CambioPin::CaracterAnotando(c));
+                    }
+                }
+            }
+            LRESULT(0)
+        }
+        WM_KEYDOWN
+            if wparam.0 as u32 == VK_RETURN.0 as u32 || wparam.0 as u32 == VK_BACK.0 as u32 =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                if i.anotando {
+                    (i.al_cambiar)(if wparam.0 as u32 == VK_RETURN.0 as u32 {
+                        CambioPin::EnterAnotando
+                    } else {
+                        CambioPin::RetrocesoAnotando
+                    });
+                }
             }
             LRESULT(0)
         }

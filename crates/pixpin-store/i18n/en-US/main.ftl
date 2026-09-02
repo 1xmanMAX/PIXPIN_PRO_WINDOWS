@@ -43,3 +43,6 @@ pin-cerrar = Close
 pin-eliminar = Delete from store…
 pin-eliminar-confirmar = This will permanently delete it from the store. Are you sure?
 grupos-ocultos = Hidden groups
+
+capa-guardar-titulo = Screen annotation
+capa-guardar-pregunta = Keep the drawing as a pin?
