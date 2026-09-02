@@ -61,6 +61,7 @@ pub fn ejecutar_scroll(recursos: &mut Recursos, region: Rect) -> Result<Option<I
     let mut cosedor = Cosedor::nuevo(region.ancho, ALTO_MAXIMO);
     let mut quietos = 0u32;
     let mut pasos = 0u32;
+    let mut anterior: Option<ImagenRgba> = None;
     let fin;
 
     loop {
@@ -74,23 +75,38 @@ pub fn ejecutar_scroll(recursos: &mut Recursos, region: Rect) -> Result<Option<I
         }
 
         let marco = capturar_asentado(recursos, &monitor, region)?;
-        match cosedor.anadir(&marco) {
-            Resultado::Primero | Resultado::Anadido => quietos = 0,
-            Resultado::SinMovimiento => {
-                quietos += 1;
-                if quietos >= PASOS_QUIETOS_PARA_PARAR {
-                    fin = Fin::FinalDePagina;
+        // Si la pantalla no cambio desde el paso anterior, la pagina se
+        // acabo: el cosedor puede no saberlo (una banda lisa al final es
+        // "incierta", no "sin movimiento"), pero los pixeles no mienten.
+        let identico = anterior
+            .as_ref()
+            .is_some_and(|a: &ImagenRgba| a.pixeles == marco.pixeles);
+        if identico {
+            quietos += 1;
+            if quietos >= PASOS_QUIETOS_PARA_PARAR {
+                fin = Fin::FinalDePagina;
+                break;
+            }
+        } else {
+            match cosedor.anadir(&marco) {
+                Resultado::Primero | Resultado::Anadido => quietos = 0,
+                Resultado::SinMovimiento => {
+                    quietos += 1;
+                    if quietos >= PASOS_QUIETOS_PARA_PARAR {
+                        fin = Fin::FinalDePagina;
+                        break;
+                    }
+                }
+                // Un fotograma dudoso se descarta y se sigue: el siguiente
+                // ya viene de camino.
+                Resultado::Incierto => {}
+                Resultado::Lleno => {
+                    fin = Fin::AltoMaximo;
                     break;
                 }
             }
-            // Un fotograma dudoso se descarta y se sigue: el siguiente ya
-            // viene de camino.
-            Resultado::Incierto => {}
-            Resultado::Lleno => {
-                fin = Fin::AltoMaximo;
-                break;
-            }
         }
+        anterior = Some(marco);
 
         pixpin_shell::rueda_en(centro, MUESCAS_POR_PASO);
         pasos += 1;
