@@ -303,7 +303,7 @@ pub fn ejecutar_overlay(
             &mut estado,
             &mut barra,
             &mut muestra_color,
-            &piezas,
+            &mut piezas,
             &uia,
             dispositivo,
             motor,
@@ -380,11 +380,11 @@ fn procesar_evento(
     estado: &mut EstadoOverlay,
     barra: &mut Option<Barra>,
     muestra_color: &mut [u8; 4],
-    piezas: &[Pieza],
+    piezas: &mut [Pieza],
     uia: &Uia,
     dispositivo: &Dispositivo,
     motor: &MotorRender,
-    _nivel: Nivel, // reservado: la integracion del modo vivo lo consume
+    nivel: Nivel,
     modo: ModoConfirmacion,
     textos: &TextosBarra,
     formato_color: FormatoColorLupa,
@@ -429,7 +429,7 @@ fn procesar_evento(
                 FormaCursor::RedimNeSo => FormaCursorWin::RedimNeSo,
                 FormaCursor::RedimNoSe => FormaCursorWin::RedimNoSe,
             };
-            for pieza in piezas {
+            for pieza in piezas.iter() {
                 pieza.ventana().poner_cursor(forma);
             }
             // La lupa sigue al raton: se redibujan todas las que tocan algo.
@@ -459,7 +459,16 @@ fn procesar_evento(
                 }
             }
             let efecto = estado.procesar(EventoEntrada::BotonSoltado(p));
-            aplicar_efecto(efecto, estado, barra, piezas, modo)
+            aplicar_efecto(
+                efecto,
+                estado,
+                barra,
+                piezas,
+                dispositivo,
+                motor,
+                nivel,
+                modo,
+            )
         }
         EventoOverlay::Tecla { vk, shift } => {
             if barra.is_some() {
@@ -485,16 +494,36 @@ fn procesar_evento(
             match tecla {
                 Some(t) => {
                     let efecto = estado.procesar(EventoEntrada::Tecla(t));
-                    aplicar_efecto(efecto, estado, barra, piezas, modo)
+                    aplicar_efecto(
+                        efecto,
+                        estado,
+                        barra,
+                        piezas,
+                        dispositivo,
+                        motor,
+                        nivel,
+                        modo,
+                    )
                 }
                 None => Continuar::Si,
             }
         }
         EventoOverlay::Despierta => {
-            // Hoy el unico emisor de MSG_DESPIERTA es el hilo UIA; el modo
-            // vivo (sesiones + fondo_vivo) se integra al final de la fase,
-            // sobre las SesionViva ya probadas.
+            // Dos emisores comparten MSG_DESPIERTA: el hilo UIA (candidatos
+            // frescos) y las sesiones en vivo (fotograma nuevo). Atender
+            // ambos es mas barato que distinguirlos.
             let _ = estado.procesar(EventoEntrada::Candidatos(uia.candidatos()));
+            if estado.vivo() {
+                for p in piezas.iter_mut() {
+                    if let Some(textura) = p.sesion.as_ref().and_then(|s| s.ultimo()) {
+                        // Si envolver falla (textura en transito), se ignora:
+                        // el proximo fotograma lo reintenta.
+                        if let Ok(b) = motor.bitmap_desde_textura(&textura) {
+                            p.fondo_vivo = Some(b);
+                        }
+                    }
+                }
+            }
             invalidar_todas(piezas);
             Continuar::Si
         }
@@ -528,18 +557,60 @@ fn decidir_accion(accion: AccionBarra, region: Rect) -> Continuar {
     Continuar::No
 }
 
+#[allow(clippy::too_many_arguments)] // los brazos comparten el contexto entero del bucle
 fn aplicar_efecto(
     efecto: Efecto,
     estado: &mut EstadoOverlay,
     barra: &mut Option<Barra>,
-    piezas: &[Pieza],
+    piezas: &mut [Pieza],
+    dispositivo: &Dispositivo,
+    _motor: &MotorRender, // simetria con procesar_evento; el vivo usa el del Despierta
+    nivel: Nivel,
     modo: ModoConfirmacion,
 ) -> Continuar {
     match efecto {
         Efecto::Nada => Continuar::Si,
-        Efecto::Redibujar | Efecto::AlternarVivo => {
-            // El modo vivo (sesiones + fondo_vivo) se integra al final de la
-            // fase sobre las SesionViva ya probadas; el estado ya conmuta.
+        Efecto::Redibujar => {
+            for p in piezas {
+                p.ventana().invalidar();
+            }
+            Continuar::Si
+        }
+        Efecto::AlternarVivo => {
+            if estado.vivo() {
+                // Abrir una sesion WGC por monitor. El tope de FPS es el
+                // primer consumidor real del nivel (D14/5.2): Completo sin
+                // tope, Ligero a 30 fps — sobre una iGPU compartida,
+                // refrescar a 60 Hz roba lo que la captura final necesita.
+                let tope = match nivel {
+                    Nivel::Completo => std::time::Duration::ZERO,
+                    Nivel::Ligero => std::time::Duration::from_millis(33),
+                };
+                for p in piezas.iter_mut() {
+                    let aviso = Some((
+                        p.ventana().handle().0 as isize,
+                        pixpin_shell::overlay::MSG_DESPIERTA,
+                    ));
+                    match SesionViva::nueva(dispositivo, p.monitor().id, tope, aviso) {
+                        Ok(s) => p.sesion = Some(s),
+                        Err(e) => {
+                            tracing::warn!(?e, "sin sesion en vivo; el monitor queda congelado");
+                        }
+                    }
+                }
+            } else {
+                // Volver a congelado: cerrar sesiones y soltar los fondos
+                // vivos. La instantanea original sigue siendo el fondo.
+                for p in piezas.iter_mut() {
+                    if let Some(s) = p.sesion.take() {
+                        // El total de fotogramas aceptados queda en el log:
+                        // es como se verifica el tope de 30 en Ligero.
+                        tracing::info!(aceptados = s.aceptados(), "sesion en vivo cerrada");
+                        s.cerrar();
+                    }
+                    p.fondo_vivo = None;
+                }
+            }
             for p in piezas {
                 p.ventana().invalidar();
             }
