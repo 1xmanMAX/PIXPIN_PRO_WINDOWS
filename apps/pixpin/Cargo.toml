@@ -15,6 +15,7 @@ fluent-bundle = "0.16.0"
 pixpin-capture = { version = "0.1.0", path = "../../crates/pixpin-capture" }
 pixpin-codec = { version = "0.1.0", path = "../../crates/pixpin-codec" }
 pixpin-geom = { version = "0.1.0", path = "../../crates/pixpin-geom" }
+pixpin-motor2d = { version = "0.1.0", path = "../../crates/pixpin-motor2d" }
 pixpin-nivel = { version = "0.1.0", path = "../../crates/pixpin-nivel" }
 pixpin-pin = { version = "0.1.0", path = "../../crates/pixpin-pin" }
 pixpin-render = { version = "0.1.0", path = "../../crates/pixpin-render" }
