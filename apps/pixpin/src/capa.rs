@@ -13,11 +13,12 @@
 //! rapido.
 
 use anyhow::{Context, Result};
-use pixpin_capture::Instantanea;
+use pixpin_capture::{Dispositivo, Instantanea, SesionViva};
 use pixpin_geom::{Monitor, Punto, Rect};
 use pixpin_motor2d::{Escena, Orden, Punto2};
+use pixpin_nivel::Nivel;
 use pixpin_render::{Color, MotorRender, RectF, Superficie};
-use pixpin_shell::overlay::VentanaOverlay;
+use pixpin_shell::overlay::{MSG_DESPIERTA, VentanaOverlay};
 use pixpin_ui::{
     Anotador, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, Herramienta, Lupa,
     TeclaAnotador,
@@ -61,9 +62,10 @@ pub struct CapaViva {
     /// Ultima posicion conocida del cursor: la lupa la necesita para saber
     /// que ampliar sin esperar a un clic.
     cursor: Punto,
-    /// Lo ultimo que se vio debajo de la capa, para la lupa (D60).
-    muestra: Option<Fondo>,
-    ultima_muestra: Instant,
+    /// La pantalla viva para la lupa (D60): una sesion WGC con tope de fps
+    /// que solo existe mientras la lupa esta activa. Capturar el monitor
+    /// entero en cada movimiento del raton costaba un 28 % de CPU.
+    sesion: Option<SesionViva>,
     /// El pasante elegido con Espacio o con el atajo (D50). Ctrl mantenido
     /// lo activa solo mientras dura, y al soltarlo se vuelve a este.
     pasante_fijo: bool,
@@ -118,8 +120,7 @@ impl CapaViva {
             en_curso: None,
             caja,
             cursor: Punto { x: 0, y: 0 },
-            muestra: None,
-            ultima_muestra: Instant::now(),
+            sesion: None,
             pasante_fijo: false,
         })
     }
@@ -168,27 +169,40 @@ impl CapaViva {
         self.monitor
     }
 
-    /// Si hace falta una captura fresca para la lupa (D60): solo con la
-    /// lupa activa, recogiendo el raton, y como mucho 60 veces por segundo.
-    pub fn quiere_muestra(&self) -> bool {
-        // Con fondo congelado la lupa amplia el fondo: no hay nada nuevo
-        // que muestrear.
+    /// Si la lupa necesita ver la pantalla viva (D60): solo en modo vivo
+    /// (en congelado amplia la foto), con la lupa activa y recogiendo el
+    /// raton.
+    pub fn quiere_sesion(&self) -> bool {
         self.fondo.is_none()
             && self.anotador.herramienta() == Herramienta::Lupa
             && !self.ventana.es_pasante()
-            && self.ultima_muestra.elapsed() >= Duration::from_millis(16)
     }
 
-    /// La pantalla de ahora mismo, para que la lupa la amplie.
-    pub fn poner_muestra(&mut self, instantanea: Instantanea) {
-        if let Ok(bitmap) = self.motor.bitmap_desde_textura(instantanea.textura()) {
-            self.muestra = Some(Fondo {
-                _instantanea: instantanea,
-                bitmap,
-            });
+    pub fn tiene_sesion(&self) -> bool {
+        self.sesion.is_some()
+    }
+
+    /// Abre la sesion en vivo para la lupa. Cada fotograma nuevo despierta
+    /// la ventana (MSG_DESPIERTA) y la capa se repinta con el: la lupa se
+    /// mueve aunque el raton este quieto. El tope de fps es el del nivel,
+    /// como en el modo vivo del overlay (D14).
+    pub fn abrir_sesion(&mut self, dispositivo: &Dispositivo, nivel: Nivel) {
+        let tope = match nivel {
+            Nivel::Completo => Duration::ZERO,
+            Nivel::Ligero => Duration::from_millis(33),
+        };
+        let aviso = Some((self.ventana.handle().0 as isize, MSG_DESPIERTA));
+        match SesionViva::nueva(dispositivo, self.monitor.id, tope, aviso) {
+            Ok(s) => self.sesion = Some(s),
+            Err(e) => tracing::warn!(?e, "sin sesion en vivo; la lupa no vera la pantalla"),
         }
-        self.ultima_muestra = Instant::now();
-        self.pintar();
+    }
+
+    pub fn cerrar_sesion(&mut self) {
+        if let Some(s) = self.sesion.take() {
+            tracing::info!(aceptados = s.aceptados(), "sesion de la lupa cerrada");
+            s.cerrar();
+        }
     }
 
     /// Un evento del raton en coordenadas del escritorio virtual. Devuelve
@@ -362,9 +376,21 @@ impl CapaViva {
         if self.anotador.herramienta() != Herramienta::Lupa {
             return;
         }
-        // Congelada: amplia la foto. Viva: lo ultimo muestreado.
-        let Some(fondo) = self.fondo.as_ref().or(self.muestra.as_ref()) else {
-            return;
+        // Congelada: amplia la foto. Viva: el ultimo fotograma de la sesion,
+        // envuelto sin copiar (el bitmap ES la textura).
+        let vivo;
+        let fuente_bitmap = match &self.fondo {
+            Some(f) => &f.bitmap,
+            None => {
+                let Some(textura) = self.sesion.as_ref().and_then(|s| s.ultimo()) else {
+                    return;
+                };
+                let Ok(b) = self.motor.bitmap_desde_textura(&textura) else {
+                    return;
+                };
+                vivo = b;
+                &vivo
+            }
         };
         let lupa = Lupa::con_aumento(self.escala_por_cien, self.anotador.lupa());
         let local = Rect {
@@ -383,7 +409,7 @@ impl CapaViva {
             alto: d,
         };
         p.bitmap(
-            &fondo.bitmap,
+            fuente_bitmap,
             destino,
             Some(RectF {
                 x: fuente.x as f32,
@@ -478,6 +504,7 @@ const VK_SPACE: u32 = 0x20;
 pub fn ejecutar_capa(
     recursos: &mut crate::overlay::Recursos,
     modo: ModoCapa,
+    nivel: Nivel,
 ) -> Result<Option<pixpin_codec::ImagenRgba>> {
     use pixpin_shell::overlay::{EventoOverlay, bucle_modal};
     use pixpin_shell::ventana::Continuar;
@@ -512,20 +539,15 @@ pub fn ejecutar_capa(
     let ventanas = [];
     // Ctrl mantenido, para distinguir Ctrl+Z de la letra Z.
     let mut ctrl = false;
+    let dispositivo = recursos.dispositivo();
     bucle_modal(&ventanas, |_, evento| {
         let seguir = match evento {
             EventoOverlay::BotonPulsado(p) => capa.raton(EventoRaton::Pulsar(p)),
-            EventoOverlay::RatonMovido(p) => {
-                let seguir = capa.raton(EventoRaton::Mover(p));
-                // La lupa sobre pantalla viva necesita ver lo de debajo
-                // AHORA, no lo de cuando se abrio la capa (D60).
-                if seguir && capa.quiere_muestra() {
-                    match recursos.congelar_monitor(&capa.monitor()) {
-                        Ok(inst) => capa.poner_muestra(inst),
-                        Err(e) => tracing::debug!(?e, "sin muestra para la lupa"),
-                    }
-                }
-                seguir
+            EventoOverlay::RatonMovido(p) => capa.raton(EventoRaton::Mover(p)),
+            // Un fotograma nuevo de la sesion de la lupa: repintar con el.
+            EventoOverlay::Despierta => {
+                capa.pintar();
+                true
             }
             EventoOverlay::BotonSoltado(p) => capa.raton(EventoRaton::Soltar(p)),
             EventoOverlay::Tecla { vk, shift } => match vk {
@@ -578,9 +600,24 @@ pub fn ejecutar_capa(
             EventoOverlay::Cerrar => false,
             _ => true,
         };
+        // La sesion en vivo de la lupa existe exactamente mientras hace
+        // falta: se abre al elegir la lupa y se cierra al cambiar de
+        // herramienta o al pasar a pasante.
+        if seguir {
+            if capa.quiere_sesion() {
+                if !capa.tiene_sesion() {
+                    capa.abrir_sesion(dispositivo, nivel);
+                }
+            } else if capa.tiene_sesion() {
+                capa.cerrar_sesion();
+            }
+        }
         if seguir { Continuar::Si } else { Continuar::No }
     });
 
+    // La sesion se cierra pase lo que pase: sin esto, salir con la lupa
+    // activa dejaria un hilo de captura vivo para siempre.
+    capa.cerrar_sesion();
     if !capa.tiene_dibujo() {
         return Ok(None);
     }

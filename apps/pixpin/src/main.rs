@@ -350,7 +350,7 @@ fn arrancar(
                     Some(r) => Ok(r),
                     nada => Recursos::nuevos().map(|r| nada.insert(r)),
                 };
-                match listo.and_then(|r| capa::ejecutar_capa(r, modo)) {
+                match listo.and_then(|r| capa::ejecutar_capa(r, modo, decision.nivel)) {
                     // D54: cerrar sin avisar tirando cinco minutos de
                     // anotaciones es el peor fallo posible aqui. Se pregunta
                     // con la capa ya cerrada, para que el cuadro no salga en
