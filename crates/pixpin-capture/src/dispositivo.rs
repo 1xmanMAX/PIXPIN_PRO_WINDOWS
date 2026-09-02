@@ -14,8 +14,8 @@ use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 use windows::Win32::Foundation::HMODULE;
 use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP};
 use windows::Win32::Graphics::Direct3D11::{
-    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device,
-    ID3D11DeviceContext,
+    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CREATE_DEVICE_VIDEO_SUPPORT, D3D11_SDK_VERSION,
+    D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Multithread,
 };
 use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 use windows::Win32::System::WinRT::Direct3D11::CreateDirect3D11DeviceFromDXGIDevice;
@@ -49,6 +49,10 @@ pub struct Dispositivo {
     d3d: ID3D11Device,
     contexto: ID3D11DeviceContext,
     winrt: IDirect3DDevice,
+    /// Si se creo con `VIDEO_SUPPORT` (D66): sin el, Media Foundation no
+    /// puede compartir el dispositivo y los videos se ensenan como
+    /// documento.
+    soporta_video: bool,
 }
 
 impl Dispositivo {
@@ -60,9 +64,23 @@ impl Dispositivo {
     /// capturar. `BGRA_SUPPORT` es obligatorio: sin el, Direct2D no puede
     /// dibujar sobre estas texturas en S1-B2.
     pub fn nuevo() -> Result<Self, ErrorCaptura> {
-        for tipo in [D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP] {
+        // Primero con soporte de video (D66); si el driver lo rechaza, sin
+        // el: capturar es mas importante que reproducir, y un driver raro
+        // no puede dejar la aplicacion sin capturas.
+        let intentos = [
+            (D3D_DRIVER_TYPE_HARDWARE, true),
+            (D3D_DRIVER_TYPE_HARDWARE, false),
+            (D3D_DRIVER_TYPE_WARP, true),
+            (D3D_DRIVER_TYPE_WARP, false),
+        ];
+        for (tipo, con_video) in intentos {
             let mut d3d: Option<ID3D11Device> = None;
             let mut contexto: Option<ID3D11DeviceContext> = None;
+            let flags = if con_video {
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT
+            } else {
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT
+            };
 
             // SAFETY: los tres punteros de salida son variables locales
             // inicializadas a None, que es lo que la API espera. El resto de
@@ -75,7 +93,7 @@ impl Dispositivo {
                     // El modulo de rasterizador software solo aplica a
                     // D3D_DRIVER_TYPE_SOFTWARE; para HARDWARE y WARP va nulo.
                     HMODULE::default(),
-                    D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                    flags,
                     None,
                     D3D11_SDK_VERSION,
                     Some(&mut d3d),
@@ -92,6 +110,18 @@ impl Dispositivo {
                 continue;
             };
 
+            // Media Foundation decodifica en sus propios hilos sobre este
+            // mismo dispositivo: sin proteccion multihilo, dos llamadas
+            // simultaneas corromperian el contexto inmediato.
+            if con_video {
+                if let Ok(multi) = d3d.cast::<ID3D11Multithread>() {
+                    // SAFETY: interfaz valida del dispositivo recien creado.
+                    unsafe {
+                        let _ = multi.SetMultithreadProtected(true);
+                    }
+                }
+            }
+
             let dxgi: IDXGIDevice = d3d.cast()?;
             // SAFETY: `dxgi` es una interfaz valida obtenida por `cast` del
             // dispositivo recien creado, que sigue vivo. La funcion devuelve
@@ -103,6 +133,7 @@ impl Dispositivo {
                 d3d,
                 contexto,
                 winrt,
+                soporta_video: con_video,
             });
         }
 
@@ -115,6 +146,11 @@ impl Dispositivo {
 
     pub fn d3d(&self) -> &ID3D11Device {
         &self.d3d
+    }
+
+    /// Si Media Foundation puede compartir este dispositivo (D66).
+    pub fn soporta_video(&self) -> bool {
+        self.soporta_video
     }
 
     pub fn contexto(&self) -> &ID3D11DeviceContext {
@@ -154,6 +190,12 @@ mod pruebas {
             desde_contexto.as_raw(),
             d.d3d().as_raw(),
             "el contexto debe pertenecer al mismo dispositivo"
+        );
+        // D66: en una GPU real y en WARP el soporte de video se concede; si
+        // aqui saliera false, los videos caerian a documento sin motivo.
+        assert!(
+            d.soporta_video(),
+            "el dispositivo deberia tener VIDEO_SUPPORT"
         );
     }
 }
