@@ -350,10 +350,20 @@ fn arrancar(
                     nada => Recursos::nuevos().map(|r| nada.insert(r)),
                 };
                 match listo.and_then(|r| capa::ejecutar_capa(r, modo)) {
+                    // D54: cerrar sin avisar tirando cinco minutos de
+                    // anotaciones es el peor fallo posible aqui. Se pregunta
+                    // con la capa ya cerrada, para que el cuadro no salga en
+                    // la captura.
+                    Ok(Some(_))
+                        if !pixpin_shell::preguntar(
+                            hwnd,
+                            &textos.t("capa-guardar-titulo"),
+                            &textos.t("capa-guardar-pregunta"),
+                        ) =>
+                    {
+                        tracing::info!("anotacion de pantalla descartada por el usuario");
+                    }
                     Ok(Some(imagen)) => {
-                        // Lo dibujado se queda como pin: si se cerrara sin
-                        // mas, cinco minutos de anotaciones se irian a la
-                        // basura (D54).
                         let hecho = preparar_pines(
                             &mut recursos_overlay,
                             &mut pines,

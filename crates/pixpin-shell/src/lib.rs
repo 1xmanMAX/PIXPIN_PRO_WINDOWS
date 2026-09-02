@@ -26,11 +26,12 @@ pub use atajos::{
     ID_PORTAPAPELES, ID_REGION, ID_SCROLL, registrar,
 };
 pub use bandeja::{Bandeja, EtiquetasMenu};
-pub use dialogo::{confirmar_destructivo, mostrar_error_fatal};
+pub use dialogo::{confirmar_destructivo, mostrar_error_fatal, preguntar};
 pub use entorno::{
     appdata, directorio_del_ejecutable, locale_del_sistema, posicion_del_cursor, tema_claro,
 };
 pub use instancia::{ErrorInstanciaUnica, InstanciaUnica, adquirir_instancia_unica};
+pub use overlay::esperar_composicion;
 pub use ventana::{
     Continuar, Evento, ID_MENU_AJUSTES, ID_MENU_CAPTURAR, ID_MENU_SALIR, VentanaMensajes,
     WM_BANDEJA, despertar,

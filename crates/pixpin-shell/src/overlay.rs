@@ -28,6 +28,20 @@ use windows::core::w;
 /// WM_APP+1: otros hilos lo PostMessage-an para despertar el bucle modal.
 pub const MSG_DESPIERTA: u32 = WM_APP + 1;
 
+/// Espera a que el compositor haya presentado lo ultimo que se dibujo.
+/// Dos vueltas: la primera cierra el fotograma en curso, la segunda
+/// garantiza que el nuestro ya esta en pantalla y, por tanto, en la
+/// captura que venga despues (D59).
+pub fn esperar_composicion() {
+    use windows::Win32::Graphics::Dwm::DwmFlush;
+    // SAFETY: sin precondiciones; un fallo (sin DWM) solo significa no
+    // esperar.
+    unsafe {
+        let _ = DwmFlush();
+        let _ = DwmFlush();
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventoOverlay {
     RatonMovido(Punto),

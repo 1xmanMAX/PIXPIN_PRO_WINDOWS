@@ -277,6 +277,13 @@ impl CapaViva {
 
     /// Repinta la capa entera: dibujo, trazo en curso y caja.
     pub fn pintar(&self) {
+        self.pintar_con(true);
+    }
+
+    /// Repinta con o sin interfaz (caja y lupa). Sin ella es lo que se
+    /// captura al salir: el dibujo sobre lo que habia debajo, no los
+    /// botones (D59).
+    pub fn pintar_con(&self, cromo: bool) {
         let Ok(destino) = self.superficie.empezar(&self.motor) else {
             return;
         };
@@ -284,7 +291,7 @@ impl CapaViva {
         if let Some(e) = &self.en_curso {
             ordenes.extend(pixpin_motor2d::ordenes(e));
         }
-        let pasante = self.ventana.es_pasante();
+        let pasante = self.ventana.es_pasante() || !cromo;
 
         let _ = self.motor.dibujar(&destino, |p| {
             // Transparente de verdad: lo que hay debajo se ve y se sigue
@@ -580,26 +587,25 @@ pub fn ejecutar_capa(
         return Ok(None);
     }
 
-    // La capa se oculta ANTES de capturar y la captura recoge la pantalla ya
-    // sin ella: lo que se pinea es el dibujo compuesto sobre el fondo real,
-    // que es lo que el usuario tenia delante.
-    let imagen = capturar_con_dibujo(recursos, &monitor, &capa)?;
+    // Sin caja ni lupa, y esperando a que el compositor lo haya puesto en
+    // pantalla: lo que se pinea es el dibujo sobre lo que habia debajo, no
+    // la interfaz (D59). La capa sigue viva hasta el `drop`, asi que la
+    // captura la recoge tal cual se ve.
+    capa.pintar_con(false);
+    pixpin_shell::esperar_composicion();
+    let imagen = capturar_con_dibujo(recursos, &monitor)?;
+    drop(capa);
     Ok(Some(imagen))
 }
 
-/// Compone el dibujo de la capa sobre una captura del monitor.
+/// La pantalla del monitor tal como esta ahora, bajada a memoria.
 fn capturar_con_dibujo(
     recursos: &mut crate::overlay::Recursos,
     monitor: &Monitor,
-    capa: &CapaViva,
 ) -> Result<pixpin_codec::ImagenRgba> {
-    // La capa sigue viva hasta que su `Drop` la destruya, asi que se captura
-    // la pantalla CON el dibujo encima: es exactamente lo que se ve.
     let instantanea = recursos
         .congelar_monitor(monitor)
         .context("no se pudo capturar la pantalla anotada")?;
-    let imagen = pixpin_capture::a_imagen(recursos.dispositivo(), &instantanea)
-        .context("no se pudo bajar la captura a memoria")?;
-    let _ = capa;
-    Ok(imagen)
+    pixpin_capture::a_imagen(recursos.dispositivo(), &instantanea)
+        .context("no se pudo bajar la captura a memoria")
 }
