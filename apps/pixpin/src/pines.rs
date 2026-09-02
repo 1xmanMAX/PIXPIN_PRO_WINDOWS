@@ -13,7 +13,8 @@ use pixpin_codec::{ImagenRgba, cargar, codificar_png};
 use pixpin_geom::{DisposicionMonitores, Monitor, Punto, Rect, recolocar_en_area};
 use pixpin_motor2d::Escena;
 use pixpin_pin::{
-    CambioPin, Contenido, LupaPin, Paleta, Pin, TextosPin, icono_de, tamano_humano, tamano_natural,
+    CambioPin, Contenido, LupaPin, Paleta, Pin, Presentacion, TextosPin, icono_de, miniatura_de,
+    presentacion_de, tamano_humano, tamano_natural,
 };
 use pixpin_render::MotorRender;
 use pixpin_store::{Almacen, ColorGrupo, PinGuardado, TipoEntrada};
@@ -89,8 +90,9 @@ pub struct Pines {
     /// foco del teclado sin ganar nada.
     anotacion: Option<Anotacion>,
     /// Cada cuanto pregunta un pin de video por fotogramas (D67): lo decide
-    /// el nivel de rendimiento al arrancar.
-    ritmo_video_ms: u32,
+    /// el nivel de rendimiento al arrancar. `None` si el dispositivo no
+    /// soporta video (D66): entonces los videos se ensenan como documento.
+    ritmo_video: Option<u32>,
 }
 
 /// Un pin en modo anotacion: su dibujo, su maquina y su elemento en curso.
@@ -132,7 +134,7 @@ impl Pines {
         textos: TextosPin,
         texto_confirmar_eliminar: String,
         hwnd_app: windows::Win32::Foundation::HWND,
-        ritmo_video_ms: u32,
+        ritmo_video: Option<u32>,
     ) -> Result<Pines> {
         let almacen = Almacen::abrir(raiz).context("no se pudo abrir el almacen")?;
         Ok(Pines {
@@ -148,7 +150,7 @@ impl Pines {
             texto_confirmar_eliminar,
             hwnd_app,
             anotacion: None,
-            ritmo_video_ms,
+            ritmo_video,
         })
     }
 
@@ -180,7 +182,7 @@ impl Pines {
             region,
             escala,
             self.tema_claro,
-            self.ritmo_video_ms,
+            self.ritmo_video.unwrap_or(16),
             Box::new(move |cambio| {
                 let resultado = match cambio {
                     CambioPin::Movido(r) | CambioPin::Redimensionado(r) => almacen
@@ -274,9 +276,99 @@ impl Pines {
         self.crear_ventana(id, contenido, region, monitor.escala_por_cien)
     }
 
+    /// Como se ensena un archivo por referencia (D62/D65): video si la
+    /// extension lo dice y el dispositivo puede reproducirlo; si no,
+    /// documento cuando la Shell tiene miniatura, y ficha en ultimo caso.
+    fn contenido_de_archivo(&self, ruta: &Path) -> Contenido {
+        let nombre = ruta
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| ruta.to_string_lossy().into_owned());
+        let es_video = presentacion_de(ruta) == Presentacion::Video
+            && self.ritmo_video.is_some()
+            && ruta.is_file();
+        if es_video {
+            // La proporcion de la miniatura decide el tamano al nacer; el
+            // tamano nativo llega con los metadatos y solo afecta al 100 %.
+            // Sin miniatura, el provisional (D71).
+            let (ancho, alto) = miniatura_de(ruta, 512)
+                .map(|m| {
+                    let base = 960.0;
+                    let f = base / m.ancho.max(1) as f32;
+                    (
+                        (m.ancho as f32 * f).round() as u32,
+                        (m.alto as f32 * f).round() as u32,
+                    )
+                })
+                .unwrap_or((0, 0));
+            return Contenido::Video {
+                nombre,
+                ruta: ruta.to_path_buf(),
+                ancho,
+                alto,
+            };
+        }
+        match miniatura_de(ruta, 1024) {
+            Some(vista) => Contenido::Documento { nombre, vista },
+            None => ficha_de(ruta, &self.texto_no_encontrado),
+        }
+    }
+
+    /// Media Foundation no pudo con el video (D72): el pin se vuelve a
+    /// crear como documento o ficha, en el mismo sitio y con el mismo id.
+    fn degradar_video(&mut self, id: u64) -> Result<()> {
+        let Some(pin) = self.vivos.remove(&id) else {
+            return Ok(());
+        };
+        let region = pin.rect_contenido();
+        let escala = pin.escala_por_cien();
+        drop(pin);
+        let ruta = {
+            let a = self.almacen.borrow();
+            a.entradas()
+                .iter()
+                .find(|e| e.id == id)
+                .and_then(|e| e.ruta.clone())
+                .context("el video no referencia ningun fichero")?
+        };
+        tracing::warn!(id, ruta = %ruta.display(), "video no reproducible; se ensena como documento o ficha");
+        let contenido = match miniatura_de(&ruta, 1024) {
+            Some(vista) => Contenido::Documento {
+                nombre: ruta
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                vista,
+            },
+            None => ficha_de(&ruta, &self.texto_no_encontrado),
+        };
+        // Conserva el ancho del pin; el alto se adapta al contenido nuevo.
+        let motor = Rc::clone(&self.motor);
+        let (nw, nh) = tamano_natural(&contenido, escala, &|t, tam, max| {
+            motor.medir_texto(t, tam, max)
+        });
+        let alto = if contenido.solo_ancho() {
+            // La ficha tiene alto fijo: el contenido manda, no el ancho.
+            nh
+        } else if nw > 0 {
+            ((region.ancho as f32) * (nh as f32 / nw as f32))
+                .round()
+                .max(1.0) as u32
+        } else {
+            region.alto
+        };
+        let nueva = Rect {
+            x: region.x,
+            y: region.y,
+            ancho: region.ancho,
+            alto,
+        };
+        self.crear_ventana(id, contenido, nueva, escala)
+    }
+
     /// La ficha de un archivo o carpeta, por referencia (D28).
     pub fn pinear_archivo(&mut self, ruta: &Path, monitor: &Monitor) -> Result<()> {
-        let contenido = ficha_de(ruta, &self.texto_no_encontrado);
+        let contenido = self.contenido_de_archivo(ruta);
         let region = self.region_centrada(&contenido, monitor);
         let id = self
             .almacen
@@ -402,7 +494,7 @@ impl Pines {
                 // encontrado" (D28): esconderla perderia el rastro de algo
                 // que el usuario dejo pineado a proposito.
                 TipoEntrada::Archivo => match &p.ruta {
-                    Some(r) => ficha_de(r, &self.texto_no_encontrado),
+                    Some(r) => self.contenido_de_archivo(r),
                     None => {
                         tracing::warn!(id, "entrada de archivo sin ruta; se ignora");
                         continue;
@@ -493,6 +585,7 @@ impl Pines {
                 self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Retroceso))
             }
             CambioPin::PaletaPulsada(p) => self.paleta_pulsada(id, p),
+            CambioPin::VideoFallido => self.degradar_video(id),
             // Movido, Redimensionado y Cerrado los resuelve el callback.
             _ => Ok(()),
         }

@@ -489,7 +489,9 @@ fn preparar_pines<'a>(
             textos_del_pin(textos),
             textos.t("pin-eliminar-confirmar"),
             hwnd_app,
-            ritmo_video_ms,
+            // Sin soporte de video en el dispositivo (D66) no hay reproductor:
+            // los videos se ensenan como documento.
+            r.dispositivo().soporta_video().then_some(ritmo_video_ms),
         )?);
     }
     Ok(pines.as_mut().expect("recien comprobado o creado"))
