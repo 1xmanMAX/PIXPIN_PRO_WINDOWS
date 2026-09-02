@@ -27,7 +27,7 @@ Continúan la numeración del proyecto (D1-D35).
 | # | Decisión | Elección | Razón |
 |---|---|---|---|
 | D36 | **Alcance del motor** | Modelo de elementos + geometría + hit-test + serialización. **Sin ventana, sin bucle de eventos, sin herramientas de UI**: eso es de S3-B/S3-C | Un motor que abre ventanas no se puede meter dentro de un pin, ni de un PDF |
-| D37 | **Capa** | **L1**, junto a `pixpin-render`: depende de `pixpin-geom` (L0) y de `pixpin-render` para dibujar | L2 (pin, pdf) y L3 (ui) lo consumen; él no puede verlos |
+| D37 | **Capa** | **L1**, y **sin dependencia de `pixpin-render`**: el motor produce polígonos y quien dibuja es el consumidor, que ya tiene pintor | Corregido al implementar: `pixpin-render` es L1 igual que el motor, y la regla del proyecto prohíbe que una capa dependa de sí misma (`apps/pixpin/tests/capas.rs` lo habría rechazado). El resultado es además mejor: el motor queda **100 % puro y probable sin GPU**, y el mismo polígono vale para Direct2D hoy y para exportar a SVG mañana |
 | D38 | **Determinismo del «hecho a mano»** | LCG de Lehmer replicado **bit a bit** (`seed = seed.wrapping_mul(48271) & 0x7FFF_FFFF`, normalizado dividiendo por `2^31`), una instancia **por elemento** sembrada con su `semilla` | El mismo dibujo debe salir idéntico al reabrirlo, hoy y dentro de diez años. Es además el mismo generador que el Android replica en `Rand.kt` |
 | D39 | **Trazo a mano alzada** | Algoritmo de `perfect-freehand` portado (puntos suavizados → contorno con radio por presión → polígono cerrado), con las constantes exactas del informe | Es lo que hace que un trazo parezca tinta y no un cable |
 | D40 | **Presión** | Simulada a partir de la velocidad (`RATE_OF_PRESSURE_CHANGE = 0.275`), con la puerta abierta a presión real de tableta más adelante | Casi nadie anota con tableta; la simulación es lo que se ve el 99 % del tiempo |
@@ -86,11 +86,12 @@ claves sobreviven al fichero).
 | `escena.rs` | La lista, el orden de dibujo, añadir/borrar/deshacer | sí |
 | `impacto.rs` | Hit-test por tipo con tolerancia (spec §f del informe) | sí |
 | `formato.rs` | `.pixpin2d`: serde tolerante, temporal+rename | sí |
-| `dibujo.rs` | Lo único que toca Direct2D: geometrías cacheadas y pintado | no |
+| `pintado.rs` | Traduce un elemento a **órdenes de dibujo** (polígonos y polilíneas con su color): lo que el consumidor manda a su pintor | sí |
 
-**Ocho de nueve módulos son puros y se prueban en CI sin escritorio.** Solo
-`dibujo.rs` necesita GPU, y su test es el de siempre: que dibujar cien
-elementos no reviente y que la caché se invalide al cambiar la versión.
+**Los nueve módulos son puros y se prueban en CI sin escritorio.** El motor no
+abre una ventana ni toca la GPU: produce geometría, y `pixpin-render` (que el
+pin y el PDF ya usan) la pinta. `Pintor` gana `poligono` y `polilinea`, que
+reciben pares de `f32` y por eso no atan el renderizador a este crate.
 
 ## 5. Las pruebas que importan
 

@@ -21,6 +21,7 @@ pub mod escena;
 pub mod formas;
 pub mod formato;
 pub mod impacto;
+pub mod pintado;
 pub mod trazo;
 pub mod vector;
 
@@ -30,5 +31,6 @@ pub use escena::Escena;
 pub use formas::{elipse, linea, punta_flecha, rectangulo};
 pub use formato::{EXTENSION, ErrorFormato, cargar, guardar};
 pub use impacto::{TOLERANCIA, elemento_en, toca};
+pub use pintado::{Orden, ordenes, ordenes_de_escena};
 pub use trazo::{Ajustes, PuntoTrazo, contorno, linea_central, poligono};
 pub use vector::{Punto2, distancia_a_segmento};

@@ -9,7 +9,8 @@ use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 use windows::Win32::Graphics::Direct2D::{
     D2D1_CAP_STYLE_FLAT, D2D1_DASH_STYLE_DASH, D2D1_INTERPOLATION_MODE_LINEAR,
     D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_LINE_JOIN_MITER, D2D1_ROUNDED_RECT,
-    D2D1_STROKE_STYLE_PROPERTIES1, ID2D1Bitmap1, ID2D1SolidColorBrush, ID2D1StrokeStyle,
+    D2D1_STROKE_STYLE_PROPERTIES1, ID2D1Bitmap1, ID2D1PathGeometry1, ID2D1SolidColorBrush,
+    ID2D1StrokeStyle,
 };
 use windows::Win32::Graphics::DirectWrite::{
     DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT_NORMAL,
@@ -269,6 +270,83 @@ impl Pintor<'_> {
             let mut metricas = DWRITE_TEXT_METRICS::default();
             disposicion.GetMetrics(&mut metricas).ok()?;
             Some((disposicion, metricas.width, metricas.height))
+        }
+    }
+
+    /// Rellena un poligono cerrado dado por sus vertices.
+    ///
+    /// Es como se pinta la tinta de un trazo a mano: NO es una linea gruesa,
+    /// es una mancha con forma, y por eso puede adelgazar en los extremos.
+    /// Recibe pares de `f32` en vez de un tipo propio para no atar este crate
+    /// al motor de dibujo, que vive en su misma capa.
+    pub fn poligono(&self, vertices: &[(f32, f32)], color: Color) {
+        if vertices.len() < 3 {
+            return;
+        }
+        let Some(geometria) = self.geometria(vertices, true) else {
+            return;
+        };
+        if let Some(p) = self.pincel(color) {
+            // SAFETY: dentro del fotograma; geometria y pincel vivos.
+            unsafe { self.motor.contexto().FillGeometry(&geometria, &p, None) };
+        }
+    }
+
+    /// Traza una polilinea abierta de grosor constante.
+    pub fn polilinea(&self, vertices: &[(f32, f32)], grosor: f32, color: Color) {
+        if vertices.len() < 2 {
+            return;
+        }
+        let Some(geometria) = self.geometria(vertices, false) else {
+            return;
+        };
+        if let Some(p) = self.pincel(color) {
+            // SAFETY: igual que arriba.
+            unsafe {
+                self.motor
+                    .contexto()
+                    .DrawGeometry(&geometria, &p, grosor, None)
+            };
+        }
+    }
+
+    /// Construye una geometria a partir de los vertices. `cerrada` decide si
+    /// el ultimo punto se une con el primero.
+    fn geometria(&self, vertices: &[(f32, f32)], cerrada: bool) -> Option<ID2D1PathGeometry1> {
+        use windows::Win32::Graphics::Direct2D::Common::{
+            D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_BEGIN_HOLLOW, D2D1_FIGURE_END_CLOSED,
+            D2D1_FIGURE_END_OPEN,
+        };
+
+        // SAFETY: la geometria se crea, se rellena entre Open/Close y se
+        // devuelve cerrada. Si algo falla a mitad se descarta sin usarla:
+        // una geometria sin cerrar reventaria al dibujarla.
+        unsafe {
+            let geometria = self.motor.fabrica().CreatePathGeometry().ok()?;
+            let sumidero = geometria.Open().ok()?;
+            sumidero.BeginFigure(
+                Vector2 {
+                    X: vertices[0].0,
+                    Y: vertices[0].1,
+                },
+                if cerrada {
+                    D2D1_FIGURE_BEGIN_FILLED
+                } else {
+                    D2D1_FIGURE_BEGIN_HOLLOW
+                },
+            );
+            let resto: Vec<Vector2> = vertices[1..]
+                .iter()
+                .map(|(x, y)| Vector2 { X: *x, Y: *y })
+                .collect();
+            sumidero.AddLines(&resto);
+            sumidero.EndFigure(if cerrada {
+                D2D1_FIGURE_END_CLOSED
+            } else {
+                D2D1_FIGURE_END_OPEN
+            });
+            sumidero.Close().ok()?;
+            Some(geometria)
         }
     }
 
