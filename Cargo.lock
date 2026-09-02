@@ -347,6 +347,7 @@ dependencies = [
  "pixpin-codec",
  "pixpin-geom",
  "pixpin-nivel",
+ "pixpin-pin",
  "pixpin-render",
  "pixpin-shell",
  "pixpin-store",
