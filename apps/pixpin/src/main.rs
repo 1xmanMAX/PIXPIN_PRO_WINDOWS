@@ -228,6 +228,7 @@ fn arrancar(
     // viven entre capturas: son la diferencia entre 200 ms y menos de 50.
     let mut recursos_overlay: Option<Recursos> = None;
     let mut pines: Option<Pines> = None;
+    let hwnd = ventana.handle();
 
     // 8b. Restauracion al arrancar (spec S2 5.2): el coste de crear los
     // recursos solo se paga si el almacen tiene pines abiertos, y la
@@ -237,12 +238,13 @@ fn arrancar(
         Ok(a) if a.entradas().iter().any(|e| e.pin.is_some()) => {
             drop(a); // Pines::nuevos abre el suyo; no dos indices vivos.
             let t = std::time::Instant::now();
-            let restaurado = preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion, &textos)
-                .and_then(|p| {
-                    let d = pixpin_capture::enumerar_monitores()
-                        .context("sin monitores para restaurar")?;
-                    Ok(p.restaurar(&d))
-                });
+            let restaurado =
+                preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion, &textos, hwnd)
+                    .and_then(|p| {
+                        let d = pixpin_capture::enumerar_monitores()
+                            .context("sin monitores para restaurar")?;
+                        Ok(p.restaurar(&d))
+                    });
             match restaurado {
                 Ok(restaurados) => tracing::info!(
                     restaurados,
@@ -256,7 +258,6 @@ fn arrancar(
         Err(e) => tracing::warn!(?e, "no se pudo abrir el almacen al arrancar"),
     }
 
-    let hwnd = ventana.handle();
     ventana.ejecutar(|evento| {
         let seguir = match evento {
             Evento::MenuSalir => {
@@ -307,8 +308,13 @@ fn arrancar(
                         // El gestor consume la accion aqui, no en
                         // ejecutar_accion: el pin nace 1:1 en la region del
                         // recorte (D26), con la escala de su monitor.
-                        let p =
-                            preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion, &textos)?;
+                        let p = preparar_pines(
+                            &mut recursos_overlay,
+                            &mut pines,
+                            &ubicacion,
+                            &textos,
+                            hwnd,
+                        )?;
                         p.pinear(&imagen, region, escala_del_monitor(region))?;
                         tracing::info!(abiertos = p.abiertos(), "pin creado");
                         Ok(None)
@@ -337,9 +343,14 @@ fn arrancar(
                 match pixpin_codec::leer() {
                     None => tracing::info!("portapapeles vacio o con un formato ajeno"),
                     Some(contenido) => {
-                        let hecho =
-                            preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion, &textos)
-                                .and_then(|p| pinear_portapapeles(p, contenido));
+                        let hecho = preparar_pines(
+                            &mut recursos_overlay,
+                            &mut pines,
+                            &ubicacion,
+                            &textos,
+                            hwnd,
+                        )
+                        .and_then(|p| pinear_portapapeles(p, contenido));
                         match hecho {
                             Ok(cuantos) => tracing::info!(cuantos, "pineado del portapapeles"),
                             Err(e) => tracing::warn!(?e, "no se pudo pinear el portapapeles"),
@@ -360,6 +371,9 @@ fn arrancar(
                 tracing::info!("ajustes pedidos desde el menu");
                 Continuar::Si
             }
+            // Un pin dejo algo pendiente; el trabajo esta tras el match, en
+            // `purgar`. Aqui no hay nada que hacer salvo haber girado.
+            Evento::Despertar => Continuar::Si,
             Evento::MostrarGrupo(id_grupo) => {
                 match pixpin_capture::enumerar_monitores() {
                     Ok(d) => {
@@ -393,6 +407,7 @@ fn preparar_pines<'a>(
     pines: &'a mut Option<Pines>,
     ubicacion: &Ubicacion,
     textos: &Catalogo,
+    hwnd_app: windows::Win32::Foundation::HWND,
 ) -> Result<&'a mut Pines> {
     if pines.is_none() {
         let r = match recursos {
@@ -406,6 +421,7 @@ fn preparar_pines<'a>(
             textos.t("pin-no-encontrado"),
             textos_del_pin(textos),
             textos.t("pin-eliminar-confirmar"),
+            hwnd_app,
         )?);
     }
     Ok(pines.as_mut().expect("recien comprobado o creado"))

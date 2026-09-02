@@ -33,5 +33,5 @@ pub use entorno::{
 pub use instancia::{ErrorInstanciaUnica, InstanciaUnica, adquirir_instancia_unica};
 pub use ventana::{
     Continuar, Evento, ID_MENU_AJUSTES, ID_MENU_CAPTURAR, ID_MENU_SALIR, VentanaMensajes,
-    WM_BANDEJA,
+    WM_BANDEJA, despertar,
 };

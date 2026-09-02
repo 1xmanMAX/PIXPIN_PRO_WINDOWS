@@ -74,6 +74,9 @@ pub struct Pines {
     textos: TextosPin,
     /// El aviso antes de borrar del almacen, ya traducido.
     texto_confirmar_eliminar: String,
+    /// La ventana del bucle principal, para darle un toque cuando un pin
+    /// deja algo pendiente que solo el gestor puede atender.
+    hwnd_app: windows::Win32::Foundation::HWND,
 }
 
 impl Pines {
@@ -84,6 +87,7 @@ impl Pines {
         texto_no_encontrado: String,
         textos: TextosPin,
         texto_confirmar_eliminar: String,
+        hwnd_app: windows::Win32::Foundation::HWND,
     ) -> Result<Pines> {
         let almacen = Almacen::abrir(raiz).context("no se pudo abrir el almacen")?;
         Ok(Pines {
@@ -97,6 +101,7 @@ impl Pines {
             texto_no_encontrado,
             textos,
             texto_confirmar_eliminar,
+            hwnd_app,
         })
     }
 
@@ -120,6 +125,7 @@ impl Pines {
         let almacen = Rc::clone(&self.almacen);
         let cerrados = Rc::clone(&self.cerrados);
         let pedidos = Rc::clone(&self.pedidos);
+        let hwnd_app = self.hwnd_app;
         let pin = Pin::nuevo(
             &self.d3d,
             Rc::clone(&self.motor),
@@ -134,6 +140,7 @@ impl Pines {
                         .actualizar_pin(id, Some(Pines::guardado_desde(r, escala))),
                     CambioPin::Cerrado => {
                         cerrados.borrow_mut().push(id);
+                        pixpin_shell::despertar(hwnd_app);
                         almacen.borrow_mut().actualizar_pin(id, None)
                     }
                     // El pin no sabe hacer nada de esto: no conoce ni el
@@ -141,6 +148,12 @@ impl Pines {
                     // apuntan y el bucle los atiende, ya fuera del prestamo.
                     otro => {
                         pedidos.borrow_mut().push((id, otro));
+                        // Y se le da un toque al bucle: sin esto la peticion
+                        // se quedaba en la cola hasta que el usuario pulsara
+                        // un atajo, porque el WndProc del pin no produce
+                        // ningun evento de la ventana principal. Lo encontro
+                        // la prueba de extremo a extremo del menu.
+                        pixpin_shell::despertar(hwnd_app);
                         Ok(())
                     }
                 };

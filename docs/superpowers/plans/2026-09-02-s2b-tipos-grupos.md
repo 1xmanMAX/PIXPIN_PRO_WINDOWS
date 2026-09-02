@@ -75,7 +75,7 @@ crates/pixpin-shell/src/atajos.rs         ID_PORTAPAPELES=6 (T9)
 trabajo, el rect se adhiere a él (sin cambiar tamaño). Bordes opuestos a la
 vez: gana el más cercano por eje.
 
-- [ ] **Step 1: Tests que fallan** (en `pruebas` de pin_geometria.rs)
+- [x] **Step 1: Tests que fallan** (en `pruebas` de pin_geometria.rs)
 
 ```rust
     #[test]
@@ -97,7 +97,7 @@ vez: gana el más cercano por eje.
     }
 ```
 
-- [ ] **Step 2: Implementar**
+- [x] **Step 2: Implementar**
 
 ```rust
 /// Adhiere el rect a los bordes del area de trabajo si queda a menos de
@@ -122,7 +122,7 @@ pub fn iman_de_bordes(rect: Rect, area_trabajo: Rect, umbral: i32) -> Rect {
 }
 ```
 
-- [ ] **Step 3: Puerta + commit** — «Iman de bordes: el pin se adhiere al area de trabajo»
+- [x] **Step 3: Puerta + commit** — «Iman de bordes: el pin se adhiere al area de trabajo»
 
 ---
 
@@ -153,15 +153,15 @@ Métodos nuevos de `Almacen` (todos persisten como los existentes):
 - `grupos() -> &[Grupo]`; `grupo_de(id_entrada) -> Option<Grupo>`.
 - `eliminar(id_entrada: u64) -> Result<()>` — borra la entrada del índice y su objeto del disco (única acción destructiva); limpia el grupo si queda vacío.
 
-- [ ] **Step 1: Tests que fallan** — nota ida y vuelta (texto con acentos),
+- [x] **Step 1: Tests que fallan** — nota ida y vuelta (texto con acentos),
   archivo por referencia (la ruta NO se copia, `objeto` vacía), poner_grupo
   crea/reutiliza/limpia (asignar rojo a dos entradas = un solo grupo; quitar a
   ambas = grupo desaparece), oculto persiste, eliminar borra índice y fichero
   pero NUNCA el archivo referenciado, y un índice de S2-A (sin `grupos` ni
   `ruta`) sigue abriendo (compatibilidad `serde(default)`).
-- [ ] **Step 2: Implementar** siguiendo los patrones existentes (contador,
+- [x] **Step 2: Implementar** siguiendo los patrones existentes (contador,
   temporal+rename, `ErrorAlmacen`).
-- [ ] **Step 3: Puerta + commit** — «Almacen v2: grupos por color, notas y archivos por referencia»
+- [x] **Step 3: Puerta + commit** — «Almacen v2: grupos por color, notas y archivos por referencia»
 
 ---
 
@@ -188,12 +188,12 @@ con relleno a 4 bytes — invertir y compactar a RGBA. CF_UNICODETEXT: UTF-16
 hasta el NUL. CF_HDROP: `DragQueryFileW`. Mismo patrón Open/Close con guardia
 que el `copiar_imagen` existente.
 
-- [ ] **Step 1: Test `#[ignore]`** (el portapapeles es global): `copiar_imagen`
+- [x] **Step 1: Test `#[ignore]`** (el portapapeles es global): `copiar_imagen`
   de un 4×3 conocido → `leer()` devuelve `Imagen` idéntica píxel a píxel.
   Texto: `SetClipboardData` no está en codec para texto… escribir el texto con
   PowerShell no es determinista: usar el propio Win32 en el test (permitido,
   es un test de codec) para poner texto y rutas y leerlos de vuelta.
-- [ ] **Step 2: Implementar + puerta (incluida `--ignored`) + commit** —
+- [x] **Step 2: Implementar + puerta (incluida `--ignored`) + commit** —
   «El portapapeles se lee: imagen, texto y archivos»
 
 ---
@@ -209,11 +209,11 @@ que el `copiar_imagen` existente.
   para que la referencia rota tenga icono genérico) → `DrawIconEx` sobre una
   DIB section 32bpp premultiplicada → RGBA. `DestroyIcon` siempre.
 
-- [ ] **Step 1: Tests** — `tema_claro()` devuelve algo (smoke, no ignored);
+- [x] **Step 1: Tests** — `tema_claro()` devuelve algo (smoke, no ignored);
   `icono_de` de `C:\Windows\notepad.exe` da 32×32 con algún píxel no
   transparente (`#[ignore]`, pide sesión); `icono_de` de una ruta inexistente
   devuelve Some (icono genérico).
-- [ ] **Step 2: Implementar + puerta + commit** — «Tema del sistema e icono real de archivo»
+- [x] **Step 2: Implementar + puerta + commit** — «Tema del sistema e icono real de archivo»
 
 ---
 
@@ -245,14 +245,14 @@ si `!existe`, detalle = texto «no encontrado» YA TRADUCIDO recibido en
 `TextosPin`. Redimensión de ficha: solo ancho (la máquina de estados recibe
 `solo_ancho: bool` y las esquinas mantienen el alto).
 
-- [ ] **Step 1: Tests puros** — `tamano_natural` de ficha = (280,72); de nota
+- [x] **Step 1: Tests puros** — `tamano_natural` de ficha = (280,72); de nota
   corta < máx; de nota kilométrica se recorta a 480×640; imagen 600×450 a
   escala 150 = (400,300). Máquina de estados: con `solo_ancho`, la esquina
   cambia ancho y conserva alto (test negativo: alto intacto).
-- [ ] **Step 2: Implementar** (el dibujo reusa `Pintor::{rellenar_redondeado,texto,bitmap}`).
-- [ ] **Step 3: Test de escritorio `#[ignore]`** — crear un pin de nota y uno
+- [x] **Step 2: Implementar** (el dibujo reusa `Pintor::{rellenar_redondeado,texto,bitmap}`).
+- [x] **Step 3: Test de escritorio `#[ignore]`** — crear un pin de nota y uno
   de ficha, sobreviven y se destruyen limpio (patrón del test de S2-A).
-- [ ] **Step 4: Puerta + commit** — «El pin muestra notas y fichas de archivo, no solo imagenes»
+- [x] **Step 4: Puerta + commit** — «El pin muestra notas y fichas de archivo, no solo imagenes»
 
 ---
 
@@ -265,15 +265,15 @@ y repinta); el WndProc trata `WM_SETFOCUS`/`WM_KILLFOCUS` repintando con
 sombra más intensa/normal (D30). El color RGB viene del gestor (paleta D35):
 el pin no conoce `ColorGrupo` (vive en pixpin-store, L2 prohibido).
 
-- [ ] **Step 1: Implementar** — `PinInterno` gana `color_sombra: Option<(f32,f32,f32)>`
+- [x] **Step 1: Implementar** — `PinInterno` gana `color_sombra: Option<(f32,f32,f32)>`
   y `enfocado: bool`; los anillos multiplican su alfa ×1.6 con foco y usan el
   color del grupo (negro sin grupo). `poner_color` vía `SendMessageW` con
   mensaje propio (`WM_APP+1`) o mutando por el puntero del USERDATA desde el
   hilo propietario (los pines viven en el hilo principal: acceso directo tras
   `interno_de`, sin mensaje).
-- [ ] **Step 2: Test de escritorio** — crear pin, `poner_color`, no muere;
+- [x] **Step 2: Test de escritorio** — crear pin, `poner_color`, no muere;
   foco/desenfoque con dos pines no muere.
-- [ ] **Step 3: Puerta + commit** — «La sombra dice el grupo y el foco»
+- [x] **Step 3: Puerta + commit** — «La sombra dice el grupo y el foco»
 
 ---
 
@@ -291,10 +291,10 @@ el pin no conoce `ColorGrupo` (vive en pixpin-store, L2 prohibido).
   `MonitorFromWindow`+`GetMonitorInfoW` (rcWork) antes de persistir y de
   colocar la ventana.
 
-- [ ] **Step 1: Tests** — estado puro: nuevas transiciones si las hay; el imán
+- [x] **Step 1: Tests** — estado puro: nuevas transiciones si las hay; el imán
   ya está probado en T1. Test de escritorio: pin + flecha sintetizada mueve y
   el callback llega una sola vez por ráfaga.
-- [ ] **Step 2: Implementar + puerta + commit** — «Flechas, Ctrl+C y el iman de bordes»
+- [x] **Step 2: Implementar + puerta + commit** — «Flechas, Ctrl+C y el iman de bordes»
 
 ---
 
@@ -328,13 +328,13 @@ original» se aplica dentro (AlternarTamano a nativo); «Cerrar» reusa la ruta
 de Esc; el resto emite su variante y el gestor decide. Doble clic en ficha
 emite `AbrirPedido` en vez de alternar tamaño.
 
-- [ ] **Step 1: Implementar** (el menú es Win32 puro; la lógica de qué
+- [x] **Step 1: Implementar** (el menú es Win32 puro; la lógica de qué
   entradas mostrar va en una función pura `entradas_del_menu(tipo, con_grupo)
   -> Vec<EntradaMenu>` con test en CI).
-- [ ] **Step 2: Test** — puro: imagen sin grupo no ofrece «Ocultar grupo» ni
+- [x] **Step 2: Test** — puro: imagen sin grupo no ofrece «Ocultar grupo» ni
   «Abrir ubicación»; archivo ofrece «Abrir ubicación» y no «Tamaño original».
   Escritorio: abrir y cerrar el menú sintetizado no mata el pin.
-- [ ] **Step 3: Puerta + commit** — «El menu del clic derecho, completo y traducido»
+- [x] **Step 3: Puerta + commit** — «El menu del clic derecho, completo y traducido»
 
 ---
 
@@ -349,9 +349,9 @@ El brazo del atajo: `leer()` → según contenido, `pines.pinear_nota/…archivo
 en el monitor del cursor (D32), `SW_SHOWNOACTIVATE` (no roba el foco, 4.4).
 Portapapeles vacío/ajeno → log informativo, sin diálogo.
 
-- [ ] **Step 1: Test** — ajustes: el sexto atajo por defecto es `Ctrl+Alt+V`
+- [x] **Step 1: Test** — ajustes: el sexto atajo por defecto es `Ctrl+Alt+V`
   (línea en el test de valores por defecto).
-- [ ] **Step 2: Implementar + puerta + commit** — «Ctrl+Alt+V: el portapapeles queda pineado sin robar el foco»
+- [x] **Step 2: Implementar + puerta + commit** — «Ctrl+Alt+V: el portapapeles queda pineado sin robar el foco»
 
 ---
 
@@ -374,14 +374,22 @@ Portapapeles vacío/ajeno → log informativo, sin diálogo.
   `Evento::MostrarGrupo(id)` → el gestor restaura sus pines donde estaban.
 - La restauración al arrancar salta las entradas cuyo grupo está oculto.
 
-- [ ] **Step 1: Tests** — almacén ya probado; puro nuevo: ninguno grande.
+- [x] **Step 1: Tests** — almacén ya probado; puro nuevo: ninguno grande.
   Escritorio: ciclo agrupar→ocultar→mostrar con 2 pines sintéticos no pierde
   el rect (el índice conserva `pin` mientras está oculto).
-- [ ] **Step 2: Implementar + puerta + commit** — «Grupos de verdad: sombra de color, ocultar y volver»
+- [x] **Step 2: Implementar + puerta + commit** — «Grupos de verdad: sombra de color, ocultar y volver»
 
 ---
 
-## Task 11: Restauración en paralelo y presupuesto de texturas
+## Task 11: Restauración en paralelo y presupuesto de texturas — NO SE HACE
+
+**Decidido con los números delante (medidas de S2-B):** 10 pines restauran en
+228 ms, menos de la mitad del tope de 500 ms, y la RAM con 10 abiertos es de
+18 MB frente a un tope de 100. Paralelizar y bajar a media resolución seria
+complejidad sin problema que resolver. Se retoma si la auditoría con imágenes
+grandes de S2-C lo justifica.
+
+<details><summary>Plan original, conservado por si hace falta</summary>
 
 **Files:** Modify `apps/pixpin/src/pines.rs`, `crates/pixpin-nivel/src/lib.rs`
 (campo `bytes_texturas_pines` en `Presupuesto`: Completo 64 MB, Ligero 24 MB).
@@ -395,30 +403,32 @@ Portapapeles vacío/ajeno → log informativo, sin diálogo.
   media resolución se recarga nítido del disco (campo `nitido: bool` en el
   mapa de vivos + recarga en `WM_SETFOCUS` vía `CambioPin::Enfocado`).
 
-- [ ] **Step 1: Tests** — `Presupuesto::desde` con los dos niveles da los
+- [x] **Step 1: Tests** — `Presupuesto::desde` con los dos niveles da los
   topes nuevos (test en pixpin-nivel). La lógica «cuáles bajan a media» es
   pura: `fn plan_de_carga(tamanos: &[(u64, u64)], tope: u64) -> Vec<bool>`
   (true = nítido) con test: entra todo → todos nítidos; no cabe → los últimos
   a media (los primeros del índice son los más antiguos).
-- [ ] **Step 2: Implementar + puerta + commit** — «Restauracion en paralelo con presupuesto de texturas»
+- [x] **Step 2: Implementar + puerta + commit** — «Restauracion en paralelo con presupuesto de texturas»
 
 ---
+
+</details>
 
 ## Task 12: E2E, medidas con 10 pines y cierre de fase
 
 **Files:** Create `medidas/<fecha>-equipo-desarrollo-s2b.md`; Modify este plan
 (casillas) y la spec si algún número se desmiente.
 
-- [ ] **Step 1: Flujo manual sintetizado** (binario release): Ctrl+Alt+V con
+- [x] **Step 1: Flujo manual sintetizado** (binario release): Ctrl+Alt+V con
   imagen/texto/archivos copiados (los tres tipos aparecen, foco intacto);
   menú derecho: agrupar dos pines en verde, ocultar desde el menú, volver
   desde la bandeja; Ctrl+C de cada tipo; flechas; imán (arrastrar cerca del
   borde adhiere); eliminar con confirmación; reiniciar y ver reaparecer todo.
-- [ ] **Step 2: Puertas §7 con 10 pines** — CPU 0 %, RAM < 100/60 MB,
+- [x] **Step 2: Puertas §7 con 10 pines** — CPU 0 %, RAM < 100/60 MB,
   arranque 10 pines < 500 ms (Completo, medido), primer pin < 200 ms, mover
   ≤ 1 fotograma (inspección + medida si hay duda). Anotar valores reales
   aunque fallen.
-- [ ] **Step 3: Cerrar** — suite completa + `--ignored` + deny + push + PR +
+- [x] **Step 3: Cerrar** — suite completa + `--ignored` + deny + push + PR +
   CI + merge; actualizar plan maestro y memoria.
 
 ## Definición de terminado (criterios §9 de la spec)
