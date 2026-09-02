@@ -745,7 +745,12 @@ impl Pines {
         pin.poner_rect(nuevo);
         self.almacen
             .borrow_mut()
-            .actualizar_pin(id, Some(Pines::guardado_desde(nuevo, 100)))
+            // Con la escala REAL del pin: guardar 100 en un monitor al 150 %
+            // hacia que el pin volviera 1,5 veces mas grande tras reiniciar.
+            .actualizar_pin(
+                id,
+                Some(Pines::guardado_desde(nuevo, pin.escala_por_cien())),
+            )
             .ok();
         Ok(())
     }

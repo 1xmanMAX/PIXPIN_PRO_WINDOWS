@@ -505,6 +505,8 @@ pub fn ejecutar_capa(
     tracing::info!(?modo, "capa de anotacion abierta");
 
     let ventanas = [];
+    // Ctrl mantenido, para distinguir Ctrl+Z de la letra Z.
+    let mut ctrl = false;
     bucle_modal(&ventanas, |_, evento| {
         let seguir = match evento {
             EventoOverlay::BotonPulsado(p) => capa.raton(EventoRaton::Pulsar(p)),
@@ -528,21 +530,25 @@ pub fn ejecutar_capa(
                     true
                 }
                 VK_ESCAPE => capa.tecla(TeclaAnotador::Escape),
-                VK_Z => capa.tecla(if shift {
+                // Solo con Ctrl: una Z suelta es una letra del texto in
+                // situ, no un deshacer.
+                VK_Z if ctrl => capa.tecla(if shift {
                     TeclaAnotador::Rehacer
                 } else {
                     TeclaAnotador::Deshacer
                 }),
-                VK_Y => capa.tecla(TeclaAnotador::Rehacer),
+                VK_Y if ctrl => capa.tecla(TeclaAnotador::Rehacer),
                 VK_RETURN => capa.tecla(TeclaAnotador::Enter),
                 VK_BACK => capa.tecla(TeclaAnotador::Retroceso),
                 VK_CONTROL => {
+                    ctrl = true;
                     capa.ctrl(true);
                     true
                 }
                 _ => true,
             },
             EventoOverlay::TeclaSoltada(VK_CONTROL) => {
+                ctrl = false;
                 capa.ctrl(false);
                 true
             }

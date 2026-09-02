@@ -353,6 +353,11 @@ impl Pin {
         interno_de(self.hwnd).is_some_and(|i| i.anotando)
     }
 
+    /// La escala con la que nacio el pin (la de su monitor).
+    pub fn escala_por_cien(&self) -> u32 {
+        interno_de(self.hwnd).map_or(100, |i| i.escala_por_cien)
+    }
+
     /// Coloca la ventana de composicion del IME donde se escribe (D57).
     /// `p` esta en coordenadas del contenido; se suma el margen de sombra.
     pub fn poner_posicion_ime(&self, p: Punto) {
