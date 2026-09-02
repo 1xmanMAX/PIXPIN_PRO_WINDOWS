@@ -286,13 +286,14 @@ impl Anotador {
                 punta_inicio: false,
                 punta_fin: true,
             },
-            Herramienta::Rectangulo | Herramienta::Foco => Figura::Rectangulo,
+            Herramienta::Rectangulo => Figura::Rectangulo,
+            Herramienta::Foco => Figura::Foco { elipse: false },
             Herramienta::Elipse => Figura::Elipse,
             _ => return None,
         };
 
-        // El foco es un rectangulo con relleno oscuro: oscurece lo de fuera
-        // desde el punto de vista del ojo, aunque tecnicamente pinte dentro.
+        // En el foco el "relleno" es el color del velo que oscurece TODO
+        // menos su hueco (D51); el motor lo traduce a una orden de velo.
         let (relleno, color, opacidad) = if self.herramienta == Herramienta::Foco {
             (
                 Some(ColorRgba {
@@ -522,6 +523,19 @@ mod pruebas {
             }
             otro => panic!("llego {otro:?}"),
         }
+    }
+
+    #[test]
+    fn el_foco_es_una_figura_propia_y_no_un_rectangulo_relleno() {
+        // D51: si fuera un rectangulo con relleno oscuro oscureceria justo
+        // lo que se quiere ensenar.
+        let mut a = Anotador::nuevo(1);
+        a.procesar(EventoAnotador::CambiarHerramienta(Herramienta::Foco));
+        let EfectoAnotador::Terminado(e) = arrastrar(&mut a, p(10.0, 10.0), p(60.0, 40.0)) else {
+            panic!("un arrastre con el foco termina un elemento");
+        };
+        assert_eq!(e.figura, Figura::Foco { elipse: false });
+        assert_eq!(e.relleno.map(|c| c.a), Some(0.6));
     }
 
     #[test]
