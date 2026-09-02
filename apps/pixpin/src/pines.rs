@@ -10,12 +10,16 @@ use std::rc::Rc;
 
 use anyhow::{Context, Result};
 use pixpin_codec::{ImagenRgba, cargar, codificar_png};
-use pixpin_geom::{DisposicionMonitores, Monitor, Rect, recolocar_en_area};
+use pixpin_geom::{DisposicionMonitores, Monitor, Punto, Rect, recolocar_en_area};
 use pixpin_motor2d::Escena;
-use pixpin_pin::{CambioPin, Contenido, Pin, TextosPin, icono_de, tamano_humano, tamano_natural};
+use pixpin_pin::{
+    CambioPin, Contenido, Paleta, Pin, TextosPin, icono_de, tamano_humano, tamano_natural,
+};
 use pixpin_render::MotorRender;
 use pixpin_store::{Almacen, ColorGrupo, PinGuardado, TipoEntrada};
-use pixpin_ui::{Anotador, EfectoAnotador, EventoAnotador, TeclaAnotador};
+use pixpin_ui::{
+    Anotador, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, TeclaAnotador,
+};
 use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 
 /// La paleta de grupos en RGB (D35). Vive aqui porque es la traduccion
@@ -93,6 +97,11 @@ struct Anotacion {
     /// El elemento que se esta arrastrando ahora mismo: se pinta pero no
     /// esta en la escena todavia, asi que no se guarda ni se deshace.
     en_curso: Option<pixpin_motor2d::Elemento>,
+    /// La caja de herramientas junto al pin y la ventana que la muestra
+    /// (D58). La paleta muere con la anotacion: su `Drop` la destruye.
+    caja: CajaHerramientas,
+    paleta: Paleta,
+    escala_por_cien: u32,
 }
 
 impl Anotacion {
@@ -472,9 +481,7 @@ impl Pines {
             CambioPin::RetrocesoAnotando => {
                 self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Retroceso))
             }
-            // La paleta llega con su propia tarea (D58): hasta entonces un
-            // clic en ella no hace nada.
-            CambioPin::PaletaPulsada(_) => Ok(()),
+            CambioPin::PaletaPulsada(p) => self.paleta_pulsada(id, p),
             // Movido, Redimensionado y Cerrado los resuelve el callback.
             _ => Ok(()),
         }
@@ -505,17 +512,99 @@ impl Pines {
         // La semilla arranca del id: dos pines distintos no dibujan igual.
         let anotador = Anotador::nuevo((id as u32).wrapping_mul(2_654_435_761) | 1);
 
-        if let Some(pin) = self.vivos.get(&id) {
-            pin.poner_modo_anotacion(true);
-            pin.poner_anotaciones(pixpin_motor2d::ordenes_de_escena(&escena));
-        }
+        let pin = self.vivos.get(&id).context("el pin no esta en pantalla")?;
+        // La paleta se coloca respecto al contenido del pin y al area de
+        // trabajo de SU monitor: en otro monitor se saldria de la pantalla.
+        let contenido = pin.rect_contenido();
+        let disposicion = pixpin_capture::enumerar_monitores().context("sin monitores")?;
+        let monitor = disposicion
+            .monitores()
+            .iter()
+            .find(|m| {
+                m.area.contiene(Punto {
+                    x: contenido.x,
+                    y: contenido.y,
+                })
+            })
+            .or_else(|| disposicion.principal())
+            .copied()
+            .context("sin monitor para la paleta")?;
+        let caja =
+            CajaHerramientas::colocar(contenido, monitor.area_trabajo, monitor.escala_por_cien);
+        let pedidos = Rc::clone(&self.pedidos);
+        let hwnd_app = self.hwnd_app;
+        let paleta = Paleta::nueva(
+            &self.d3d,
+            Rc::clone(&self.motor),
+            caja.marco,
+            Box::new(move |p| {
+                // Mismo camino que el menu del pin: se apunta y se despierta
+                // al bucle, que lo atiende fuera del prestamo.
+                pedidos.borrow_mut().push((id, CambioPin::PaletaPulsada(p)));
+                pixpin_shell::despertar(hwnd_app);
+            }),
+        )
+        .context("no se pudo crear la paleta del pin")?;
+
+        pin.poner_modo_anotacion(true);
+        pin.poner_anotaciones(pixpin_motor2d::ordenes_de_escena(&escena));
         self.anotacion = Some(Anotacion {
             id,
             escena,
             anotador,
             en_curso: None,
+            caja,
+            paleta,
+            escala_por_cien: monitor.escala_por_cien,
         });
+        self.repintar_paleta();
         tracing::info!(id, "modo anotacion");
+        Ok(())
+    }
+
+    /// Vuelve a pintar la paleta con la herramienta activa resaltada. El
+    /// pintor captura COPIAS: la paleta lo reusa en cada `WM_PAINT`.
+    fn repintar_paleta(&self) {
+        let Some(a) = &self.anotacion else {
+            return;
+        };
+        let caja = a.caja;
+        let activa = a.anotador.herramienta();
+        let escala = a.escala_por_cien;
+        let origen = Punto {
+            x: caja.marco.x,
+            y: caja.marco.y,
+        };
+        a.paleta.poner_pintor(Box::new(move |p| {
+            crate::caja_dibujo::pintar_caja(p, &caja, activa, escala, origen);
+        }));
+    }
+
+    /// Un clic en la paleta, en coordenadas de la paleta (D58).
+    fn paleta_pulsada(&mut self, id: u64, p: Punto) -> Result<()> {
+        let Some(a) = self.anotacion.as_ref().filter(|a| a.id == id) else {
+            return Ok(());
+        };
+        let global = Punto {
+            x: p.x + a.caja.marco.x,
+            y: p.y + a.caja.marco.y,
+        };
+        let Some(boton) = a.caja.boton_en(global) else {
+            return Ok(());
+        };
+        match boton {
+            BotonCaja::Elegir(h) => {
+                self.anotar(id, EventoAnotador::CambiarHerramienta(h))?;
+                self.repintar_paleta();
+            }
+            BotonCaja::Deshacer => {
+                self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Deshacer))?
+            }
+            BotonCaja::Rehacer => self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Rehacer))?,
+            // La paleta de colores llega con los ajustes visuales (S3-D).
+            BotonCaja::Color => {}
+            BotonCaja::Salir => self.salir_de_anotar()?,
+        }
         Ok(())
     }
 

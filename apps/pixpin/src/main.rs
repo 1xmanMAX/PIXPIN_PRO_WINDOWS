@@ -49,6 +49,7 @@
 // atributo es la unica guarda que lo habria detectado.
 #![forbid(unsafe_code)]
 
+mod caja_dibujo;
 mod capa;
 mod overlay;
 mod pines;

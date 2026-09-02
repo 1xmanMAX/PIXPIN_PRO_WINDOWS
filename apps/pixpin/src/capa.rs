@@ -323,7 +323,13 @@ impl CapaViva {
             // estorban.
             if !pasante {
                 self.pintar_lupa(p);
-                self.pintar_caja(p);
+                crate::caja_dibujo::pintar_caja(
+                    p,
+                    &self.caja,
+                    self.anotador.herramienta(),
+                    self.escala_por_cien,
+                    Punto { x: 0, y: 0 },
+                );
             }
         });
         let _ = self.superficie.presentar();
@@ -372,80 +378,6 @@ impl CapaViva {
             2.0 * self.escala_por_cien as f32 / 100.0,
             Color::ACENTO,
         );
-    }
-
-    fn pintar_caja(&self, p: &pixpin_render::Pintor) {
-        let e = self.escala_por_cien as f32 / 100.0;
-        let m = self.caja.marco;
-        p.rellenar_redondeado(
-            RectF {
-                x: m.x as f32,
-                y: m.y as f32,
-                ancho: m.ancho as f32,
-                alto: m.alto as f32,
-            },
-            8.0 * e,
-            Color {
-                r: 0.12,
-                g: 0.12,
-                b: 0.14,
-                a: 0.92,
-            },
-        );
-
-        let activa = self.anotador.herramienta();
-        for (i, boton) in pixpin_ui::BOTONES.iter().enumerate() {
-            let r = self.caja.rect_de(i);
-            let caja_boton = RectF {
-                x: r.x as f32,
-                y: r.y as f32,
-                ancho: r.ancho as f32,
-                alto: r.alto as f32,
-            };
-            if matches!(boton, BotonCaja::Elegir(h) if *h == activa) {
-                p.rellenar_redondeado(
-                    caja_boton,
-                    6.0 * e,
-                    Color {
-                        r: 0.25,
-                        g: 0.45,
-                        b: 0.85,
-                        a: 1.0,
-                    },
-                );
-            }
-            // Sin iconos todavia: una letra por herramienta, que es legible
-            // y no bloquea el resto de la fase. Los iconos vectoriales
-            // llegan cuando el motor dibuje sus propios simbolos.
-            p.texto(
-                etiqueta(*boton),
-                caja_boton.x + 13.0 * e,
-                caja_boton.y + 8.0 * e,
-                16.0 * e,
-                Color::BLANCO,
-            );
-        }
-    }
-}
-
-/// La letra que representa cada boton mientras no haya iconos.
-fn etiqueta(b: BotonCaja) -> &'static str {
-    match b {
-        BotonCaja::Elegir(Herramienta::Mano) => "M",
-        BotonCaja::Elegir(Herramienta::Lapiz) => "L",
-        BotonCaja::Elegir(Herramienta::Resaltador) => "R",
-        BotonCaja::Elegir(Herramienta::Linea) => "/",
-        BotonCaja::Elegir(Herramienta::Flecha) => ">",
-        BotonCaja::Elegir(Herramienta::Rectangulo) => "□",
-        BotonCaja::Elegir(Herramienta::Elipse) => "○",
-        BotonCaja::Elegir(Herramienta::Texto) => "T",
-        BotonCaja::Elegir(Herramienta::Foco) => "F",
-        BotonCaja::Elegir(Herramienta::Lupa) => "Q",
-        BotonCaja::Elegir(Herramienta::Borrador) => "B",
-        BotonCaja::Deshacer => "↶",
-        BotonCaja::Rehacer => "↷",
-        BotonCaja::Color => "C",
-        BotonCaja::Salir => "X",
     }
 }
 
