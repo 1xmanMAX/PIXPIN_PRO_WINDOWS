@@ -408,6 +408,9 @@ version = "0.1.0"
 [[package]]
 name = "pixpin-pin"
 version = "0.1.0"
+dependencies = [
+ "pixpin-geom",
+]
 
 [[package]]
 name = "pixpin-plugin"
