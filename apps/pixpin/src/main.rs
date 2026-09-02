@@ -317,6 +317,7 @@ fn arrancar(
                     guardar: textos.t("barra-guardar"),
                     guardar_como: textos.t("barra-guardar-como"),
                     descartar: textos.t("barra-descartar"),
+                    todo: textos.t("barra-todo"),
                 };
                 let formato = match config.formato_color {
                     ajustes::FormatoColor::Hex => FormatoColorLupa::Hex,

@@ -49,3 +49,4 @@ capa-guardar-pregunta = Keep the drawing as a pin?
 pin-reproducir = Play
 pin-pausar = Pause
 pin-sonido = Sound
+barra-todo = Select all

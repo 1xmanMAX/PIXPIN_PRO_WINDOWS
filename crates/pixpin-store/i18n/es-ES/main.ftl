@@ -50,3 +50,4 @@ capa-guardar-pregunta = ¿Guardar lo dibujado como un pin?
 pin-reproducir = Reproducir
 pin-pausar = Pausar
 pin-sonido = Sonido
+barra-todo = Seleccionar todo

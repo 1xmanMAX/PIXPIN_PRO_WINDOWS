@@ -30,10 +30,16 @@ pub enum Fase {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TeclaOverlay {
-    Flecha { dx: i32, dy: i32 },
+    Flecha {
+        dx: i32,
+        dy: i32,
+    },
     Espacio,
     Escape,
     Enter,
+    /// `Ctrl+A` o el boton del panel: la pantalla entera bajo el cursor
+    /// queda seleccionada y lista para confirmar.
+    SeleccionarTodo,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -269,6 +275,24 @@ impl EstadoOverlay {
                     Efecto::Redibujar
                 } else {
                     Efecto::Nada
+                }
+            }
+            TeclaOverlay::SeleccionarTodo => {
+                // La pantalla bajo el cursor, no el escritorio virtual: una
+                // captura que abarque dos monitores de distinta altura
+                // dejaria franjas negras. Quien quiera los dos, que trace.
+                let area = self
+                    .disposicion
+                    .monitor_en(self.cursor)
+                    .or_else(|| self.disposicion.principal())
+                    .map(|m| m.area);
+                match area {
+                    Some(a) => {
+                        self.seleccion.establecer(a);
+                        self.fase = Fase::Lista;
+                        Efecto::Redibujar
+                    }
+                    None => Efecto::Nada,
                 }
             }
         }
@@ -533,5 +557,30 @@ mod pruebas {
                 alto: 100
             }
         );
+    }
+
+    #[test]
+    fn seleccionar_todo_toma_la_pantalla_bajo_el_cursor_y_queda_lista() {
+        let mut e = EstadoOverlay::nuevo(escritorio_1080p());
+        e.procesar(EventoEntrada::RatonMovido(Punto { x: 500, y: 400 }));
+        assert_eq!(
+            e.procesar(EventoEntrada::Tecla(TeclaOverlay::SeleccionarTodo)),
+            Efecto::Redibujar
+        );
+        assert_eq!(e.fase(), Fase::Lista);
+        assert_eq!(
+            e.seleccion(),
+            Rect {
+                x: 0,
+                y: 0,
+                ancho: 1920,
+                alto: 1080
+            }
+        );
+        // Y Enter confirma esa misma pantalla.
+        assert!(matches!(
+            e.procesar(EventoEntrada::Tecla(TeclaOverlay::Enter)),
+            Efecto::Confirmar(r) if r.ancho == 1920 && r.alto == 1080
+        ));
     }
 }

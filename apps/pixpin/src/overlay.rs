@@ -23,7 +23,7 @@ use pixpin_shell::uia::Uia;
 use pixpin_shell::ventana::Continuar;
 use pixpin_ui::{
     AccionBarra, Barra, Efecto, EstadoOverlay, EventoEntrada, Fase, FormaCursor, FormatoColorLupa,
-    Lupa, TeclaOverlay, texto_color,
+    Lupa, PanelTodo, TeclaOverlay, texto_color,
 };
 use std::rc::Rc;
 use std::time::Instant;
@@ -81,6 +81,8 @@ pub struct TextosBarra {
     pub guardar: String,
     pub guardar_como: String,
     pub descartar: String,
+    /// El boton del panel antes de seleccionar: la pantalla entera.
+    pub todo: String,
 }
 
 impl TextosBarra {
@@ -312,6 +314,7 @@ pub fn ejecutar_overlay(
             motor,
             textos,
             formato_color,
+            modo,
         );
     }
     let t_b = t0.elapsed().as_millis() as u64;
@@ -491,6 +494,18 @@ fn procesar_evento(
                 copiar_color(formato_color, *muestra_color);
                 return Continuar::No;
             }
+            // El panel «Seleccionar todo», solo mientras no hay seleccion.
+            if estado.fase() == Fase::Explorando {
+                let en_panel = piezas.iter().any(|z| {
+                    let m = z.monitor();
+                    m.area.contiene(p) && PanelTodo::colocar(m.area, m.escala_por_cien).contiene(p)
+                });
+                if en_panel {
+                    let _ = estado.procesar(EventoEntrada::Tecla(TeclaOverlay::SeleccionarTodo));
+                    invalidar_todas(piezas);
+                    return Continuar::Si;
+                }
+            }
             if let Some(b) = barra {
                 if b.origen.contiene(p) {
                     // El clic se resuelve al soltar; tragarse el pulsado
@@ -524,7 +539,14 @@ fn procesar_evento(
                 modo,
             )
         }
-        EventoOverlay::Tecla { vk, shift } => {
+        EventoOverlay::Tecla { vk, shift, ctrl } => {
+            // Ctrl+A: la pantalla entera bajo el cursor, lista para
+            // confirmar. Mismo camino que el boton del panel.
+            if ctrl && vk == u32::from(b'A') && !matches!(modo, ModoConfirmacion::Cuentagotas) {
+                let _ = estado.procesar(EventoEntrada::Tecla(TeclaOverlay::SeleccionarTodo));
+                invalidar_todas(piezas);
+                return Continuar::Si;
+            }
             // Cuentagotas: Enter copia como el clic; Escape cancela.
             if matches!(modo, ModoConfirmacion::Cuentagotas) {
                 match vk {
@@ -602,6 +624,7 @@ fn procesar_evento(
                     motor,
                     textos,
                     formato_color,
+                    modo,
                 );
             }
             Continuar::Si
@@ -738,6 +761,7 @@ fn aplicar_efecto(
 }
 
 /// Dibuja el fotograma completo de una pieza. Solo lectura del estado.
+#[allow(clippy::too_many_arguments)] // el fotograma se pinta con todo el contexto del bucle
 fn pintar(
     pieza: &Pieza,
     estado: &EstadoOverlay,
@@ -746,6 +770,7 @@ fn pintar(
     motor: &MotorRender,
     textos: &TextosBarra,
     formato_color: FormatoColorLupa,
+    modo: ModoConfirmacion,
 ) {
     let monitor = pieza.monitor().area;
     let escala = pieza.monitor().escala_por_cien as f32 / 100.0;
@@ -876,6 +901,34 @@ fn pintar(
                         p.trazar_discontinuo(a_rectf(local), 2.0 * escala, Color::ACENTO);
                     }
                 }
+            }
+        }
+
+        // El panel «Seleccionar todo», mientras no hay seleccion y no es el
+        // cuentagotas (ahi no hay nada que seleccionar).
+        if estado.fase() == Fase::Explorando && !matches!(modo, ModoConfirmacion::Cuentagotas) {
+            let panel = PanelTodo::colocar(pieza.monitor().area, pieza.monitor().escala_por_cien);
+            if let Some(local) = parte_local(panel.rect, monitor) {
+                let caja = a_rectf(local);
+                p.rellenar_redondeado(
+                    caja,
+                    8.0 * escala,
+                    Color {
+                        r: 0.12,
+                        g: 0.12,
+                        b: 0.14,
+                        a: 0.92,
+                    },
+                );
+                let tam = 13.0 * escala;
+                let (tw, th) = p.medir_texto(&textos.todo, tam);
+                p.texto(
+                    &textos.todo,
+                    caja.x + (caja.ancho - tw) / 2.0,
+                    caja.y + (caja.alto - th) / 2.0,
+                    tam,
+                    Color::BLANCO,
+                );
             }
         }
 

@@ -546,7 +546,7 @@ pub fn ejecutar_capa(
                 true
             }
             EventoOverlay::BotonSoltado(p) => capa.raton(EventoRaton::Soltar(p)),
-            EventoOverlay::Tecla { vk, shift } => match vk {
+            EventoOverlay::Tecla { vk, shift, .. } => match vk {
                 VK_SPACE => {
                     let pasante = capa.alternar_pasante();
                     tracing::info!(pasante, "la capa cambia de modo");
