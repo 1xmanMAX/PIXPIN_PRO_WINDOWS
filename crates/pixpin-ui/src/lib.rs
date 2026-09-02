@@ -7,10 +7,16 @@
 //! relajar la regla.
 #![forbid(unsafe_code)]
 
+pub mod anotador;
 pub mod barra;
+pub mod caja_herramientas;
 pub mod lupa;
 pub mod overlay;
 
+pub use anotador::{
+    Anotador, EfectoAnotador, EventoAnotador, Herramienta, TeclaAnotador, UMBRAL_ARRASTRE,
+};
 pub use barra::{AccionBarra, Barra};
+pub use caja_herramientas::{BOTONES, BotonCaja, CajaHerramientas};
 pub use lupa::{FormatoColorLupa, Lupa, texto_color};
 pub use overlay::{Efecto, EstadoOverlay, EventoEntrada, Fase, FormaCursor, TeclaOverlay};

@@ -346,6 +346,7 @@ dependencies = [
  "pixpin-capture",
  "pixpin-codec",
  "pixpin-geom",
+ "pixpin-motor2d",
  "pixpin-nivel",
  "pixpin-pin",
  "pixpin-render",
@@ -422,6 +423,7 @@ version = "0.1.0"
 dependencies = [
  "pixpin-codec",
  "pixpin-geom",
+ "pixpin-motor2d",
  "pixpin-render",
  "thiserror",
  "windows",
@@ -475,6 +477,7 @@ name = "pixpin-ui"
 version = "0.1.0"
 dependencies = [
  "pixpin-geom",
+ "pixpin-motor2d",
 ]
 
 [[package]]

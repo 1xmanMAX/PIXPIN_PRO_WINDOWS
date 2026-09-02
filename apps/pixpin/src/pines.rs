@@ -11,9 +11,11 @@ use std::rc::Rc;
 use anyhow::{Context, Result};
 use pixpin_codec::{ImagenRgba, cargar, codificar_png};
 use pixpin_geom::{DisposicionMonitores, Monitor, Rect, recolocar_en_area};
+use pixpin_motor2d::Escena;
 use pixpin_pin::{CambioPin, Contenido, Pin, TextosPin, icono_de, tamano_humano, tamano_natural};
 use pixpin_render::MotorRender;
 use pixpin_store::{Almacen, ColorGrupo, PinGuardado, TipoEntrada};
+use pixpin_ui::{Anotador, EfectoAnotador, EventoAnotador, TeclaAnotador};
 use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 
 /// La paleta de grupos en RGB (D35). Vive aqui porque es la traduccion
@@ -77,6 +79,31 @@ pub struct Pines {
     /// La ventana del bucle principal, para darle un toque cuando un pin
     /// deja algo pendiente que solo el gestor puede atender.
     hwnd_app: windows::Win32::Foundation::HWND,
+    /// La anotacion en curso, si hay un pin en modo edicion. Solo uno a la
+    /// vez: anotar dos pines a la vez no significa nada y complicaria el
+    /// foco del teclado sin ganar nada.
+    anotacion: Option<Anotacion>,
+}
+
+/// Un pin en modo anotacion: su dibujo, su maquina y su elemento en curso.
+struct Anotacion {
+    id: u64,
+    escena: Escena,
+    anotador: Anotador,
+    /// El elemento que se esta arrastrando ahora mismo: se pinta pero no
+    /// esta en la escena todavia, asi que no se guarda ni se deshace.
+    en_curso: Option<pixpin_motor2d::Elemento>,
+}
+
+impl Anotacion {
+    /// Las ordenes de dibujo de la escena mas, si lo hay, el trazo en curso.
+    fn ordenes(&self) -> Vec<pixpin_motor2d::Orden> {
+        let mut v = pixpin_motor2d::ordenes_de_escena(&self.escena);
+        if let Some(e) = &self.en_curso {
+            v.extend(pixpin_motor2d::ordenes(e));
+        }
+        v
+    }
 }
 
 impl Pines {
@@ -102,6 +129,7 @@ impl Pines {
             textos,
             texto_confirmar_eliminar,
             hwnd_app,
+            anotacion: None,
         })
     }
 
@@ -172,7 +200,29 @@ impl Pines {
             pin.poner_color(Some(rgb_de(g.color)));
         }
         self.vivos.insert(id, pin);
+        // Y con lo que tuviera dibujado encima. Sin esto el pin volvia
+        // limpio tras reiniciar y la anotacion parecia perdida, aunque su
+        // fichero siguiera ahi: lo encontro la prueba de extremo a extremo.
+        self.recargar_anotaciones(id);
         Ok(())
+    }
+
+    /// Vuelve a pintar en el pin lo que haya en su fichero de anotacion.
+    /// Un fichero ilegible se registra y no impide que el pin exista: el
+    /// contenido original es lo importante.
+    fn recargar_anotaciones(&self, id: u64) {
+        let Some(ruta) = self.ruta_anotacion(id) else {
+            return;
+        };
+        match pixpin_motor2d::cargar(&ruta) {
+            Ok(escena) if escena.cuantos_visibles() > 0 => {
+                if let Some(pin) = self.vivos.get(&id) {
+                    pin.poner_anotaciones(pixpin_motor2d::ordenes_de_escena(&escena));
+                }
+            }
+            Ok(_) => {}
+            Err(e) => tracing::warn!(?e, id, "anotacion ilegible; el pin sale sin ella"),
+        }
     }
 
     /// D26: el recorte queda flotando 1:1 exactamente donde estaba.
@@ -399,9 +449,161 @@ impl Pines {
             CambioPin::AbrirPedido => self.abrir(id, false),
             CambioPin::AbrirUbicacionPedido => self.abrir(id, true),
             CambioPin::GuardarComoPedido => self.guardar_como(id),
+            CambioPin::AnotarPedido => self.entrar_a_anotar(id),
+            CambioPin::PunteroPulsado(p) => self.anotar(id, EventoAnotador::Pulsar(a_punto2(p))),
+            CambioPin::PunteroMovido(p) => self.anotar(id, EventoAnotador::Mover(a_punto2(p))),
+            CambioPin::PunteroSoltado(p) => self.anotar(id, EventoAnotador::Soltar(a_punto2(p))),
+            CambioPin::RuedaGirada(delta) => {
+                // Anotando, la rueda cambia el grosor; si no, hace zoom del
+                // pin, que es lo que pidio el usuario (D55).
+                if self.anotacion.as_ref().is_some_and(|a| a.id == id) {
+                    self.anotar(id, EventoAnotador::Rueda(delta))
+                } else {
+                    self.zoom(id, delta)
+                }
+            }
+            CambioPin::EscapeAnotando => {
+                self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Escape))
+            }
             // Movido, Redimensionado y Cerrado los resuelve el callback.
             _ => Ok(()),
         }
+    }
+
+    /// Donde vive el dibujo de un pin: junto a su objeto, mismo nombre y
+    /// otra extension (D48). El objeto original nunca se toca.
+    fn ruta_anotacion(&self, id: u64) -> Option<PathBuf> {
+        let a = self.almacen.borrow();
+        let e = a.entradas().iter().find(|e| e.id == id)?;
+        if e.objeto.is_empty() {
+            // Una ficha de archivo no tiene objeto propio que anotar.
+            return None;
+        }
+        Some(a.ruta_objeto(e).with_extension(pixpin_motor2d::EXTENSION))
+    }
+
+    /// Doble clic: entra en modo anotacion cargando lo que ya hubiera.
+    fn entrar_a_anotar(&mut self, id: u64) -> Result<()> {
+        // Salir del anterior guardando: dos pines anotandose a la vez no
+        // significa nada y enredaria el foco del teclado.
+        self.salir_de_anotar()?;
+
+        let ruta = self
+            .ruta_anotacion(id)
+            .context("este pin no tiene contenido que anotar")?;
+        let escena = pixpin_motor2d::cargar(&ruta).context("no se pudo leer la anotacion")?;
+        // La semilla arranca del id: dos pines distintos no dibujan igual.
+        let anotador = Anotador::nuevo((id as u32).wrapping_mul(2_654_435_761) | 1);
+
+        if let Some(pin) = self.vivos.get(&id) {
+            pin.poner_modo_anotacion(true);
+            pin.poner_anotaciones(pixpin_motor2d::ordenes_de_escena(&escena));
+        }
+        self.anotacion = Some(Anotacion {
+            id,
+            escena,
+            anotador,
+            en_curso: None,
+        });
+        tracing::info!(id, "modo anotacion");
+        Ok(())
+    }
+
+    /// Sale del modo anotacion guardando el dibujo.
+    pub fn salir_de_anotar(&mut self) -> Result<()> {
+        let Some(a) = self.anotacion.take() else {
+            return Ok(());
+        };
+        if let Some(pin) = self.vivos.get(&a.id) {
+            pin.poner_modo_anotacion(false);
+        }
+        let Some(ruta) = self.ruta_anotacion(a.id) else {
+            return Ok(());
+        };
+        pixpin_motor2d::guardar(&ruta, &a.escena).context("no se pudo guardar la anotacion")?;
+        tracing::info!(
+            id = a.id,
+            elementos = a.escena.cuantos_visibles(),
+            "anotacion guardada"
+        );
+        Ok(())
+    }
+
+    /// Un evento del puntero o del teclado mientras se anota.
+    fn anotar(&mut self, id: u64, evento: EventoAnotador) -> Result<()> {
+        let Some(a) = self.anotacion.as_mut().filter(|a| a.id == id) else {
+            return Ok(());
+        };
+        let efecto = a.anotador.procesar(evento);
+        let mut repintar = true;
+        let mut salir = false;
+
+        match efecto {
+            EfectoAnotador::Nada => repintar = false,
+            EfectoAnotador::Repintar => a.en_curso = None,
+            EfectoAnotador::EnCurso(e) => a.en_curso = Some(*e),
+            EfectoAnotador::Terminado(e) => {
+                a.en_curso = None;
+                a.escena.anadir(*e);
+            }
+            EfectoAnotador::BorrarEn(p) => {
+                if let Some(victima) = a.escena.elemento_en(p) {
+                    a.escena.borrar(victima);
+                }
+            }
+            EfectoAnotador::Deshacer => {
+                a.escena.deshacer();
+            }
+            EfectoAnotador::Rehacer => {
+                a.escena.rehacer();
+            }
+            // El editor de texto in situ llega con S3-C, que trae la
+            // infraestructura de entrada de texto (IME incluido).
+            EfectoAnotador::PedirTexto(_) => {
+                tracing::info!("el texto llega con S3-C");
+                repintar = false;
+            }
+            EfectoAnotador::Salir => salir = true,
+        }
+
+        if repintar && !salir {
+            let ordenes = a.ordenes();
+            if let Some(pin) = self.vivos.get(&id) {
+                pin.poner_anotaciones(ordenes);
+            }
+        }
+        if salir {
+            self.salir_de_anotar()?;
+        }
+        Ok(())
+    }
+
+    /// Rueda sobre un pin que no se esta anotando: agranda o encoge (D55).
+    fn zoom(&mut self, id: u64, delta: i32) -> Result<()> {
+        let Some(pin) = self.vivos.get(&id) else {
+            return Ok(());
+        };
+        let r = pin.rect_contenido();
+        if r.ancho == 0 || r.alto == 0 {
+            return Ok(());
+        }
+        let paso = if delta > 0 { 1.1 } else { 1.0 / 1.1 };
+        // Se escala desde el CENTRO: crecer desde la esquina hace que el pin
+        // se escape hacia abajo a la derecha con cada giro de rueda.
+        let ancho = ((r.ancho as f32 * paso).round() as u32).clamp(48, 8000);
+        let alto = ((r.alto as f32 * paso).round() as u32).clamp(48, 8000);
+        let nuevo = Rect {
+            x: r.x + (r.ancho as i32 - ancho as i32) / 2,
+            y: r.y + (r.alto as i32 - alto as i32) / 2,
+            ancho,
+            alto,
+        };
+        pin.poner_rect(nuevo);
+        self.almacen
+            .borrow_mut()
+            .actualizar_pin(id, Some(Pines::guardado_desde(nuevo, 100)))
+            .ok();
+        Ok(())
     }
 
     /// Oculta en bloque el grupo del pin: cierra sus ventanas pero DEJA sus
@@ -590,4 +792,9 @@ impl Pines {
     pub fn abiertos(&self) -> usize {
         self.vivos.len()
     }
+}
+
+/// Del punto entero del pin al punto en coma flotante del motor.
+fn a_punto2(p: pixpin_geom::Punto) -> pixpin_motor2d::Punto2 {
+    pixpin_motor2d::Punto2::nuevo(p.x as f32, p.y as f32)
 }

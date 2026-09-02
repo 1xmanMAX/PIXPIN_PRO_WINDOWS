@@ -55,6 +55,19 @@ pub enum CambioPin {
     OcultarGrupoPedido,
     /// Menu: la unica accion destructiva; el gestor pide confirmacion.
     EliminarPedido,
+    /// Doble clic sobre imagen o nota: entrar a anotar (D47).
+    AnotarPedido,
+    /// En modo anotacion, el raton se reenvia tal cual en coordenadas del
+    /// CONTENIDO (el margen de sombra ya descontado). El pin no sabe
+    /// dibujar: quien lleva la maquina de anotar es el gestor, que vive en
+    /// una capa que si puede ver `pixpin-ui`.
+    PunteroPulsado(Punto),
+    PunteroMovido(Punto),
+    PunteroSoltado(Punto),
+    /// Rueda del raton. Positivo hacia arriba (D55).
+    RuedaGirada(i32),
+    /// Escape mientras se anota: lo interpreta la maquina, no la ventana.
+    EscapeAnotando,
 }
 
 /// Identificador del temporizador que agrupa el guardado tras una rafaga de
@@ -156,6 +169,12 @@ struct PinInterno {
     /// Etiquetas del menu, ya traducidas. Sin ellas no hay menu: es
     /// preferible no ofrecerlo a ofrecerlo en el idioma equivocado.
     textos: Option<crate::menu::TextosPin>,
+    /// Lo que hay dibujado encima, ya convertido a ordenes por el motor 2D.
+    /// El pin solo las pinta: quien las produce es el gestor (S3-B).
+    anotaciones: Vec<pixpin_motor2d::Orden>,
+    /// En modo anotacion el pin NO se mueve ni se redimensiona: arrastrar
+    /// dibuja. Sin un modo explicito, el gesto seria ambiguo (D47).
+    anotando: bool,
     al_cambiar: Box<dyn Fn(CambioPin)>,
 }
 
@@ -237,6 +256,8 @@ impl Pin {
             color_sombra: None,
             enfocado: false,
             textos: None,
+            anotaciones: Vec::new(),
+            anotando: false,
             al_cambiar,
         });
         // SAFETY: la ventana es propia y viva; el Box se cede al USERDATA y
@@ -279,6 +300,36 @@ impl Pin {
     /// Tiñe la sombra con el color del grupo, o la devuelve a negra con
     /// `None`. El gestor traduce `ColorGrupo` a RGB: este crate no puede
     /// ver `pixpin-store` (misma capa).
+    /// Coloca el pin en un rect nuevo (la rueda hace zoom con esto).
+    pub fn poner_rect(&self, contenido: Rect) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.estado.poner_rect(contenido);
+        }
+        aplicar(self.hwnd, EfectoPin::Redimensionar(contenido));
+    }
+
+    /// Entra o sale del modo anotacion (D47). Mientras se anota, el pin no
+    /// se mueve ni se redimensiona: arrastrar dibuja.
+    pub fn poner_modo_anotacion(&self, anotando: bool) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.anotando = anotando;
+            pintar(i);
+        }
+    }
+
+    pub fn anotando(&self) -> bool {
+        interno_de(self.hwnd).is_some_and(|i| i.anotando)
+    }
+
+    /// Cambia lo que hay dibujado encima y repinta. Las ordenes vienen del
+    /// motor 2D, que es quien sabe convertir elementos en geometria.
+    pub fn poner_anotaciones(&self, ordenes: Vec<pixpin_motor2d::Orden>) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.anotaciones = ordenes;
+            pintar(i);
+        }
+    }
+
     /// Entrega las etiquetas del menu, ya traducidas. Hasta que llegan, el
     /// clic derecho no abre nada: mejor mudo que en otro idioma.
     pub fn poner_textos(&self, textos: crate::menu::TextosPin) {
@@ -483,8 +534,62 @@ fn pintar(i: &PinInterno) {
                 );
             }
         }
+
+        // Las anotaciones van ENCIMA de todo lo demas: son una capa, y el
+        // contenido original nunca se toca (D48). Se dibujan en coordenadas
+        // del contenido, asi que hay que sumarles el margen de la sombra.
+        pintar_anotaciones(p, i, m);
     });
     let _ = i.superficie.presentar();
+}
+
+/// Pinta las ordenes de dibujo del motor 2D sobre el contenido del pin.
+///
+/// El motor produce geometria y el pintor la pinta: es la separacion que
+/// mantiene al motor puro y probable sin GPU.
+fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
+    use pixpin_motor2d::Orden;
+
+    // El origen del documento de anotacion es la esquina del CONTENIDO, no
+    // la de la ventana: asi las anotaciones acompañan al pin al moverlo sin
+    // recalcular ni un punto.
+    let mover = |q: &pixpin_motor2d::Punto2| (q.x + margen, q.y + margen);
+    let color = |c: pixpin_motor2d::ColorRgba| Color {
+        r: c.r,
+        g: c.g,
+        b: c.b,
+        a: c.a,
+    };
+
+    for orden in &i.anotaciones {
+        match orden {
+            Orden::Poligono { puntos, color: c } | Orden::Relleno { puntos, color: c } => {
+                let v: Vec<(f32, f32)> = puntos.iter().map(mover).collect();
+                p.poligono(&v, color(*c));
+            }
+            Orden::Polilinea {
+                puntos,
+                color: c,
+                grosor,
+                ..
+            } => {
+                let v: Vec<(f32, f32)> = puntos.iter().map(mover).collect();
+                p.polilinea(&v, *grosor, color(*c));
+            }
+            Orden::Texto {
+                texto,
+                x,
+                y,
+                tam,
+                color: c,
+                ancho_max,
+                ..
+            } => p.texto_ajustado(texto, x + margen, y + margen, *tam, *ancho_max, color(*c)),
+            // Las imagenes incrustadas llegan con S3-C, cuando haya de donde
+            // sacar sus bitmaps.
+            Orden::Imagen { .. } => {}
+        }
+    }
 }
 
 /// Aplica un efecto de la maquina pura sobre la ventana real.
@@ -596,6 +701,17 @@ extern "system" fn procedimiento_pin(
         }
     };
 
+    /// Coordenadas dentro del CONTENIDO, con el margen de sombra ya
+    /// descontado: es el sistema en el que vive el documento de anotacion,
+    /// y por eso las anotaciones acompañan al pin al moverlo sin recalcular.
+    fn punto_contenido(i: &PinInterno, lparam: LPARAM) -> Punto {
+        let m = (MARGEN_SOMBRA_LOGICO * i.escala_por_cien / 100) as i32;
+        Punto {
+            x: (lparam.0 & 0xFFFF) as i16 as i32 - m,
+            y: ((lparam.0 >> 16) & 0xFFFF) as i16 as i32 - m,
+        }
+    }
+
     match mensaje {
         WM_LBUTTONDOWN => {
             // SAFETY: captura para no perder el arrastre al salir del borde.
@@ -606,15 +722,31 @@ extern "system" fn procedimiento_pin(
                 let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(hwnd));
             }
             if let Some(i) = interno_de(hwnd) {
-                let e = i.estado.procesar(EventoPin::BotonPulsado(punto(lparam)));
-                aplicar(hwnd, e);
+                if i.anotando {
+                    (i.al_cambiar)(CambioPin::PunteroPulsado(punto_contenido(i, lparam)));
+                } else {
+                    let e = i.estado.procesar(EventoPin::BotonPulsado(punto(lparam)));
+                    aplicar(hwnd, e);
+                }
+            }
+            LRESULT(0)
+        }
+        WM_MOUSEWHEEL => {
+            if let Some(i) = interno_de(hwnd) {
+                // La palabra alta del wparam trae el giro, con signo.
+                let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as i32;
+                (i.al_cambiar)(CambioPin::RuedaGirada(delta));
             }
             LRESULT(0)
         }
         WM_MOUSEMOVE => {
             if let Some(i) = interno_de(hwnd) {
-                let e = i.estado.procesar(EventoPin::RatonMovido(punto(lparam)));
-                aplicar(hwnd, e);
+                if i.anotando {
+                    (i.al_cambiar)(CambioPin::PunteroMovido(punto_contenido(i, lparam)));
+                } else {
+                    let e = i.estado.procesar(EventoPin::RatonMovido(punto(lparam)));
+                    aplicar(hwnd, e);
+                }
             }
             LRESULT(0)
         }
@@ -624,20 +756,24 @@ extern "system" fn procedimiento_pin(
                 let _ = ReleaseCapture();
             }
             if let Some(i) = interno_de(hwnd) {
-                let e = i.estado.procesar(EventoPin::BotonSoltado);
-                aplicar(hwnd, e);
+                if i.anotando {
+                    (i.al_cambiar)(CambioPin::PunteroSoltado(punto_contenido(i, lparam)));
+                } else {
+                    let e = i.estado.procesar(EventoPin::BotonSoltado);
+                    aplicar(hwnd, e);
+                }
             }
             LRESULT(0)
         }
         WM_LBUTTONDBLCLK => {
             if let Some(i) = interno_de(hwnd) {
-                // En una ficha, doble clic ABRE el archivo (spec 4.1); en
-                // imagen y nota alterna el tamano.
+                // En una ficha, doble clic ABRE el archivo (spec 4.1). En
+                // imagen y nota entra a ANOTAR (D47): alternar tamano pasa
+                // al menu, donde ya estaba "Tamano original".
                 if matches!(i.contenido, Contenido::Archivo { .. }) {
                     (i.al_cambiar)(CambioPin::AbrirPedido);
-                } else {
-                    let e = i.estado.procesar(EventoPin::DobleClic);
-                    aplicar(hwnd, e);
+                } else if !i.anotando {
+                    (i.al_cambiar)(CambioPin::AnotarPedido);
                 }
             }
             LRESULT(0)
@@ -692,8 +828,15 @@ extern "system" fn procedimiento_pin(
         }
         WM_KEYDOWN if wparam.0 as u32 == VK_ESCAPE.0 as u32 => {
             if let Some(i) = interno_de(hwnd) {
-                let e = i.estado.procesar(EventoPin::Escape);
-                aplicar(hwnd, e);
+                if i.anotando {
+                    // Anotando, Escape es de la maquina de anotar: el primero
+                    // abandona el trazo y el segundo sale del modo. Cerrar el
+                    // pin aqui tiraria el dibujo.
+                    (i.al_cambiar)(CambioPin::EscapeAnotando);
+                } else {
+                    let e = i.estado.procesar(EventoPin::Escape);
+                    aplicar(hwnd, e);
+                }
             }
             LRESULT(0)
         }
