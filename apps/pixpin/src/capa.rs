@@ -13,16 +13,26 @@
 //! rapido.
 
 use anyhow::{Context, Result};
+use pixpin_capture::Instantanea;
 use pixpin_geom::{Monitor, Punto, Rect};
 use pixpin_motor2d::{Escena, Orden, Punto2};
 use pixpin_render::{Color, MotorRender, RectF, Superficie};
 use pixpin_shell::overlay::VentanaOverlay;
 use pixpin_ui::{
-    Anotador, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, Herramienta,
+    Anotador, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, Herramienta, Lupa,
     TeclaAnotador,
 };
 use std::rc::Rc;
+use std::time::{Duration, Instant};
+use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
 use windows::Win32::Graphics::Direct3D11::ID3D11Device;
+
+/// Una captura envuelta como bitmap. La instantanea viaja con el bitmap
+/// porque el bitmap ES su textura: soltarla lo dejaria colgando.
+struct Fondo {
+    _instantanea: Instantanea,
+    bitmap: ID2D1Bitmap1,
+}
 
 /// Una capa de anotacion cubriendo un monitor.
 pub struct CapaViva {
@@ -30,6 +40,7 @@ pub struct CapaViva {
     superficie: Superficie,
     motor: Rc<MotorRender>,
     area: Rect,
+    monitor: Monitor,
     escala_por_cien: u32,
     escena: Escena,
     anotador: Anotador,
@@ -38,6 +49,9 @@ pub struct CapaViva {
     /// Ultima posicion conocida del cursor: la lupa la necesita para saber
     /// que ampliar sin esperar a un clic.
     cursor: Punto,
+    /// Lo ultimo que se vio debajo de la capa, para la lupa (D60).
+    muestra: Option<Fondo>,
+    ultima_muestra: Instant,
 }
 
 impl CapaViva {
@@ -71,12 +85,15 @@ impl CapaViva {
             superficie,
             motor,
             area: monitor.area,
+            monitor: *monitor,
             escala_por_cien: monitor.escala_por_cien,
             escena: Escena::nueva(),
             anotador: Anotador::nuevo(semilla | 1),
             en_curso: None,
             caja,
             cursor: Punto { x: 0, y: 0 },
+            muestra: None,
+            ultima_muestra: Instant::now(),
         })
     }
 
@@ -98,6 +115,30 @@ impl CapaViva {
 
     pub fn tiene_dibujo(&self) -> bool {
         self.escena.cuantos_visibles() > 0
+    }
+
+    pub fn monitor(&self) -> Monitor {
+        self.monitor
+    }
+
+    /// Si hace falta una captura fresca para la lupa (D60): solo con la
+    /// lupa activa, recogiendo el raton, y como mucho 60 veces por segundo.
+    pub fn quiere_muestra(&self) -> bool {
+        self.anotador.herramienta() == Herramienta::Lupa
+            && !self.ventana.es_pasante()
+            && self.ultima_muestra.elapsed() >= Duration::from_millis(16)
+    }
+
+    /// La pantalla de ahora mismo, para que la lupa la amplie.
+    pub fn poner_muestra(&mut self, instantanea: Instantanea) {
+        if let Ok(bitmap) = self.motor.bitmap_desde_textura(instantanea.textura()) {
+            self.muestra = Some(Fondo {
+                _instantanea: instantanea,
+                bitmap,
+            });
+        }
+        self.ultima_muestra = Instant::now();
+        self.pintar();
     }
 
     /// Un evento del raton en coordenadas del escritorio virtual. Devuelve
@@ -227,13 +268,59 @@ impl CapaViva {
                 alto: self.area.alto as f32,
             };
             pintar_ordenes(p, &ordenes, todo);
-            // La caja desaparece en modo pasante: ahi la capa no recoge el
-            // raton, asi que unos botones que no responden solo estorban.
+            // La caja y la lupa desaparecen en modo pasante: ahi la capa no
+            // recoge el raton, asi que unos botones que no responden solo
+            // estorban.
             if !pasante {
+                self.pintar_lupa(p);
                 self.pintar_caja(p);
             }
         });
         let _ = self.superficie.presentar();
+    }
+
+    /// La lupa (D52): amplia lo ultimo muestreado alrededor del cursor y se
+    /// coloca fuera de su propia fuente (D60). No es un elemento: no se
+    /// guarda ni se captura.
+    fn pintar_lupa(&self, p: &pixpin_render::Pintor) {
+        if self.anotador.herramienta() != Herramienta::Lupa {
+            return;
+        }
+        let Some(fondo) = &self.muestra else {
+            return;
+        };
+        let lupa = Lupa::con_aumento(self.escala_por_cien, self.anotador.lupa());
+        let local = Rect {
+            x: 0,
+            y: 0,
+            ancho: self.area.ancho,
+            alto: self.area.alto,
+        };
+        let fuente = lupa.region_fuente(self.cursor, local);
+        let pos = lupa.colocar_fuera(self.cursor, local);
+        let d = lupa.diametro as f32;
+        let destino = RectF {
+            x: pos.x as f32,
+            y: pos.y as f32,
+            ancho: d,
+            alto: d,
+        };
+        p.bitmap(
+            &fondo.bitmap,
+            destino,
+            Some(RectF {
+                x: fuente.x as f32,
+                y: fuente.y as f32,
+                ancho: fuente.ancho as f32,
+                alto: fuente.alto as f32,
+            }),
+            true,
+        );
+        p.trazar(
+            destino,
+            2.0 * self.escala_por_cien as f32 / 100.0,
+            Color::ACENTO,
+        );
     }
 
     fn pintar_caja(&self, p: &pixpin_render::Pintor) {
@@ -403,7 +490,18 @@ pub fn ejecutar_capa_viva(
     bucle_modal(&ventanas, |_, evento| {
         let seguir = match evento {
             EventoOverlay::BotonPulsado(p) => capa.raton(EventoRaton::Pulsar(p)),
-            EventoOverlay::RatonMovido(p) => capa.raton(EventoRaton::Mover(p)),
+            EventoOverlay::RatonMovido(p) => {
+                let seguir = capa.raton(EventoRaton::Mover(p));
+                // La lupa sobre pantalla viva necesita ver lo de debajo
+                // AHORA, no lo de cuando se abrio la capa (D60).
+                if seguir && capa.quiere_muestra() {
+                    match recursos.congelar_monitor(&capa.monitor()) {
+                        Ok(inst) => capa.poner_muestra(inst),
+                        Err(e) => tracing::debug!(?e, "sin muestra para la lupa"),
+                    }
+                }
+                seguir
+            }
             EventoOverlay::BotonSoltado(p) => capa.raton(EventoRaton::Soltar(p)),
             EventoOverlay::Tecla { vk, shift } => match vk {
                 VK_SPACE => {
