@@ -115,11 +115,132 @@ pub fn recolocar_en_area(rect: Rect, area_trabajo: Rect) -> Rect {
     }
 }
 
+/// Adhiere el rect a los bordes del area de trabajo cuando queda a menos de
+/// `umbral` pixeles. El tamano nunca cambia; por eje gana el borde mas
+/// cercano, porque un pin casi tan ancho como la pantalla tiene los dos
+/// dentro del umbral y adherirse a los dos es imposible.
+pub fn iman_de_bordes(rect: Rect, area_trabajo: Rect, umbral: i32) -> Rect {
+    let mut r = rect;
+
+    let d_izq = (r.izquierda() - area_trabajo.izquierda()).abs();
+    let d_der = (area_trabajo.derecha() - r.derecha()).abs();
+    if d_izq <= umbral && d_izq <= d_der {
+        r.x = area_trabajo.izquierda();
+    } else if d_der <= umbral {
+        r.x = area_trabajo.derecha() - r.ancho as i32;
+    }
+
+    let d_arr = (r.arriba() - area_trabajo.arriba()).abs();
+    let d_aba = (area_trabajo.abajo() - r.abajo()).abs();
+    if d_arr <= umbral && d_arr <= d_aba {
+        r.y = area_trabajo.arriba();
+    } else if d_aba <= umbral {
+        r.y = area_trabajo.abajo() - r.alto as i32;
+    }
+
+    r
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
     use crate::punto::Punto;
     use crate::rect::Rect;
+
+    #[test]
+    fn el_iman_adhiere_al_borde_cercano() {
+        let area = Rect {
+            x: 0,
+            y: 0,
+            ancho: 1000,
+            alto: 800,
+        };
+        let cerca = Rect {
+            x: 5,
+            y: 300,
+            ancho: 100,
+            alto: 100,
+        };
+        let r = iman_de_bordes(cerca, area, 8);
+        assert_eq!(
+            (r.x, r.y),
+            (0, 300),
+            "la izquierda a 5 px se adhiere; la y no se toca"
+        );
+
+        let abajo = Rect {
+            x: 300,
+            y: 694,
+            ancho: 100,
+            alto: 100,
+        };
+        let r = iman_de_bordes(abajo, area, 8);
+        assert_eq!(
+            (r.x, r.y),
+            (300, 700),
+            "el borde inferior del pin a 6 px del area se adhiere"
+        );
+        assert_eq!((r.ancho, r.alto), (100, 100), "el iman nunca redimensiona");
+    }
+
+    #[test]
+    fn lejos_del_borde_el_iman_no_toca_nada() {
+        // Caso negativo: sin esto, un iman mal escrito arrastraria el pin
+        // desde el centro de la pantalla, que es justo lo que nadie quiere.
+        let area = Rect {
+            x: 0,
+            y: 0,
+            ancho: 1000,
+            alto: 800,
+        };
+        let lejos = Rect {
+            x: 200,
+            y: 200,
+            ancho: 100,
+            alto: 100,
+        };
+        assert_eq!(iman_de_bordes(lejos, area, 8), lejos);
+    }
+
+    #[test]
+    fn con_dos_bordes_a_tiro_gana_el_mas_cercano() {
+        // Un pin casi tan ancho como el area tiene los dos bordes dentro del
+        // umbral: adherirse a los dos es imposible, y elegir mal produce un
+        // salto visible. Gana el mas cercano.
+        let area = Rect {
+            x: 0,
+            y: 0,
+            ancho: 100,
+            alto: 800,
+        };
+        let ancho = Rect {
+            x: 6,
+            y: 300,
+            ancho: 90,
+            alto: 100,
+        };
+        // izquierda a 6, derecha a 100-96 = 4: gana la derecha.
+        assert_eq!(iman_de_bordes(ancho, area, 8).x, 10);
+    }
+
+    #[test]
+    fn el_iman_respeta_el_origen_del_area() {
+        // Un monitor secundario no empieza en (0,0): el iman debe usar los
+        // bordes del area, no ceros implicitos.
+        let area = Rect {
+            x: 3000,
+            y: -200,
+            ancho: 1000,
+            alto: 800,
+        };
+        let cerca = Rect {
+            x: 3004,
+            y: 100,
+            ancho: 100,
+            alto: 100,
+        };
+        assert_eq!(iman_de_bordes(cerca, area, 8).x, 3000);
+    }
 
     #[test]
     fn las_cuatro_esquinas_se_detectan_y_el_centro_no() {
