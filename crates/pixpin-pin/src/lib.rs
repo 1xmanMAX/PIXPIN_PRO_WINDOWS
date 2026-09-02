@@ -25,5 +25,5 @@ pub use menu::{
 };
 pub use paleta::{Paleta, PintorPaleta};
 pub use ventana::{
-    CambioPin, ErrorPin, MARGEN_SOMBRA_LOGICO, Pin, contenido_desde_ventana, rect_ventana,
+    CambioPin, ErrorPin, LupaPin, MARGEN_SOMBRA_LOGICO, Pin, contenido_desde_ventana, rect_ventana,
 };

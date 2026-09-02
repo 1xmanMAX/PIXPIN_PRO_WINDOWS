@@ -13,12 +13,13 @@ use pixpin_codec::{ImagenRgba, cargar, codificar_png};
 use pixpin_geom::{DisposicionMonitores, Monitor, Punto, Rect, recolocar_en_area};
 use pixpin_motor2d::Escena;
 use pixpin_pin::{
-    CambioPin, Contenido, Paleta, Pin, TextosPin, icono_de, tamano_humano, tamano_natural,
+    CambioPin, Contenido, LupaPin, Paleta, Pin, TextosPin, icono_de, tamano_humano, tamano_natural,
 };
 use pixpin_render::MotorRender;
 use pixpin_store::{Almacen, ColorGrupo, PinGuardado, TipoEntrada};
 use pixpin_ui::{
-    Anotador, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, TeclaAnotador,
+    Anotador, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, Herramienta, Lupa,
+    TeclaAnotador,
 };
 use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 
@@ -102,6 +103,9 @@ struct Anotacion {
     caja: CajaHerramientas,
     paleta: Paleta,
     escala_por_cien: u32,
+    /// Donde estaba el raton la ultima vez, en coordenadas del contenido:
+    /// la lupa se recalcula desde aqui cuando la rueda cambia el aumento.
+    ultimo_cursor: Punto,
 }
 
 impl Anotacion {
@@ -556,6 +560,7 @@ impl Pines {
             caja,
             paleta,
             escala_por_cien: monitor.escala_por_cien,
+            ultimo_cursor: Punto { x: 0, y: 0 },
         });
         self.repintar_paleta();
         tracing::info!(id, "modo anotacion");
@@ -633,6 +638,12 @@ impl Pines {
         let Some(a) = self.anotacion.as_mut().filter(|a| a.id == id) else {
             return Ok(());
         };
+        if let EventoAnotador::Mover(p) | EventoAnotador::Pulsar(p) = &evento {
+            a.ultimo_cursor = Punto {
+                x: p.x as i32,
+                y: p.y as i32,
+            };
+        }
         let efecto = a.anotador.procesar(evento);
         let mut repintar = true;
         let mut salir = false;
@@ -662,14 +673,46 @@ impl Pines {
         if repintar && !salir {
             let ordenes = a.ordenes();
             let escribiendo = a.anotador.editando_texto();
+            let con_lupa = a.anotador.herramienta() == Herramienta::Lupa;
+            let aumento = a.anotador.lupa();
+            let cursor = a.ultimo_cursor;
+            let escala = a.escala_por_cien;
             if let Some(pin) = self.vivos.get(&id) {
                 // Con un texto abierto, el IME compone al lado (D57).
                 if let Some(p) = escribiendo {
-                    pin.poner_posicion_ime(pixpin_geom::Punto {
+                    pin.poner_posicion_ime(Punto {
                         x: p.x as i32,
                         y: p.y as i32,
                     });
                 }
+                // La lupa (D52): la aritmetica aqui, los pixeles en el pin.
+                // Se coloca DENTRO del contenido, huyendo del cursor.
+                let r = pin.rect_contenido();
+                let l = Lupa::con_aumento(escala, aumento);
+                // En un pin mas pequeno que la lupa no cabe: sin lupa, en
+                // vez de una lupa que tape el pin entero.
+                let cabe = r.ancho > l.diametro && r.alto > l.diametro;
+                let lupa = if con_lupa && cabe {
+                    let local = Rect {
+                        x: 0,
+                        y: 0,
+                        ancho: r.ancho,
+                        alto: r.alto,
+                    };
+                    let pos = l.colocar(cursor, local);
+                    Some(LupaPin {
+                        fuente: l.region_fuente(cursor, local),
+                        destino: Rect {
+                            x: pos.x,
+                            y: pos.y,
+                            ancho: l.diametro,
+                            alto: l.diametro,
+                        },
+                    })
+                } else {
+                    None
+                };
+                pin.poner_lupa(lupa);
                 pin.poner_anotaciones(ordenes);
             }
         }

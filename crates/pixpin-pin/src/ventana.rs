@@ -83,6 +83,15 @@ pub enum CambioPin {
     PaletaPulsada(Punto),
 }
 
+/// La lupa dentro del pin (D52): que trozo del contenido se amplia y donde
+/// se dibuja, las dos en coordenadas del contenido. La aritmetica la hace el
+/// gestor (la `Lupa` de `pixpin-ui` es L3); el pin solo copia pixeles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LupaPin {
+    pub fuente: Rect,
+    pub destino: Rect,
+}
+
 /// Identificador del temporizador que agrupa el guardado tras una rafaga de
 /// flechas, y su retardo (spec 5.2: 300 ms tras el ultimo cambio).
 const ID_TEMPORIZADOR_GUARDADO: usize = 1;
@@ -188,6 +197,9 @@ struct PinInterno {
     /// En modo anotacion el pin NO se mueve ni se redimensiona: arrastrar
     /// dibuja. Sin un modo explicito, el gesto seria ambiguo (D47).
     anotando: bool,
+    /// La lupa, mientras la herramienta activa sea la lupa. No es un
+    /// elemento: no se guarda (D52).
+    lupa: Option<LupaPin>,
     al_cambiar: Box<dyn Fn(CambioPin)>,
 }
 
@@ -277,6 +289,7 @@ impl Pin {
             textos: None,
             anotaciones: Vec::new(),
             anotando: false,
+            lupa: None,
             al_cambiar,
         });
         // SAFETY: la ventana es propia y viva; el Box se cede al USERDATA y
@@ -377,6 +390,17 @@ impl Pin {
         if let Some(i) = interno_de(self.hwnd) {
             i.anotaciones = ordenes;
             pintar(i);
+        }
+    }
+
+    /// Pone o quita la lupa (D52). Solo repinta si algo cambio: la lupa se
+    /// actualiza con cada movimiento del raton y repintar en balde cuesta.
+    pub fn poner_lupa(&self, lupa: Option<LupaPin>) {
+        if let Some(i) = interno_de(self.hwnd) {
+            if i.lupa != lupa {
+                i.lupa = lupa;
+                pintar(i);
+            }
         }
     }
 
@@ -589,6 +613,29 @@ fn pintar(i: &PinInterno) {
         // contenido original nunca se toca (D48). Se dibujan en coordenadas
         // del contenido, asi que hay que sumarles el margen de la sombra.
         pintar_anotaciones(p, i, m);
+
+        // La lupa amplia el bitmap NATIVO del pin: si el pin esta escalado,
+        // la fuente en pixeles del contenido se convierte a pixeles de la
+        // imagen, y la lupa ensena detalle real, no pixeles ya estirados.
+        if let (Some(l), Some(b)) = (&i.lupa, &i.bitmap) {
+            let (nw, nh) = i.imagen_nativa;
+            let fx = nw as f32 / w.max(1.0);
+            let fy = nh as f32 / h.max(1.0);
+            let fuente = RectF {
+                x: l.fuente.x as f32 * fx,
+                y: l.fuente.y as f32 * fy,
+                ancho: l.fuente.ancho as f32 * fx,
+                alto: l.fuente.alto as f32 * fy,
+            };
+            let destino = RectF {
+                x: l.destino.x as f32 + m,
+                y: l.destino.y as f32 + m,
+                ancho: l.destino.ancho as f32,
+                alto: l.destino.alto as f32,
+            };
+            p.bitmap(b, destino, Some(fuente), true);
+            p.trazar(destino, 2.0 * escala, Color::ACENTO);
+        }
     });
     let _ = i.superficie.presentar();
 }
