@@ -368,7 +368,13 @@ impl Pines {
 
     /// La ficha de un archivo o carpeta, por referencia (D28).
     pub fn pinear_archivo(&mut self, ruta: &Path, monitor: &Monitor) -> Result<()> {
+        let t0 = std::time::Instant::now();
         let contenido = self.contenido_de_archivo(ruta);
+        let tipo = match &contenido {
+            Contenido::Video { .. } => "video",
+            Contenido::Documento { .. } => "documento",
+            _ => "ficha",
+        };
         let region = self.region_centrada(&contenido, monitor);
         let id = self
             .almacen
@@ -378,7 +384,14 @@ impl Pines {
                 Some(Pines::guardado_desde(region, monitor.escala_por_cien)),
             )
             .context("no se pudo guardar la referencia")?;
-        self.crear_ventana(id, contenido, region, monitor.escala_por_cien)
+        let hecho = self.crear_ventana(id, contenido, region, monitor.escala_por_cien);
+        tracing::info!(
+            id,
+            tipo,
+            ms = t0.elapsed().as_millis() as u64,
+            "archivo pineado"
+        );
+        hecho
     }
 
     /// Una imagen del portapapeles: no viene de ninguna region de pantalla,

@@ -1042,6 +1042,10 @@ extern "system" fn procedimiento_pin(
                     Some(crate::menu::CMD_SONIDO) => {
                         if let Some(v) = &i.video {
                             v.alternar_sonido();
+                            tracing::info!(
+                                silenciado = v.silenciado(),
+                                "sonido del video alternado"
+                            );
                         }
                     }
                     Some(cmd) => {
