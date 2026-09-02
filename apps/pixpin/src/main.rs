@@ -185,6 +185,7 @@ fn arrancar(
         (atajos::ID_COPIAR, config.atajos.copiar),
         (atajos::ID_SCROLL, config.atajos.scroll),
         (atajos::ID_CUENTAGOTAS, config.atajos.cuentagotas),
+        (atajos::ID_PIN, config.atajos.pin),
     ];
     let (_registrados, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
     for (id, atajo) in &fallidos {
@@ -233,9 +234,13 @@ fn arrancar(
             }
             Continuar::Si
         }
-        Evento::Atajo(id) if id == atajos::ID_REGION || id == atajos::ID_COPIAR => {
+        Evento::Atajo(id)
+            if id == atajos::ID_REGION || id == atajos::ID_COPIAR || id == atajos::ID_PIN =>
+        {
             let modo = if id == atajos::ID_REGION {
                 ModoConfirmacion::ConBarra
+            } else if id == atajos::ID_PIN {
+                ModoConfirmacion::Pinear
             } else {
                 ModoConfirmacion::DirectoAlPortapapeles
             };
@@ -306,6 +311,18 @@ fn ejecutar_accion(
             let ruta = ruta_captura_libre(ubicacion)?;
             pixpin_codec::guardar(&imagen, &ruta, pixpin_codec::FormatoImagen::Png)?;
             Ok(Some(ruta))
+        }
+        AccionFinal::Pinear { imagen, region } => {
+            // El gestor de pines (tarea siguiente del plan) consume esta
+            // accion antes de llegar aqui; este brazo existe para que el
+            // commit del atajo compile y funcione solo.
+            tracing::info!(
+                ancho = imagen.ancho,
+                x = region.x,
+                y = region.y,
+                "pinear pendiente del gestor de pines"
+            );
+            Ok(None)
         }
         AccionFinal::GuardarComo(imagen) => {
             match pixpin_shell::guardar::pedir_ruta_guardado(hwnd, "captura.png") {

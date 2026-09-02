@@ -45,6 +45,8 @@ pub enum ModoConfirmacion {
     ConBarra,
     /// Confirmar copia al portapapeles y cierra, sin barra (Ctrl+Alt+C).
     DirectoAlPortapapeles,
+    /// Confirmar deja el recorte flotando como pin, sin barra (Ctrl+Alt+F).
+    Pinear,
 }
 
 /// Lo que el overlay decidio. La imagen ya esta recortada y en CPU.
@@ -52,6 +54,11 @@ pub enum AccionFinal {
     Copiar(ImagenRgba),
     Guardar(ImagenRgba),
     GuardarComo(ImagenRgba),
+    /// El pin nace 1:1 exactamente donde se recorto (D26): la region viaja.
+    Pinear {
+        imagen: ImagenRgba,
+        region: Rect,
+    },
     Nada,
 }
 
@@ -341,6 +348,7 @@ pub fn ejecutar_overlay(
                 QueAccion::Copiar => AccionFinal::Copiar(imagen),
                 QueAccion::Guardar => AccionFinal::Guardar(imagen),
                 QueAccion::GuardarComo => AccionFinal::GuardarComo(imagen),
+                QueAccion::Pinear => AccionFinal::Pinear { imagen, region },
             })
         }
         None => Ok(AccionFinal::Nada),
@@ -354,6 +362,7 @@ enum QueAccion {
     Copiar,
     Guardar,
     GuardarComo,
+    Pinear,
 }
 
 thread_local! {
@@ -620,6 +629,10 @@ fn aplicar_efecto(
         Efecto::Confirmar(region) => match modo {
             ModoConfirmacion::DirectoAlPortapapeles => {
                 PENDIENTE.poner(QueAccion::Copiar, region);
+                Continuar::No
+            }
+            ModoConfirmacion::Pinear => {
+                PENDIENTE.poner(QueAccion::Pinear, region);
                 Continuar::No
             }
             ModoConfirmacion::ConBarra => {
