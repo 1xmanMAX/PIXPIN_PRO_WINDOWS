@@ -482,6 +482,7 @@ pub fn ejecutar_capa(
     use pixpin_shell::overlay::{EventoOverlay, bucle_modal};
     use pixpin_shell::ventana::Continuar;
 
+    let t0 = Instant::now();
     let disposicion =
         pixpin_capture::enumerar_monitores().context("no se pudieron enumerar los monitores")?;
     let monitor = *disposicion.principal().context("sin monitor principal")?;
@@ -502,7 +503,11 @@ pub fn ejecutar_capa(
         .unwrap_or(1);
     let mut capa = CapaViva::nueva(&recursos.d3d(), recursos.motor(), &monitor, semilla, fondo)?;
     capa.mostrar();
-    tracing::info!(?modo, "capa de anotacion abierta");
+    tracing::info!(
+        ?modo,
+        ms = t0.elapsed().as_millis() as u64,
+        "capa de anotacion abierta"
+    );
 
     let ventanas = [];
     // Ctrl mantenido, para distinguir Ctrl+Z de la letra Z.

@@ -505,6 +505,7 @@ impl Pines {
 
     /// Doble clic: entra en modo anotacion cargando lo que ya hubiera.
     fn entrar_a_anotar(&mut self, id: u64) -> Result<()> {
+        let t0 = std::time::Instant::now();
         // Salir del anterior guardando: dos pines anotandose a la vez no
         // significa nada y enredaria el foco del teclado.
         self.salir_de_anotar()?;
@@ -563,7 +564,7 @@ impl Pines {
             ultimo_cursor: Punto { x: 0, y: 0 },
         });
         self.repintar_paleta();
-        tracing::info!(id, "modo anotacion");
+        tracing::info!(id, ms = t0.elapsed().as_millis() as u64, "modo anotacion");
         Ok(())
     }
 
