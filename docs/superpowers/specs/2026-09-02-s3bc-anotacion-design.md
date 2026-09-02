@@ -33,6 +33,23 @@ cambia es **sobre qué se dibuja**.
 | D54 | **Salida de la capa viva** | `Esc` cierra y **pregunta si guardar** si hay algo dibujado; guardar crea un pin con la captura anotada | Cerrar sin avisar tirando cinco minutos de anotaciones es el peor fallo posible aquí |
 | D55 | **Rueda del ratón** | Sobre un pin **sin** anotar: zoom del pin (lo que pidió el usuario). Anotando: cambia el grosor del trazo. Con la lupa: cambia el aumento | Cada modo le da a la rueda lo más útil de ese modo |
 
+Decisiones tomadas al ejecutar S3-C (auto-aprobadas bajo la autorización del
+2026-09-01; el detalle está en `docs/superpowers/plans/2026-09-02-s3c-anotar-pantalla.md`):
+
+| # | Decisión | Elección |
+|---|---|---|
+| D56 | Cómo se entra al modo congelado | Un segundo atajo, `Ctrl+Alt+Shift+A` (ajuste `anotar_congelada`). Misma capa con la captura como fondo; sin modo pasante |
+| D57 | Texto in situ | Vive en la máquina pura: clic abre un texto, cada carácter lo alarga, `Enter` confirma, `Escape` cancela, `Retroceso` borra, cambiar de herramienta confirma. El IME compone junto al punto de escritura |
+| D58 | Caja de herramientas del pin | Una ventana paleta aparte (`WS_EX_NOACTIVATE`) colocada por `CajaHerramientas::colocar`, viva solo mientras se anota; la crea y la pinta el gestor |
+| D59 | Captura final de la capa | Se captura la pantalla con la capa visible pero sin caja ni lupa (repintar, `DwmFlush` ×2, capturar); después se destruye la capa y se pregunta |
+| D60 | Lupa sobre pantalla viva | Una `SesionViva` WGC con el tope de fps del nivel, abierta solo mientras la lupa está activa; la lupa se coloca fuera de su propia región fuente |
+| D61 | Imágenes incrustadas | Fuera de S3-C: llegan con el almacén de bitmaps por anotación del PDF (S6) |
+
+Precisión a D50 aprendida en la prueba: `WS_EX_TRANSPARENT` solo deja pasar el
+ratón en una ventana `WS_EX_LAYERED`; se ponen los dos. Y el atajo global
+pulsado con la capa abierta llega al bucle modal como `EventoOverlay::Atajo`
+en vez de quedarse en la cola de la ventana principal.
+
 ## 3. La máquina de anotación (pura, `pixpin-ui::anotador`)
 
 ```rust
@@ -85,12 +102,12 @@ geometría.
 
 ## 6. Criterios de aceptación
 
-- [ ] Doble clic en un pin entra en modo anotación; `Esc` sale y guarda
-- [ ] Lápiz, resaltador, líneas, flechas, formas y texto dibujan dentro del pin
-- [ ] La anotación sobrevive a cerrar el pin y a reiniciar la aplicación
-- [ ] El objeto original del almacén no se modifica nunca
-- [ ] Atajo → capa viva sobre la pantalla; se dibuja encima sin congelarla
-- [ ] Con la capa en «pasante», los clics llegan a la aplicación de abajo
-- [ ] Foco y lupa funcionan en los dos modos
-- [ ] La rueda hace zoom sobre un pin y cambia el grosor mientras se anota
-- [ ] Las cuatro puertas de §4 medidas y anotadas en `medidas/`
+- [x] Doble clic en un pin entra en modo anotación; `Esc` sale y guarda (S3-B)
+- [x] Lápiz, resaltador, líneas, flechas, formas y texto dibujan dentro del pin (texto: S3-C)
+- [x] La anotación sobrevive a cerrar el pin y a reiniciar la aplicación (S3-B, revalidado en S3-C)
+- [x] El objeto original del almacén no se modifica nunca
+- [x] Atajo → capa viva sobre la pantalla; se dibuja encima sin congelarla
+- [x] Con la capa en «pasante», los clics llegan a la aplicación de abajo
+- [x] Foco y lupa funcionan en los dos modos (y en el pin)
+- [x] La rueda hace zoom sobre un pin y cambia el grosor mientras se anota
+- [x] Las cuatro puertas de §4 medidas y anotadas en `medidas/2026-09-02-equipo-desarrollo-s3c.md`
