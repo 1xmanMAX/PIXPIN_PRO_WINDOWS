@@ -170,15 +170,20 @@ impl VentanaOverlay {
     /// activar el dibujo con el mismo atajo.
     pub fn poner_pasante(&self, pasante: bool) {
         use windows::Win32::UI::WindowsAndMessaging::{
-            GWL_EXSTYLE, GetWindowLongPtrW, SetWindowLongPtrW, WS_EX_TRANSPARENT,
+            GWL_EXSTYLE, GetWindowLongPtrW, SetWindowLongPtrW, WS_EX_LAYERED, WS_EX_TRANSPARENT,
         };
+        // WS_EX_TRANSPARENT solo deja pasar el raton en una ventana LAYERED:
+        // sin el segundo bit, el estilo se lee como puesto pero los clics
+        // siguen llegando a la capa. Lo encontro la prueba de extremo a
+        // extremo: un clic "pasante" abria un texto in situ.
+        let bits = WS_EX_LAYERED.0 | WS_EX_TRANSPARENT.0;
         // SAFETY: lee y escribe el estilo extendido de una ventana propia.
         unsafe {
             let actual = GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) as u32;
             let nuevo = if pasante {
-                actual | WS_EX_TRANSPARENT.0
+                actual | bits
             } else {
-                actual & !WS_EX_TRANSPARENT.0
+                actual & !bits
             };
             SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, nuevo as isize);
         }
