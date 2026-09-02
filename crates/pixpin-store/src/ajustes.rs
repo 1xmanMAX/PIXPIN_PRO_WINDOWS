@@ -92,6 +92,8 @@ pub struct Atajos {
     pub pin: Atajo,
     /// Pinear el contenido del portapapeles (S2-B).
     pub portapapeles: Atajo,
+    /// Anotar sobre la pantalla con la capa viva (S3-C).
+    pub anotar: Atajo,
 }
 
 impl Default for Atajos {
@@ -105,6 +107,7 @@ impl Default for Atajos {
             cuentagotas: "Ctrl+Alt+D".parse().expect("atajo por defecto valido"),
             pin: "Ctrl+Alt+F".parse().expect("atajo por defecto valido"),
             portapapeles: "Ctrl+Alt+V".parse().expect("atajo por defecto valido"),
+            anotar: "Ctrl+Alt+A".parse().expect("atajo por defecto valido"),
         }
     }
 }
@@ -183,6 +186,7 @@ mod pruebas {
         assert_eq!(a.atajos.cuentagotas.to_string(), "Ctrl+Alt+D");
         assert_eq!(a.atajos.pin.to_string(), "Ctrl+Alt+F");
         assert_eq!(a.atajos.portapapeles.to_string(), "Ctrl+Alt+V");
+        assert_eq!(a.atajos.anotar.to_string(), "Ctrl+Alt+A");
         assert_eq!(a.idioma, PreferenciaIdioma::Sistema);
         assert_eq!(a.formato_color, FormatoColor::Hex);
         assert!(!a.arranque_con_windows);

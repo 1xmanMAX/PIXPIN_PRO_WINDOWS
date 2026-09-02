@@ -49,6 +49,7 @@
 // atributo es la unica guarda que lo habria detectado.
 #![forbid(unsafe_code)]
 
+mod capa;
 mod overlay;
 mod pines;
 
@@ -189,6 +190,7 @@ fn arrancar(
         (atajos::ID_CUENTAGOTAS, config.atajos.cuentagotas),
         (atajos::ID_PIN, config.atajos.pin),
         (atajos::ID_PORTAPAPELES, config.atajos.portapapeles),
+        (atajos::ID_ANOTAR, config.atajos.anotar),
     ];
     let (_registrados, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
     for (id, atajo) in &fallidos {
@@ -333,6 +335,38 @@ fn arrancar(
                         args.set("motivo", e.to_string());
                         tracing::warn!("{}", textos.t_args("captura-fallo", &args));
                     }
+                }
+                Continuar::Si
+            }
+            Evento::Atajo(id) if id == atajos::ID_ANOTAR => {
+                let listo = match &mut recursos_overlay {
+                    Some(r) => Ok(r),
+                    nada => Recursos::nuevos().map(|r| nada.insert(r)),
+                };
+                match listo.and_then(capa::ejecutar_capa_viva) {
+                    Ok(Some(imagen)) => {
+                        // Lo dibujado se queda como pin: si se cerrara sin
+                        // mas, cinco minutos de anotaciones se irian a la
+                        // basura (D54).
+                        let hecho = preparar_pines(
+                            &mut recursos_overlay,
+                            &mut pines,
+                            &ubicacion,
+                            &textos,
+                            hwnd,
+                        )
+                        .and_then(|p| {
+                            let d = pixpin_capture::enumerar_monitores()?;
+                            let m = d.principal().context("sin monitor")?.to_owned();
+                            p.pinear_imagen_centrada(&imagen, &m)
+                        });
+                        match hecho {
+                            Ok(()) => tracing::info!("anotacion de pantalla pineada"),
+                            Err(e) => tracing::warn!(?e, "no se pudo pinear la anotacion"),
+                        }
+                    }
+                    Ok(None) => tracing::info!("capa viva cerrada sin dibujo"),
+                    Err(e) => tracing::warn!(?e, "no se pudo abrir la capa viva"),
                 }
                 Continuar::Si
             }

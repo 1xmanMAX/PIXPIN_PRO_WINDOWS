@@ -43,6 +43,9 @@ pub enum EventoOverlay {
     Despierta,
     /// WM_CLOSE (Alt+F4): el usuario quiere cerrar; tratar como cancelar.
     Cerrar,
+    /// Rueda del raton, positivo hacia arriba. La capa viva la usa para el
+    /// grosor del trazo y el aumento de la lupa (D55).
+    Rueda(i32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,6 +125,44 @@ impl VentanaOverlay {
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
         }
+    }
+
+    /// Deja pasar los clics a la aplicacion de abajo, o vuelve a
+    /// recogerlos (D50).
+    ///
+    /// Es lo que hace posible la capa viva: dibujas encima de lo que estas
+    /// haciendo, y cuando quieres seguir trabajando la vuelves pasante — el
+    /// dibujo se sigue viendo, pero el raton lo atraviesa como si no
+    /// estuviera. Sin esto, una capa a pantalla completa secuestra el
+    /// escritorio entero.
+    ///
+    /// `WS_EX_TRANSPARENT` afecta SOLO al raton. El teclado sigue llegando
+    /// mientras la ventana tenga el foco, que es lo que permite volver a
+    /// activar el dibujo con el mismo atajo.
+    pub fn poner_pasante(&self, pasante: bool) {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GWL_EXSTYLE, GetWindowLongPtrW, SetWindowLongPtrW, WS_EX_TRANSPARENT,
+        };
+        // SAFETY: lee y escribe el estilo extendido de una ventana propia.
+        unsafe {
+            let actual = GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) as u32;
+            let nuevo = if pasante {
+                actual | WS_EX_TRANSPARENT.0
+            } else {
+                actual & !WS_EX_TRANSPARENT.0
+            };
+            SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, nuevo as isize);
+        }
+    }
+
+    /// Si ahora mismo los clics la atraviesan.
+    pub fn es_pasante(&self) -> bool {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GWL_EXSTYLE, GetWindowLongPtrW, WS_EX_TRANSPARENT,
+        };
+        // SAFETY: consulta de solo lectura sobre ventana propia.
+        let actual = unsafe { GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) as u32 };
+        actual & WS_EX_TRANSPARENT.0 != 0
     }
 
     /// Esconde la ventana sin destruirla. El overlay retiene sus ventanas
@@ -276,6 +317,12 @@ extern "system" fn procedimiento_overlay(
             encolar(EventoOverlay::RatonMovido(punto(lparam)));
             LRESULT(0)
         }
+        WM_MOUSEWHEEL => {
+            // La palabra alta del wparam trae el giro con signo.
+            let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            encolar(EventoOverlay::Rueda(delta));
+            LRESULT(0)
+        }
         WM_LBUTTONDOWN => {
             // SAFETY: SetCapture sobre ventana propia: el arrastre no se
             // pierde al salir del borde.
@@ -356,6 +403,53 @@ extern "system" fn procedimiento_overlay(
 mod pruebas {
     use super::*;
     use pixpin_geom::Rect;
+
+    #[test]
+    #[ignore = "necesita sesion de escritorio; ejecutar con --ignored"]
+    fn el_modo_pasante_se_activa_y_se_quita() {
+        // D50: es lo que permite dibujar encima de lo que estas haciendo y
+        // luego seguir trabajando sin cerrar la capa. Se comprueba contra el
+        // estilo REAL de la ventana, no contra una variable propia: si
+        // Windows no aplicara el cambio, un booleano nuestro mentiria.
+        let v = VentanaOverlay::nueva(Rect {
+            x: 0,
+            y: 0,
+            ancho: 300,
+            alto: 200,
+        })
+        .expect("la ventana deberia crearse");
+
+        assert!(!v.es_pasante(), "una capa nace recogiendo el raton");
+        v.poner_pasante(true);
+        assert!(v.es_pasante(), "los clics deberian atravesarla");
+        v.poner_pasante(false);
+        assert!(!v.es_pasante(), "y volver a recogerse");
+    }
+
+    #[test]
+    #[ignore = "necesita sesion de escritorio; ejecutar con --ignored"]
+    fn poner_pasante_no_borra_los_demas_estilos() {
+        // Caso negativo de la escritura del estilo: un SetWindowLongPtrW que
+        // asignara el estilo en vez de combinarlo dejaria la ventana sin
+        // TOPMOST ni NOREDIRECTIONBITMAP, y la capa dejaria de componerse.
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GWL_EXSTYLE, GetWindowLongPtrW, WS_EX_TOPMOST,
+        };
+        let v = VentanaOverlay::nueva(Rect {
+            x: 0,
+            y: 0,
+            ancho: 300,
+            alto: 200,
+        })
+        .unwrap();
+        v.poner_pasante(true);
+        // SAFETY: consulta de solo lectura sobre la ventana del test.
+        let estilo = unsafe { GetWindowLongPtrW(v.handle(), GWL_EXSTYLE) as u32 };
+        assert!(
+            estilo & WS_EX_TOPMOST.0 != 0,
+            "la capa perdio el TOPMOST al volverse pasante"
+        );
+    }
 
     #[test]
     #[ignore = "necesita sesion de escritorio; ejecutar con --ignored"]

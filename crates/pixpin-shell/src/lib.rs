@@ -22,8 +22,8 @@ pub use abrir::{abrir, abrir_ubicacion};
 pub use arranque::ErrorArranque;
 pub use atajo::{Atajo, ErrorAtajo, Modificadores, Tecla};
 pub use atajos::{
-    AtajosRegistrados, ID_COPIAR, ID_CUENTAGOTAS, ID_PIN, ID_PORTAPAPELES, ID_REGION, ID_SCROLL,
-    registrar,
+    AtajosRegistrados, ID_ANOTAR, ID_COPIAR, ID_CUENTAGOTAS, ID_PIN, ID_PORTAPAPELES, ID_REGION,
+    ID_SCROLL, registrar,
 };
 pub use bandeja::{Bandeja, EtiquetasMenu};
 pub use dialogo::{confirmar_destructivo, mostrar_error_fatal};
