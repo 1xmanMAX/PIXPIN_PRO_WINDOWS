@@ -220,7 +220,13 @@ impl CapaViva {
             // moviendo. Esto es lo que separa la capa viva del modo
             // congelado, donde el fondo es una foto.
             p.limpiar_transparente();
-            pintar_ordenes(p, &ordenes);
+            let todo = RectF {
+                x: 0.0,
+                y: 0.0,
+                ancho: self.area.ancho as f32,
+                alto: self.area.alto as f32,
+            };
+            pintar_ordenes(p, &ordenes, todo);
             // La caja desaparece en modo pasante: ahi la capa no recoge el
             // raton, asi que unos botones que no responden solo estorban.
             if !pasante {
@@ -306,8 +312,9 @@ fn etiqueta(b: BotonCaja) -> &'static str {
 }
 
 /// Pinta las ordenes del motor con el pintor. Igual que en el pin, pero sin
-/// desplazamiento: aqui el origen del documento es el del monitor.
-fn pintar_ordenes(p: &pixpin_render::Pintor, ordenes: &[Orden]) {
+/// desplazamiento: aqui el origen del documento es el del monitor. `marco`
+/// es el lienzo entero, que el velo del foco necesita conocer.
+fn pintar_ordenes(p: &pixpin_render::Pintor, ordenes: &[Orden], marco: RectF) {
     let color = |c: pixpin_motor2d::ColorRgba| Color {
         r: c.r,
         g: c.g,
@@ -338,6 +345,11 @@ fn pintar_ordenes(p: &pixpin_render::Pintor, ordenes: &[Orden]) {
                 ancho_max,
                 ..
             } => p.texto_ajustado(texto, *x, *y, *tam, *ancho_max, color(*c)),
+            Orden::Velo { hueco, color: c } => {
+                let v: Vec<(f32, f32)> = hueco.iter().map(|q| (q.x, q.y)).collect();
+                p.velo(marco, &v, color(*c));
+            }
+            // Las imagenes incrustadas quedan para S6 (D61).
             Orden::Imagen { .. } => {}
         }
     }

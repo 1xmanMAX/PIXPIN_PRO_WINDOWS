@@ -585,8 +585,21 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
                 ancho_max,
                 ..
             } => p.texto_ajustado(texto, x + margen, y + margen, *tam, *ancho_max, color(*c)),
-            // Las imagenes incrustadas llegan con S3-C, cuando haya de donde
-            // sacar sus bitmaps.
+            // El velo del foco (D51) cubre el CONTENIDO del pin, no la
+            // ventana entera: la sombra queda fuera del oscurecido.
+            Orden::Velo { hueco, color: c } => {
+                let r = i.estado.rect();
+                let marco = RectF {
+                    x: margen,
+                    y: margen,
+                    ancho: r.ancho as f32,
+                    alto: r.alto as f32,
+                };
+                let v: Vec<(f32, f32)> = hueco.iter().map(mover).collect();
+                p.velo(marco, &v, color(*c));
+            }
+            // Las imagenes incrustadas quedan para S6 (D61), cuando haya un
+            // almacen de bitmaps por anotacion de donde sacarlas.
             Orden::Imagen { .. } => {}
         }
     }
