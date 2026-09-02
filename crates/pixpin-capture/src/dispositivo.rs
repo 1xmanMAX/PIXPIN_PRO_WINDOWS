@@ -29,6 +29,8 @@ pub enum ErrorCaptura {
     Windows(#[from] windows::core::Error),
     #[error("no llego ningun fotograma antes del tiempo limite")]
     SinFotograma,
+    #[error("el duplicador perdio el acceso a la pantalla; hay que recrearlo")]
+    AccesoPerdido,
     #[error("no existe ningun monitor con el identificador {0}")]
     MonitorDesconocido(u32),
     #[error("la region {region:?} no cabe en la instantanea {disponible:?}")]

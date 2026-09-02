@@ -42,6 +42,12 @@ pub struct Instantanea {
 }
 
 impl Instantanea {
+    /// Construccion interna para las vias que ya tienen la textura lista
+    /// (duplicador). La textura DEBE medir exactamente area.ancho x alto.
+    pub(crate) fn desde_partes(textura: ID3D11Texture2D, area: Rect) -> Instantanea {
+        Instantanea { textura, area }
+    }
+
     pub fn textura(&self) -> &ID3D11Texture2D {
         &self.textura
     }

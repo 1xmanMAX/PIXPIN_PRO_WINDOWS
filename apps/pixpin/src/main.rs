@@ -52,7 +52,7 @@
 mod overlay;
 
 use anyhow::{Context, Result};
-use overlay::{AccionFinal, ModoConfirmacion, TextosBarra, ejecutar_overlay};
+use overlay::{AccionFinal, ModoConfirmacion, Recursos, TextosBarra, ejecutar_overlay};
 use pixpin_nivel::{Nivel, Preferencia};
 use pixpin_shell::{
     Bandeja, Continuar, EtiquetasMenu, Evento, VentanaMensajes, adquirir_instancia_unica, arranque,
@@ -63,6 +63,17 @@ use pixpin_store::{Catalogo, Ubicacion, ajustes, idioma, rutas};
 use pixpin_ui::FormatoColorLupa;
 
 fn main() -> Result<()> {
+    // Con panic = "abort" y sin consola, un panico moria MUDO: ni log ni
+    // dialogo (costo una sesion de depuracion a ciegas). El hook escribe al
+    // registro antes del abort; tracing puede no estar inicializado aun, y
+    // entonces simplemente no hace nada, que ya es lo que habia.
+    std::panic::set_hook(Box::new(|info| {
+        tracing::error!(%info, "panico fatal");
+        // Darle al escritor no bloqueante un instante para volcar la linea
+        // antes de que abort() se lleve el proceso por delante.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }));
+
     // Vive aqui, no dentro de `arrancar`, precisamente para que sobreviva a
     // un `Err`: ver el comentario de modulo de mas arriba.
     let mut guardia_registro: Option<tracing_appender::non_blocking::WorkerGuard> = None;
@@ -206,7 +217,10 @@ fn arrancar(
         }
     });
 
-    // 8. A dormir hasta que pase algo.
+    // 8. A dormir hasta que pase algo. Los recursos caros del overlay
+    // (dispositivo, motor, duplicadores) se crean en el primer atajo y
+    // viven entre capturas: son la diferencia entre 200 ms y menos de 50.
+    let mut recursos_overlay: Option<Recursos> = None;
     let hwnd = ventana.handle();
     ventana.ejecutar(|evento| match evento {
         Evento::MenuSalir => {
@@ -236,7 +250,12 @@ fn arrancar(
                 ajustes::FormatoColor::Rgb => FormatoColorLupa::Rgb,
                 ajustes::FormatoColor::Hsl => FormatoColorLupa::Hsl,
             };
-            match ejecutar_overlay(decision.nivel, modo, &etiquetas_barra, formato)
+            let listo = match &mut recursos_overlay {
+                Some(r) => Ok(r),
+                nada => Recursos::nuevos().map(|r| nada.insert(r)),
+            };
+            match listo
+                .and_then(|r| ejecutar_overlay(r, decision.nivel, modo, &etiquetas_barra, formato))
                 .and_then(|accion| ejecutar_accion(accion, &ubicacion, hwnd))
             {
                 Ok(Some(ruta)) => {

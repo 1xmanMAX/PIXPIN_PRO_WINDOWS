@@ -11,7 +11,7 @@
 
 use anyhow::{Context, Result};
 use pixpin_capture::{
-    Dispositivo, Instantanea, SesionViva, a_imagen, capturar_monitor, componer_region,
+    Dispositivo, Duplicador, Instantanea, SesionViva, a_imagen, capturar_monitor, componer_region,
     enumerar_monitores,
 };
 use pixpin_codec::ImagenRgba;
@@ -96,18 +96,127 @@ fn a_rectf(r: Rect) -> RectF {
     }
 }
 
-/// Una ventana de overlay con todo lo suyo.
-struct Pieza {
+/// Ventana + superficie persistentes de UN monitor. Viven en `Recursos`
+/// entre capturas (ocultas): crearlas costaba ~90 ms de los 50 permitidos.
+struct PiezaBase {
     monitor: Monitor,
-    instantanea: Instantanea,
     ventana: VentanaOverlay,
     superficie: Superficie,
+}
+
+/// Lo que cambia en CADA captura de un monitor: la instantanea congelada y
+/// su bitmap. La ventana y la superficie son de `PiezaBase`.
+struct Pieza<'a> {
+    base: &'a PiezaBase,
+    instantanea: Instantanea,
     fondo: ID2D1Bitmap1,
     fondo_vivo: Option<ID2D1Bitmap1>,
     sesion: Option<SesionViva>,
 }
 
+impl Pieza<'_> {
+    fn monitor(&self) -> &Monitor {
+        &self.base.monitor
+    }
+    fn ventana(&self) -> &VentanaOverlay {
+        &self.base.ventana
+    }
+}
+
+/// Lo caro que sobrevive ENTRE capturas: el dispositivo (90 ms), las
+/// ventanas con su DComp y swapchain (90 ms) y un Duplicador DXGI por
+/// monitor (pull: cero coste en reposo). Con todo persistente, el atajo
+/// solo paga congelar (milisegundos) y ensenar ventanas ya hechas.
+pub struct Recursos {
+    dispositivo: Dispositivo,
+    motor: MotorRender,
+    duplicadores: Vec<(u32, Duplicador)>,
+    bases: Vec<PiezaBase>,
+}
+
+impl Recursos {
+    pub fn nuevos() -> Result<Recursos> {
+        let dispositivo = Dispositivo::nuevo().context("sin dispositivo de captura")?;
+        let motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
+        Ok(Recursos {
+            dispositivo,
+            motor,
+            duplicadores: Vec::new(),
+            bases: Vec::new(),
+        })
+    }
+
+    /// Deja `bases` con exactamente una ventana por monitor actual. Si la
+    /// disposicion no cambio, no hace nada; si cambio (monitor conectado,
+    /// resolucion nueva), reconstruye solo entonces.
+    fn preparar_bases(&mut self, monitores: &[Monitor]) -> Result<()> {
+        let coincide = self.bases.len() == monitores.len()
+            && self
+                .bases
+                .iter()
+                .zip(monitores)
+                .all(|(b, m)| b.monitor == *m);
+        if coincide {
+            return Ok(());
+        }
+        self.bases.clear();
+        for m in monitores {
+            let ventana = VentanaOverlay::nueva(m.area).context("sin ventana de overlay")?;
+            let superficie = Superficie::nueva(
+                &self.motor,
+                self.dispositivo.d3d(),
+                ventana.handle(),
+                m.area.ancho,
+                m.area.alto,
+            )
+            .context("sin superficie de composicion")?;
+            self.bases.push(PiezaBase {
+                monitor: *m,
+                ventana,
+                superficie,
+            });
+        }
+        Ok(())
+    }
+
+    /// La pantalla del monitor AHORA. Via rapida: duplicador persistente;
+    /// caidas: recrear el duplicador si perdio el acceso, y WGC si el
+    /// duplicador esta frio (arranque con pantalla quieta) o no existe.
+    fn congelar(&mut self, m: &Monitor) -> Result<Instantanea> {
+        for intento in 0..2 {
+            let indice = match self.duplicadores.iter().position(|(id, _)| *id == m.id) {
+                Some(i) => i,
+                None => match Duplicador::nuevo(&self.dispositivo, m.id, m.area) {
+                    Ok(d) => {
+                        self.duplicadores.push((m.id, d));
+                        self.duplicadores.len() - 1
+                    }
+                    Err(e) => {
+                        tracing::debug!(?e, "sin duplicador; congelando por WGC");
+                        break;
+                    }
+                },
+            };
+            match self.duplicadores[indice].1.instantanea(&self.dispositivo) {
+                Ok(inst) => return Ok(inst),
+                Err(pixpin_capture::ErrorCaptura::AccesoPerdido) if intento == 0 => {
+                    // Cambio de modo, pantalla exclusiva, sesion bloqueada:
+                    // se recrea una vez y se reintenta.
+                    self.duplicadores.remove(indice);
+                }
+                Err(e) => {
+                    tracing::debug!(?e, "duplicador sin fotograma; congelando por WGC");
+                    break;
+                }
+            }
+        }
+        capturar_monitor(&self.dispositivo, m.id, m.area)
+            .with_context(|| format!("no se pudo capturar el monitor {}", m.id))
+    }
+}
+
 pub fn ejecutar_overlay(
+    recursos: &mut Recursos,
     nivel: Nivel,
     modo: ModoConfirmacion,
     textos: &TextosBarra,
@@ -115,37 +224,29 @@ pub fn ejecutar_overlay(
 ) -> Result<AccionFinal> {
     let t0 = Instant::now();
 
-    // 1. Capturar TODOS los monitores antes de crear ventana alguna.
-    let dispositivo = Dispositivo::nuevo().context("sin dispositivo de captura")?;
+    // 1. Congelar TODOS los monitores antes de ensenar ventana alguna.
     let disposicion = enumerar_monitores().context("sin monitores")?;
-    let mut capturas: Vec<(Monitor, Instantanea)> = Vec::new();
+    let mut capturas: Vec<Instantanea> = Vec::new();
     for m in disposicion.monitores() {
-        let inst = capturar_monitor(&dispositivo, m.id, m.area)
-            .with_context(|| format!("no se pudo capturar el monitor {}", m.id))?;
-        capturas.push((*m, inst));
+        capturas.push(recursos.congelar(m)?);
     }
+    let t_captura = t0.elapsed().as_millis() as u64;
 
-    // 2. Motor de dibujo y una ventana por monitor, ya con su textura.
-    let motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
+    // 2. Ventanas persistentes (se crean solo si la disposicion cambio) y
+    //    el bitmap fresco de cada monitor.
+    recursos.preparar_bases(disposicion.monitores())?;
+    let dispositivo = &recursos.dispositivo;
+    let motor = &recursos.motor;
+    let bases = &recursos.bases;
+    let t_motor = t0.elapsed().as_millis() as u64;
     let mut piezas: Vec<Pieza> = Vec::new();
-    for (monitor, instantanea) in capturas {
-        let ventana = VentanaOverlay::nueva(monitor.area).context("sin ventana de overlay")?;
-        let superficie = Superficie::nueva(
-            &motor,
-            dispositivo.d3d(),
-            ventana.handle(),
-            monitor.area.ancho,
-            monitor.area.alto,
-        )
-        .context("sin superficie de composicion")?;
+    for (base, instantanea) in bases.iter().zip(capturas) {
         let fondo = motor
             .bitmap_desde_textura(instantanea.textura())
             .context("no se pudo envolver la captura")?;
         piezas.push(Pieza {
-            monitor,
+            base,
             instantanea,
-            ventana,
-            superficie,
             fondo,
             fondo_vivo: None,
             sesion: None,
@@ -154,18 +255,43 @@ pub fn ejecutar_overlay(
 
     // 3. Estado puro, snap y mostrar. El primer overlay recibe los avisos.
     let mut estado = EstadoOverlay::nuevo(disposicion.clone());
-    let uia = Uia::nueva(piezas[0].ventana.handle());
+    let uia = Uia::nueva(piezas[0].ventana().handle());
     let mut barra: Option<Barra> = None;
     let mut muestra_color: [u8; 4] = [0, 0, 0, 255];
 
+    // Pintar ANTES de mostrar: una ventana retenida ensenaria el fotograma
+    // de la captura anterior durante un instante.
+    let t_a = t0.elapsed().as_millis() as u64;
     for p in &piezas {
-        p.ventana.mostrar();
+        pintar(
+            p,
+            &estado,
+            None,
+            muestra_color,
+            motor,
+            textos,
+            formato_color,
+        );
     }
-    // El primero toma el foco: sin esto el overlay es sordo al teclado.
-    piezas[0].ventana.enfocar();
-    tracing::info!(ms = t0.elapsed().as_millis() as u64, "overlay visible");
+    let t_b = t0.elapsed().as_millis() as u64;
     for p in &piezas {
-        p.ventana.invalidar();
+        p.ventana().mostrar();
+    }
+    // "Visible" se mide AQUI: pintado y ensenado. El foco viene justo
+    // despues y no es visibilidad — AttachThreadInput puede costar decenas
+    // de ms y no debe contaminar el intocable.
+    tracing::info!(
+        ms = t0.elapsed().as_millis() as u64,
+        captura_ms = t_captura,
+        prep_ms = t_a - t_motor,
+        pintar_ms = t_b - t_a,
+        mostrar_ms = t0.elapsed().as_millis() as u64 - t_b,
+        "overlay visible"
+    );
+    // El primero toma el foco: sin esto el overlay es sordo al teclado.
+    piezas[0].ventana().enfocar();
+    for p in &piezas {
+        p.ventana().invalidar();
     }
 
     // 4. El bucle modal. Las ventanas viven en `piezas`; el slice del
@@ -188,13 +314,15 @@ pub fn ejecutar_overlay(
         )
     });
 
-    // 5. Desmontar en orden: sesiones, uia, ventanas (drop de piezas).
+    // 5. Desmontar: sesiones fuera, ventanas OCULTAS (no destruidas: son
+    //    persistentes) y el hilo UIA parado.
     let fuentes: Vec<Instantanea> = {
         let mut f = Vec::new();
         for mut p in piezas {
             if let Some(s) = p.sesion.take() {
                 s.cerrar();
             }
+            p.ventana().ocultar();
             f.push(p.instantanea);
         }
         f
@@ -263,7 +391,7 @@ fn procesar_evento(
 ) -> Continuar {
     let invalidar_todas = |piezas: &[Pieza]| {
         for p in piezas {
-            p.ventana.invalidar();
+            p.ventana().invalidar();
         }
     };
 
@@ -272,7 +400,7 @@ fn procesar_evento(
             uia.pedir(p);
             // El color bajo el cursor: un recorte de 1x1 y su bajada. Es
             // minusculo (4 bytes) y solo ocurre al mover el raton.
-            if let Some(pieza) = piezas.iter().find(|z| z.monitor.area.contiene(p)) {
+            if let Some(pieza) = piezas.iter().find(|z| z.monitor().area.contiene(p)) {
                 let uno = Rect {
                     x: p.x,
                     y: p.y,
@@ -302,7 +430,7 @@ fn procesar_evento(
                 FormaCursor::RedimNoSe => FormaCursorWin::RedimNoSe,
             };
             for pieza in piezas {
-                pieza.ventana.poner_cursor(forma);
+                pieza.ventana().poner_cursor(forma);
             }
             // La lupa sigue al raton: se redibujan todas las que tocan algo.
             invalidar_todas(piezas);
@@ -371,7 +499,7 @@ fn procesar_evento(
             Continuar::Si
         }
         EventoOverlay::Pintar => {
-            if let Some(pieza) = piezas.iter().find(|z| z.ventana.handle() == hwnd) {
+            if let Some(pieza) = piezas.iter().find(|z| z.ventana().handle() == hwnd) {
                 pintar(
                     pieza,
                     estado,
@@ -413,7 +541,7 @@ fn aplicar_efecto(
             // El modo vivo (sesiones + fondo_vivo) se integra al final de la
             // fase sobre las SesionViva ya probadas; el estado ya conmuta.
             for p in piezas {
-                p.ventana.invalidar();
+                p.ventana().invalidar();
             }
             Continuar::Si
         }
@@ -426,9 +554,9 @@ fn aplicar_efecto(
             ModoConfirmacion::ConBarra => {
                 let monitor = piezas
                     .iter()
-                    .find(|p| p.monitor.area.interseccion(region).is_some())
-                    .map(|p| p.monitor)
-                    .unwrap_or(piezas[0].monitor);
+                    .find(|p| p.monitor().area.interseccion(region).is_some())
+                    .map(|p| *p.monitor())
+                    .unwrap_or(*piezas[0].monitor());
                 *barra = Some(Barra::colocar(
                     region,
                     monitor.area_trabajo,
@@ -436,7 +564,7 @@ fn aplicar_efecto(
                 ));
                 let _ = estado;
                 for p in piezas {
-                    p.ventana.invalidar();
+                    p.ventana().invalidar();
                 }
                 Continuar::Si
             }
@@ -454,9 +582,9 @@ fn pintar(
     textos: &TextosBarra,
     formato_color: FormatoColorLupa,
 ) {
-    let monitor = pieza.monitor.area;
-    let escala = pieza.monitor.escala_por_cien as f32 / 100.0;
-    let Ok(destino) = pieza.superficie.empezar(motor) else {
+    let monitor = pieza.monitor().area;
+    let escala = pieza.monitor().escala_por_cien as f32 / 100.0;
+    let Ok(destino) = pieza.base.superficie.empezar(motor) else {
         return;
     };
     let fondo = pieza.fondo_vivo.as_ref().unwrap_or(&pieza.fondo);
@@ -637,7 +765,7 @@ fn pintar(
         // La lupa, si el cursor esta en este monitor y no hay barra activa.
         let cursor = estado.cursor();
         if barra.is_none() && monitor.contiene(cursor) {
-            let lupa = Lupa::por_defecto(pieza.monitor.escala_por_cien);
+            let lupa = Lupa::por_defecto(pieza.monitor().escala_por_cien);
             let fuente_global = lupa.region_fuente(cursor, monitor);
             let fuente_local = parte_local(fuente_global, monitor).unwrap_or(fuente_global);
             let pos = lupa.colocar(cursor, monitor);
@@ -687,7 +815,7 @@ fn pintar(
             );
         }
     });
-    let _ = pieza.superficie.presentar();
+    let _ = pieza.base.superficie.presentar();
 }
 
 #[cfg(test)]

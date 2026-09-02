@@ -115,9 +115,23 @@ impl VentanaOverlay {
     }
 
     pub fn mostrar(&self) {
+        // SIN activar: la activacion de SW_SHOW sincroniza con el shell y
+        // costaba 25-40 ms medidos. El foco lo toma enfocar() despues, una
+        // sola vez y fuera del camino critico de "visible".
         // SAFETY: la ventana es propia y esta viva.
         unsafe {
-            let _ = ShowWindow(self.hwnd, SW_SHOW);
+            let _ = ShowWindow(self.hwnd, SW_SHOWNOACTIVATE);
+        }
+    }
+
+    /// Esconde la ventana sin destruirla. El overlay retiene sus ventanas
+    /// entre capturas porque crearlas (con su DComp y su swapchain) costaba
+    /// ~90 ms de los 50 permitidos; una ventana oculta no recibe entrada ni
+    /// se dibuja, asi que retenerla no cuesta nada.
+    pub fn ocultar(&self) {
+        // SAFETY: la ventana es propia y esta viva.
+        unsafe {
+            let _ = ShowWindow(self.hwnd, SW_HIDE);
         }
     }
 
