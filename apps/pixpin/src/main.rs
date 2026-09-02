@@ -173,6 +173,12 @@ fn arrancar(
         PreferenciaNivel::Ligero => Preferencia::Forzado(Nivel::Ligero),
     };
     let decision = pixpin_nivel::decidir(&hechos, preferencia);
+    // El ritmo del temporizador de los pines de video (D67): sin tope real
+    // en Completo (16 ms ~ 60 Hz), 30 fps en Ligero.
+    let ritmo_video: u32 = match decision.nivel {
+        Nivel::Completo => 16,
+        Nivel::Ligero => 33,
+    };
     tracing::info!(?hechos, ?decision, "nivel de rendimiento decidido");
 
     // 6. Idioma, antes de crear nada con texto.
@@ -242,13 +248,19 @@ fn arrancar(
         Ok(a) if a.entradas().iter().any(|e| e.pin.is_some()) => {
             drop(a); // Pines::nuevos abre el suyo; no dos indices vivos.
             let t = std::time::Instant::now();
-            let restaurado =
-                preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion, &textos, hwnd)
-                    .and_then(|p| {
-                        let d = pixpin_capture::enumerar_monitores()
-                            .context("sin monitores para restaurar")?;
-                        Ok(p.restaurar(&d))
-                    });
+            let restaurado = preparar_pines(
+                &mut recursos_overlay,
+                &mut pines,
+                &ubicacion,
+                &textos,
+                hwnd,
+                ritmo_video,
+            )
+            .and_then(|p| {
+                let d =
+                    pixpin_capture::enumerar_monitores().context("sin monitores para restaurar")?;
+                Ok(p.restaurar(&d))
+            });
             match restaurado {
                 Ok(restaurados) => tracing::info!(
                     restaurados,
@@ -318,6 +330,7 @@ fn arrancar(
                             &ubicacion,
                             &textos,
                             hwnd,
+                            ritmo_video,
                         )?;
                         p.pinear(&imagen, region, escala_del_monitor(region))?;
                         tracing::info!(abiertos = p.abiertos(), "pin creado");
@@ -371,6 +384,7 @@ fn arrancar(
                             &ubicacion,
                             &textos,
                             hwnd,
+                            ritmo_video,
                         )
                         .and_then(|p| {
                             let d = pixpin_capture::enumerar_monitores()?;
@@ -400,6 +414,7 @@ fn arrancar(
                             &ubicacion,
                             &textos,
                             hwnd,
+                            ritmo_video,
                         )
                         .and_then(|p| pinear_portapapeles(p, contenido));
                         match hecho {
@@ -459,6 +474,7 @@ fn preparar_pines<'a>(
     ubicacion: &Ubicacion,
     textos: &Catalogo,
     hwnd_app: windows::Win32::Foundation::HWND,
+    ritmo_video_ms: u32,
 ) -> Result<&'a mut Pines> {
     if pines.is_none() {
         let r = match recursos {
@@ -473,6 +489,9 @@ fn preparar_pines<'a>(
             textos_del_pin(textos),
             textos.t("pin-eliminar-confirmar"),
             hwnd_app,
+            // Sin soporte de video en el dispositivo (D66) no hay reproductor:
+            // los videos se ensenan como documento.
+            r.dispositivo().soporta_video().then_some(ritmo_video_ms),
         )?);
     }
     Ok(pines.as_mut().expect("recien comprobado o creado"))
@@ -497,6 +516,9 @@ fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
             textos.t("pin-color-violeta"),
             textos.t("pin-color-rosa"),
         ],
+        reproducir: textos.t("pin-reproducir"),
+        pausar: textos.t("pin-pausar"),
+        sonido: textos.t("pin-sonido"),
         ocultar_grupo: textos.t("pin-ocultar-grupo"),
         cerrar: textos.t("pin-cerrar"),
         eliminar: textos.t("pin-eliminar"),

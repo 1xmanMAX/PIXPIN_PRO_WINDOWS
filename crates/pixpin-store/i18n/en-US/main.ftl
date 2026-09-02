@@ -46,3 +46,6 @@ grupos-ocultos = Hidden groups
 
 capa-guardar-titulo = Screen annotation
 capa-guardar-pregunta = Keep the drawing as a pin?
+pin-reproducir = Play
+pin-pausar = Pause
+pin-sonido = Sound

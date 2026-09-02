@@ -19,6 +19,10 @@ pub const CMD_TAMANO_ORIGINAL: u32 = 4;
 pub const CMD_OCULTAR_GRUPO: u32 = 5;
 pub const CMD_CERRAR: u32 = 6;
 pub const CMD_ELIMINAR: u32 = 7;
+/// Reproducir o pausar un video (D68); la etiqueta dice lo que hara.
+pub const CMD_REPRODUCIR: u32 = 8;
+/// Alternar el silencio de un video (D68).
+pub const CMD_SONIDO: u32 = 9;
 pub const CMD_SIN_GRUPO: u32 = 100;
 pub const CMD_COLOR_BASE: u32 = 101;
 
@@ -37,6 +41,10 @@ pub struct TextosPin {
     pub cerrar: String,
     pub eliminar: String,
     pub no_encontrado: String,
+    /// Los del video (D68).
+    pub reproducir: String,
+    pub pausar: String,
+    pub sonido: String,
 }
 
 /// Una linea del menu, ya decidida. `Separador` no lleva texto.
@@ -55,20 +63,43 @@ pub enum EntradaMenu {
 pub fn entradas_del_menu(
     contenido: &Contenido,
     con_grupo: bool,
+    reproduciendo: bool,
     t: &TextosPin,
 ) -> Vec<EntradaMenu> {
-    let mut v = vec![EntradaMenu::Accion {
+    let mut v = Vec::new();
+
+    // El video lleva sus controles ARRIBA: son lo que se busca al abrir el
+    // menu de un video (D68).
+    if let Contenido::Video { .. } = contenido {
+        v.push(EntradaMenu::Accion {
+            id: CMD_REPRODUCIR,
+            etiqueta: if reproduciendo {
+                t.pausar.clone()
+            } else {
+                t.reproducir.clone()
+            },
+        });
+        v.push(EntradaMenu::Accion {
+            id: CMD_SONIDO,
+            etiqueta: t.sonido.clone(),
+        });
+        v.push(EntradaMenu::Separador);
+    }
+
+    v.push(EntradaMenu::Accion {
         id: CMD_COPIAR,
         etiqueta: t.copiar.clone(),
-    }];
+    });
 
     match contenido {
         // Un archivo no se «guarda como»: ya es un fichero del usuario y
-        // esta donde el lo dejo. Lo util es llegar hasta el.
-        Contenido::Archivo { .. } => v.push(EntradaMenu::Accion {
-            id: CMD_ABRIR_UBICACION,
-            etiqueta: t.abrir_ubicacion.clone(),
-        }),
+        // esta donde el lo dejo. Lo util es llegar hasta el. El video y el
+        // documento son archivos por referencia igual (D65).
+        Contenido::Archivo { .. } | Contenido::Video { .. } | Contenido::Documento { .. } => v
+            .push(EntradaMenu::Accion {
+                id: CMD_ABRIR_UBICACION,
+                etiqueta: t.abrir_ubicacion.clone(),
+            }),
         _ => {
             v.push(EntradaMenu::Accion {
                 id: CMD_GUARDAR_COMO,
@@ -112,6 +143,7 @@ pub fn mostrar(
     hwnd: windows::Win32::Foundation::HWND,
     contenido: &Contenido,
     con_grupo: bool,
+    reproduciendo: bool,
     t: &TextosPin,
 ) -> Option<u32> {
     use windows::Win32::Foundation::POINT;
@@ -149,7 +181,7 @@ pub fn mostrar(
                     &HSTRING::from(nombre.as_str()),
                 )?;
             }
-            for entrada in entradas_del_menu(contenido, con_grupo, t) {
+            for entrada in entradas_del_menu(contenido, con_grupo, reproduciendo, t) {
                 match entrada {
                     EntradaMenu::Separador => AppendMenuW(menu, MF_SEPARATOR, 0, None)?,
                     EntradaMenu::SubmenuGrupo => AppendMenuW(
@@ -223,7 +255,71 @@ mod pruebas {
             cerrar: "Cerrar".into(),
             eliminar: "Eliminar del almacén…".into(),
             no_encontrado: "No encontrado".into(),
+            reproducir: "Reproducir".into(),
+            pausar: "Pausar".into(),
+            sonido: "Sonido".into(),
         }
+    }
+
+    fn video() -> Contenido {
+        Contenido::Video {
+            nombre: "clip.mp4".into(),
+            ruta: std::path::PathBuf::from("clip.mp4"),
+            ancho: 0,
+            alto: 0,
+        }
+    }
+
+    #[test]
+    fn el_video_tiene_reproducir_y_sonido_arriba_y_no_guardar_como() {
+        let v = entradas_del_menu(&video(), false, true, &textos());
+        assert_eq!(
+            v[0],
+            EntradaMenu::Accion {
+                id: CMD_REPRODUCIR,
+                etiqueta: "Pausar".into()
+            },
+            "reproduciendo, la primera entrada ofrece pausar"
+        );
+        assert_eq!(
+            v[1],
+            EntradaMenu::Accion {
+                id: CMD_SONIDO,
+                etiqueta: "Sonido".into()
+            }
+        );
+        let ids = ids(&v);
+        assert!(ids.contains(&CMD_ABRIR_UBICACION));
+        // Caso negativo: un video es un archivo del usuario, no se «guarda
+        // como» ni tiene «tamano original» de pixeles hasta que se conoce.
+        assert!(!ids.contains(&CMD_GUARDAR_COMO));
+        assert!(!ids.contains(&CMD_TAMANO_ORIGINAL));
+
+        let parado = entradas_del_menu(&video(), false, false, &textos());
+        assert_eq!(
+            parado[0],
+            EntradaMenu::Accion {
+                id: CMD_REPRODUCIR,
+                etiqueta: "Reproducir".into()
+            }
+        );
+    }
+
+    #[test]
+    fn el_documento_abre_ubicacion_como_la_ficha_y_no_tiene_controles() {
+        let d = Contenido::Documento {
+            nombre: "informe.pdf".into(),
+            vista: ImagenRgba {
+                ancho: 1,
+                alto: 1,
+                pixeles: vec![0; 4],
+            },
+        };
+        let ids = ids(&entradas_del_menu(&d, false, false, &textos()));
+        assert!(ids.contains(&CMD_ABRIR_UBICACION));
+        assert!(!ids.contains(&CMD_REPRODUCIR));
+        assert!(!ids.contains(&CMD_SONIDO));
+        assert!(!ids.contains(&CMD_GUARDAR_COMO));
     }
 
     fn ids(v: &[EntradaMenu]) -> Vec<u32> {
@@ -254,7 +350,7 @@ mod pruebas {
 
     #[test]
     fn una_imagen_sin_grupo_no_ofrece_ocultar_ni_abrir_ubicacion() {
-        let v = entradas_del_menu(&imagen(), false, &textos());
+        let v = entradas_del_menu(&imagen(), false, false, &textos());
         let ids = ids(&v);
         assert!(ids.contains(&CMD_GUARDAR_COMO));
         assert!(ids.contains(&CMD_TAMANO_ORIGINAL));
@@ -270,7 +366,7 @@ mod pruebas {
 
     #[test]
     fn una_imagen_con_grupo_si_ofrece_ocultarlo() {
-        let v = entradas_del_menu(&imagen(), true, &textos());
+        let v = entradas_del_menu(&imagen(), true, false, &textos());
         assert!(ids(&v).contains(&CMD_OCULTAR_GRUPO));
     }
 
@@ -279,7 +375,7 @@ mod pruebas {
         // Caso negativo del tipo: «Tamaño original» sobre una ficha no
         // significa nada, y «Guardar como» duplicaria un fichero que ya
         // existe donde el usuario lo puso.
-        let v = entradas_del_menu(&archivo(), false, &textos());
+        let v = entradas_del_menu(&archivo(), false, false, &textos());
         let ids = ids(&v);
         assert!(ids.contains(&CMD_ABRIR_UBICACION));
         assert!(!ids.contains(&CMD_TAMANO_ORIGINAL));
@@ -289,7 +385,7 @@ mod pruebas {
     #[test]
     fn todos_los_menus_ofrecen_copiar_cerrar_y_eliminar() {
         for (c, grupo) in [(imagen(), false), (archivo(), true)] {
-            let ids = ids(&entradas_del_menu(&c, grupo, &textos()));
+            let ids = ids(&entradas_del_menu(&c, grupo, false, &textos()));
             for esperado in [CMD_COPIAR, CMD_CERRAR, CMD_ELIMINAR] {
                 assert!(ids.contains(&esperado), "falta la entrada {esperado}");
             }
@@ -298,7 +394,7 @@ mod pruebas {
 
     #[test]
     fn el_submenu_de_grupo_esta_siempre() {
-        let v = entradas_del_menu(&imagen(), false, &textos());
+        let v = entradas_del_menu(&imagen(), false, false, &textos());
         assert!(v.contains(&EntradaMenu::SubmenuGrupo));
     }
 }

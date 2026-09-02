@@ -426,7 +426,9 @@ dependencies = [
  "pixpin-motor2d",
  "pixpin-render",
  "thiserror",
+ "tracing",
  "windows",
+ "windows-core",
 ]
 
 [[package]]

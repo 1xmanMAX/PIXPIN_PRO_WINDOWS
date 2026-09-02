@@ -13,17 +13,20 @@ pub mod icono;
 pub mod menu;
 pub mod paleta;
 pub mod ventana;
+pub mod video;
 
 pub use contenido::{
-    Contenido, FICHA_ALTO_LOGICO, FICHA_ANCHO_LOGICO, tamano_humano, tamano_natural,
+    Contenido, DOCUMENTO_FRANJA_LOGICA, FICHA_ALTO_LOGICO, FICHA_ANCHO_LOGICO, Presentacion,
+    presentacion_de, tamano_humano, tamano_natural,
 };
 pub use estado::{EfectoPin, EstadoPin, EventoPin, MINIMO_LOGICO, ZONA_ESQUINA_LOGICA};
-pub use icono::{LADO_ICONO, icono_de};
+pub use icono::{LADO_ICONO, icono_de, miniatura_de};
 pub use menu::{
     CMD_ABRIR_UBICACION, CMD_CERRAR, CMD_COLOR_BASE, CMD_COPIAR, CMD_ELIMINAR, CMD_GUARDAR_COMO,
-    CMD_OCULTAR_GRUPO, CMD_SIN_GRUPO, CMD_TAMANO_ORIGINAL, TextosPin,
+    CMD_OCULTAR_GRUPO, CMD_REPRODUCIR, CMD_SIN_GRUPO, CMD_SONIDO, CMD_TAMANO_ORIGINAL, TextosPin,
 };
 pub use paleta::{Paleta, PintorPaleta};
 pub use ventana::{
     CambioPin, ErrorPin, LupaPin, MARGEN_SOMBRA_LOGICO, Pin, contenido_desde_ventana, rect_ventana,
 };
+pub use video::Reproductor;
