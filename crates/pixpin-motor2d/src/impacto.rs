@@ -53,6 +53,9 @@ pub fn toca(e: &Elemento, p: Punto2) -> bool {
             }
         }
 
+        // Lo que se ve del foco es el hueco: se agarra por dentro.
+        Figura::Foco { .. } => dentro_de_la_caja(p, e, margen),
+
         Figura::Elipse => {
             let rx = (e.ancho / 2.0).max(0.001);
             let ry = (e.alto / 2.0).max(0.001);
@@ -276,5 +279,16 @@ mod pruebas {
         };
         assert!(toca(&e, Punto2::nuevo(53.0, 53.0)));
         assert!(!toca(&e, Punto2::nuevo(150.0, 150.0)));
+    }
+
+    #[test]
+    fn el_foco_se_agarra_por_dentro_del_hueco() {
+        // Lo que se ve es el hueco: es lo que el usuario intenta mover.
+        let e = Elemento {
+            figura: Figura::Foco { elipse: false },
+            ..base()
+        };
+        assert!(toca(&e, Punto2::nuevo(200.0, 150.0)));
+        assert!(!toca(&e, Punto2::nuevo(500.0, 400.0)));
     }
 }

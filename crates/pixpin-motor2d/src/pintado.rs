@@ -37,6 +37,12 @@ pub enum Orden {
         puntos: Vec<Punto2>,
         color: ColorRgba,
     },
+    /// Oscurece TODO el lienzo salvo el poligono `hueco` (D51). El motor
+    /// no conoce el tamano del lienzo; el consumidor si.
+    Velo {
+        hueco: Vec<Punto2>,
+        color: ColorRgba,
+    },
     /// Texto en su caja.
     Texto {
         texto: String,
@@ -217,6 +223,47 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
                     estilo: e.estilo,
                 });
             }
+        }
+
+        Figura::Foco { elipse } => {
+            // Hueco LISO siempre: un velo tembloroso deja rendijas por las
+            // que se cuela el fondo oscurecido.
+            let mut lisa = Azar::nuevo(e.semilla);
+            let hueco = if *elipse {
+                formas::elipse(e.x, e.y, e.ancho, e.alto, 0.0, &mut lisa)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default()
+            } else {
+                vec![
+                    Punto2::nuevo(e.x, e.y),
+                    Punto2::nuevo(e.x + e.ancho, e.y),
+                    Punto2::nuevo(e.x + e.ancho, e.y + e.alto),
+                    Punto2::nuevo(e.x, e.y + e.alto),
+                ]
+            };
+            let oscuridad = e.relleno.unwrap_or(ColorRgba {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.6,
+            });
+            salida.push(Orden::Velo {
+                hueco: hueco.clone(),
+                color: con_opacidad(oscuridad, e.opacidad),
+            });
+            // El borde del hueco, cerrado: ayuda a ver donde acaba el foco
+            // sobre fondos ya oscuros.
+            let mut borde = hueco;
+            if let Some(primero) = borde.first().copied() {
+                borde.push(primero);
+            }
+            salida.push(Orden::Polilinea {
+                puntos: borde,
+                color,
+                grosor: e.grosor,
+                estilo: EstiloTrazo::Solido,
+            });
         }
 
         Figura::Texto {
@@ -402,5 +449,66 @@ mod pruebas {
             }
             otra => panic!("se esperaba texto, es {otra:?}"),
         }
+    }
+
+    fn foco(elipse: bool) -> Elemento {
+        Elemento {
+            figura: Figura::Foco { elipse },
+            x: 10.0,
+            y: 20.0,
+            ancho: 100.0,
+            alto: 50.0,
+            trazo: ColorRgba::opaco(1.0, 1.0, 1.0),
+            relleno: Some(ColorRgba {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.6,
+            }),
+            rugosidad: 0.0,
+            ..base()
+        }
+    }
+
+    #[test]
+    fn el_foco_produce_un_velo_con_hueco_rectangular_y_su_borde() {
+        // D51: el motor no sabe cuanto mide el lienzo, asi que entrega el
+        // HUECO y el consumidor oscurece todo lo demas.
+        let o = ordenes(&foco(false));
+        let Orden::Velo { hueco, color } = &o[0] else {
+            panic!("la primera orden del foco debe ser el velo, fue {:?}", o[0]);
+        };
+        assert_eq!(hueco.len(), 4);
+        assert_eq!(hueco[0], Punto2::nuevo(10.0, 20.0));
+        assert_eq!(hueco[2], Punto2::nuevo(110.0, 70.0));
+        assert!((color.a - 0.6).abs() < 1e-6);
+        assert!(
+            matches!(o[1], Orden::Polilinea { .. }),
+            "tras el velo va el borde del hueco"
+        );
+    }
+
+    #[test]
+    fn el_foco_eliptico_tiene_un_hueco_redondo() {
+        let o = ordenes(&foco(true));
+        let Orden::Velo { hueco, .. } = &o[0] else {
+            panic!("velo esperado");
+        };
+        // Una elipse lisa tiene muchos mas vertices que un rectangulo.
+        assert!(hueco.len() > 16, "hueco con {} puntos", hueco.len());
+    }
+
+    #[test]
+    fn el_foco_sin_relleno_oscurece_al_sesenta_por_ciento() {
+        // Caso negativo: un fichero antiguo o un consumidor descuidado que
+        // no ponga relleno no puede dejar el velo transparente.
+        let e = Elemento {
+            relleno: None,
+            ..foco(false)
+        };
+        let Orden::Velo { color, .. } = &ordenes(&e)[0] else {
+            panic!("velo esperado");
+        };
+        assert!((color.a - 0.6).abs() < 1e-6);
     }
 }
