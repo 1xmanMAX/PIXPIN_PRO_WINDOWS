@@ -19,7 +19,7 @@ pub use contenido::{
     presentacion_de, tamano_humano, tamano_natural,
 };
 pub use estado::{EfectoPin, EstadoPin, EventoPin, MINIMO_LOGICO, ZONA_ESQUINA_LOGICA};
-pub use icono::{LADO_ICONO, icono_de};
+pub use icono::{LADO_ICONO, icono_de, miniatura_de};
 pub use menu::{
     CMD_ABRIR_UBICACION, CMD_CERRAR, CMD_COLOR_BASE, CMD_COPIAR, CMD_ELIMINAR, CMD_GUARDAR_COMO,
     CMD_OCULTAR_GRUPO, CMD_REPRODUCIR, CMD_SIN_GRUPO, CMD_SONIDO, CMD_TAMANO_ORIGINAL, TextosPin,
