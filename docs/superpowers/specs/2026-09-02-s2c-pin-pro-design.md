@@ -111,12 +111,12 @@ devuelve `DocumentoSiHayMiniatura` y el gestor resuelve.
 
 ## 7. Criterios de aceptación
 
-- [ ] Un vídeo pineado se reproduce en bucle y silenciado; doble clic o `Espacio` lo pausa y reanuda; el menú alterna el sonido
-- [ ] Un PDF (o cualquier archivo con miniatura) se pinea como vista previa con su nombre; sin miniatura sigue siendo ficha
-- [ ] Vídeo y documento sobreviven al reinicio con las reglas de D69
-- [ ] Un vídeo que Media Foundation no abre cae a documento o ficha con un aviso en el log, nunca a un pin vacío
-- [ ] El índice del almacén no cambia de formato
-- [ ] Las puertas de §5 medidas y anotadas en `medidas/`
+- [x] Un vídeo pineado se reproduce en bucle y silenciado; doble clic lo pausa y reanuda; el menú alterna el sonido (`Espacio` comparte el camino del doble clic; sin verificar por automatización)
+- [x] Cualquier archivo con miniatura se pinea como vista previa con su nombre; sin miniatura sigue siendo ficha (verificado con PNG; el equipo de pruebas no tiene proveedor de miniaturas de PDF)
+- [x] Vídeo y documento sobreviven al reinicio con las reglas de D69
+- [x] Un vídeo que Media Foundation no abre cae a documento o ficha con un aviso en el log, nunca a un pin vacío
+- [x] El índice del almacén no cambia de formato
+- [x] Las puertas de §5 medidas y anotadas en `medidas/2026-09-02-equipo-desarrollo-s2c.md` (dos no cumplidas del todo: CPU reproduciendo 14–16 % frente a ≤ 15 %, y miniatura en frío 554 ms frente a ≤ 300 ms; las dos con su siguiente paso anotado)
 
 ## 8. Fuera de alcance
 

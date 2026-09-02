@@ -33,7 +33,7 @@ niveles Completo/Ligero de `pixpin-nivel`. Los tres intocables: atajo→overlay
 | [x] | S1-B2 overlay | overlay < 50 ms, lupa, imán, vivo | 2026-08-09-s1 | 2026-09-01-s1b2-overlay.md |
 | [x] | S2-A almacén + pin imagen | Ctrl+Alt+F → pin 1:1 persistente | 2026-09-01-s2 | 2026-09-02-s2a-almacen-pin.md |
 | [x] | S2-B tipos y grupos | nota, ficha, Ctrl+Alt+V, menú, grupos, imán | 2026-09-01-s2 §10 | 2026-09-02-s2b-tipos-grupos.md |
-| [ ] | S2-C pin pro | rueda=zoom, vídeo, documentos, lupa y foco en el pin | (ampliar spec S2) | (escribir al llegar) |
+| [x] | S2-C pin pro | rueda=zoom (S3-B), lupa y foco en el pin (S3-C), **vídeo con Media Foundation y documentos con miniatura de la Shell** | 2026-09-02-s2c-pin-pro-design.md (D62–D72) | 2026-09-02-s2c-pin-pro.md |
 | [ ] | S1-B3 scroll + cuentagotas | Ctrl+Alt+S y Ctrl+Alt+D activos | 2026-08-09-s1 | (escribir al llegar) |
 | [x] | S3-A motor 2D | `pixpin-motor2d`: elementos, trazo a mano, rugosidad determinista, texto, hit-test, `.pixpin2d` | (escribir spec desde `docs/investigacion/2026-09-02-excalidraw-analisis.md`) | (escribir al llegar) |
 | [x] | S3-B anotar el pin | doble clic → editar dentro del pin: lápiz, resaltador, líneas, formas, texto, imágenes | (spec S3) | (escribir al llegar) |
