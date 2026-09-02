@@ -8,5 +8,9 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod estado;
+pub mod ventana;
 
 pub use estado::{EfectoPin, EstadoPin, EventoPin, MINIMO_LOGICO, ZONA_ESQUINA_LOGICA};
+pub use ventana::{
+    CambioPin, ErrorPin, MARGEN_SOMBRA_LOGICO, Pin, contenido_desde_ventana, rect_ventana,
+};

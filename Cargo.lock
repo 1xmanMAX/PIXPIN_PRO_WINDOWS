@@ -409,7 +409,11 @@ version = "0.1.0"
 name = "pixpin-pin"
 version = "0.1.0"
 dependencies = [
+ "pixpin-codec",
  "pixpin-geom",
+ "pixpin-render",
+ "thiserror",
+ "windows",
 ]
 
 [[package]]
