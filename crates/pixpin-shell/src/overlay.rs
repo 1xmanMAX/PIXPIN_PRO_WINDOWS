@@ -20,7 +20,7 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 // En windows 0.62, AttachThreadInput vive en System::Threading.
 use windows::Win32::System::Threading::AttachThreadInput;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_SHIFT,
+    GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_CONTROL, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
@@ -56,6 +56,8 @@ pub enum EventoOverlay {
     Tecla {
         vk: u32,
         shift: bool,
+        /// Ctrl mantenido: para `Ctrl+A` (seleccionar todo) y `Ctrl+Z`.
+        ctrl: bool,
     },
     Pintar,
     CambioDpi,
@@ -409,9 +411,12 @@ extern "system" fn procedimiento_overlay(
         WM_KEYDOWN => {
             // SAFETY: GetKeyState es una consulta sin precondiciones.
             let shift = unsafe { GetKeyState(VK_SHIFT.0 as i32) } < 0;
+            // SAFETY: igual que arriba.
+            let ctrl = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
             encolar(EventoOverlay::Tecla {
                 vk: wparam.0 as u32,
                 shift,
+                ctrl,
             });
             LRESULT(0)
         }
