@@ -218,6 +218,12 @@ impl CapaViva {
         self.aplicar(efecto)
     }
 
+    /// Un caracter escrito (D57).
+    pub fn caracter(&mut self, c: char) -> bool {
+        let efecto = self.anotador.procesar(EventoAnotador::Caracter(c));
+        self.aplicar(efecto)
+    }
+
     fn pulsar_boton(&mut self, boton: BotonCaja) -> bool {
         match boton {
             BotonCaja::Elegir(h) => {
@@ -265,11 +271,14 @@ impl CapaViva {
             EfectoAnotador::Rehacer => {
                 self.escena.rehacer();
             }
-            EfectoAnotador::PedirTexto(_) => {
-                tracing::info!("el texto in situ llega con la entrada IME");
-                return true;
-            }
             EfectoAnotador::Salir => return false,
+        }
+        // Con un texto abierto, el IME compone al lado de donde se escribe.
+        if let Some(p) = self.anotador.editando_texto() {
+            self.ventana.poner_posicion_ime(Punto {
+                x: p.x as i32,
+                y: p.y as i32,
+            });
         }
         self.pintar();
         true
@@ -501,6 +510,8 @@ fn a_punto2(p: Punto) -> Punto2 {
 const VK_ESCAPE: u32 = 0x1B;
 const VK_Z: u32 = 0x5A;
 const VK_Y: u32 = 0x59;
+const VK_RETURN: u32 = 0x0D;
+const VK_BACK: u32 = 0x08;
 /// Espacio alterna entre dibujar y dejar pasar los clics: es la tecla mas
 /// grande del teclado y la unica que se acierta sin mirar mientras dibujas.
 const VK_SPACE: u32 = 0x20;
@@ -570,8 +581,11 @@ pub fn ejecutar_capa(
                     TeclaAnotador::Deshacer
                 }),
                 VK_Y => capa.tecla(TeclaAnotador::Rehacer),
+                VK_RETURN => capa.tecla(TeclaAnotador::Enter),
+                VK_BACK => capa.tecla(TeclaAnotador::Retroceso),
                 _ => true,
             },
+            EventoOverlay::Caracter(c) => capa.caracter(c),
             EventoOverlay::Rueda(delta) => capa.raton(EventoRaton::Rueda(delta)),
             EventoOverlay::Pintar => {
                 capa.pintar();

@@ -557,12 +557,6 @@ impl Pines {
             EfectoAnotador::Rehacer => {
                 a.escena.rehacer();
             }
-            // El editor de texto in situ llega con S3-C, que trae la
-            // infraestructura de entrada de texto (IME incluido).
-            EfectoAnotador::PedirTexto(_) => {
-                tracing::info!("el texto llega con S3-C");
-                repintar = false;
-            }
             EfectoAnotador::Salir => salir = true,
         }
 

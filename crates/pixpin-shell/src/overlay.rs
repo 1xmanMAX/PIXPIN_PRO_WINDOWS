@@ -9,7 +9,7 @@
 //! WS_EX_NOREDIRECTIONBITMAP: la ventana no tiene superficie GDI; todo lo
 //! visible lo presenta la Superficie de pixpin-render por DirectComposition.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::sync::Once;
 
@@ -42,6 +42,12 @@ pub fn esperar_composicion() {
     }
 }
 
+thread_local! {
+    /// La mitad alta de un par subrogado UTF-16 a la espera de su mitad
+    /// baja (WM_CHAR entrega los dos por separado).
+    static MITAD_ALTA: Cell<Option<u16>> = const { Cell::new(None) };
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventoOverlay {
     RatonMovido(Punto),
@@ -60,6 +66,8 @@ pub enum EventoOverlay {
     /// Rueda del raton, positivo hacia arriba. La capa viva la usa para el
     /// grosor del trazo y el aumento de la lupa (D55).
     Rueda(i32),
+    /// Un caracter escrito, ya compuesto (WM_CHAR, IME incluido) (D57).
+    Caracter(char),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,6 +174,31 @@ impl VentanaOverlay {
                 actual & !WS_EX_TRANSPARENT.0
             };
             SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, nuevo as isize);
+        }
+    }
+
+    /// Coloca la ventana de composicion del IME donde se escribe (D57):
+    /// sin esto el japones o el chino se componen en la esquina de la
+    /// pantalla, lejos de donde mira el usuario. `p` es local a la ventana.
+    pub fn poner_posicion_ime(&self, p: Punto) {
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::UI::Input::Ime::{
+            CFS_POINT, COMPOSITIONFORM, ImmGetContext, ImmReleaseContext, ImmSetCompositionWindow,
+        };
+        // SAFETY: contexto del IME de una ventana propia, tomado y devuelto
+        // en la misma llamada; la estructura es local y valida.
+        unsafe {
+            let ctx = ImmGetContext(self.hwnd);
+            if ctx.is_invalid() {
+                return;
+            }
+            let forma = COMPOSITIONFORM {
+                dwStyle: CFS_POINT,
+                ptCurrentPos: POINT { x: p.x, y: p.y },
+                ..Default::default()
+            };
+            let _ = ImmSetCompositionWindow(ctx, &forma);
+            let _ = ImmReleaseContext(self.hwnd, ctx);
         }
     }
 
@@ -359,6 +392,29 @@ extern "system" fn procedimiento_overlay(
                 vk: wparam.0 as u32,
                 shift,
             });
+            LRESULT(0)
+        }
+        WM_CHAR => {
+            // WM_CHAR trae unidades UTF-16: un emoji llega en dos mensajes.
+            // La mitad alta se guarda hasta que llega la baja. El IME
+            // entrega por aqui el texto ya compuesto, asi que el japones o
+            // el chino no necesitan nada mas.
+            let unidad = wparam.0 as u16;
+            let caracter = MITAD_ALTA.with(|alta| {
+                if (0xD800..0xDC00).contains(&unidad) {
+                    alta.set(Some(unidad));
+                    None
+                } else if (0xDC00..0xE000).contains(&unidad) {
+                    let a = alta.take()?;
+                    char::decode_utf16([a, unidad]).next()?.ok()
+                } else {
+                    alta.set(None);
+                    char::from_u32(unidad as u32)
+                }
+            });
+            if let Some(c) = caracter {
+                encolar(EventoOverlay::Caracter(c));
+            }
             LRESULT(0)
         }
         WM_PAINT => {

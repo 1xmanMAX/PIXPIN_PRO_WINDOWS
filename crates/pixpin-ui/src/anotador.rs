@@ -65,6 +65,10 @@ pub enum TeclaAnotador {
     Deshacer,
     Rehacer,
     Suprimir,
+    /// Confirma el texto en curso (D57).
+    Enter,
+    /// Borra el ultimo caracter del texto en curso.
+    Retroceso,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -75,6 +79,8 @@ pub enum EventoAnotador {
     /// Positivo hacia arriba, como manda Windows.
     Rueda(i32),
     Tecla(TeclaAnotador),
+    /// Un caracter escrito, ya compuesto (el IME entrega el resultado).
+    Caracter(char),
     CambiarHerramienta(Herramienta),
     CambiarColor(ColorRgba),
 }
@@ -91,8 +97,6 @@ pub enum EfectoAnotador {
     BorrarEn(Punto2),
     Deshacer,
     Rehacer,
-    /// El consumidor abre su editor de texto en ese punto.
-    PedirTexto(Punto2),
     Salir,
 }
 
@@ -107,6 +111,9 @@ pub struct Anotador {
     /// para que dos figuras seguidas no salgan calcadas.
     semilla: u32,
     gesto: Option<Gesto>,
+    /// El texto que se esta escribiendo (D57). No esta en la escena hasta
+    /// que se confirma: asi Escape lo tira sin tocar el deshacer.
+    texto: Option<TextoEnCurso>,
 }
 
 #[derive(Debug, Clone)]
@@ -115,6 +122,12 @@ struct Gesto {
     puntos: Vec<Punto2>,
     /// Si ya se paso del umbral: un clic y un arrastre no son lo mismo.
     arrastrando: bool,
+}
+
+#[derive(Debug, Clone)]
+struct TextoEnCurso {
+    origen: Punto2,
+    contenido: String,
 }
 
 impl Anotador {
@@ -126,7 +139,14 @@ impl Anotador {
             lupa: LUPA_POR_DEFECTO,
             semilla: semilla_inicial.max(1),
             gesto: None,
+            texto: None,
         }
+    }
+
+    /// Donde se esta escribiendo, si se esta escribiendo: para colocar la
+    /// ventana de composicion del IME al lado.
+    pub fn editando_texto(&self) -> Option<Punto2> {
+        self.texto.as_ref().map(|t| t.origen)
     }
 
     pub fn herramienta(&self) -> Herramienta {
@@ -154,10 +174,30 @@ impl Anotador {
         match evento {
             EventoAnotador::CambiarHerramienta(h) => {
                 // Cambiar de herramienta a media raya ABANDONA el trazo: si
-                // se terminara, saldria medio lapiz y medio rectangulo.
+                // se terminara, saldria medio lapiz y medio rectangulo. El
+                // texto, en cambio, se CONFIRMA: perder lo escrito por
+                // pulsar el lapiz seria un fallo de datos.
                 self.gesto = None;
+                let confirmado = self.confirmar_texto();
                 self.herramienta = h;
-                EfectoAnotador::Repintar
+                match confirmado {
+                    EfectoAnotador::Terminado(e) => EfectoAnotador::Terminado(e),
+                    _ => EfectoAnotador::Repintar,
+                }
+            }
+
+            EventoAnotador::Caracter(c) => {
+                // Los de control (Enter, Retroceso, Escape) llegan tambien
+                // por WM_CHAR y ya tienen su tecla: aqui no son texto.
+                if c.is_control() {
+                    return EfectoAnotador::Nada;
+                }
+                let Some(t) = self.texto.as_mut() else {
+                    return EfectoAnotador::Nada;
+                };
+                t.contenido.push(c);
+                let t = t.clone();
+                EfectoAnotador::EnCurso(Box::new(self.elemento_texto(&t, true)))
             }
 
             EventoAnotador::CambiarColor(c) => {
@@ -178,6 +218,12 @@ impl Anotador {
             }
 
             EventoAnotador::Tecla(t) => match t {
+                TeclaAnotador::Escape if self.texto.is_some() => {
+                    // Escape mientras se escribe tira el texto, no la
+                    // sesion: es lo que hace cualquier editor.
+                    self.texto = None;
+                    EfectoAnotador::Repintar
+                }
                 TeclaAnotador::Escape if self.gesto.is_some() => {
                     // El primer Escape abandona el trazo en curso; el
                     // segundo sale. Asi no se pierde el dibujo por un
@@ -186,6 +232,15 @@ impl Anotador {
                     EfectoAnotador::Repintar
                 }
                 TeclaAnotador::Escape => EfectoAnotador::Salir,
+                TeclaAnotador::Enter => self.confirmar_texto(),
+                TeclaAnotador::Retroceso => match self.texto.as_mut() {
+                    Some(t) => {
+                        t.contenido.pop();
+                        let t = t.clone();
+                        EfectoAnotador::EnCurso(Box::new(self.elemento_texto(&t, true)))
+                    }
+                    None => EfectoAnotador::Nada,
+                },
                 TeclaAnotador::Deshacer => EfectoAnotador::Deshacer,
                 TeclaAnotador::Rehacer => EfectoAnotador::Rehacer,
                 TeclaAnotador::Suprimir => EfectoAnotador::Deshacer,
@@ -194,7 +249,20 @@ impl Anotador {
             EventoAnotador::Pulsar(p) => {
                 match self.herramienta {
                     Herramienta::Borrador => return EfectoAnotador::BorrarEn(p),
-                    Herramienta::Texto => return EfectoAnotador::PedirTexto(p),
+                    Herramienta::Texto => {
+                        // Escribiendo, un clic confirma lo escrito; si no,
+                        // abre un texto nuevo donde se pulso (D57).
+                        if self.texto.is_some() {
+                            return self.confirmar_texto();
+                        }
+                        let t = TextoEnCurso {
+                            origen: p,
+                            contenido: String::new(),
+                        };
+                        let previa = self.elemento_texto(&t, true);
+                        self.texto = Some(t);
+                        return EfectoAnotador::EnCurso(Box::new(previa));
+                    }
                     // La mano y la lupa no dibujan: las gestiona el
                     // consumidor, que es quien sabe que hay debajo.
                     Herramienta::Mano | Herramienta::Lupa => return EfectoAnotador::Nada,
@@ -257,6 +325,61 @@ impl Anotador {
                 }
             }
         }
+    }
+
+    /// Tamano del texto: crece con el grosor, que es lo que la rueda cambia.
+    fn tam_texto(&self) -> f32 {
+        (self.grosor * 5.0).clamp(14.0, 120.0)
+    }
+
+    /// El elemento de un texto en curso o confirmado. Con `cursor`, lleva
+    /// una barra al final para que se vea donde se escribe.
+    fn elemento_texto(&self, t: &TextoEnCurso, cursor: bool) -> Elemento {
+        let tam = self.tam_texto();
+        let mut texto = t.contenido.clone();
+        if cursor {
+            texto.push('|');
+        }
+        // Ancho estimado, no medido: el motor no tiene DirectWrite. Sirve
+        // para el hit-test y para que el consumidor no parta la linea.
+        let ancho = (t.contenido.chars().count().max(1) as f32) * tam * 0.6;
+        Elemento {
+            id: 0,
+            figura: Figura::Texto {
+                texto,
+                tam,
+                familia: "Segoe UI".into(),
+            },
+            x: t.origen.x,
+            y: t.origen.y,
+            ancho,
+            alto: tam * 1.3,
+            angulo: 0.0,
+            trazo: self.color,
+            relleno: None,
+            grosor: self.grosor,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 0.0,
+            opacidad: 1.0,
+            semilla: self.semilla,
+            version: 0,
+            borrado: false,
+        }
+    }
+
+    /// Confirma el texto en curso: `Terminado` si hay algo, `Repintar` si
+    /// estaba vacio (un texto vacio es basura invisible que estorba al
+    /// seleccionar), `Nada` si no se estaba escribiendo.
+    fn confirmar_texto(&mut self) -> EfectoAnotador {
+        let Some(t) = self.texto.take() else {
+            return EfectoAnotador::Nada;
+        };
+        if t.contenido.is_empty() {
+            return EfectoAnotador::Repintar;
+        }
+        let e = self.elemento_texto(&t, false);
+        self.semilla = (self.semilla.wrapping_mul(48271) & 0x7FFF_FFFF).max(1);
+        EfectoAnotador::Terminado(Box::new(e))
     }
 
     /// El elemento que corresponde al gesto actual. `None` si todavia no hay
@@ -502,13 +625,15 @@ mod pruebas {
     }
 
     #[test]
-    fn el_texto_pide_al_consumidor_que_abra_su_editor() {
+    fn el_clic_con_texto_abre_un_texto_en_curso_donde_se_pulso() {
+        // D57: el texto se escribe in situ, en la propia maquina; no hay
+        // editor aparte que abrir.
         let mut a = Anotador::nuevo(1);
         a.procesar(EventoAnotador::CambiarHerramienta(Herramienta::Texto));
-        assert_eq!(
-            a.procesar(EventoAnotador::Pulsar(p(5.0, 6.0))),
-            EfectoAnotador::PedirTexto(p(5.0, 6.0))
-        );
+        let e = a.procesar(EventoAnotador::Pulsar(p(5.0, 6.0)));
+        assert!(matches!(e, EfectoAnotador::EnCurso(_)), "llego {e:?}");
+        assert_eq!(a.editando_texto(), Some(p(5.0, 6.0)));
+        assert!(!a.dibujando(), "escribir no es un gesto de arrastre");
     }
 
     #[test]
@@ -536,6 +661,121 @@ mod pruebas {
         };
         assert_eq!(e.figura, Figura::Foco { elipse: false });
         assert_eq!(e.relleno.map(|c| c.a), Some(0.6));
+    }
+
+    fn con_texto() -> Anotador {
+        let mut a = Anotador::nuevo(1);
+        a.procesar(EventoAnotador::CambiarHerramienta(Herramienta::Texto));
+        a.procesar(EventoAnotador::Pulsar(p(30.0, 40.0)));
+        a
+    }
+
+    #[test]
+    fn escribir_y_enter_dejan_un_elemento_de_texto_donde_se_pulso() {
+        let mut a = con_texto();
+        for c in "Hola".chars() {
+            let efecto = a.procesar(EventoAnotador::Caracter(c));
+            assert!(
+                matches!(efecto, EfectoAnotador::EnCurso(_)),
+                "cada letra se ve al momento, llego {efecto:?}"
+            );
+        }
+        let EfectoAnotador::Terminado(e) = a.procesar(EventoAnotador::Tecla(TeclaAnotador::Enter))
+        else {
+            panic!("Enter confirma");
+        };
+        assert_eq!(
+            e.figura,
+            Figura::Texto {
+                texto: "Hola".into(),
+                tam: 20.0,
+                familia: "Segoe UI".into()
+            }
+        );
+        assert_eq!((e.x, e.y), (30.0, 40.0));
+        assert!(a.editando_texto().is_none());
+    }
+
+    #[test]
+    fn retroceso_borra_y_un_texto_vacio_no_deja_nada() {
+        // Caso negativo: un clic con Texto y Enter sin escribir no puede
+        // dejar un elemento invisible que luego estorbe al seleccionar.
+        let mut a = con_texto();
+        a.procesar(EventoAnotador::Caracter('a'));
+        a.procesar(EventoAnotador::Tecla(TeclaAnotador::Retroceso));
+        assert_eq!(
+            a.procesar(EventoAnotador::Tecla(TeclaAnotador::Enter)),
+            EfectoAnotador::Repintar
+        );
+    }
+
+    #[test]
+    fn escape_cancela_el_texto_sin_salir() {
+        let mut a = con_texto();
+        a.procesar(EventoAnotador::Caracter('x'));
+        assert_eq!(
+            a.procesar(EventoAnotador::Tecla(TeclaAnotador::Escape)),
+            EfectoAnotador::Repintar
+        );
+        assert!(a.editando_texto().is_none());
+        assert_eq!(
+            a.procesar(EventoAnotador::Tecla(TeclaAnotador::Escape)),
+            EfectoAnotador::Salir
+        );
+    }
+
+    #[test]
+    fn cambiar_de_herramienta_confirma_el_texto_escrito() {
+        // Perder lo escrito por pulsar el lapiz seria un fallo de datos.
+        let mut a = con_texto();
+        a.procesar(EventoAnotador::Caracter('y'));
+        assert!(matches!(
+            a.procesar(EventoAnotador::CambiarHerramienta(Herramienta::Lapiz)),
+            EfectoAnotador::Terminado(_)
+        ));
+        assert_eq!(a.herramienta(), Herramienta::Lapiz);
+    }
+
+    #[test]
+    fn los_caracteres_de_control_no_entran_en_el_texto() {
+        let mut a = con_texto();
+        assert_eq!(
+            a.procesar(EventoAnotador::Caracter('\r')),
+            EfectoAnotador::Nada
+        );
+        assert_eq!(
+            a.procesar(EventoAnotador::Caracter('\u{8}')),
+            EfectoAnotador::Nada
+        );
+    }
+
+    #[test]
+    fn la_previsualizacion_del_texto_lleva_cursor_y_el_final_no() {
+        let mut a = con_texto();
+        let EfectoAnotador::EnCurso(e) = a.procesar(EventoAnotador::Caracter('a')) else {
+            panic!("se esperaba previsualizacion");
+        };
+        assert!(matches!(e.figura, Figura::Texto { ref texto, .. } if texto == "a|"));
+        // Un segundo clic con Texto confirma, sin cursor.
+        let EfectoAnotador::Terminado(e) = a.procesar(EventoAnotador::Pulsar(p(0.0, 0.0))) else {
+            panic!("el clic confirma lo escrito");
+        };
+        assert!(matches!(e.figura, Figura::Texto { ref texto, .. } if texto == "a"));
+    }
+
+    #[test]
+    fn escribir_sin_haber_pulsado_no_hace_nada() {
+        // Caso negativo: las teclas que llegan con otra herramienta no
+        // pueden inventar un texto de la nada.
+        let mut a = Anotador::nuevo(1);
+        assert_eq!(
+            a.procesar(EventoAnotador::Caracter('z')),
+            EfectoAnotador::Nada
+        );
+        assert_eq!(
+            a.procesar(EventoAnotador::Tecla(TeclaAnotador::Enter)),
+            EfectoAnotador::Nada
+        );
     }
 
     #[test]
