@@ -31,7 +31,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{VK_BACK, VK_RETURN};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
-use crate::contenido::{Contenido, NOTA_MARGEN_LOGICO, NOTA_TEXTO_LOGICO};
+use crate::contenido::{Contenido, DOCUMENTO_FRANJA_LOGICA, NOTA_MARGEN_LOGICO, NOTA_TEXTO_LOGICO};
 use crate::estado::{EfectoPin, EstadoPin, EventoPin, MINIMO_LOGICO};
 
 /// Margen transparente alrededor del contenido: ahi vive la sombra (D30).
@@ -255,7 +255,9 @@ impl Pin {
         let fuente_bitmap = match &contenido {
             Contenido::Imagen(img) => Some(img),
             Contenido::Archivo { icono, .. } => icono.as_ref(),
-            Contenido::Nota { .. } => None,
+            Contenido::Documento { vista, .. } => Some(vista),
+            // El video no tiene bitmap fijo: lo trae cada fotograma.
+            Contenido::Nota { .. } | Contenido::Video { .. } => None,
         };
         let bitmap = match fuente_bitmap {
             Some(img) => Some(motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles)?),
@@ -263,6 +265,8 @@ impl Pin {
         };
         let imagen_nativa = match &contenido {
             Contenido::Imagen(img) => (img.ancho, img.alto),
+            Contenido::Documento { vista, .. } => (vista.ancho, vista.alto),
+            Contenido::Video { ancho, alto, .. } if *ancho > 0 && *alto > 0 => (*ancho, *alto),
             // Sin tamano nativo de pixeles: el "100 %" de una nota o una
             // ficha es el tamano con el que nacio.
             _ => (rect_contenido.ancho, rect_contenido.alto),
@@ -542,10 +546,40 @@ fn pintar(i: &PinInterno) {
         match &i.contenido {
             // La imagen va sin recorte redondeado (simplificacion consciente
             // heredada de S2-A): el redondeo se aprecia en la sombra.
-            Contenido::Imagen(_) => {
+            // El video es una imagen en movimiento: el bitmap es el ultimo
+            // fotograma, o nada hasta que llegue el primero (D63).
+            Contenido::Imagen(_) | Contenido::Video { .. } => {
                 if let Some(b) = &i.bitmap {
                     p.bitmap(b, caja, None, false);
                 }
+            }
+
+            // La miniatura arriba y el nombre en su franja debajo (D71).
+            Contenido::Documento { nombre, .. } => {
+                let franja = DOCUMENTO_FRANJA_LOGICA as f32 * escala;
+                let alto_vista = (h - franja).max(1.0);
+                if let Some(b) = &i.bitmap {
+                    p.bitmap(
+                        b,
+                        RectF {
+                            x: caja.x,
+                            y: caja.y,
+                            ancho: caja.ancho,
+                            alto: alto_vista,
+                        },
+                        None,
+                        false,
+                    );
+                }
+                let margen = 8.0 * escala;
+                p.texto_ajustado(
+                    nombre,
+                    m + margen,
+                    m + alto_vista + 6.0 * escala,
+                    13.0 * escala,
+                    (w - 2.0 * margen).max(1.0),
+                    tinta,
+                );
             }
 
             Contenido::Nota { texto } => {
@@ -885,8 +919,14 @@ extern "system" fn procedimiento_pin(
                 // En una ficha, doble clic ABRE el archivo (spec 4.1). En
                 // imagen y nota entra a ANOTAR (D47): alternar tamano pasa
                 // al menu, donde ya estaba "Tamano original".
-                if matches!(i.contenido, Contenido::Archivo { .. }) {
+                if matches!(
+                    i.contenido,
+                    Contenido::Archivo { .. } | Contenido::Documento { .. }
+                ) {
                     (i.al_cambiar)(CambioPin::AbrirPedido);
+                } else if matches!(i.contenido, Contenido::Video { .. }) {
+                    // El doble clic en un video reproduce o pausa (D68/D70);
+                    // llega con el reproductor.
                 } else if !i.anotando {
                     (i.al_cambiar)(CambioPin::AnotarPedido);
                 }
@@ -898,7 +938,8 @@ extern "system" fn procedimiento_pin(
                 let Some(t) = i.textos.clone() else {
                     return LRESULT(0);
                 };
-                match crate::menu::mostrar(hwnd, &i.contenido, i.color_sombra.is_some(), &t) {
+                match crate::menu::mostrar(hwnd, &i.contenido, i.color_sombra.is_some(), false, &t)
+                {
                     None => {}
                     // Las dos que puede resolver la propia ventana se
                     // resuelven aqui: pedirselas al gestor solo daria un

@@ -6,11 +6,18 @@
 //! tamano con el que nace cada tipo (D32), puro salvo la medicion del texto,
 //! que llega inyectada para poder probarlo sin DirectWrite.
 
+use std::path::{Path, PathBuf};
+
 use pixpin_codec::ImagenRgba;
 
 /// Ficha de archivo: alto fijo, ancho por defecto (px logicos, D32).
 pub const FICHA_ANCHO_LOGICO: u32 = 280;
 pub const FICHA_ALTO_LOGICO: u32 = 72;
+/// La franja con el nombre bajo la miniatura de un documento (D71).
+pub const DOCUMENTO_FRANJA_LOGICA: u32 = 28;
+/// Tamano de un video mientras no se conocen sus metadatos (px logicos).
+pub const VIDEO_ANCHO_PROVISIONAL_LOGICO: u32 = 480;
+pub const VIDEO_ALTO_PROVISIONAL_LOGICO: u32 = 270;
 /// Tope de la nota al nacer (px logicos): mas alla se recorta y se
 /// redimensiona a mano.
 pub const NOTA_ANCHO_MAX_LOGICO: u32 = 480;
@@ -35,6 +42,50 @@ pub enum Contenido {
         icono: Option<ImagenRgba>,
         existe: bool,
     },
+    /// Un video por referencia (D63). El reproductor vive en la ventana, no
+    /// aqui: este contenido es `Clone` y un reproductor no. `ancho`/`alto`
+    /// son los nativos si ya se conocen; si no, la proporcion de la
+    /// miniatura o el tamano provisional.
+    Video {
+        nombre: String,
+        ruta: PathBuf,
+        ancho: u32,
+        alto: u32,
+    },
+    /// La miniatura que la Shell da de un archivo, con el nombre debajo
+    /// (D62). Por referencia, como la ficha.
+    Documento {
+        nombre: String,
+        vista: ImagenRgba,
+    },
+}
+
+/// Como se ensena un archivo por referencia, decidido SOLO por su extension
+/// (D65): sin tocar disco, puro y probado. Lo que no es video es candidato a
+/// documento, y quien llama comprueba si la Shell tiene miniatura.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Presentacion {
+    Video,
+    DocumentoSiHayMiniatura,
+}
+
+/// Extensiones que Media Foundation abre como video en un Windows 10 sin
+/// codecs anadidos. Lo que falte aqui se ensena como documento (miniatura),
+/// que es una degradacion visible y no un fallo.
+const EXTENSIONES_VIDEO: [&str; 10] = [
+    "mp4", "mkv", "webm", "mov", "avi", "m4v", "ts", "wmv", "mpg", "mpeg",
+];
+
+pub fn presentacion_de(ruta: &Path) -> Presentacion {
+    let ext = ruta
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    if EXTENSIONES_VIDEO.contains(&ext.as_str()) {
+        Presentacion::Video
+    } else {
+        Presentacion::DocumentoSiHayMiniatura
+    }
 }
 
 impl Contenido {
@@ -88,6 +139,25 @@ pub fn tamano_natural(
         }
 
         Contenido::Archivo { .. } => (fis(FICHA_ANCHO_LOGICO), fis(FICHA_ALTO_LOGICO)),
+
+        // Como una imagen: el video es una imagen en movimiento (D71). Sin
+        // tamano conocido, el provisional.
+        Contenido::Video { ancho, alto, .. } => {
+            if *ancho == 0 || *alto == 0 {
+                (
+                    fis(VIDEO_ANCHO_PROVISIONAL_LOGICO),
+                    fis(VIDEO_ALTO_PROVISIONAL_LOGICO),
+                )
+            } else {
+                (*ancho, *alto)
+            }
+        }
+
+        // La miniatura tal cual la dio la Shell mas la franja del nombre.
+        Contenido::Documento { vista, .. } => (
+            vista.ancho.max(1),
+            vista.alto.max(1) + fis(DOCUMENTO_FRANJA_LOGICA),
+        ),
     }
 }
 
@@ -189,6 +259,64 @@ mod pruebas {
             (470..=480).contains(&w),
             "el ancho llega al tope salvo el resto de un caracter: {w}"
         );
+    }
+
+    #[test]
+    fn un_mp4_y_un_mkv_son_video_sin_importar_las_mayusculas() {
+        for r in ["a.mp4", "b.MKV", "c.webm", "d.ts", r"C:\v\e.Mov"] {
+            assert_eq!(presentacion_de(Path::new(r)), Presentacion::Video, "{r}");
+        }
+    }
+
+    #[test]
+    fn un_pdf_una_carpeta_y_sin_extension_no_son_video() {
+        // Caso negativo: todo lo demas es candidato a documento; la Shell
+        // decide si hay miniatura.
+        for r in [
+            "informe.pdf",
+            r"C:\carpeta",
+            "sinextension",
+            "foto.png",
+            "notas.txt",
+        ] {
+            assert_eq!(
+                presentacion_de(Path::new(r)),
+                Presentacion::DocumentoSiHayMiniatura,
+                "{r}"
+            );
+        }
+    }
+
+    #[test]
+    fn el_documento_nace_con_su_miniatura_mas_la_franja() {
+        let c = Contenido::Documento {
+            nombre: "informe.pdf".into(),
+            vista: ImagenRgba {
+                ancho: 400,
+                alto: 300,
+                pixeles: vec![0; 400 * 300 * 4],
+            },
+        };
+        // Al 150 %, la franja de 28 px logicos son 42 fisicos.
+        assert_eq!(tamano_natural(&c, 150, &medidor), (400, 342));
+    }
+
+    #[test]
+    fn el_video_nace_con_su_tamano_nativo_o_el_provisional() {
+        let con = Contenido::Video {
+            nombre: "v.mp4".into(),
+            ruta: PathBuf::from("v.mp4"),
+            ancho: 1920,
+            alto: 1080,
+        };
+        assert_eq!(tamano_natural(&con, 150, &medidor), (1920, 1080));
+        let sin = Contenido::Video {
+            nombre: "v.mp4".into(),
+            ruta: PathBuf::from("v.mp4"),
+            ancho: 0,
+            alto: 0,
+        };
+        assert_eq!(tamano_natural(&sin, 100, &medidor), (480, 270));
     }
 
     #[test]

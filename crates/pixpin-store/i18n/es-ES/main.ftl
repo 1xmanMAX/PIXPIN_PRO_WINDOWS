@@ -47,3 +47,6 @@ grupos-ocultos = Grupos ocultos
 
 capa-guardar-titulo = Anotación de pantalla
 capa-guardar-pregunta = ¿Guardar lo dibujado como un pin?
+pin-reproducir = Reproducir
+pin-pausar = Pausar
+pin-sonido = Sonido
