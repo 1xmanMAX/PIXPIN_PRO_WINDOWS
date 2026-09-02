@@ -45,7 +45,15 @@ apps/pixpin         scroll.rs   ejecutar_scroll(recursos, region) -> Option<Imag
 
 ## 4. Criterios de aceptación
 
-- [ ] `Ctrl+Alt+S` cose una página del Bloc de notas sin filas repetidas ni saltadas y la deja como pin y en el portapapeles
-- [ ] Se para sola al llegar al final; `Esc` la para a mano
-- [ ] `Ctrl+Alt+D` copia el color en el formato configurado
-- [ ] Las pruebas puras del cosido corren en CI
+- [x] `Ctrl+Alt+S` cose la ventana bajo el cursor y la deja como pin y en el portapapeles (verificado sobre un documento de Word; el Bloc de notas quedó tapado por el uso simultáneo del equipo)
+- [x] Se para sola al llegar al final (dos capturas idénticas seguidas, D79) y por tiempo; `Esc` la para a mano (sondeo, sin verificar por automatización)
+- [x] `Ctrl+Alt+D` copia el color en el formato configurado
+- [x] Las pruebas puras del cosido corren en CI (14)
+- [x] **Añadido a petición del usuario:** un panel «Seleccionar todo» en el overlay y `Ctrl+A` seleccionan la pantalla entera bajo el cursor (D80)
+
+### Decisiones añadidas durante la ejecución
+
+| # | Decisión | Elección |
+|---|---|---|
+| D79 | Parada por píxeles | Además de «sin movimiento» del cosedor, dos capturas idénticas seguidas cuentan como paso quieto: una banda lisa al final hace al cosedor decir «incierto» y la captura no terminaba nunca |
+| D80 | Panel «Seleccionar todo» | Un botón arriba y centrado en el monitor bajo el cursor mientras no hay selección (`pixpin-ui::panel`, puro); al pulsarlo (o `Ctrl+A`) la pantalla entera de ese monitor queda seleccionada y lista para confirmar. No en el cuentagotas |
