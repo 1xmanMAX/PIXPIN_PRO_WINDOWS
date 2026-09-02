@@ -7,10 +7,11 @@ use pixpin_geom::{Punto, Rect};
 /// Separacion entre el cursor y la esquina de la lupa, en pixeles fisicos.
 const MARGEN_CURSOR: i32 = 24;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Lupa {
-    /// Aumento: 8 pixeles dibujados por cada pixel real.
-    pub factor: u32,
+    /// Aumento: pixeles dibujados por cada pixel real. Fraccionario porque
+    /// la lupa de anotacion sube y baja con la rueda en pasos de x1,25.
+    pub factor: f32,
     /// Lado del cuadrado de la lupa, en pixeles fisicos del monitor.
     pub diametro: u32,
 }
@@ -19,8 +20,17 @@ impl Lupa {
     /// Lupa de la spec: 8x, 176 px logicos escalados al DPI del monitor.
     pub fn por_defecto(escala_por_cien: u32) -> Lupa {
         Lupa {
-            factor: 8,
+            factor: 8.0,
             diametro: 176 * escala_por_cien / 100,
+        }
+    }
+
+    /// La lupa de anotacion (D52): mas grande y con el aumento que pida la
+    /// rueda.
+    pub fn con_aumento(escala_por_cien: u32, factor: f32) -> Lupa {
+        Lupa {
+            factor: factor.max(1.0),
+            diametro: 240 * escala_por_cien / 100,
         }
     }
 
@@ -28,7 +38,7 @@ impl Lupa {
     /// desplazada (no encogida) para no salirse del monitor: encogerla
     /// cambiaria el aumento en los bordes.
     pub fn region_fuente(&self, cursor: Punto, monitor: Rect) -> Rect {
-        let lado = (self.diametro / self.factor) as i32;
+        let lado = ((self.diametro as f32 / self.factor).round() as i32).max(1);
         let x = (cursor.x - lado / 2).clamp(monitor.izquierda(), monitor.derecha() - lado);
         let y = (cursor.y - lado / 2).clamp(monitor.arriba(), monitor.abajo() - lado);
         Rect {
@@ -55,6 +65,63 @@ impl Lupa {
             x: x.clamp(monitor.izquierda(), monitor.derecha() - d),
             y: y.clamp(monitor.arriba(), monitor.abajo() - d),
         }
+    }
+
+    /// Donde dibujarla para que NO pise su propia region fuente (D60): sobre
+    /// pantalla viva la lupa muestrea la pantalla CON la lupa dibujada, y si
+    /// se pisara se ampliaria a si misma en bucle. Prueba los cuatro
+    /// cuadrantes a una distancia que garantiza la separacion y se queda
+    /// con el primero que cabe entero en el monitor.
+    pub fn colocar_fuera(&self, cursor: Punto, monitor: Rect) -> Punto {
+        let d = self.diametro as i32;
+        let fuente = self.region_fuente(cursor, monitor);
+        let candidatos = [
+            Punto {
+                x: fuente.derecha() + MARGEN_CURSOR,
+                y: fuente.abajo() + MARGEN_CURSOR,
+            },
+            Punto {
+                x: fuente.izquierda() - MARGEN_CURSOR - d,
+                y: fuente.abajo() + MARGEN_CURSOR,
+            },
+            Punto {
+                x: fuente.derecha() + MARGEN_CURSOR,
+                y: fuente.arriba() - MARGEN_CURSOR - d,
+            },
+            Punto {
+                x: fuente.izquierda() - MARGEN_CURSOR - d,
+                y: fuente.arriba() - MARGEN_CURSOR - d,
+            },
+            // Si ninguna diagonal cabe (monitor muy bajo o muy estrecho),
+            // a un lado o encima/debajo, alineada con la fuente.
+            Punto {
+                x: fuente.derecha() + MARGEN_CURSOR,
+                y: fuente.arriba(),
+            },
+            Punto {
+                x: fuente.izquierda() - MARGEN_CURSOR - d,
+                y: fuente.arriba(),
+            },
+            Punto {
+                x: fuente.izquierda(),
+                y: fuente.abajo() + MARGEN_CURSOR,
+            },
+            Punto {
+                x: fuente.izquierda(),
+                y: fuente.arriba() - MARGEN_CURSOR - d,
+            },
+        ];
+        for c in candidatos {
+            let cabe = c.x >= monitor.izquierda()
+                && c.y >= monitor.arriba()
+                && c.x + d <= monitor.derecha()
+                && c.y + d <= monitor.abajo();
+            if cabe {
+                return c;
+            }
+        }
+        // Monitor mas pequeno que fuente mas lupa: se acepta el solape.
+        self.colocar(cursor, monitor)
     }
 }
 
@@ -123,13 +190,64 @@ mod pruebas {
         assert_eq!(Lupa::por_defecto(100).diametro, 176);
         assert_eq!(Lupa::por_defecto(150).diametro, 264);
         assert_eq!(Lupa::por_defecto(200).diametro, 352);
-        assert_eq!(Lupa::por_defecto(100).factor, 8);
+        assert_eq!(Lupa::por_defecto(100).factor, 8.0);
+    }
+
+    #[test]
+    fn la_lupa_de_anotacion_tiene_aumento_fraccionario() {
+        let l = Lupa::con_aumento(100, 2.0);
+        assert_eq!(l.diametro, 240);
+        let f = l.region_fuente(Punto { x: 500, y: 500 }, monitor());
+        assert_eq!(f.ancho, 120);
+        let l = Lupa::con_aumento(100, 2.5);
+        assert_eq!(
+            l.region_fuente(Punto { x: 500, y: 500 }, monitor()).ancho,
+            96
+        );
+        // Caso negativo: un aumento por debajo de 1 encogeria en vez de
+        // ampliar y la region fuente seria mayor que la lupa.
+        assert_eq!(Lupa::con_aumento(100, 0.2).factor, 1.0);
+    }
+
+    #[test]
+    fn colocar_fuera_nunca_pisa_la_region_que_amplia() {
+        // D60: sobre pantalla viva la lupa muestrea la pantalla CON la lupa
+        // dibujada; si se pisara a si misma se ampliaria en bucle.
+        let l = Lupa::con_aumento(100, 1.5);
+        for cursor in [
+            Punto { x: 0, y: 0 },
+            Punto { x: 1919, y: 1079 },
+            Punto { x: 960, y: 540 },
+            Punto { x: 1919, y: 0 },
+            Punto { x: 0, y: 1079 },
+            Punto { x: 100, y: 540 },
+            Punto { x: 960, y: 1000 },
+        ] {
+            let fuente = l.region_fuente(cursor, monitor());
+            let pos = l.colocar_fuera(cursor, monitor());
+            let destino = Rect {
+                x: pos.x,
+                y: pos.y,
+                ancho: l.diametro,
+                alto: l.diametro,
+            };
+            assert!(
+                destino.interseccion(fuente).is_none_or(|i| i.esta_vacio()),
+                "cursor {cursor:?}: destino {destino:?} pisa fuente {fuente:?}"
+            );
+            assert!(
+                monitor().contiene(pos)
+                    && destino.derecha() <= monitor().derecha()
+                    && destino.abajo() <= monitor().abajo(),
+                "{destino:?} fuera del monitor"
+            );
+        }
     }
 
     #[test]
     fn la_region_fuente_esta_centrada_y_mide_diametro_entre_factor() {
         let lupa = Lupa {
-            factor: 8,
+            factor: 8.0,
             diametro: 176,
         };
         let r = lupa.region_fuente(Punto { x: 500, y: 400 }, monitor());
@@ -145,7 +263,7 @@ mod pruebas {
         // Caso negativo: sin el ajuste, en la esquina la region tendria
         // coordenadas negativas y el recorte de textura fallaria.
         let lupa = Lupa {
-            factor: 8,
+            factor: 8.0,
             diametro: 176,
         };
         let r = lupa.region_fuente(Punto { x: 2, y: 2 }, monitor());
@@ -159,7 +277,7 @@ mod pruebas {
     #[test]
     fn la_lupa_huye_del_cursor_al_acercarse_al_borde() {
         let lupa = Lupa {
-            factor: 8,
+            factor: 8.0,
             diametro: 176,
         };
         // Lejos de los bordes: abajo a la derecha del cursor.
