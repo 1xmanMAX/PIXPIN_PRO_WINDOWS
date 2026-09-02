@@ -165,10 +165,6 @@ impl CapaViva {
         self.escena.cuantos_visibles() > 0
     }
 
-    pub fn monitor(&self) -> Monitor {
-        self.monitor
-    }
-
     /// Si la lupa necesita ver la pantalla viva (D60): solo en modo vivo
     /// (en congelado amplia la foto), con la lupa activa y recogiendo el
     /// raton.
