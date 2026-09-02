@@ -27,12 +27,13 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, VK_CONTROL, VK_DOWN, VK_ESCAPE, VK_LEFT, VK_RIGHT,
     VK_SHIFT, VK_UP,
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::{VK_BACK, VK_RETURN};
+use windows::Win32::UI::Input::KeyboardAndMouse::{VK_BACK, VK_RETURN, VK_SPACE};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
 use crate::contenido::{Contenido, DOCUMENTO_FRANJA_LOGICA, NOTA_MARGEN_LOGICO, NOTA_TEXTO_LOGICO};
 use crate::estado::{EfectoPin, EstadoPin, EventoPin, MINIMO_LOGICO};
+use crate::video::Reproductor;
 
 /// Margen transparente alrededor del contenido: ahi vive la sombra (D30).
 pub const MARGEN_SOMBRA_LOGICO: u32 = 24;
@@ -81,6 +82,9 @@ pub enum CambioPin {
     /// (D58). Lo produce la paleta, no esta ventana, pero viaja por la
     /// misma cola del gestor.
     PaletaPulsada(Punto),
+    /// Media Foundation no pudo con el video (D72): el gestor vuelve a
+    /// crear el pin como documento o ficha.
+    VideoFallido,
 }
 
 /// La lupa dentro del pin (D52): que trozo del contenido se amplia y donde
@@ -96,6 +100,9 @@ pub struct LupaPin {
 /// flechas, y su retardo (spec 5.2: 300 ms tras el ultimo cambio).
 const ID_TEMPORIZADOR_GUARDADO: usize = 1;
 const RETARDO_GUARDADO_MS: u32 = 300;
+/// El temporizador que pregunta por fotogramas nuevos a un pin de video
+/// (D67). Solo corre mientras el video se reproduce.
+const ID_TEMPORIZADOR_VIDEO: usize = 2;
 /// Distancia a la que el borde del area de trabajo atrae al pin (px logicos).
 const IMAN_LOGICO: i32 = 8;
 
@@ -202,6 +209,13 @@ struct PinInterno {
     /// La lupa, mientras la herramienta activa sea la lupa. No es un
     /// elemento: no se guarda (D52).
     lupa: Option<LupaPin>,
+    /// El reproductor, solo en un pin de video (D63). Si no pudo crearse,
+    /// `video_fallido` avisa al gestor en el primer tick (D72).
+    video: Option<Reproductor>,
+    video_fallido: bool,
+    /// Cada cuanto se pregunta por un fotograma nuevo (D67): 16 ms en
+    /// `Completo`, 33 en `Ligero`.
+    ritmo_video_ms: u32,
     al_cambiar: Box<dyn Fn(CambioPin)>,
 }
 
@@ -220,6 +234,7 @@ thread_local! {
 impl Pin {
     /// Crea el pin visible (sin robar el foco: spec 4.4) con su contenido ya
     /// pintado. `rect_contenido` en pixeles fisicos del escritorio virtual.
+    #[allow(clippy::too_many_arguments)] // el pin nace con todo lo que no cambia en su vida
     pub fn nuevo(
         d3d: &ID3D11Device,
         motor: Rc<MotorRender>,
@@ -227,6 +242,7 @@ impl Pin {
         rect_contenido: Rect,
         escala_por_cien: u32,
         tema_claro: bool,
+        ritmo_video_ms: u32,
         al_cambiar: Box<dyn Fn(CambioPin)>,
     ) -> Result<Pin, ErrorPin> {
         REGISTRO.call_once(registrar_clase);
@@ -280,6 +296,20 @@ impl Pin {
             EstadoPin::nuevo(rect_contenido, escala_por_cien)
         };
 
+        // El reproductor nace con el pin (D63). Si no puede crearse, el pin
+        // existe igual y el gestor se entera en el primer tick (D72): un
+        // error modal aqui dejaria al usuario sin pin y sin explicacion.
+        let (video, video_fallido) = match &contenido {
+            Contenido::Video { ruta, .. } => match Reproductor::nuevo(d3d, ruta) {
+                Ok(r) => (Some(r), false),
+                Err(e) => {
+                    tracing::warn!(?e, "sin reproductor; el video caera a documento");
+                    (None, true)
+                }
+            },
+            _ => (None, false),
+        };
+
         let interno = Box::new(PinInterno {
             estado,
             escala_por_cien,
@@ -296,6 +326,9 @@ impl Pin {
             anotaciones: Vec::new(),
             anotando: false,
             lupa: None,
+            video,
+            video_fallido,
+            ritmo_video_ms,
             al_cambiar,
         });
         // SAFETY: la ventana es propia y viva; el Box se cede al USERDATA y
@@ -309,6 +342,11 @@ impl Pin {
         // SAFETY: mostrar sin activar (spec 4.4: pinear no roba el foco).
         unsafe {
             let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        }
+        // Un video arranca su temporizador ya (D67); si el reproductor no
+        // pudo crearse, el temporizador es lo que lleva el aviso al gestor.
+        if matches!(contenido_es_video(hwnd), Some(true)) {
+            armar_temporizador_video(hwnd, ritmo_video_ms);
         }
         Ok(pin)
     }
@@ -364,6 +402,48 @@ impl Pin {
         interno_de(self.hwnd).map_or(100, |i| i.escala_por_cien)
     }
 
+    /// Si es un pin de video y esta reproduciendose.
+    pub fn reproduciendo(&self) -> bool {
+        interno_de(self.hwnd).is_some_and(|i| i.video.as_ref().is_some_and(|v| v.reproduciendo()))
+    }
+
+    /// Si es un pin de video y esta silenciado (D69).
+    pub fn silenciado(&self) -> bool {
+        interno_de(self.hwnd).is_some_and(|i| i.video.as_ref().is_some_and(|v| v.silenciado()))
+    }
+}
+
+/// Si la ventana es un pin de video. `None` si ya no existe.
+fn contenido_es_video(hwnd: HWND) -> Option<bool> {
+    interno_de(hwnd).map(|i| matches!(i.contenido, Contenido::Video { .. }))
+}
+
+fn armar_temporizador_video(hwnd: HWND, ritmo_ms: u32) {
+    // SAFETY: temporizador de ventana propia; volver a armarlo con el mismo
+    // id solo cambia el intervalo.
+    unsafe {
+        SetTimer(Some(hwnd), ID_TEMPORIZADOR_VIDEO, ritmo_ms.max(1), None);
+    }
+}
+
+/// Reproducir o pausar (D68): el temporizador va con el estado, asi que un
+/// video en pausa no cuesta un solo tick (D67).
+fn alternar_video(hwnd: HWND, i: &mut PinInterno) {
+    let Some(v) = &i.video else {
+        return;
+    };
+    v.alternar_pausa();
+    if v.reproduciendo() {
+        armar_temporizador_video(hwnd, i.ritmo_video_ms);
+    } else {
+        // SAFETY: mata el temporizador propio.
+        unsafe {
+            let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_VIDEO);
+        }
+    }
+}
+
+impl Pin {
     /// Coloca la ventana de composicion del IME donde se escribe (D57).
     /// `p` esta en coordenadas del contenido; se suma el margen de sombra.
     pub fn poner_posicion_ime(&self, p: Punto) {
@@ -927,8 +1007,8 @@ extern "system" fn procedimiento_pin(
                 ) {
                     (i.al_cambiar)(CambioPin::AbrirPedido);
                 } else if matches!(i.contenido, Contenido::Video { .. }) {
-                    // El doble clic en un video reproduce o pausa (D68/D70);
-                    // llega con el reproductor.
+                    // El doble clic en un video reproduce o pausa (D68/D70).
+                    alternar_video(hwnd, i);
                 } else if !i.anotando {
                     (i.al_cambiar)(CambioPin::AnotarPedido);
                 }
@@ -940,8 +1020,14 @@ extern "system" fn procedimiento_pin(
                 let Some(t) = i.textos.clone() else {
                     return LRESULT(0);
                 };
-                match crate::menu::mostrar(hwnd, &i.contenido, i.color_sombra.is_some(), false, &t)
-                {
+                let reproduciendo = i.video.as_ref().is_some_and(|v| v.reproduciendo());
+                match crate::menu::mostrar(
+                    hwnd,
+                    &i.contenido,
+                    i.color_sombra.is_some(),
+                    reproduciendo,
+                    &t,
+                ) {
                     None => {}
                     // Las dos que puede resolver la propia ventana se
                     // resuelven aqui: pedirselas al gestor solo daria un
@@ -950,6 +1036,14 @@ extern "system" fn procedimiento_pin(
                         aplicar(hwnd, EfectoPin::AlternarTamano)
                     }
                     Some(crate::menu::CMD_CERRAR) => aplicar(hwnd, EfectoPin::Cerrar),
+                    // Los del video tambien se resuelven aqui: el reproductor
+                    // vive en esta ventana (D64/D68).
+                    Some(crate::menu::CMD_REPRODUCIR) => alternar_video(hwnd, i),
+                    Some(crate::menu::CMD_SONIDO) => {
+                        if let Some(v) = &i.video {
+                            v.alternar_sonido();
+                        }
+                    }
                     Some(cmd) => {
                         let cambio = match cmd {
                             crate::menu::CMD_COPIAR => Some(CambioPin::CopiarPedido),
@@ -1024,6 +1118,15 @@ extern "system" fn procedimiento_pin(
             }
             LRESULT(0)
         }
+        WM_KEYDOWN if wparam.0 as u32 == VK_SPACE.0 as u32 => {
+            // Espacio en un video enfocado: reproducir o pausar (D68).
+            if let Some(i) = interno_de(hwnd) {
+                if matches!(i.contenido, Contenido::Video { .. }) && !i.anotando {
+                    alternar_video(hwnd, i);
+                }
+            }
+            LRESULT(0)
+        }
         WM_KEYDOWN if wparam.0 as u32 == VK_ESCAPE.0 as u32 => {
             if let Some(i) = interno_de(hwnd) {
                 if i.anotando {
@@ -1068,6 +1171,34 @@ extern "system" fn procedimiento_pin(
                         RETARDO_GUARDADO_MS,
                         None,
                     );
+                }
+            }
+            LRESULT(0)
+        }
+        WM_TIMER if wparam.0 == ID_TEMPORIZADOR_VIDEO => {
+            if let Some(i) = interno_de(hwnd) {
+                let fallo = i.video_fallido || i.video.as_ref().is_some_and(|v| v.fallo());
+                if fallo {
+                    // SAFETY: mata el temporizador propio.
+                    unsafe {
+                        let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_VIDEO);
+                    }
+                    i.video_fallido = true;
+                    (i.al_cambiar)(CambioPin::VideoFallido);
+                    return LRESULT(0);
+                }
+                // Los metadatos dan el tamano nativo: es el 100 % del menu.
+                if let Some(dim) = i.video.as_mut().and_then(|v| v.dimensiones()) {
+                    i.imagen_nativa = dim;
+                }
+                // Clonar la interfaz de la textura (una cuenta de referencia)
+                // libera el prestamo del reproductor antes de tocar el bitmap.
+                let textura = i.video.as_mut().and_then(|v| v.tick().cloned());
+                if let Some(t) = textura {
+                    if i.bitmap.is_none() {
+                        i.bitmap = i.motor.bitmap_desde_textura(&t).ok();
+                    }
+                    pintar(i);
                 }
             }
             LRESULT(0)
@@ -1205,6 +1336,7 @@ mod pruebas {
             },
             100,
             true,
+            16,
             Box::new(move |cambio| c.borrow_mut().push(cambio)),
         )
         .expect("el pin deberia crearse");
@@ -1236,6 +1368,7 @@ mod pruebas {
             },
             100,
             true,
+            16,
             Box::new(move |cambio| c2.borrow_mut().push(cambio)),
         )
         .unwrap();
@@ -1270,6 +1403,7 @@ mod pruebas {
             sitio(100),
             100,
             true,
+            16,
             Box::new(|_| {}),
         )
         .expect("la nota deberia crearse");
@@ -1286,6 +1420,7 @@ mod pruebas {
             sitio(500),
             100,
             false,
+            16,
             Box::new(|_| {}),
         )
         .expect("la ficha deberia crearse");

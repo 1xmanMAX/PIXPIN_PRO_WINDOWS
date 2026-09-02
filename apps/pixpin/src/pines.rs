@@ -88,6 +88,9 @@ pub struct Pines {
     /// vez: anotar dos pines a la vez no significa nada y complicaria el
     /// foco del teclado sin ganar nada.
     anotacion: Option<Anotacion>,
+    /// Cada cuanto pregunta un pin de video por fotogramas (D67): lo decide
+    /// el nivel de rendimiento al arrancar.
+    ritmo_video_ms: u32,
 }
 
 /// Un pin en modo anotacion: su dibujo, su maquina y su elemento en curso.
@@ -120,6 +123,7 @@ impl Anotacion {
 }
 
 impl Pines {
+    #[allow(clippy::too_many_arguments)] // lo que el gestor recibe una vez y no cambia
     pub fn nuevos(
         raiz: &Path,
         d3d: ID3D11Device,
@@ -128,6 +132,7 @@ impl Pines {
         textos: TextosPin,
         texto_confirmar_eliminar: String,
         hwnd_app: windows::Win32::Foundation::HWND,
+        ritmo_video_ms: u32,
     ) -> Result<Pines> {
         let almacen = Almacen::abrir(raiz).context("no se pudo abrir el almacen")?;
         Ok(Pines {
@@ -143,6 +148,7 @@ impl Pines {
             texto_confirmar_eliminar,
             hwnd_app,
             anotacion: None,
+            ritmo_video_ms,
         })
     }
 
@@ -174,6 +180,7 @@ impl Pines {
             region,
             escala,
             self.tema_claro,
+            self.ritmo_video_ms,
             Box::new(move |cambio| {
                 let resultado = match cambio {
                     CambioPin::Movido(r) | CambioPin::Redimensionado(r) => almacen
