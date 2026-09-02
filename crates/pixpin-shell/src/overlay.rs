@@ -68,6 +68,13 @@ pub enum EventoOverlay {
     Rueda(i32),
     /// Un caracter escrito, ya compuesto (WM_CHAR, IME incluido) (D57).
     Caracter(char),
+    /// Una tecla soltada (WM_KEYUP). La capa viva lo usa para el pasante
+    /// temporal con Ctrl mantenido (D50).
+    TeclaSoltada(u32),
+    /// Un atajo global pulsado MIENTRAS el overlay esta abierto. Llega aqui
+    /// en vez de quedarse en la cola de la ventana principal, donde se
+    /// atenderia al cerrar y volveria a abrir el overlay.
+    Atajo(u32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -309,6 +316,15 @@ pub fn bucle_modal(
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
+        // Los atajos globales que el WndProc de la ventana principal haya
+        // encolado durante el Dispatch se entregan AQUI: si se quedaran en
+        // su cola, se atenderian al cerrar el overlay y lo reabririan.
+        for id in crate::ventana::tomar_atajos_pendientes() {
+            if callback(HWND::default(), EventoOverlay::Atajo(id)) == crate::ventana::Continuar::No
+            {
+                return;
+            }
+        }
         // Drenar lo que el WndProc haya encolado durante el Dispatch.
         loop {
             let siguiente = PENDIENTES_OVERLAY.with(|p| p.borrow_mut().pop_front());
@@ -392,6 +408,10 @@ extern "system" fn procedimiento_overlay(
                 vk: wparam.0 as u32,
                 shift,
             });
+            LRESULT(0)
+        }
+        WM_KEYUP => {
+            encolar(EventoOverlay::TeclaSoltada(wparam.0 as u32));
             LRESULT(0)
         }
         WM_CHAR => {

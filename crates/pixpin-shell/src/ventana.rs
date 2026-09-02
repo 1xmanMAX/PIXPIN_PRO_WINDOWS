@@ -261,6 +261,28 @@ extern "system" fn procedimiento(
     unsafe { DefWindowProcW(hwnd, mensaje, wparam, lparam) }
 }
 
+/// Saca de la cola los atajos globales pendientes y devuelve sus ids.
+///
+/// Lo usa el bucle modal del overlay: mientras un overlay esta abierto, un
+/// atajo pulsado NO puede quedarse esperando en esta cola, porque al cerrar
+/// el overlay se atenderia y lo volveria a abrir. En vez de eso se le
+/// entrega al overlay, que decide (la capa viva alterna el modo pasante,
+/// D50; el overlay de captura lo ignora).
+pub(crate) fn tomar_atajos_pendientes() -> Vec<u32> {
+    PENDIENTES.with(|p| {
+        let mut cola = p.borrow_mut();
+        let mut ids = Vec::new();
+        cola.retain(|e| match e {
+            Evento::Atajo(id) => {
+                ids.push(*id);
+                false
+            }
+            _ => true,
+        });
+        ids
+    })
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;

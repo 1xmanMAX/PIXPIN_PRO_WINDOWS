@@ -64,6 +64,9 @@ pub struct CapaViva {
     /// Lo ultimo que se vio debajo de la capa, para la lupa (D60).
     muestra: Option<Fondo>,
     ultima_muestra: Instant,
+    /// El pasante elegido con Espacio o con el atajo (D50). Ctrl mantenido
+    /// lo activa solo mientras dura, y al soltarlo se vuelve a este.
+    pasante_fijo: bool,
 }
 
 impl CapaViva {
@@ -117,6 +120,7 @@ impl CapaViva {
             cursor: Punto { x: 0, y: 0 },
             muestra: None,
             ultima_muestra: Instant::now(),
+            pasante_fijo: false,
         })
     }
 
@@ -128,16 +132,26 @@ impl CapaViva {
 
     /// Alterna entre dibujar y dejar pasar los clics (D50). En el modo
     /// congelado no hace nada: debajo solo hay una foto (D56).
-    pub fn alternar_pasante(&self) -> bool {
+    pub fn alternar_pasante(&mut self) -> bool {
         if self.fondo.is_some() {
             return false;
         }
-        let ahora = !self.ventana.es_pasante();
-        self.ventana.poner_pasante(ahora);
-        // Repintar para que la caja de herramientas se atenue: si no, el
+        self.pasante_fijo = !self.pasante_fijo;
+        self.ventana.poner_pasante(self.pasante_fijo);
+        // Repintar para que la caja de herramientas desaparezca: si no, el
         // usuario no sabria en cual de los dos estados esta.
         self.pintar();
-        ahora
+        self.pasante_fijo
+    }
+
+    /// Ctrl mantenido deja pasar los clics solo mientras dura (D50): para
+    /// un clic rapido en la aplicacion de abajo sin cambiar de modo. Al
+    /// soltarlo se vuelve al modo elegido con Espacio o el atajo.
+    pub fn ctrl(&self, pulsado: bool) {
+        if self.fondo.is_some() {
+            return;
+        }
+        self.ventana.poner_pasante(pulsado || self.pasante_fijo);
     }
 
     pub fn tiene_dibujo(&self) -> bool {
@@ -444,6 +458,7 @@ const VK_Z: u32 = 0x5A;
 const VK_Y: u32 = 0x59;
 const VK_RETURN: u32 = 0x0D;
 const VK_BACK: u32 = 0x08;
+const VK_CONTROL: u32 = 0x11;
 /// Espacio alterna entre dibujar y dejar pasar los clics: es la tecla mas
 /// grande del teclado y la unica que se acierta sin mirar mientras dibujas.
 const VK_SPACE: u32 = 0x20;
@@ -515,8 +530,28 @@ pub fn ejecutar_capa(
                 VK_Y => capa.tecla(TeclaAnotador::Rehacer),
                 VK_RETURN => capa.tecla(TeclaAnotador::Enter),
                 VK_BACK => capa.tecla(TeclaAnotador::Retroceso),
+                VK_CONTROL => {
+                    capa.ctrl(true);
+                    true
+                }
                 _ => true,
             },
+            EventoOverlay::TeclaSoltada(VK_CONTROL) => {
+                capa.ctrl(false);
+                true
+            }
+            EventoOverlay::TeclaSoltada(_) => true,
+            // El mismo atajo que abrio la capa alterna el modo (D50). Es la
+            // unica via que sigue funcionando cuando la aplicacion de abajo
+            // ya tiene el foco: el atajo es global, Espacio no.
+            EventoOverlay::Atajo(id)
+                if id == pixpin_shell::ID_ANOTAR || id == pixpin_shell::ID_ANOTAR_CONGELADA =>
+            {
+                let pasante = capa.alternar_pasante();
+                tracing::info!(pasante, "la capa cambia de modo por el atajo");
+                true
+            }
+            EventoOverlay::Atajo(_) => true,
             EventoOverlay::Caracter(c) => capa.caracter(c),
             EventoOverlay::Rueda(delta) => capa.raton(EventoRaton::Rueda(delta)),
             EventoOverlay::Pintar => {

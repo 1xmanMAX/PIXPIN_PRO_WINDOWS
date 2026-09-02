@@ -576,9 +576,14 @@ fn procesar_evento(
         EventoOverlay::CambioDpi => Continuar::Si,
         // Alt+F4 sobre el overlay: cancelar limpiamente.
         EventoOverlay::Cerrar => Continuar::No,
-        // El overlay de captura no usa la rueda ni escribe texto; la capa
-        // de anotacion de S3-C si.
-        EventoOverlay::Rueda(_) | EventoOverlay::Caracter(_) => Continuar::Si,
+        // El overlay de captura no usa la rueda, ni escribe texto, ni
+        // reacciona a las teclas soltadas; la capa de anotacion de S3-C si.
+        // Un atajo global pulsado con el overlay abierto se descarta: si
+        // volviera a la cola principal, reabriria el overlay al cerrarlo.
+        EventoOverlay::Rueda(_)
+        | EventoOverlay::Caracter(_)
+        | EventoOverlay::TeclaSoltada(_)
+        | EventoOverlay::Atajo(_) => Continuar::Si,
     }
 }
 
