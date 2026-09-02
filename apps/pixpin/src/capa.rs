@@ -138,6 +138,12 @@ impl CapaViva {
         }
         self.pasante_fijo = !self.pasante_fijo;
         self.ventana.poner_pasante(self.pasante_fijo);
+        // Al volver a dibujar se recupera el foco: mientras la capa era
+        // pasante el usuario estuvo pulsando en la aplicacion de abajo, y
+        // sin esto Escape y las letras seguirian yendo alli.
+        if !self.pasante_fijo {
+            self.ventana.enfocar();
+        }
         // Repintar para que la caja de herramientas desaparezca: si no, el
         // usuario no sabria en cual de los dos estados esta.
         self.pintar();
