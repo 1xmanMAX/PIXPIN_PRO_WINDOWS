@@ -11,6 +11,7 @@
 //! actual, asi que se devuelve esa. WGC queda para el modo en vivo.
 
 use pixpin_geom::Rect;
+use windows::Win32::Foundation::E_ACCESSDENIED;
 use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
 use windows::Win32::Graphics::Dxgi::{
@@ -70,7 +71,18 @@ impl Duplicador {
                         }
                     }
                     let salida1: IDXGIOutput1 = salida.cast()?;
-                    break salida1.DuplicateOutput(dispositivo.d3d())?;
+                    break match salida1.DuplicateOutput(dispositivo.d3d()) {
+                        Ok(d) => d,
+                        // La duplicacion es EXCLUSIVA por salida: si un
+                        // escritorio remoto o un grabador la tiene tomada,
+                        // Windows responde "acceso denegado". Distinguirlo
+                        // importa, porque la respuesta correcta no es
+                        // reintentar sino usar WGC.
+                        Err(e) if e.code() == E_ACCESSDENIED => {
+                            return Err(ErrorCaptura::DuplicacionOcupada);
+                        }
+                        Err(e) => return Err(e.into()),
+                    };
                 }
                 indice += 1;
             }
@@ -167,14 +179,39 @@ mod pruebas {
     use crate::pruebas_util::con_movimiento;
     use std::time::{Duration, Instant};
 
+    /// Crea el duplicador del monitor principal, o devuelve `None` si otro
+    /// programa lo tiene tomado.
+    ///
+    /// La Duplicacion de Escritorio es EXCLUSIVA por salida: con un
+    /// escritorio remoto o un grabador abiertos, Windows nos la niega. Eso
+    /// no es un fallo de este codigo —la aplicacion cae a WGC y sigue
+    /// funcionando—, asi que estos tests se saltan en vez de acusar en
+    /// falso. Cualquier OTRO error si revienta el test: solo se perdona el
+    /// caso que de verdad es del entorno.
+    fn duplicador_o_saltar(d: &Dispositivo, m: &pixpin_geom::Monitor) -> Option<Duplicador> {
+        match Duplicador::nuevo(d, m.id, m.area) {
+            Ok(dup) => Some(dup),
+            Err(ErrorCaptura::DuplicacionOcupada) => {
+                eprintln!(
+                    "AVISO: otro programa tiene tomada la duplicacion de escritorio \
+                     (escritorio remoto, grabador...). Este test se salta; la \
+                     aplicacion cae a WGC en esa situacion."
+                );
+                None
+            }
+            Err(e) => panic!("el duplicador deberia crearse: {e}"),
+        }
+    }
+
     #[test]
     #[ignore = "necesita GPU y sesion de escritorio; ejecutar con --ignored"]
     fn el_duplicador_entrega_en_milisegundos_una_vez_caliente() {
         let d = Dispositivo::nuevo().unwrap();
         let m = enumerar_monitores().unwrap();
         let principal = *m.principal().unwrap();
-        let mut dup = Duplicador::nuevo(&d, principal.id, principal.area)
-            .expect("deberia crearse el duplicador");
+        let Some(mut dup) = duplicador_o_saltar(&d, &principal) else {
+            return;
+        };
 
         // Calentar con movimiento real: el primer fotograma de verdad solo
         // llega cuando algo cambia en pantalla.
@@ -207,7 +244,9 @@ mod pruebas {
         let d = Dispositivo::nuevo().unwrap();
         let m = enumerar_monitores().unwrap();
         let principal = *m.principal().unwrap();
-        let mut dup = Duplicador::nuevo(&d, principal.id, principal.area).unwrap();
+        let Some(mut dup) = duplicador_o_saltar(&d, &principal) else {
+            return;
+        };
         let inst = con_movimiento(Duration::from_millis(600), || {
             std::thread::sleep(Duration::from_millis(300));
             dup.instantanea(&d).unwrap()
@@ -240,7 +279,9 @@ mod pruebas {
         let d = Dispositivo::nuevo().unwrap();
         let m = enumerar_monitores().unwrap();
         let principal = *m.principal().unwrap();
-        let mut dup = Duplicador::nuevo(&d, principal.id, principal.area).unwrap();
+        let Some(mut dup) = duplicador_o_saltar(&d, &principal) else {
+            return;
+        };
         match dup.instantanea(&d) {
             Err(ErrorCaptura::SinFotograma) => {}
             Ok(_) => {

@@ -21,3 +21,5 @@ barra-copiar = Copy
 barra-guardar = Save
 barra-guardar-como = Save as…
 barra-descartar = Discard
+
+pin-no-encontrado = Not found

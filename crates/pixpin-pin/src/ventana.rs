@@ -12,7 +12,6 @@
 use std::rc::Rc;
 use std::sync::Once;
 
-use pixpin_codec::ImagenRgba;
 use pixpin_geom::{Punto, Rect};
 use pixpin_render::{Color, MotorRender, RectF, Superficie};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
@@ -24,6 +23,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
+use crate::contenido::{Contenido, NOTA_MARGEN_LOGICO, NOTA_TEXTO_LOGICO};
 use crate::estado::{EfectoPin, EstadoPin, EventoPin, MINIMO_LOGICO};
 
 /// Margen transparente alrededor del contenido: ahi vive la sombra (D30).
@@ -73,9 +73,14 @@ struct PinInterno {
     motor: Rc<MotorRender>,
     d3d: ID3D11Device,
     superficie: Superficie,
-    /// (ancho, alto) nativos de la imagen: el 100% del doble clic.
+    /// (ancho, alto) nativos de la imagen: el 100% del doble clic. La nota y
+    /// la ficha no tienen tamano nativo de pixeles, y ahi vale el actual.
     imagen_nativa: (u32, u32),
-    bitmap: ID2D1Bitmap1,
+    /// El bitmap solo existe si hay imagen que dibujar (imagen o icono de
+    /// ficha); la nota se pinta entera con texto.
+    bitmap: Option<ID2D1Bitmap1>,
+    contenido: Contenido,
+    tema_claro: bool,
     al_cambiar: Box<dyn Fn(CambioPin)>,
 }
 
@@ -86,14 +91,15 @@ pub struct Pin {
 static REGISTRO: Once = Once::new();
 
 impl Pin {
-    /// Crea el pin visible (sin robar el foco: spec 4.4) con la imagen ya
-    /// pintada. `rect_contenido` en pixeles fisicos del escritorio virtual.
+    /// Crea el pin visible (sin robar el foco: spec 4.4) con su contenido ya
+    /// pintado. `rect_contenido` en pixeles fisicos del escritorio virtual.
     pub fn nuevo(
         d3d: &ID3D11Device,
         motor: Rc<MotorRender>,
-        imagen: &ImagenRgba,
+        contenido: Contenido,
         rect_contenido: Rect,
         escala_por_cien: u32,
+        tema_claro: bool,
         al_cambiar: Box<dyn Fn(CambioPin)>,
     ) -> Result<Pin, ErrorPin> {
         REGISTRO.call_once(registrar_clase);
@@ -119,16 +125,40 @@ impl Pin {
         };
 
         let superficie = Superficie::nueva(&motor, d3d, hwnd, ventana.ancho, ventana.alto)?;
-        let bitmap = motor.bitmap_desde_pixeles(imagen.ancho, imagen.alto, &imagen.pixeles)?;
+        // La imagen del pin, o el icono de la ficha: los dos son bitmaps. La
+        // nota no tiene ninguno y se pinta entera con texto.
+        let fuente_bitmap = match &contenido {
+            Contenido::Imagen(img) => Some(img),
+            Contenido::Archivo { icono, .. } => icono.as_ref(),
+            Contenido::Nota { .. } => None,
+        };
+        let bitmap = match fuente_bitmap {
+            Some(img) => Some(motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles)?),
+            None => None,
+        };
+        let imagen_nativa = match &contenido {
+            Contenido::Imagen(img) => (img.ancho, img.alto),
+            // Sin tamano nativo de pixeles: el "100 %" de una nota o una
+            // ficha es el tamano con el que nacio.
+            _ => (rect_contenido.ancho, rect_contenido.alto),
+        };
+
+        let estado = if contenido.solo_ancho() {
+            EstadoPin::nuevo_solo_ancho(rect_contenido, escala_por_cien)
+        } else {
+            EstadoPin::nuevo(rect_contenido, escala_por_cien)
+        };
 
         let interno = Box::new(PinInterno {
-            estado: EstadoPin::nuevo(rect_contenido, escala_por_cien),
+            estado,
             escala_por_cien,
             motor,
             d3d: d3d.clone(),
             superficie,
-            imagen_nativa: (imagen.ancho, imagen.alto),
+            imagen_nativa,
             bitmap,
+            contenido,
+            tema_claro,
             al_cambiar,
         });
         // SAFETY: la ventana es propia y viva; el Box se cede al USERDATA y
@@ -239,30 +269,117 @@ fn pintar(i: &PinInterno) {
                 },
             );
         }
-        // La tarjeta y la imagen. La imagen va sin recorte redondeado en
-        // S2-A (simplificacion consciente anotada en el plan): el redondeo
-        // se aprecia en la sombra.
-        p.rellenar_redondeado(
-            RectF {
-                x: m,
-                y: m,
-                ancho: w,
-                alto: h,
-            },
-            radio,
-            Color::BLANCO,
-        );
-        p.bitmap(
-            &i.bitmap,
-            RectF {
-                x: m,
-                y: m,
-                ancho: w,
-                alto: h,
-            },
-            None,
-            false,
-        );
+        // La tarjeta: blanca o negra segun el tema del sistema (D30). Bajo
+        // una imagen opaca no se ve, pero es el lienzo de la nota y la
+        // ficha, y el fondo de una imagen con transparencia.
+        let lienzo = if i.tema_claro {
+            Color::BLANCO
+        } else {
+            Color {
+                r: 0.11,
+                g: 0.11,
+                b: 0.12,
+                a: 1.0,
+            }
+        };
+        let tinta = if i.tema_claro {
+            Color {
+                r: 0.10,
+                g: 0.10,
+                b: 0.11,
+                a: 1.0,
+            }
+        } else {
+            Color {
+                r: 0.93,
+                g: 0.93,
+                b: 0.94,
+                a: 1.0,
+            }
+        };
+        let tinta_tenue = Color { a: 0.55, ..tinta };
+        let caja = RectF {
+            x: m,
+            y: m,
+            ancho: w,
+            alto: h,
+        };
+        p.rellenar_redondeado(caja, radio, lienzo);
+
+        match &i.contenido {
+            // La imagen va sin recorte redondeado (simplificacion consciente
+            // heredada de S2-A): el redondeo se aprecia en la sombra.
+            Contenido::Imagen(_) => {
+                if let Some(b) = &i.bitmap {
+                    p.bitmap(b, caja, None, false);
+                }
+            }
+
+            Contenido::Nota { texto } => {
+                let margen = NOTA_MARGEN_LOGICO * escala;
+                p.texto_ajustado(
+                    texto,
+                    m + margen,
+                    m + margen,
+                    NOTA_TEXTO_LOGICO * escala,
+                    (w - 2.0 * margen).max(1.0),
+                    tinta,
+                );
+            }
+
+            Contenido::Archivo {
+                nombre,
+                detalle,
+                existe,
+                ..
+            } => {
+                let margen = 12.0 * escala;
+                let lado = 32.0 * escala;
+                if let Some(b) = &i.bitmap {
+                    p.bitmap(
+                        b,
+                        RectF {
+                            x: m + margen,
+                            y: m + (h - lado) / 2.0,
+                            ancho: lado,
+                            alto: lado,
+                        },
+                        None,
+                        false,
+                    );
+                }
+                let x_texto = m + margen + lado + margen;
+                let ancho_texto = (w - (x_texto - m) - margen).max(1.0);
+                p.texto_ajustado(
+                    nombre,
+                    x_texto,
+                    m + h / 2.0 - 17.0 * escala,
+                    14.0 * escala,
+                    ancho_texto,
+                    tinta,
+                );
+                // La referencia rota se MUESTRA (D28): el detalle lo dice, y
+                // en rojo para que no haya que leerlo dos veces.
+                let color_detalle = if *existe {
+                    tinta_tenue
+                } else {
+                    Color {
+                        r: 0.86,
+                        g: 0.20,
+                        b: 0.18,
+                        a: 1.0,
+                    }
+                };
+                p.texto_ajustado(
+                    detalle,
+                    x_texto,
+                    m + h / 2.0 + 2.0 * escala,
+                    12.0 * escala,
+                    ancho_texto,
+                    color_detalle,
+                );
+            }
+        }
     });
     let _ = i.superficie.presentar();
 }
@@ -331,7 +448,7 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
                     alto: nh,
                 }
             };
-            i.estado = EstadoPin::nuevo(nuevo, i.escala_por_cien);
+            i.estado.poner_rect(nuevo);
             aplicar(hwnd, EfectoPin::Redimensionar(nuevo));
             if let Some(i2) = interno_de(hwnd) {
                 (i2.al_cambiar)(CambioPin::Redimensionado(nuevo));
@@ -519,7 +636,7 @@ mod pruebas {
         let pin = Pin::nuevo(
             &d3d,
             Rc::clone(&motor),
-            &imagen_2x2(),
+            Contenido::Imagen(imagen_2x2()),
             Rect {
                 x: 100,
                 y: 100,
@@ -527,6 +644,7 @@ mod pruebas {
                 alto: 150,
             },
             100,
+            true,
             Box::new(move |cambio| c.borrow_mut().push(cambio)),
         )
         .expect("el pin deberia crearse");
@@ -549,7 +667,7 @@ mod pruebas {
         let pin2 = Pin::nuevo(
             &d3d,
             motor,
-            &imagen_2x2(),
+            Contenido::Imagen(imagen_2x2()),
             Rect {
                 x: 400,
                 y: 100,
@@ -557,6 +675,7 @@ mod pruebas {
                 alto: 150,
             },
             100,
+            true,
             Box::new(move |cambio| c2.borrow_mut().push(cambio)),
         )
         .unwrap();
@@ -565,6 +684,62 @@ mod pruebas {
         // SAFETY: IsWindow consulta pura.
         let vivo2 = unsafe { IsWindow(Some(hwnd2)).as_bool() };
         assert!(vivo2, "destruir un pin no puede llevarse a los demas");
+    }
+
+    #[test]
+    #[ignore = "necesita GPU y sesion de escritorio; ejecutar con --ignored"]
+    fn una_nota_y_una_ficha_se_crean_y_se_destruyen_limpio() {
+        // Los dos tipos sin imagen: la nota no tiene bitmap y la ficha
+        // dibuja icono mas dos textos. Si alguno reventara al pintar, se
+        // veria aqui y no en el escritorio del usuario.
+        let d3d = d3d();
+        let motor = Rc::new(MotorRender::nuevo(&d3d).unwrap());
+        let sitio = |x| Rect {
+            x,
+            y: 700,
+            ancho: 280,
+            alto: 72,
+        };
+
+        let nota = Pin::nuevo(
+            &d3d,
+            Rc::clone(&motor),
+            Contenido::Nota {
+                texto: "una nota con acentos: canción, ñandú".into(),
+            },
+            sitio(100),
+            100,
+            true,
+            Box::new(|_| {}),
+        )
+        .expect("la nota deberia crearse");
+
+        let ficha = Pin::nuevo(
+            &d3d,
+            motor,
+            Contenido::Archivo {
+                nombre: "informe.pdf".into(),
+                detalle: "no encontrado".into(),
+                icono: crate::icono::icono_de(std::path::Path::new(r"Z:\no\existe\informe.pdf")),
+                existe: false,
+            },
+            sitio(500),
+            100,
+            false,
+            Box::new(|_| {}),
+        )
+        .expect("la ficha deberia crearse");
+
+        // SAFETY: consultas puras sobre handles vivos.
+        unsafe {
+            assert!(IsWindowVisible(nota.hwnd()).as_bool());
+            assert!(IsWindowVisible(ficha.hwnd()).as_bool());
+        }
+        let h = ficha.hwnd();
+        drop(nota);
+        // SAFETY: IsWindow es consulta pura sobre un handle propio.
+        let sigue_viva = unsafe { IsWindow(Some(h)).as_bool() };
+        assert!(sigue_viva, "cerrar la nota no puede llevarse la ficha");
     }
 
     #[test]

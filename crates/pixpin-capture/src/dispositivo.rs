@@ -31,6 +31,11 @@ pub enum ErrorCaptura {
     SinFotograma,
     #[error("el duplicador perdio el acceso a la pantalla; hay que recrearlo")]
     AccesoPerdido,
+    /// Otro proceso tiene tomada la Duplicacion de Escritorio de esa salida
+    /// —es un recurso exclusivo, y lo cogen los programas de escritorio
+    /// remoto y los grabadores—. No es un fallo nuestro: se cae a WGC.
+    #[error("otro programa tiene tomada la duplicacion de esta pantalla")]
+    DuplicacionOcupada,
     #[error("no existe ningun monitor con el identificador {0}")]
     MonitorDesconocido(u32),
     #[error("la region {region:?} no cabe en la instantanea {disponible:?}")]

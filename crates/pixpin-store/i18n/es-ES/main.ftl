@@ -22,3 +22,5 @@ barra-copiar = Copiar
 barra-guardar = Guardar
 barra-guardar-como = Guardar como…
 barra-descartar = Descartar
+
+pin-no-encontrado = No encontrado

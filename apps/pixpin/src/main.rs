@@ -188,6 +188,7 @@ fn arrancar(
         (atajos::ID_SCROLL, config.atajos.scroll),
         (atajos::ID_CUENTAGOTAS, config.atajos.cuentagotas),
         (atajos::ID_PIN, config.atajos.pin),
+        (atajos::ID_PORTAPAPELES, config.atajos.portapapeles),
     ];
     let (_registrados, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
     for (id, atajo) in &fallidos {
@@ -234,7 +235,7 @@ fn arrancar(
         Ok(a) if a.entradas().iter().any(|e| e.pin.is_some()) => {
             drop(a); // Pines::nuevos abre el suyo; no dos indices vivos.
             let t = std::time::Instant::now();
-            let restaurado = preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion)
+            let restaurado = preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion, &textos)
                 .and_then(|p| {
                     let d = pixpin_capture::enumerar_monitores()
                         .context("sin monitores para restaurar")?;
@@ -297,7 +298,8 @@ fn arrancar(
                         // El gestor consume la accion aqui, no en
                         // ejecutar_accion: el pin nace 1:1 en la region del
                         // recorte (D26), con la escala de su monitor.
-                        let p = preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion)?;
+                        let p =
+                            preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion, &textos)?;
                         p.pinear(&imagen, region, escala_del_monitor(region))?;
                         tracing::info!(abiertos = p.abiertos(), "pin creado");
                         Ok(None)
@@ -315,6 +317,24 @@ fn arrancar(
                         let mut args = fluent_bundle::FluentArgs::new();
                         args.set("motivo", e.to_string());
                         tracing::warn!("{}", textos.t_args("captura-fallo", &args));
+                    }
+                }
+                Continuar::Si
+            }
+            Evento::Atajo(id) if id == atajos::ID_PORTAPAPELES => {
+                // Pinear el portapapeles NO abre overlay: aparece un pin
+                // centrado en el monitor del cursor y sin robar el foco
+                // (4.4), asi que no interrumpe donde estabas escribiendo.
+                match pixpin_codec::leer() {
+                    None => tracing::info!("portapapeles vacio o con un formato ajeno"),
+                    Some(contenido) => {
+                        let hecho =
+                            preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion, &textos)
+                                .and_then(|p| pinear_portapapeles(p, contenido));
+                        match hecho {
+                            Ok(cuantos) => tracing::info!(cuantos, "pineado del portapapeles"),
+                            Err(e) => tracing::warn!(?e, "no se pudo pinear el portapapeles"),
+                        }
                     }
                 }
                 Continuar::Si
@@ -350,15 +370,61 @@ fn preparar_pines<'a>(
     recursos: &mut Option<Recursos>,
     pines: &'a mut Option<Pines>,
     ubicacion: &Ubicacion,
+    textos: &Catalogo,
 ) -> Result<&'a mut Pines> {
     if pines.is_none() {
         let r = match recursos {
             Some(r) => r,
             nada => nada.insert(Recursos::nuevos()?),
         };
-        *pines = Some(Pines::nuevos(ubicacion.raiz(), r.d3d(), r.motor())?);
+        *pines = Some(Pines::nuevos(
+            ubicacion.raiz(),
+            r.d3d(),
+            r.motor(),
+            textos.t("pin-no-encontrado"),
+        )?);
     }
     Ok(pines.as_mut().expect("recien comprobado o creado"))
+}
+
+/// Crea un pin por cada cosa del portapapeles, en el monitor del cursor.
+/// Devuelve cuantos nacieron: varias rutas copiadas dan varias fichas.
+fn pinear_portapapeles(
+    pines: &mut Pines,
+    contenido: pixpin_codec::ContenidoPortapapeles,
+) -> Result<usize> {
+    use pixpin_codec::ContenidoPortapapeles as C;
+
+    let disposicion = pixpin_capture::enumerar_monitores().context("sin monitores")?;
+    let cursor = pixpin_shell::posicion_del_cursor();
+    let monitor = disposicion
+        .monitor_en(cursor)
+        .or_else(|| disposicion.principal())
+        .context("sin monitor donde pinear")?
+        .to_owned();
+
+    match contenido {
+        C::Imagen(img) => {
+            pines.pinear_imagen_centrada(&img, &monitor)?;
+            Ok(1)
+        }
+        C::Texto(t) => {
+            pines.pinear_nota(&t, &monitor)?;
+            Ok(1)
+        }
+        C::Rutas(rutas) => {
+            let mut hechas = 0;
+            for r in rutas {
+                // Una ruta que falle no puede impedir que las demas se
+                // pineen: se registra y se sigue.
+                match pines.pinear_archivo(&r, &monitor) {
+                    Ok(()) => hechas += 1,
+                    Err(e) => tracing::warn!(?e, ruta = ?r, "no se pudo pinear el archivo"),
+                }
+            }
+            Ok(hechas)
+        }
+    }
 }
 
 /// La escala del monitor que contiene la region; la del principal si no

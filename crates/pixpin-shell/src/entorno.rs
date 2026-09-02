@@ -61,6 +61,19 @@ pub fn locale_del_sistema() -> String {
     String::from_utf16_lossy(&buffer[..(escritos as usize - 1)])
 }
 
+/// Donde esta el puntero, en pixeles fisicos del escritorio virtual.
+///
+/// Decide en que monitor nace un pin del portapapeles: donde estan los ojos
+/// del usuario, no en el principal por defecto.
+pub fn posicion_del_cursor() -> pixpin_geom::Punto {
+    let mut p = windows::Win32::Foundation::POINT::default();
+    // SAFETY: escribe en una variable local propia; sin precondiciones.
+    unsafe {
+        let _ = windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut p);
+    }
+    pixpin_geom::Punto { x: p.x, y: p.y }
+}
+
 /// `true` si Windows esta en tema claro para las aplicaciones.
 ///
 /// Decide el lienzo de las notas y las fichas (D30). Si la clave no existe

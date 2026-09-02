@@ -49,6 +49,9 @@ pub struct EstadoPin {
     rect: Rect,
     escala_por_cien: u32,
     gesto: Gesto,
+    /// La ficha de archivo solo estira a lo ancho (spec 4.1): su alto lo
+    /// manda el contenido, no el raton.
+    solo_ancho: bool,
 }
 
 impl EstadoPin {
@@ -57,11 +60,28 @@ impl EstadoPin {
             rect,
             escala_por_cien: escala_por_cien.max(100),
             gesto: Gesto::Ninguno,
+            solo_ancho: false,
+        }
+    }
+
+    /// Como `nuevo`, pero para contenidos de alto fijo (la ficha).
+    pub fn nuevo_solo_ancho(rect: Rect, escala_por_cien: u32) -> Self {
+        Self {
+            solo_ancho: true,
+            ..Self::nuevo(rect, escala_por_cien)
         }
     }
 
     pub fn rect(&self) -> Rect {
         self.rect
+    }
+
+    /// Coloca el rect sin tocar el resto del estado. Reconstruir el
+    /// `EstadoPin` entero seria mas corto pero perderia `solo_ancho`, y una
+    /// ficha empezaria a estirarse en vertical tras el primer doble clic.
+    pub fn poner_rect(&mut self, rect: Rect) {
+        self.rect = rect;
+        self.gesto = Gesto::Ninguno;
     }
 
     fn zona(&self) -> u32 {
@@ -106,7 +126,20 @@ impl EstadoPin {
                     EfectoPin::Mover(self.rect)
                 }
                 Gesto::Redimensionando { esquina, origen } => {
-                    self.rect = redimension_proporcional(origen, esquina, p, self.minimo());
+                    let propuesto = redimension_proporcional(origen, esquina, p, self.minimo());
+                    self.rect = if self.solo_ancho {
+                        // El alto y la fila superior se quedan como estaban:
+                        // una ficha estirada en vertical dejaria el icono y
+                        // los dos textos flotando en un hueco vacio.
+                        Rect {
+                            x: propuesto.x,
+                            y: origen.y,
+                            ancho: propuesto.ancho,
+                            alto: origen.alto,
+                        }
+                    } else {
+                        propuesto
+                    };
                     EfectoPin::Redimensionar(self.rect)
                 }
             },
@@ -223,5 +256,41 @@ mod pruebas {
         );
         assert!(e.sobre_esquina(Punto { x: 380, y: 280 }), "dentro de 24 px");
         assert!(!e.sobre_esquina(Punto { x: 360, y: 260 }), "fuera de 24 px");
+    }
+
+    #[test]
+    fn una_ficha_estira_a_lo_ancho_y_conserva_el_alto() {
+        let inicial = Rect {
+            x: 100,
+            y: 100,
+            ancho: 280,
+            alto: 72,
+        };
+        let mut e = EstadoPin::nuevo_solo_ancho(inicial, 100);
+
+        // Agarrar la esquina sureste y arrastrar en diagonal.
+        e.procesar(EventoPin::BotonPulsado(Punto { x: 378, y: 170 }));
+        e.procesar(EventoPin::RatonMovido(Punto { x: 500, y: 400 }));
+
+        let r = e.rect();
+        assert!(r.ancho > 280, "el ancho si crece: {}", r.ancho);
+        assert_eq!(r.alto, 72, "el alto de una ficha no lo manda el raton");
+        assert_eq!(r.y, 100, "y la fila superior tampoco se mueve");
+    }
+
+    #[test]
+    fn un_pin_normal_si_cambia_de_alto() {
+        // Caso negativo del anterior: si `solo_ancho` se aplicara a todos,
+        // ninguna imagen podria escalarse.
+        let inicial = Rect {
+            x: 100,
+            y: 100,
+            ancho: 280,
+            alto: 72,
+        };
+        let mut e = EstadoPin::nuevo(inicial, 100);
+        e.procesar(EventoPin::BotonPulsado(Punto { x: 378, y: 170 }));
+        e.procesar(EventoPin::RatonMovido(Punto { x: 500, y: 400 }));
+        assert!(e.rect().alto > 72, "una imagen si crece en alto");
     }
 }

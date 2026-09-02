@@ -20,11 +20,14 @@ pub mod ventana;
 pub use arranque::ErrorArranque;
 pub use atajo::{Atajo, ErrorAtajo, Modificadores, Tecla};
 pub use atajos::{
-    AtajosRegistrados, ID_COPIAR, ID_CUENTAGOTAS, ID_PIN, ID_REGION, ID_SCROLL, registrar,
+    AtajosRegistrados, ID_COPIAR, ID_CUENTAGOTAS, ID_PIN, ID_PORTAPAPELES, ID_REGION, ID_SCROLL,
+    registrar,
 };
 pub use bandeja::{Bandeja, EtiquetasMenu};
 pub use dialogo::mostrar_error_fatal;
-pub use entorno::{appdata, directorio_del_ejecutable, locale_del_sistema};
+pub use entorno::{
+    appdata, directorio_del_ejecutable, locale_del_sistema, posicion_del_cursor, tema_claro,
+};
 pub use instancia::{ErrorInstanciaUnica, InstanciaUnica, adquirir_instancia_unica};
 pub use ventana::{
     Continuar, Evento, ID_MENU_AJUSTES, ID_MENU_CAPTURAR, ID_MENU_SALIR, VentanaMensajes,
