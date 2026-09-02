@@ -7,3 +7,4 @@ license.workspace = true
 
 [dependencies]
 pixpin-geom = { version = "0.1.0", path = "../pixpin-geom" }
+pixpin-motor2d = { version = "0.1.0", path = "../pixpin-motor2d" }
