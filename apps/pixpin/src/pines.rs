@@ -465,6 +465,16 @@ impl Pines {
             CambioPin::EscapeAnotando => {
                 self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Escape))
             }
+            CambioPin::CaracterAnotando(c) => self.anotar(id, EventoAnotador::Caracter(c)),
+            CambioPin::EnterAnotando => {
+                self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Enter))
+            }
+            CambioPin::RetrocesoAnotando => {
+                self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Retroceso))
+            }
+            // La paleta llega con su propia tarea (D58): hasta entonces un
+            // clic en ella no hace nada.
+            CambioPin::PaletaPulsada(_) => Ok(()),
             // Movido, Redimensionado y Cerrado los resuelve el callback.
             _ => Ok(()),
         }
@@ -562,7 +572,15 @@ impl Pines {
 
         if repintar && !salir {
             let ordenes = a.ordenes();
+            let escribiendo = a.anotador.editando_texto();
             if let Some(pin) = self.vivos.get(&id) {
+                // Con un texto abierto, el IME compone al lado (D57).
+                if let Some(p) = escribiendo {
+                    pin.poner_posicion_ime(pixpin_geom::Punto {
+                        x: p.x as i32,
+                        y: p.y as i32,
+                    });
+                }
                 pin.poner_anotaciones(ordenes);
             }
         }

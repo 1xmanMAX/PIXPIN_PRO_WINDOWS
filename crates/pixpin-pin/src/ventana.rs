@@ -9,6 +9,7 @@
 //! Este WndProc JAMAS llama a PostQuitMessage — tercera vez que la mina de
 //! S1-A esta a punto de pisarse, tercera vez que el comentario lo impide.
 
+use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Once;
 
@@ -26,6 +27,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, VK_CONTROL, VK_DOWN, VK_ESCAPE, VK_LEFT, VK_RIGHT,
     VK_SHIFT, VK_UP,
 };
+use windows::Win32::UI::Input::KeyboardAndMouse::{VK_BACK, VK_RETURN};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
@@ -68,6 +70,17 @@ pub enum CambioPin {
     RuedaGirada(i32),
     /// Escape mientras se anota: lo interpreta la maquina, no la ventana.
     EscapeAnotando,
+    /// Un caracter escrito mientras se anota, ya compuesto (WM_CHAR, IME
+    /// incluido) (D57).
+    CaracterAnotando(char),
+    /// Enter mientras se anota: confirma el texto en curso.
+    EnterAnotando,
+    /// Retroceso mientras se anota: borra el ultimo caracter.
+    RetrocesoAnotando,
+    /// Un clic en la paleta flotante del pin, en coordenadas de la paleta
+    /// (D58). Lo produce la paleta, no esta ventana, pero viaja por la
+    /// misma cola del gestor.
+    PaletaPulsada(Punto),
 }
 
 /// Identificador del temporizador que agrupa el guardado tras una rafaga de
@@ -183,6 +196,12 @@ pub struct Pin {
 }
 
 static REGISTRO: Once = Once::new();
+
+thread_local! {
+    /// La mitad alta de un par subrogado UTF-16 a la espera de su mitad
+    /// baja: WM_CHAR entrega un emoji en dos mensajes.
+    static MITAD_ALTA: Cell<Option<u16>> = const { Cell::new(None) };
+}
 
 impl Pin {
     /// Crea el pin visible (sin robar el foco: spec 4.4) con su contenido ya
@@ -319,6 +338,37 @@ impl Pin {
 
     pub fn anotando(&self) -> bool {
         interno_de(self.hwnd).is_some_and(|i| i.anotando)
+    }
+
+    /// Coloca la ventana de composicion del IME donde se escribe (D57).
+    /// `p` esta en coordenadas del contenido; se suma el margen de sombra.
+    pub fn poner_posicion_ime(&self, p: Punto) {
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::UI::Input::Ime::{
+            CFS_POINT, COMPOSITIONFORM, ImmGetContext, ImmReleaseContext, ImmSetCompositionWindow,
+        };
+        let Some(i) = interno_de(self.hwnd) else {
+            return;
+        };
+        let m = (MARGEN_SOMBRA_LOGICO * i.escala_por_cien / 100) as i32;
+        // SAFETY: contexto del IME de una ventana propia, tomado y devuelto
+        // en la misma llamada; la estructura es local y valida.
+        unsafe {
+            let ctx = ImmGetContext(self.hwnd);
+            if ctx.is_invalid() {
+                return;
+            }
+            let forma = COMPOSITIONFORM {
+                dwStyle: CFS_POINT,
+                ptCurrentPos: POINT {
+                    x: p.x + m,
+                    y: p.y + m,
+                },
+                ..Default::default()
+            };
+            let _ = ImmSetCompositionWindow(ctx, &forma);
+            let _ = ImmReleaseContext(self.hwnd, ctx);
+        }
     }
 
     /// Cambia lo que hay dibujado encima y repinta. Las ordenes vienen del
@@ -836,6 +886,46 @@ extern "system" fn procedimiento_pin(
             if let Some(i) = interno_de(hwnd) {
                 i.enfocado = mensaje == WM_SETFOCUS;
                 pintar(i);
+            }
+            LRESULT(0)
+        }
+        WM_CHAR => {
+            // Solo anotando: fuera de ese modo el pin no escribe nada. WM_CHAR
+            // trae unidades UTF-16 y un emoji llega en dos; el IME entrega
+            // por aqui el texto ya compuesto (D57).
+            if let Some(i) = interno_de(hwnd) {
+                if i.anotando {
+                    let unidad = wparam.0 as u16;
+                    let caracter = MITAD_ALTA.with(|alta| {
+                        if (0xD800..0xDC00).contains(&unidad) {
+                            alta.set(Some(unidad));
+                            None
+                        } else if (0xDC00..0xE000).contains(&unidad) {
+                            let a = alta.take()?;
+                            char::decode_utf16([a, unidad]).next()?.ok()
+                        } else {
+                            alta.set(None);
+                            char::from_u32(unidad as u32)
+                        }
+                    });
+                    if let Some(c) = caracter {
+                        (i.al_cambiar)(CambioPin::CaracterAnotando(c));
+                    }
+                }
+            }
+            LRESULT(0)
+        }
+        WM_KEYDOWN
+            if wparam.0 as u32 == VK_RETURN.0 as u32 || wparam.0 as u32 == VK_BACK.0 as u32 =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                if i.anotando {
+                    (i.al_cambiar)(if wparam.0 as u32 == VK_RETURN.0 as u32 {
+                        CambioPin::EnterAnotando
+                    } else {
+                        CambioPin::RetrocesoAnotando
+                    });
+                }
             }
             LRESULT(0)
         }
