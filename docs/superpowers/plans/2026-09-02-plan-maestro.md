@@ -33,11 +33,30 @@ niveles Completo/Ligero de `pixpin-nivel`. Los tres intocables: atajo→overlay
 | [x] | S1-B2 overlay | overlay < 50 ms, lupa, imán, vivo | 2026-08-09-s1 | 2026-09-01-s1b2-overlay.md |
 | [x] | S2-A almacén + pin imagen | Ctrl+Alt+F → pin 1:1 persistente | 2026-09-01-s2 | 2026-09-02-s2a-almacen-pin.md |
 | [ ] | **S2-B tipos y grupos** | nota, ficha, Ctrl+Alt+V, menú, grupos, imán | 2026-09-01-s2 §10 | 2026-09-02-s2b-tipos-grupos.md |
+| [ ] | S2-C pin pro | rueda=zoom, vídeo, documentos, lupa y foco en el pin | (ampliar spec S2) | (escribir al llegar) |
 | [ ] | S1-B3 scroll + cuentagotas | Ctrl+Alt+S y Ctrl+Alt+D activos | 2026-08-09-s1 | (escribir al llegar) |
-| [ ] | S3 anotación + canvas + chat | canvas Excalidraw nativo + feed del almacén | (escribir spec) | (escribir al llegar) |
+| [ ] | **S3-A motor 2D** | `pixpin-motor2d`: elementos, trazo a mano, rugosidad determinista, texto, hit-test, `.pixpin2d` | (escribir spec desde `docs/investigacion/2026-09-02-excalidraw-analisis.md`) | (escribir al llegar) |
+| [ ] | S3-B anotar el pin | doble clic → editar dentro del pin: lápiz, resaltador, líneas, formas, texto, imágenes | (spec S3) | (escribir al llegar) |
+| [ ] | S3-C anotar la pantalla | dos modos: congelada (captura estática) y **capa viva** sobre la pantalla en movimiento, con paso de clics conmutable | (spec S3) | (escribir al llegar) |
+| [ ] | S3-D ajustes visuales | ventana de configuración: atajos reasignables, tema, carpetas, rendimiento, arranque | (spec S3) | (escribir al llegar) |
+| [ ] | S3-E chat | feed tipo mensajería que organiza el almacén | (spec S3) | (escribir al llegar) |
 | [ ] | S4 salidas + automatización | guardado configurable, OLE drag-out | maestro §S4 | (escribir al llegar) |
 | [ ] | S5 OCR + traducción + grabación | lo que no existía en Android | maestro §S5 | (escribir al llegar) |
 | [ ] | S6 visor pro + PDF | v1.0 | maestro §S6 | (escribir al llegar) |
+
+## Alcance ampliado por el usuario (2026-09-02)
+
+Orden literal del usuario, desglosada en las fases de arriba para que nada se pierda:
+
+1. **Pines de todo tipo**: imágenes, vídeos, texto, archivos, carpetas y documentos (S2-B lo básico, S2-C vídeo y documentos).
+2. **Ventana de ajustes visual** — reasignar atajos y todo lo demás sin editar el TOML a mano (S3-D).
+3. **Rueda del ratón = zoom** sobre el pin: agrandar y achicar (S2-C).
+4. **Anotar dentro del pin**: doble clic entra en modo edición y se dibuja encima con lápiz, resaltador y líneas (S3-B).
+5. **Foco y lupa** como funciones de la caja de herramientas (S2-C para la lupa del pin; el foco vive con las herramientas de S3).
+6. **Anotar sobre la pantalla en cualquier momento**, con **dos modos** (S3-C):
+   - **Congelada**: captura la pantalla entera y se dibuja sobre esa imagen estática.
+   - **Capa viva**: una capa transparente encima de la pantalla que sigue moviéndose debajo; se entra y se sale de la capa, y con ella inactiva los clics pasan a la aplicación de abajo.
+7. **Motor de edición avanzada 2D propio** (`pixpin-motor2d`, S3-A): herramientas de trazo analizadas e importadas de **Excalidraw** (MIT — se lee y se adapta, no se copia una extensión ajena). El análisis del original vive en `docs/investigacion/2026-09-02-excalidraw-analisis.md`; el motor es implementación nueva en Rust sobre Direct2D, compartida por el pin (S3-B), la pantalla (S3-C) y el PDF (S6).
 
 Cada fase sin spec propia pasa antes por diseño (secciones del maestro +
 decisiones nuevas numeradas), con las elecciones recomendadas auto-aprobadas y
