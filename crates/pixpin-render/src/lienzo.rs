@@ -245,6 +245,17 @@ impl Pintor<'_> {
     }
 
     fn disposicion(&self, texto: &str, tam: f32) -> Option<(IDWriteTextLayout, f32, f32)> {
+        self.disposicion_ajustada(texto, tam, f32::MAX)
+    }
+
+    /// Como `disposicion`, pero partiendo las lineas al llegar a
+    /// `ancho_max`. Un ancho infinito da una sola linea.
+    fn disposicion_ajustada(
+        &self,
+        texto: &str,
+        tam: f32,
+        ancho_max: f32,
+    ) -> Option<(IDWriteTextLayout, f32, f32)> {
         let formato = self.formato(tam)?;
         let contenido: Vec<u16> = texto.encode_utf16().collect();
         // SAFETY: la disposicion copia el texto; medir no tiene mas
@@ -253,11 +264,45 @@ impl Pintor<'_> {
             let disposicion = self
                 .motor
                 .dwrite()
-                .CreateTextLayout(&contenido, &formato, f32::MAX, f32::MAX)
+                .CreateTextLayout(&contenido, &formato, ancho_max, f32::MAX)
                 .ok()?;
             let mut metricas = DWRITE_TEXT_METRICS::default();
             disposicion.GetMetrics(&mut metricas).ok()?;
             Some((disposicion, metricas.width, metricas.height))
+        }
+    }
+
+    /// Mide un texto ya ajustado a un ancho: lo que necesita una nota para
+    /// saber de que tamano nace (S2-B).
+    pub fn medir_texto_ajustado(&self, texto: &str, tam: f32, ancho_max: f32) -> (f32, f32) {
+        self.disposicion_ajustada(texto, tam, ancho_max)
+            .map(|(_, w, h)| (w, h))
+            .unwrap_or((0.0, 0.0))
+    }
+
+    /// Dibuja texto partido a un ancho maximo, desde la esquina indicada.
+    pub fn texto_ajustado(
+        &self,
+        texto: &str,
+        x: f32,
+        y: f32,
+        tam: f32,
+        ancho_max: f32,
+        color: Color,
+    ) {
+        let Some((disposicion, _, _)) = self.disposicion_ajustada(texto, tam, ancho_max) else {
+            return;
+        };
+        if let Some(p) = self.pincel(color) {
+            // SAFETY: dentro del fotograma; objetos vivos.
+            unsafe {
+                self.motor.contexto().DrawTextLayout(
+                    Vector2 { X: x, Y: y },
+                    &disposicion,
+                    &p,
+                    Default::default(),
+                )
+            };
         }
     }
 

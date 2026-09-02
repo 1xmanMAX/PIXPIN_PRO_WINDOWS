@@ -151,6 +151,46 @@ impl MotorRender {
         &self.dwrite
     }
 
+    /// Mide un texto ajustado a un ancho maximo, **fuera** de un fotograma.
+    /// DirectWrite no necesita destino para medir, y quien crea una ventana
+    /// necesita el tamano ANTES de tenerla: sin esto, una nota no podria
+    /// saber de que tamano nace.
+    pub fn medir_texto(&self, texto: &str, tam: f32, ancho_max: f32) -> (f32, f32) {
+        use windows::Win32::Graphics::DirectWrite::{
+            DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT_NORMAL,
+            DWRITE_TEXT_METRICS,
+        };
+        use windows::core::w;
+
+        // SAFETY: cadenas constantes terminadas en cero y buffers propios;
+        // la disposicion copia el texto y no retiene nada del llamante.
+        unsafe {
+            let Ok(formato) = self.dwrite.CreateTextFormat(
+                w!("Segoe UI"),
+                None,
+                DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                tam,
+                w!("es-ES"),
+            ) else {
+                return (0.0, 0.0);
+            };
+            let contenido: Vec<u16> = texto.encode_utf16().collect();
+            let Ok(disposicion) =
+                self.dwrite
+                    .CreateTextLayout(&contenido, &formato, ancho_max, f32::MAX)
+            else {
+                return (0.0, 0.0);
+            };
+            let mut m = DWRITE_TEXT_METRICS::default();
+            if disposicion.GetMetrics(&mut m).is_err() {
+                return (0.0, 0.0);
+            }
+            (m.width, m.height)
+        }
+    }
+
     /// Envuelve una textura como bitmap de SOLO LECTURA para dibujarla.
     /// No copia pixeles: el bitmap ES la textura.
     pub fn bitmap_desde_textura(&self, t: &ID3D11Texture2D) -> Result<ID2D1Bitmap1, ErrorRender> {

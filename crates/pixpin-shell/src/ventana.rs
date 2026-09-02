@@ -23,10 +23,31 @@ use windows::core::{Result as WinResult, w};
 /// Mensaje propio para las notificaciones del icono de bandeja.
 pub const WM_BANDEJA: u32 = WM_APP + 1;
 
+/// Mensaje sin contenido cuyo unico fin es hacer girar el bucle principal.
+///
+/// Las ventanas de los pines tienen su propio WndProc y no producen eventos
+/// de esta ventana, asi que lo que dejan pendiente (una peticion del menu,
+/// un Ctrl+C) no se atenderia hasta que el usuario pulsara un atajo. Con
+/// esto, el pin avisa y el bucle vacia su bandeja de entrada al momento.
+pub const WM_DESPERTAR: u32 = WM_APP + 2;
+
+/// Pide al bucle principal que de una vuelta. Seguro desde cualquier hilo.
+pub fn despertar(hwnd: HWND) {
+    use windows::Win32::UI::WindowsAndMessaging::PostMessageW;
+    // SAFETY: publicar un mensaje propio en la cola de una ventana propia;
+    // PostMessageW no bloquea ni toca memoria del llamante.
+    unsafe {
+        let _ = PostMessageW(Some(hwnd), WM_DESPERTAR, WPARAM(0), LPARAM(0));
+    }
+}
+
 /// Identificadores de los elementos del menu de la bandeja.
 pub const ID_MENU_CAPTURAR: u32 = 1;
 pub const ID_MENU_AJUSTES: u32 = 2;
 pub const ID_MENU_SALIR: u32 = 3;
+/// Primer identificador de la seccion «Grupos ocultos»: al elegir uno, el
+/// numero de grupo sale de restar esta base (spec 4.3).
+pub const ID_MENU_GRUPO_BASE: u32 = 200;
 
 /// Lo que le puede pasar a la aplicacion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +58,11 @@ pub enum Evento {
     MenuCapturar,
     MenuAjustes,
     MenuSalir,
+    /// Se eligio un grupo oculto en la bandeja: vuelve a la pantalla (D24).
+    MostrarGrupo(u32),
+    /// Un pin dejo algo pendiente y pide una vuelta del bucle. No hay nada
+    /// que hacer con el evento en si: el trabajo va tras el match.
+    Despertar,
     /// Clic izquierdo en el icono de la bandeja.
     IconoPulsado,
 }
@@ -201,6 +227,7 @@ extern "system" fn procedimiento(
             ID_MENU_CAPTURAR => Some(Evento::MenuCapturar),
             ID_MENU_AJUSTES => Some(Evento::MenuAjustes),
             ID_MENU_SALIR => Some(Evento::MenuSalir),
+            c if c >= ID_MENU_GRUPO_BASE => Some(Evento::MostrarGrupo(c - ID_MENU_GRUPO_BASE)),
             _ => None,
         },
         // Esta comparacion asume la semantica "clasica" de Shell_NotifyIconW,
@@ -212,6 +239,7 @@ extern "system" fn procedimiento(
         // de reconocer el clic sin dar ningun error visible. Quien conecte
         // la bandeja (tarea futura) debe revisar esto si cambia la version
         // notificada.
+        WM_DESPERTAR => Some(Evento::Despertar),
         WM_BANDEJA if (lparam.0 as u32) == WM_LBUTTONUP => Some(Evento::IconoPulsado),
         WM_DESTROY => {
             // SAFETY: llamada sin argumentos que solo encola WM_QUIT en la

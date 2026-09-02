@@ -38,7 +38,55 @@ pub struct PinGuardado {
 #[serde(rename_all = "lowercase")]
 pub enum TipoEntrada {
     Imagen,
-    // Nota y Archivo llegan en S2-B; el serde tolerante ya los aguantara.
+    Nota,
+    /// Por referencia, nunca copiado al almacen (D28).
+    Archivo,
+}
+
+/// La paleta de grupos (D24): un grupo ES su color, no tiene nombre.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ColorGrupo {
+    Rojo,
+    Naranja,
+    Ambar,
+    Verde,
+    Cian,
+    Azul,
+    Violeta,
+    Rosa,
+}
+
+impl ColorGrupo {
+    /// Los ocho, en el orden de la paleta del diseno.
+    pub const TODOS: [ColorGrupo; 8] = [
+        ColorGrupo::Rojo,
+        ColorGrupo::Naranja,
+        ColorGrupo::Ambar,
+        ColorGrupo::Verde,
+        ColorGrupo::Cian,
+        ColorGrupo::Azul,
+        ColorGrupo::Violeta,
+        ColorGrupo::Rosa,
+    ];
+
+    /// Indice en la paleta: como viaja el color hasta `pixpin-pin`, que no
+    /// puede ver este crate (los dos son L2).
+    pub fn indice(self) -> u8 {
+        Self::TODOS.iter().position(|c| *c == self).unwrap_or(0) as u8
+    }
+
+    pub fn por_indice(i: u8) -> Option<ColorGrupo> {
+        Self::TODOS.get(i as usize).copied()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Grupo {
+    pub id: u32,
+    pub color: ColorGrupo,
+    #[serde(default)]
+    pub oculto: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,8 +96,14 @@ pub struct Entrada {
     /// ISO-8601 UTC, texto: el indice se lee con un editor.
     pub creado: String,
     pub origen: String,
-    /// Ruta relativa a `almacen/`.
+    /// Ruta relativa a `almacen/`. Vacia en las entradas por referencia.
+    #[serde(default)]
     pub objeto: String,
+    /// Ruta absoluta del fichero del usuario (solo `Archivo`, D28). Que
+    /// apunte a algo que ya no existe es normal: se muestra como "no
+    /// encontrado", no se oculta.
+    #[serde(default)]
+    pub ruta: Option<PathBuf>,
     pub grupo: Option<u32>,
     pub pin: Option<PinGuardado>,
 }
@@ -62,6 +116,8 @@ struct Indice {
     version: u32,
     #[serde(default)]
     siguiente_id: u64,
+    #[serde(default)]
+    grupos: Vec<Grupo>,
     #[serde(default)]
     entradas: Vec<Entrada>,
 }
@@ -85,6 +141,7 @@ impl Almacen {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Indice {
                 version: 1,
                 siguiente_id: 1,
+                grupos: Vec::new(),
                 entradas: Vec::new(),
             },
             Err(e) => return Err(ErrorAlmacen::Io(e, ruta)),
@@ -100,9 +157,27 @@ impl Almacen {
         self.dir.join(&e.objeto)
     }
 
-    pub fn guardar_imagen(
+    pub fn grupos(&self) -> &[Grupo] {
+        &self.indice.grupos
+    }
+
+    pub fn grupo_de(&self, id_entrada: u64) -> Option<Grupo> {
+        let g = self
+            .indice
+            .entradas
+            .iter()
+            .find(|e| e.id == id_entrada)?
+            .grupo?;
+        self.indice.grupos.iter().copied().find(|x| x.id == g)
+    }
+
+    /// Escribe un objeto propio del almacen (imagen o nota) y anota su
+    /// entrada. Los objetos se escriben UNA vez y no se tocan mas.
+    fn guardar_objeto(
         &mut self,
-        png: &[u8],
+        bytes: &[u8],
+        extension: &str,
+        tipo: TipoEntrada,
         origen: &str,
         pin: Option<PinGuardado>,
     ) -> Result<u64, ErrorAlmacen> {
@@ -110,25 +185,141 @@ impl Almacen {
         self.indice.siguiente_id = id + 1;
 
         let (anio, mes) = anio_mes_utc();
-        let relativa = format!("objetos/{anio:04}/{mes:02}/{id:06}.png");
+        let relativa = format!("objetos/{anio:04}/{mes:02}/{id:06}.{extension}");
         let ruta = self.dir.join(&relativa);
         if let Some(padre) = ruta.parent() {
             fs::create_dir_all(padre).map_err(|e| ErrorAlmacen::Io(e, padre.to_path_buf()))?;
         }
-        // El objeto se escribe UNA vez y no se toca mas.
-        fs::write(&ruta, png).map_err(|e| ErrorAlmacen::Io(e, ruta.clone()))?;
+        fs::write(&ruta, bytes).map_err(|e| ErrorAlmacen::Io(e, ruta.clone()))?;
 
         self.indice.entradas.push(Entrada {
             id,
-            tipo: TipoEntrada::Imagen,
+            tipo,
             creado: ahora_iso(),
             origen: origen.to_string(),
             objeto: relativa,
+            ruta: None,
             grupo: None,
             pin,
         });
         self.persistir()?;
         Ok(id)
+    }
+
+    pub fn guardar_imagen(
+        &mut self,
+        png: &[u8],
+        origen: &str,
+        pin: Option<PinGuardado>,
+    ) -> Result<u64, ErrorAlmacen> {
+        self.guardar_objeto(png, "png", TipoEntrada::Imagen, origen, pin)
+    }
+
+    /// Una nota es un .txt UTF-8: se lee con el Bloc de notas (spec 5.1).
+    pub fn guardar_nota(
+        &mut self,
+        texto: &str,
+        origen: &str,
+        pin: Option<PinGuardado>,
+    ) -> Result<u64, ErrorAlmacen> {
+        self.guardar_objeto(texto.as_bytes(), "txt", TipoEntrada::Nota, origen, pin)
+    }
+
+    /// Por referencia (D28): se anota la ruta, no se copia ni un byte.
+    pub fn guardar_archivo(
+        &mut self,
+        ruta: &Path,
+        pin: Option<PinGuardado>,
+    ) -> Result<u64, ErrorAlmacen> {
+        let id = self.indice.siguiente_id.max(1);
+        self.indice.siguiente_id = id + 1;
+        self.indice.entradas.push(Entrada {
+            id,
+            tipo: TipoEntrada::Archivo,
+            creado: ahora_iso(),
+            origen: "portapapeles".to_string(),
+            objeto: String::new(),
+            ruta: Some(ruta.to_path_buf()),
+            grupo: None,
+            pin,
+        });
+        self.persistir()?;
+        Ok(id)
+    }
+
+    /// Asigna el color a la entrada. El color ES el grupo (D24): si ya hay
+    /// un grupo de ese color se reutiliza. Devuelve el id del grupo, o None
+    /// al quitarlo. Un grupo sin entradas desaparece del indice.
+    pub fn poner_grupo(
+        &mut self,
+        id_entrada: u64,
+        color: Option<ColorGrupo>,
+    ) -> Result<Option<u32>, ErrorAlmacen> {
+        if !self.indice.entradas.iter().any(|e| e.id == id_entrada) {
+            return Err(ErrorAlmacen::NoExiste(id_entrada));
+        }
+
+        let nuevo = match color {
+            None => None,
+            Some(c) => Some(match self.indice.grupos.iter().find(|g| g.color == c) {
+                Some(g) => g.id,
+                None => {
+                    let id = self.indice.grupos.iter().map(|g| g.id).max().unwrap_or(0) + 1;
+                    self.indice.grupos.push(Grupo {
+                        id,
+                        color: c,
+                        oculto: false,
+                    });
+                    id
+                }
+            }),
+        };
+
+        if let Some(e) = self.indice.entradas.iter_mut().find(|e| e.id == id_entrada) {
+            e.grupo = nuevo;
+        }
+        self.purgar_grupos_vacios();
+        self.persistir()?;
+        Ok(nuevo)
+    }
+
+    pub fn poner_grupo_oculto(&mut self, id_grupo: u32, oculto: bool) -> Result<(), ErrorAlmacen> {
+        if let Some(g) = self.indice.grupos.iter_mut().find(|g| g.id == id_grupo) {
+            g.oculto = oculto;
+        }
+        self.persistir()
+    }
+
+    /// La UNICA accion destructiva (menu 4.3). Borra la entrada y, si el
+    /// objeto es propiedad del almacen, tambien el fichero. Un archivo
+    /// referenciado es del usuario: no se toca jamas.
+    pub fn eliminar(&mut self, id_entrada: u64) -> Result<(), ErrorAlmacen> {
+        let posicion = self
+            .indice
+            .entradas
+            .iter()
+            .position(|e| e.id == id_entrada)
+            .ok_or(ErrorAlmacen::NoExiste(id_entrada))?;
+        let entrada = self.indice.entradas.remove(posicion);
+        if !entrada.objeto.is_empty() {
+            let ruta = self.dir.join(&entrada.objeto);
+            // Que el objeto ya no este no es un fallo: el indice manda, y el
+            // usuario pudo borrarlo con el Explorador (la carpeta es suya).
+            if let Err(e) = fs::remove_file(&ruta) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    return Err(ErrorAlmacen::Io(e, ruta));
+                }
+            }
+        }
+        self.purgar_grupos_vacios();
+        self.persistir()
+    }
+
+    fn purgar_grupos_vacios(&mut self) {
+        let entradas = &self.indice.entradas;
+        self.indice
+            .grupos
+            .retain(|g| entradas.iter().any(|e| e.grupo == Some(g.id)));
     }
 
     pub fn actualizar_pin(
@@ -225,6 +416,133 @@ mod pruebas {
             alto: 150,
             escala_por_cien: 150,
         }
+    }
+
+    #[test]
+    fn una_nota_va_y_vuelve_con_sus_acentos() {
+        let r = raiz("nota");
+        let mut a = Almacen::abrir(&r).unwrap();
+        let id = a
+            .guardar_nota("Señal de canción — ñandú", "portapapeles", Some(pin()))
+            .unwrap();
+
+        let e = a.entradas().iter().find(|e| e.id == id).unwrap();
+        assert_eq!(e.tipo, TipoEntrada::Nota);
+        assert!(
+            e.objeto.ends_with(".txt"),
+            "la nota es un .txt: {}",
+            e.objeto
+        );
+        let leido = fs::read_to_string(a.ruta_objeto(e)).unwrap();
+        assert_eq!(leido, "Señal de canción — ñandú", "UTF-8 intacto");
+    }
+
+    #[test]
+    fn un_archivo_se_guarda_por_referencia_y_nunca_se_copia() {
+        // D28: pinear una carpeta de 40 GB no puede significar copiarla.
+        let r = raiz("archivo");
+        let ajeno = r.join("ajeno.pdf");
+        fs::write(&ajeno, b"contenido ajeno").unwrap();
+        let mut a = Almacen::abrir(&r).unwrap();
+
+        let id = a.guardar_archivo(&ajeno, None).unwrap();
+
+        let e = a.entradas().iter().find(|e| e.id == id).unwrap();
+        assert_eq!(e.tipo, TipoEntrada::Archivo);
+        assert_eq!(e.ruta.as_deref(), Some(ajeno.as_path()));
+        assert!(e.objeto.is_empty(), "un archivo no tiene objeto propio");
+        assert!(
+            !r.join("almacen/objetos").join("ajeno.pdf").exists(),
+            "el fichero NO se copia al almacen"
+        );
+    }
+
+    #[test]
+    fn el_grupo_se_crea_una_vez_y_desaparece_al_quedarse_vacio() {
+        let r = raiz("grupos");
+        let mut a = Almacen::abrir(&r).unwrap();
+        let uno = a.guardar_imagen(BYTES, "recorte", Some(pin())).unwrap();
+        let dos = a.guardar_imagen(BYTES, "recorte", Some(pin())).unwrap();
+
+        let g1 = a.poner_grupo(uno, Some(ColorGrupo::Rojo)).unwrap();
+        let g2 = a.poner_grupo(dos, Some(ColorGrupo::Rojo)).unwrap();
+        assert_eq!(
+            g1, g2,
+            "el mismo color es el mismo grupo: el color ES el grupo"
+        );
+        assert_eq!(a.grupos().len(), 1);
+
+        // Caso negativo del recuento: quitar UNO no borra el grupo, porque
+        // el otro sigue dentro. Borrarlo aqui perderia el color del segundo.
+        a.poner_grupo(uno, None).unwrap();
+        assert_eq!(a.grupos().len(), 1, "aun queda una entrada en el grupo");
+
+        a.poner_grupo(dos, None).unwrap();
+        assert!(a.grupos().is_empty(), "sin entradas, el grupo desaparece");
+    }
+
+    #[test]
+    fn ocultar_un_grupo_persiste_y_conserva_los_pines() {
+        let r = raiz("ocultar");
+        let mut a = Almacen::abrir(&r).unwrap();
+        let id = a.guardar_imagen(BYTES, "recorte", Some(pin())).unwrap();
+        let g = a.poner_grupo(id, Some(ColorGrupo::Verde)).unwrap().unwrap();
+
+        a.poner_grupo_oculto(g, true).unwrap();
+
+        let vuelta = Almacen::abrir(&r).unwrap();
+        assert!(vuelta.grupos()[0].oculto, "el oculto sobrevive al reinicio");
+        let e = vuelta.entradas().iter().find(|e| e.id == id).unwrap();
+        assert_eq!(
+            e.pin,
+            Some(pin()),
+            "ocultar conserva el rect: mostrar devuelve el pin a su sitio"
+        );
+    }
+
+    #[test]
+    fn eliminar_borra_la_entrada_y_su_objeto_pero_nunca_el_archivo_ajeno() {
+        let r = raiz("eliminar");
+        let ajeno = r.join("ajeno.txt");
+        fs::write(&ajeno, b"no me toques").unwrap();
+        let mut a = Almacen::abrir(&r).unwrap();
+        let img = a.guardar_imagen(BYTES, "recorte", None).unwrap();
+        let arch = a.guardar_archivo(&ajeno, None).unwrap();
+        let ruta_objeto = a.ruta_objeto(a.entradas().iter().find(|e| e.id == img).unwrap());
+
+        a.eliminar(img).unwrap();
+        a.eliminar(arch).unwrap();
+
+        assert!(a.entradas().is_empty());
+        assert!(!ruta_objeto.exists(), "el objeto propio se borra");
+        assert!(
+            ajeno.exists(),
+            "el archivo referenciado es del usuario: eliminar del almacen NO lo borra"
+        );
+    }
+
+    #[test]
+    fn un_indice_de_s2a_sigue_abriendo() {
+        // Compatibilidad hacia atras: el indice que escribio S2-A no tiene
+        // ni `grupos` ni `ruta`. Debe abrir sin perder nada.
+        let r = raiz("compatible");
+        let dir = r.join("almacen");
+        fs::create_dir_all(dir.join("objetos")).unwrap();
+        fs::write(
+            dir.join("indice.json"),
+            r#"{"version":1,"siguiente_id":8,"entradas":[
+                {"id":7,"tipo":"imagen","creado":"2026-09-02T03:07:55Z","origen":"recorte",
+                 "objeto":"objetos/2026/09/000007.png","grupo":null,
+                 "pin":{"x":1,"y":2,"ancho":3,"alto":4,"escala_por_cien":150}}]}"#,
+        )
+        .unwrap();
+
+        let a = Almacen::abrir(&r).unwrap();
+
+        assert_eq!(a.entradas().len(), 1);
+        assert!(a.grupos().is_empty());
+        assert_eq!(a.entradas()[0].ruta, None);
+        assert_eq!(a.entradas()[0].pin.unwrap().ancho, 3);
     }
 
     #[test]

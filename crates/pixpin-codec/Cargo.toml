@@ -8,4 +8,4 @@ license.workspace = true
 [dependencies]
 image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "webp"] }
 thiserror = "2.0.20"
-windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_Graphics_Gdi"] }
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_Graphics_Gdi", "Win32_UI_Shell"] }

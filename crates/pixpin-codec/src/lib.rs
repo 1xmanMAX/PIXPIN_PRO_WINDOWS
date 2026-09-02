@@ -8,4 +8,4 @@ pub mod imagen;
 pub mod portapapeles;
 
 pub use imagen::{ErrorCodec, FormatoImagen, ImagenRgba, cargar, codificar_png, guardar};
-pub use portapapeles::copiar_imagen;
+pub use portapapeles::{ContenidoPortapapeles, copiar_imagen, copiar_texto, leer};

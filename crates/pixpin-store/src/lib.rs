@@ -16,4 +16,4 @@ pub use ajustes::{
 pub use idioma::{Catalogo, Idioma, resolver_idioma};
 pub use rutas::{NOMBRE_AJUSTES, Ubicacion, resolver};
 
-pub use almacen::{Almacen, Entrada, ErrorAlmacen, PinGuardado, TipoEntrada};
+pub use almacen::{Almacen, ColorGrupo, Entrada, ErrorAlmacen, Grupo, PinGuardado, TipoEntrada};

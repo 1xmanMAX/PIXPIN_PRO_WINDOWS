@@ -18,6 +18,8 @@ pub const ID_SCROLL: u32 = 3;
 pub const ID_CUENTAGOTAS: u32 = 4;
 /// Recortar y dejar flotando como pin (S2, D26).
 pub const ID_PIN: u32 = 5;
+/// Pinear lo que haya en el portapapeles (S2-B, D26b).
+pub const ID_PORTAPAPELES: u32 = 6;
 
 /// Mientras esto viva, los atajos siguen registrados.
 pub struct AtajosRegistrados {

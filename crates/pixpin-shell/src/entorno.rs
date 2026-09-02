@@ -61,9 +61,62 @@ pub fn locale_del_sistema() -> String {
     String::from_utf16_lossy(&buffer[..(escritos as usize - 1)])
 }
 
+/// Donde esta el puntero, en pixeles fisicos del escritorio virtual.
+///
+/// Decide en que monitor nace un pin del portapapeles: donde estan los ojos
+/// del usuario, no en el principal por defecto.
+pub fn posicion_del_cursor() -> pixpin_geom::Punto {
+    let mut p = windows::Win32::Foundation::POINT::default();
+    // SAFETY: escribe en una variable local propia; sin precondiciones.
+    unsafe {
+        let _ = windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut p);
+    }
+    pixpin_geom::Punto { x: p.x, y: p.y }
+}
+
+/// `true` si Windows esta en tema claro para las aplicaciones.
+///
+/// Decide el lienzo de las notas y las fichas (D30). Si la clave no existe
+/// —Windows anteriores a la opcion, o una politica que la borro— se asume
+/// claro, que es el aspecto por defecto del sistema.
+pub fn tema_claro() -> bool {
+    use windows::Win32::Foundation::ERROR_SUCCESS;
+    use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+    use windows::core::w;
+
+    let mut valor: u32 = 1;
+    let mut tam = size_of::<u32>() as u32;
+    // SAFETY: rutas constantes terminadas en cero; se pide un DWORD y se
+    // entrega un u32 propio con su tamano exacto. RegGetValueW no guarda
+    // ninguno de los dos punteros.
+    let estado = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"),
+            w!("AppsUseLightTheme"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some(&mut valor as *mut u32 as *mut _),
+            Some(&mut tam),
+        )
+    };
+    if estado != ERROR_SUCCESS {
+        return true;
+    }
+    valor != 0
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn el_tema_se_responde_sin_reventar() {
+        // No se puede afirmar claro u oscuro (depende del equipo), pero si
+        // que la consulta al registro no entra en panico ni cuelga, que es
+        // lo unico que puede romper el arranque de un pin.
+        let _ = tema_claro();
+    }
 
     #[test]
     fn el_directorio_del_ejecutable_existe() {

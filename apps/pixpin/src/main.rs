@@ -188,6 +188,7 @@ fn arrancar(
         (atajos::ID_SCROLL, config.atajos.scroll),
         (atajos::ID_CUENTAGOTAS, config.atajos.cuentagotas),
         (atajos::ID_PIN, config.atajos.pin),
+        (atajos::ID_PORTAPAPELES, config.atajos.portapapeles),
     ];
     let (_registrados, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
     for (id, atajo) in &fallidos {
@@ -196,10 +197,12 @@ fn arrancar(
         tracing::warn!(id, %atajo, "no se pudo registrar el atajo; otra aplicacion lo tiene");
     }
 
-    let etiquetas = EtiquetasMenu {
+    let etiquetas_base = |ocultos: Vec<(u32, String)>| EtiquetasMenu {
         capturar: textos.t("bandeja-capturar"),
         ajustes: textos.t("bandeja-ajustes"),
         salir: textos.t("bandeja-salir"),
+        grupos_ocultos: textos.t("grupos-ocultos"),
+        ocultos,
     };
 
     // 7b. Precalentamiento diferido (5.3 del diseno de rendimiento): cargar
@@ -225,6 +228,7 @@ fn arrancar(
     // viven entre capturas: son la diferencia entre 200 ms y menos de 50.
     let mut recursos_overlay: Option<Recursos> = None;
     let mut pines: Option<Pines> = None;
+    let hwnd = ventana.handle();
 
     // 8b. Restauracion al arrancar (spec S2 5.2): el coste de crear los
     // recursos solo se paga si el almacen tiene pines abiertos, y la
@@ -234,12 +238,13 @@ fn arrancar(
         Ok(a) if a.entradas().iter().any(|e| e.pin.is_some()) => {
             drop(a); // Pines::nuevos abre el suyo; no dos indices vivos.
             let t = std::time::Instant::now();
-            let restaurado = preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion)
-                .and_then(|p| {
-                    let d = pixpin_capture::enumerar_monitores()
-                        .context("sin monitores para restaurar")?;
-                    Ok(p.restaurar(&d))
-                });
+            let restaurado =
+                preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion, &textos, hwnd)
+                    .and_then(|p| {
+                        let d = pixpin_capture::enumerar_monitores()
+                            .context("sin monitores para restaurar")?;
+                        Ok(p.restaurar(&d))
+                    });
             match restaurado {
                 Ok(restaurados) => tracing::info!(
                     restaurados,
@@ -253,7 +258,6 @@ fn arrancar(
         Err(e) => tracing::warn!(?e, "no se pudo abrir el almacen al arrancar"),
     }
 
-    let hwnd = ventana.handle();
     ventana.ejecutar(|evento| {
         let seguir = match evento {
             Evento::MenuSalir => {
@@ -261,7 +265,14 @@ fn arrancar(
                 Continuar::No
             }
             Evento::IconoPulsado => {
-                if let Err(e) = bandeja.mostrar_menu(hwnd, &etiquetas) {
+                // La lista de grupos ocultos se monta AL ABRIR el menu, no
+                // al arrancar: si no, ocultar un grupo no aparecería hasta
+                // reiniciar.
+                let ocultos = pines
+                    .as_ref()
+                    .map(|p| p.grupos_ocultos(&textos))
+                    .unwrap_or_default();
+                if let Err(e) = bandeja.mostrar_menu(hwnd, &etiquetas_base(ocultos)) {
                     tracing::warn!(?e, "no se pudo mostrar el menu de bandeja");
                 }
                 Continuar::Si
@@ -297,7 +308,13 @@ fn arrancar(
                         // El gestor consume la accion aqui, no en
                         // ejecutar_accion: el pin nace 1:1 en la region del
                         // recorte (D26), con la escala de su monitor.
-                        let p = preparar_pines(&mut recursos_overlay, &mut pines, &ubicacion)?;
+                        let p = preparar_pines(
+                            &mut recursos_overlay,
+                            &mut pines,
+                            &ubicacion,
+                            &textos,
+                            hwnd,
+                        )?;
                         p.pinear(&imagen, region, escala_del_monitor(region))?;
                         tracing::info!(abiertos = p.abiertos(), "pin creado");
                         Ok(None)
@@ -319,6 +336,29 @@ fn arrancar(
                 }
                 Continuar::Si
             }
+            Evento::Atajo(id) if id == atajos::ID_PORTAPAPELES => {
+                // Pinear el portapapeles NO abre overlay: aparece un pin
+                // centrado en el monitor del cursor y sin robar el foco
+                // (4.4), asi que no interrumpe donde estabas escribiendo.
+                match pixpin_codec::leer() {
+                    None => tracing::info!("portapapeles vacio o con un formato ajeno"),
+                    Some(contenido) => {
+                        let hecho = preparar_pines(
+                            &mut recursos_overlay,
+                            &mut pines,
+                            &ubicacion,
+                            &textos,
+                            hwnd,
+                        )
+                        .and_then(|p| pinear_portapapeles(p, contenido));
+                        match hecho {
+                            Ok(cuantos) => tracing::info!(cuantos, "pineado del portapapeles"),
+                            Err(e) => tracing::warn!(?e, "no se pudo pinear el portapapeles"),
+                        }
+                    }
+                }
+                Continuar::Si
+            }
             Evento::Atajo(id) => {
                 tracing::info!(id, "atajo pulsado, todavia sin accion");
                 Continuar::Si
@@ -329,6 +369,22 @@ fn arrancar(
             }
             Evento::MenuAjustes => {
                 tracing::info!("ajustes pedidos desde el menu");
+                Continuar::Si
+            }
+            // Un pin dejo algo pendiente; el trabajo esta tras el match, en
+            // `purgar`. Aqui no hay nada que hacer salvo haber girado.
+            Evento::Despertar => Continuar::Si,
+            Evento::MostrarGrupo(id_grupo) => {
+                match pixpin_capture::enumerar_monitores() {
+                    Ok(d) => {
+                        let vueltos = pines
+                            .as_mut()
+                            .map(|p| p.mostrar_grupo(id_grupo, &d))
+                            .unwrap_or(0);
+                        tracing::info!(id_grupo, vueltos, "grupo mostrado de nuevo");
+                    }
+                    Err(e) => tracing::warn!(?e, "sin monitores para mostrar el grupo"),
+                }
                 Continuar::Si
             }
         };
@@ -350,15 +406,91 @@ fn preparar_pines<'a>(
     recursos: &mut Option<Recursos>,
     pines: &'a mut Option<Pines>,
     ubicacion: &Ubicacion,
+    textos: &Catalogo,
+    hwnd_app: windows::Win32::Foundation::HWND,
 ) -> Result<&'a mut Pines> {
     if pines.is_none() {
         let r = match recursos {
             Some(r) => r,
             nada => nada.insert(Recursos::nuevos()?),
         };
-        *pines = Some(Pines::nuevos(ubicacion.raiz(), r.d3d(), r.motor())?);
+        *pines = Some(Pines::nuevos(
+            ubicacion.raiz(),
+            r.d3d(),
+            r.motor(),
+            textos.t("pin-no-encontrado"),
+            textos_del_pin(textos),
+            textos.t("pin-eliminar-confirmar"),
+            hwnd_app,
+        )?);
     }
     Ok(pines.as_mut().expect("recien comprobado o creado"))
+}
+
+/// Las etiquetas del menu del pin, traducidas de una vez.
+fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
+    pixpin_pin::TextosPin {
+        copiar: textos.t("pin-copiar"),
+        guardar_como: textos.t("pin-guardar-como"),
+        abrir_ubicacion: textos.t("pin-abrir-ubicacion"),
+        tamano_original: textos.t("pin-tamano-original"),
+        grupo: textos.t("pin-grupo"),
+        sin_grupo: textos.t("pin-sin-grupo"),
+        colores: [
+            textos.t("pin-color-rojo"),
+            textos.t("pin-color-naranja"),
+            textos.t("pin-color-ambar"),
+            textos.t("pin-color-verde"),
+            textos.t("pin-color-cian"),
+            textos.t("pin-color-azul"),
+            textos.t("pin-color-violeta"),
+            textos.t("pin-color-rosa"),
+        ],
+        ocultar_grupo: textos.t("pin-ocultar-grupo"),
+        cerrar: textos.t("pin-cerrar"),
+        eliminar: textos.t("pin-eliminar"),
+        no_encontrado: textos.t("pin-no-encontrado"),
+    }
+}
+
+/// Crea un pin por cada cosa del portapapeles, en el monitor del cursor.
+/// Devuelve cuantos nacieron: varias rutas copiadas dan varias fichas.
+fn pinear_portapapeles(
+    pines: &mut Pines,
+    contenido: pixpin_codec::ContenidoPortapapeles,
+) -> Result<usize> {
+    use pixpin_codec::ContenidoPortapapeles as C;
+
+    let disposicion = pixpin_capture::enumerar_monitores().context("sin monitores")?;
+    let cursor = pixpin_shell::posicion_del_cursor();
+    let monitor = disposicion
+        .monitor_en(cursor)
+        .or_else(|| disposicion.principal())
+        .context("sin monitor donde pinear")?
+        .to_owned();
+
+    match contenido {
+        C::Imagen(img) => {
+            pines.pinear_imagen_centrada(&img, &monitor)?;
+            Ok(1)
+        }
+        C::Texto(t) => {
+            pines.pinear_nota(&t, &monitor)?;
+            Ok(1)
+        }
+        C::Rutas(rutas) => {
+            let mut hechas = 0;
+            for r in rutas {
+                // Una ruta que falle no puede impedir que las demas se
+                // pineen: se registra y se sigue.
+                match pines.pinear_archivo(&r, &monitor) {
+                    Ok(()) => hechas += 1,
+                    Err(e) => tracing::warn!(?e, ruta = ?r, "no se pudo pinear el archivo"),
+                }
+            }
+            Ok(hechas)
+        }
+    }
 }
 
 /// La escala del monitor que contiene la region; la del principal si no

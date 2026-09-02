@@ -9,6 +9,7 @@
 //! quedaria fuera de esa contabilidad. Ademas, S1-B va a necesitar el mismo
 //! tipo de dialogo, asi que de paso queda reutilizable.
 
+use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, MessageBoxW};
 use windows::core::HSTRING;
 
@@ -29,4 +30,27 @@ pub fn mostrar_error_fatal(titulo: &str, mensaje: &str) {
     unsafe {
         let _ = MessageBoxW(None, &mensaje, &titulo, MB_OK | MB_ICONERROR);
     }
+}
+
+/// Pregunta si continuar con algo irreversible. `false` si el usuario dice
+/// que no **y tambien** si cierra el cuadro: ante la duda, no se destruye.
+///
+/// El boton por defecto es «No» (`MB_DEFBUTTON2`) a proposito: quien pulsa
+/// Intro por inercia sobre un cuadro que no leyo no debe borrar nada.
+pub fn confirmar_destructivo(propietaria: HWND, titulo: &str, mensaje: &str) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{IDYES, MB_DEFBUTTON2, MB_ICONWARNING, MB_YESNO};
+
+    let mensaje = HSTRING::from(mensaje);
+    let titulo = HSTRING::from(titulo);
+    // SAFETY: HSTRING propias vivas durante la llamada; la ventana
+    // propietaria es del llamante y esta viva mientras el cuadro es modal.
+    let r = unsafe {
+        MessageBoxW(
+            Some(propietaria),
+            &mensaje,
+            &titulo,
+            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2,
+        )
+    };
+    r == IDYES
 }
