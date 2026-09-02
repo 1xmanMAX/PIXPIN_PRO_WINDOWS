@@ -395,6 +395,16 @@ name = "pixpin-model"
 version = "0.1.0"
 
 [[package]]
+name = "pixpin-motor2d"
+version = "0.1.0"
+dependencies = [
+ "pixpin-geom",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "pixpin-nivel"
 version = "0.1.0"
 

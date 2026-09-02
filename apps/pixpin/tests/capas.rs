@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 fn capa(nombre: &str) -> Option<u8> {
     Some(match nombre {
         "pixpin-geom" | "pixpin-model" | "pixpin-nivel" => 0,
-        "pixpin-shell" | "pixpin-render" | "pixpin-gpu" | "pixpin-codec" => 1,
+        "pixpin-shell" | "pixpin-render" | "pixpin-gpu" | "pixpin-codec" | "pixpin-motor2d" => 1,
         "pixpin-capture" | "pixpin-pin" | "pixpin-pdf" | "pixpin-ocr" | "pixpin-record"
         | "pixpin-store" => 2,
         "pixpin-ui" | "pixpin-flow" | "pixpin-plugin" => 3,
@@ -48,12 +48,12 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_diecisiete_paquetes() {
+fn estan_los_dieciocho_paquetes() {
     let encontrados = manifiestos();
     assert_eq!(
         encontrados.len(),
-        17,
-        "se esperan 16 crates de libreria mas el ejecutable, encontrados: {:?}",
+        18,
+        "se esperan 17 crates de libreria mas el ejecutable, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }

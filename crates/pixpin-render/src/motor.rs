@@ -139,7 +139,7 @@ impl MotorRender {
         })
     }
 
-    pub(crate) fn fabrica(&self) -> &ID2D1Factory1 {
+    pub fn fabrica(&self) -> &ID2D1Factory1 {
         &self.fabrica
     }
 
