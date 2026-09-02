@@ -22,6 +22,8 @@ pub const ID_PIN: u32 = 5;
 pub const ID_PORTAPAPELES: u32 = 6;
 /// Abrir la capa viva para anotar sobre la pantalla (S3-C, D49).
 pub const ID_ANOTAR: u32 = 7;
+/// Anotar sobre la pantalla congelada (S3-C, D56).
+pub const ID_ANOTAR_CONGELADA: u32 = 8;
 
 /// Mientras esto viva, los atajos siguen registrados.
 pub struct AtajosRegistrados {

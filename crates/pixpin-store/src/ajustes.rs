@@ -94,6 +94,8 @@ pub struct Atajos {
     pub portapapeles: Atajo,
     /// Anotar sobre la pantalla con la capa viva (S3-C).
     pub anotar: Atajo,
+    /// Anotar sobre una captura estatica de la pantalla (S3-C, D56).
+    pub anotar_congelada: Atajo,
 }
 
 impl Default for Atajos {
@@ -108,6 +110,9 @@ impl Default for Atajos {
             pin: "Ctrl+Alt+F".parse().expect("atajo por defecto valido"),
             portapapeles: "Ctrl+Alt+V".parse().expect("atajo por defecto valido"),
             anotar: "Ctrl+Alt+A".parse().expect("atajo por defecto valido"),
+            anotar_congelada: "Ctrl+Alt+Shift+A"
+                .parse()
+                .expect("atajo por defecto valido"),
         }
     }
 }
@@ -187,6 +192,7 @@ mod pruebas {
         assert_eq!(a.atajos.pin.to_string(), "Ctrl+Alt+F");
         assert_eq!(a.atajos.portapapeles.to_string(), "Ctrl+Alt+V");
         assert_eq!(a.atajos.anotar.to_string(), "Ctrl+Alt+A");
+        assert_eq!(a.atajos.anotar_congelada.to_string(), "Ctrl+Alt+Shift+A");
         assert_eq!(a.idioma, PreferenciaIdioma::Sistema);
         assert_eq!(a.formato_color, FormatoColor::Hex);
         assert!(!a.arranque_con_windows);

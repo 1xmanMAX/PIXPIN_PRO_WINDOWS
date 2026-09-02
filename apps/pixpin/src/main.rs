@@ -191,6 +191,7 @@ fn arrancar(
         (atajos::ID_PIN, config.atajos.pin),
         (atajos::ID_PORTAPAPELES, config.atajos.portapapeles),
         (atajos::ID_ANOTAR, config.atajos.anotar),
+        (atajos::ID_ANOTAR_CONGELADA, config.atajos.anotar_congelada),
     ];
     let (_registrados, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
     for (id, atajo) in &fallidos {
@@ -338,12 +339,17 @@ fn arrancar(
                 }
                 Continuar::Si
             }
-            Evento::Atajo(id) if id == atajos::ID_ANOTAR => {
+            Evento::Atajo(id) if id == atajos::ID_ANOTAR || id == atajos::ID_ANOTAR_CONGELADA => {
+                let modo = if id == atajos::ID_ANOTAR {
+                    capa::ModoCapa::Viva
+                } else {
+                    capa::ModoCapa::Congelada
+                };
                 let listo = match &mut recursos_overlay {
                     Some(r) => Ok(r),
                     nada => Recursos::nuevos().map(|r| nada.insert(r)),
                 };
-                match listo.and_then(capa::ejecutar_capa_viva) {
+                match listo.and_then(|r| capa::ejecutar_capa(r, modo)) {
                     Ok(Some(imagen)) => {
                         // Lo dibujado se queda como pin: si se cerrara sin
                         // mas, cinco minutos de anotaciones se irian a la

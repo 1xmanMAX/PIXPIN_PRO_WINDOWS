@@ -34,6 +34,16 @@ struct Fondo {
     bitmap: ID2D1Bitmap1,
 }
 
+/// Los dos modos que pidio el usuario (D49).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModoCapa {
+    /// Transparente: la pantalla sigue viva debajo.
+    Viva,
+    /// Con la captura del monitor como fondo (D56). Sin modo pasante: no
+    /// hay nada vivo debajo a lo que dejar pasar los clics.
+    Congelada,
+}
+
 /// Una capa de anotacion cubriendo un monitor.
 pub struct CapaViva {
     ventana: VentanaOverlay,
@@ -41,6 +51,8 @@ pub struct CapaViva {
     motor: Rc<MotorRender>,
     area: Rect,
     monitor: Monitor,
+    /// La captura de fondo del modo congelado; `None` en el modo vivo.
+    fondo: Option<Fondo>,
     escala_por_cien: u32,
     escena: Escena,
     anotador: Anotador,
@@ -60,9 +72,19 @@ impl CapaViva {
         motor: Rc<MotorRender>,
         monitor: &Monitor,
         semilla: u32,
+        fondo: Option<Instantanea>,
     ) -> Result<CapaViva> {
         let ventana =
             VentanaOverlay::nueva(monitor.area).context("no se pudo crear la capa viva")?;
+        let fondo = match fondo {
+            Some(instantanea) => Some(Fondo {
+                bitmap: motor
+                    .bitmap_desde_textura(instantanea.textura())
+                    .context("no se pudo envolver la captura de fondo")?,
+                _instantanea: instantanea,
+            }),
+            None => None,
+        };
         let superficie = Superficie::nueva(
             &motor,
             d3d,
@@ -86,6 +108,7 @@ impl CapaViva {
             motor,
             area: monitor.area,
             monitor: *monitor,
+            fondo,
             escala_por_cien: monitor.escala_por_cien,
             escena: Escena::nueva(),
             anotador: Anotador::nuevo(semilla | 1),
@@ -103,8 +126,12 @@ impl CapaViva {
         self.pintar();
     }
 
-    /// Alterna entre dibujar y dejar pasar los clics (D50).
+    /// Alterna entre dibujar y dejar pasar los clics (D50). En el modo
+    /// congelado no hace nada: debajo solo hay una foto (D56).
     pub fn alternar_pasante(&self) -> bool {
+        if self.fondo.is_some() {
+            return false;
+        }
         let ahora = !self.ventana.es_pasante();
         self.ventana.poner_pasante(ahora);
         // Repintar para que la caja de herramientas se atenue: si no, el
@@ -124,7 +151,10 @@ impl CapaViva {
     /// Si hace falta una captura fresca para la lupa (D60): solo con la
     /// lupa activa, recogiendo el raton, y como mucho 60 veces por segundo.
     pub fn quiere_muestra(&self) -> bool {
-        self.anotador.herramienta() == Herramienta::Lupa
+        // Con fondo congelado la lupa amplia el fondo: no hay nada nuevo
+        // que muestrear.
+        self.fondo.is_none()
+            && self.anotador.herramienta() == Herramienta::Lupa
             && !self.ventana.es_pasante()
             && self.ultima_muestra.elapsed() >= Duration::from_millis(16)
     }
@@ -267,6 +297,10 @@ impl CapaViva {
                 ancho: self.area.ancho as f32,
                 alto: self.area.alto as f32,
             };
+            // En congelado, la foto va debajo de todo (D56).
+            if let Some(f) = &self.fondo {
+                p.bitmap(&f.bitmap, todo, None, false);
+            }
             pintar_ordenes(p, &ordenes, todo);
             // La caja y la lupa desaparecen en modo pasante: ahi la capa no
             // recoge el raton, asi que unos botones que no responden solo
@@ -286,7 +320,8 @@ impl CapaViva {
         if self.anotador.herramienta() != Herramienta::Lupa {
             return;
         }
-        let Some(fondo) = &self.muestra else {
+        // Congelada: amplia la foto. Viva: lo ultimo muestreado.
+        let Some(fondo) = self.fondo.as_ref().or(self.muestra.as_ref()) else {
             return;
         };
         let lupa = Lupa::con_aumento(self.escala_por_cien, self.anotador.lupa());
@@ -463,13 +498,15 @@ const VK_Y: u32 = 0x59;
 /// grande del teclado y la unica que se acierta sin mirar mientras dibujas.
 const VK_SPACE: u32 = 0x20;
 
-/// Abre la capa viva sobre el monitor principal y bombea sus eventos hasta
-/// que el usuario la cierra. Devuelve la imagen del dibujo si dibujó algo.
+/// Abre la capa sobre el monitor principal, viva o congelada, y bombea sus
+/// eventos hasta que el usuario la cierra. Devuelve la imagen del dibujo si
+/// dibujó algo.
 ///
 /// La captura final se hace **de la pantalla con la capa incluida**: es lo
 /// que el usuario ve, y es lo que espera que se quede como pin.
-pub fn ejecutar_capa_viva(
+pub fn ejecutar_capa(
     recursos: &mut crate::overlay::Recursos,
+    modo: ModoCapa,
 ) -> Result<Option<pixpin_codec::ImagenRgba>> {
     use pixpin_shell::overlay::{EventoOverlay, bucle_modal};
     use pixpin_shell::ventana::Continuar;
@@ -478,13 +515,23 @@ pub fn ejecutar_capa_viva(
         pixpin_capture::enumerar_monitores().context("no se pudieron enumerar los monitores")?;
     let monitor = *disposicion.principal().context("sin monitor principal")?;
 
+    // Congelar ANTES de crear la ventana: asi la foto no lleva la capa.
+    let fondo = match modo {
+        ModoCapa::Viva => None,
+        ModoCapa::Congelada => Some(
+            recursos
+                .congelar_monitor(&monitor)
+                .context("no se pudo congelar la pantalla")?,
+        ),
+    };
+
     let semilla = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as u32)
         .unwrap_or(1);
-    let mut capa = CapaViva::nueva(&recursos.d3d(), recursos.motor(), &monitor, semilla)?;
+    let mut capa = CapaViva::nueva(&recursos.d3d(), recursos.motor(), &monitor, semilla, fondo)?;
     capa.mostrar();
-    tracing::info!("capa viva abierta");
+    tracing::info!(?modo, "capa de anotacion abierta");
 
     let ventanas = [];
     bucle_modal(&ventanas, |_, evento| {
