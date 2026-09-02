@@ -16,6 +16,7 @@ pixpin-geom = { path = "crates/pixpin-geom" }
 pixpin-model = { path = "crates/pixpin-model" }
 pixpin-nivel = { path = "crates/pixpin-nivel" }
 pixpin-shell = { path = "crates/pixpin-shell" }
+pixpin-motor2d = { path = "crates/pixpin-motor2d" }
 pixpin-render = { path = "crates/pixpin-render" }
 pixpin-gpu = { path = "crates/pixpin-gpu" }
 pixpin-codec = { path = "crates/pixpin-codec" }
