@@ -261,6 +261,21 @@ pub fn ventana_visible(contenido: Rect, escala_por_cien: u32) -> Rect {
     )
 }
 
+/// El rectangulo mas pequeno que contiene a los dos. Con el se prepara la
+/// ventana antes de un zoom, para que quepa el recorrido entero.
+fn envolvente(a: Rect, b: Rect) -> Rect {
+    let x = a.x.min(b.x);
+    let y = a.y.min(b.y);
+    let derecha = (a.x + a.ancho as i32).max(b.x + b.ancho as i32);
+    let abajo = (a.y + a.alto as i32).max(b.y + b.alto as i32);
+    Rect {
+        x,
+        y,
+        ancho: (derecha - x).max(1) as u32,
+        alto: (abajo - y).max(1) as u32,
+    }
+}
+
 /// Parte pura de `ventana_visible`: recorta `ideal` al escritorio. Si no
 /// se tocan (un pin arrastrado fuera del todo), conserva la posicion y
 /// solo limita el tamano.
@@ -341,6 +356,10 @@ struct PinInterno {
     /// vez. Mientras dura una animacion, la superficie sigue teniendo ese
     /// dibujo y el compositor lo estira; de aqui sale la transformada.
     base_pintado: Cell<Rect>,
+    /// La ventana que habia al pintar esa base. Mientras se persigue un
+    /// destino la ventana NO se mueve, asi que este rect y el de verdad son
+    /// el mismo, y de ahi sale la transformada.
+    base_ventana: Cell<Rect>,
     /// El reproductor, solo en un pin de video (D63). Si no pudo crearse,
     /// `video_fallido` avisa al gestor en el primer tick (D72).
     video: Option<Reproductor>,
@@ -474,6 +493,7 @@ impl Pin {
             zoom_texto: 1.0,
             zoom: None,
             base_pintado: Cell::new(rect_contenido),
+            base_ventana: Cell::new(ventana),
             hwnd,
             video,
             video_fallido,
@@ -552,6 +572,13 @@ impl Pin {
         let Some(i) = interno_de(self.hwnd) else {
             return;
         };
+        // La ventana tiene que dar cabida a TODO el recorrido antes de
+        // empezar: al de ahora y al de destino. Asi se agranda una vez por
+        // muesca en vez de en cada fotograma, y se dibuja de verdad en ese
+        // mismo instante, de modo que nunca hay un hueco transparente. Lo
+        // que sobre queda transparente, que es lo que el pin va a ocupar de
+        // todas formas al terminar.
+        preparar_ventana_para(self.hwnd, i, contenido);
         match i.zoom.as_mut() {
             Some(z) => z.control.pedir(contenido),
             None => {
@@ -819,27 +846,51 @@ fn registrar_clase() {
 /// La superficie contiene el pin tal como estaba en `base_pintado`. El zoom
 /// lleva un punto `q` de aquel pin a `rect.origen + (q - base.origen) * s`.
 /// Pasando eso a coordenadas de la ventana nueva sale la transformada.
-fn estirar_hasta(hwnd: HWND, i: &PinInterno, rect: Rect) {
-    let base = i.base_pintado.get();
-    if base.ancho == 0 || base.alto == 0 {
+/// Deja la ventana con sitio para todo el recorrido de un zoom: el tamano
+/// de ahora y el de destino a la vez. Dibuja de verdad al agrandarla, para
+/// que el compositor nunca tenga que ensenar un hueco.
+fn preparar_ventana_para(hwnd: HWND, i: &mut PinInterno, destino: Rect) {
+    let necesaria = envolvente(
+        ventana_visible(i.estado.rect(), i.escala_por_cien),
+        ventana_visible(destino, i.escala_por_cien),
+    );
+    if necesaria == i.base_ventana.get() {
         return;
     }
-    let base_ventana = ventana_visible(base, i.escala_por_cien);
-    let v = ventana_visible(rect, i.escala_por_cien);
-    // SAFETY: SetWindowPos sobre ventana propia. SWP_NOREDRAW evita el
-    // WM_PAINT que provocaria el crecimiento: no hay nada que repintar,
-    // el compositor ya ensena el contenido estirado.
+    // SAFETY: SetWindowPos sobre ventana propia. Sin redibujado del sistema:
+    // el dibujo lo hace `pintar` justo despues, y en el mismo turno.
     unsafe {
         let _ = SetWindowPos(
             hwnd,
             None,
-            v.x,
-            v.y,
-            v.ancho as i32,
-            v.alto as i32,
+            necesaria.x,
+            necesaria.y,
+            necesaria.ancho as i32,
+            necesaria.alto as i32,
             SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW,
         );
     }
+    if let Err(e) = i.superficie.asegurar(necesaria.ancho, necesaria.alto) {
+        tracing::warn!(?e, "no se pudo agrandar la superficie para el zoom");
+    }
+    // Este dibujo deja la base desde la que estiran los fotogramas
+    // siguientes; sin el, la transformada partiria de un tamano que ya no es.
+    pintar(i);
+}
+
+fn estirar_hasta(_hwnd: HWND, i: &PinInterno, rect: Rect) {
+    let base = i.base_pintado.get();
+    if base.ancho == 0 || base.alto == 0 {
+        return;
+    }
+    // La ventana NO se toca aqui, y ese es todo el arreglo del parpadeo:
+    // `SetWindowPos` es inmediato pero el compositor confirma la nueva
+    // transformada en su siguiente fotograma, asi que al agrandar quedaba un
+    // instante con la ventana ya grande y el contenido todavia pequeno. Por
+    // ese hueco se veia el escritorio de detras. Ahora la ventana se prepara
+    // UNA vez, al fijar el destino, y aqui solo se estira dentro de ella.
+    let base_ventana = i.base_ventana.get();
+    let v = base_ventana;
     let sx = rect.ancho as f32 / base.ancho as f32;
     let sy = rect.alto as f32 / base.alto as f32;
     let dx = rect.x as f32 + (base_ventana.x - base.x) as f32 * sx - v.x as f32;
@@ -872,6 +923,19 @@ fn pintar(i: &PinInterno) {
     // ser la base desde la que estiraran los siguientes fotogramas.
     i.superficie.dejar_de_estirar();
     i.base_pintado.set(contenido);
+    {
+        let mut r = RECT::default();
+        // SAFETY: GetWindowRect sobre ventana propia.
+        unsafe {
+            let _ = GetWindowRect(i.hwnd, &mut r);
+        }
+        i.base_ventana.set(Rect {
+            x: r.left,
+            y: r.top,
+            ancho: (r.right - r.left).max(0) as u32,
+            alto: (r.bottom - r.top).max(0) as u32,
+        });
+    }
     let (w, h) = (contenido.ancho as f32, contenido.alto as f32);
     let radio = 8.0 * escala;
     // Con la ventana recortada al escritorio, el contenido no empieza en el
@@ -1330,6 +1394,7 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
             // dibujo nitido llega al soltar o, si el usuario se queda quieto
             // a media faena, cuando pare: cada cambio rearma el temporizador,
             // asi que solo dispara cuando de verdad ha dejado de moverse.
+            preparar_ventana_para(hwnd, i, contenido);
             estirar_hasta(hwnd, i, contenido);
             // SAFETY: temporizador sobre ventana propia; se mata al disparar.
             unsafe {
