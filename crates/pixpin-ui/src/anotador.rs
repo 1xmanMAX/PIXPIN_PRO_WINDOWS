@@ -90,6 +90,26 @@ pub enum EfectoAnotador {
     Nada,
     /// Cambio algo que se ve pero no la escena (la lupa, el grosor).
     Repintar,
+    /// Con la mano: mira que hay bajo el punto y dilo con `poner_seleccion`.
+    /// El anotador no ve la escena (vive en otra capa), asi que pregunta.
+    SeleccionarEn(Punto2),
+    /// Arrastrando lo seleccionado: desplazalo esto mas. Es el paso de un
+    /// fotograma, no el total.
+    MoverSeleccion {
+        dx: f32,
+        dy: f32,
+    },
+    /// Se solto tras arrastrar lo seleccionado: apunta ESTE total como un
+    /// solo paso deshacible.
+    MovimientoTerminado {
+        dx: f32,
+        dy: f32,
+    },
+    /// Alt + arrastrar: haz una copia de lo seleccionado y selecciona la
+    /// copia; el arrastre siguiente movera la copia y dejara el original.
+    DuplicarSeleccion,
+    /// Suprimir con algo seleccionado.
+    BorrarSeleccion,
     /// Previsualizacion mientras se arrastra: NO se anade a la escena.
     EnCurso(Box<Elemento>),
     /// Terminado: el consumidor lo anade a la escena.
@@ -114,6 +134,49 @@ pub struct Anotador {
     /// El texto que se esta escribiendo (D57). No esta en la escena hasta
     /// que se confirma: asi Escape lo tira sin tocar el deshacer.
     texto: Option<TextoEnCurso>,
+    /// Lo seleccionado con la mano. El id lo pone el consumidor, que es
+    /// quien tiene la escena; aqui solo se sabe si hay algo o no.
+    seleccion: Option<u64>,
+    /// Mayusculas: restringe angulos y proporciones. Alt: duplica al
+    /// arrastrar. Los pone el consumidor antes de cada evento de puntero.
+    shift: bool,
+    alt: bool,
+}
+
+/// Pasos de angulo a los que se enganchan lineas y flechas con mayusculas:
+/// doce por media vuelta, o sea cada 15 grados. Salen la horizontal, la
+/// vertical y las diagonales, que es lo que se busca al senalar algo.
+const PASOS_DE_ANGULO: f32 = 12.0;
+
+/// El punto final ya restringido por la tecla de mayusculas: las lineas y
+/// flechas se enganchan a angulos redondos, y los rectangulos y elipses
+/// salen cuadrados y circulos. Lo demas se queda como esta.
+fn restringir(inicio: Punto2, fin: Punto2, herramienta: Herramienta) -> Punto2 {
+    let (dx, dy) = (fin.x - inicio.x, fin.y - inicio.y);
+    match herramienta {
+        Herramienta::Linea | Herramienta::Flecha => {
+            let radio = (dx * dx + dy * dy).sqrt();
+            if radio == 0.0 {
+                return fin;
+            }
+            let paso = std::f32::consts::PI / PASOS_DE_ANGULO;
+            let angulo = (dy.atan2(dx) / paso).round() * paso;
+            Punto2 {
+                x: inicio.x + radio * angulo.cos(),
+                y: inicio.y + radio * angulo.sin(),
+            }
+        }
+        Herramienta::Rectangulo | Herramienta::Elipse | Herramienta::Foco => {
+            // El lado manda el eje mas largo, y se conserva hacia donde se
+            // arrastraba: si no, la figura saltaria al cuadrante de enfrente.
+            let lado = dx.abs().max(dy.abs());
+            Punto2 {
+                x: inicio.x + lado.copysign(if dx == 0.0 { 1.0 } else { dx }),
+                y: inicio.y + lado.copysign(if dy == 0.0 { 1.0 } else { dy }),
+            }
+        }
+        _ => fin,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -122,6 +185,11 @@ struct Gesto {
     puntos: Vec<Punto2>,
     /// Si ya se paso del umbral: un clic y un arrastre no son lo mismo.
     arrastrando: bool,
+    /// El ultimo punto entregado, para dar el desplazamiento de este paso y
+    /// no el acumulado, al arrastrar lo seleccionado.
+    ultimo: Punto2,
+    /// Con Alt ya se hizo la copia: solo una por arrastre.
+    duplicado: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -140,7 +208,27 @@ impl Anotador {
             semilla: semilla_inicial.max(1),
             gesto: None,
             texto: None,
+            seleccion: None,
+            shift: false,
+            alt: false,
         }
+    }
+
+    /// Que modificadores estan pulsados. Lo dice el consumidor antes de cada
+    /// evento de puntero: el anotador no lee el teclado.
+    pub fn poner_modificadores(&mut self, shift: bool, alt: bool) {
+        self.shift = shift;
+        self.alt = alt;
+    }
+
+    /// La respuesta a `SeleccionarEn`: que elemento quedo seleccionado, o
+    /// `None` si se pulso en vacio.
+    pub fn poner_seleccion(&mut self, id: Option<u64>) {
+        self.seleccion = id;
+    }
+
+    pub fn seleccion(&self) -> Option<u64> {
+        self.seleccion
     }
 
     /// Donde se esta escribiendo, si se esta escribiendo: para colocar la
@@ -179,6 +267,12 @@ impl Anotador {
                 // pulsar el lapiz seria un fallo de datos.
                 self.gesto = None;
                 let confirmado = self.confirmar_texto();
+                // Al coger una herramienta de dibujo se suelta lo
+                // seleccionado: si no, Suprimir borraria algo elegido hace
+                // tres trazos en vez de deshacer.
+                if h != Herramienta::Mano {
+                    self.seleccion = None;
+                }
                 self.herramienta = h;
                 match confirmado {
                     EfectoAnotador::Terminado(e) => EfectoAnotador::Terminado(e),
@@ -243,7 +337,12 @@ impl Anotador {
                 },
                 TeclaAnotador::Deshacer => EfectoAnotador::Deshacer,
                 TeclaAnotador::Rehacer => EfectoAnotador::Rehacer,
-                TeclaAnotador::Suprimir => EfectoAnotador::Deshacer,
+                // Suprimir con algo elegido lo borra; sin nada elegido
+                // vuelve a ser el deshacer de siempre.
+                TeclaAnotador::Suprimir => match self.seleccion {
+                    Some(_) => EfectoAnotador::BorrarSeleccion,
+                    None => EfectoAnotador::Deshacer,
+                },
             },
 
             EventoAnotador::Pulsar(p) => {
@@ -263,15 +362,29 @@ impl Anotador {
                         self.texto = Some(t);
                         return EfectoAnotador::EnCurso(Box::new(previa));
                     }
-                    // La mano y la lupa no dibujan: las gestiona el
-                    // consumidor, que es quien sabe que hay debajo.
-                    Herramienta::Mano | Herramienta::Lupa => return EfectoAnotador::Nada,
+                    // La lupa no dibuja ni selecciona: es una vista (D52).
+                    Herramienta::Lupa => return EfectoAnotador::Nada,
+                    // La mano selecciona lo que haya debajo. Quien mira la
+                    // escena es el consumidor; aqui se abre el gesto para
+                    // poder arrastrar despues.
+                    Herramienta::Mano => {
+                        self.gesto = Some(Gesto {
+                            inicio: p,
+                            puntos: vec![p],
+                            arrastrando: false,
+                            ultimo: p,
+                            duplicado: false,
+                        });
+                        return EfectoAnotador::SeleccionarEn(p);
+                    }
                     _ => {}
                 }
                 self.gesto = Some(Gesto {
                     inicio: p,
                     puntos: vec![p],
                     arrastrando: false,
+                    ultimo: p,
+                    duplicado: false,
                 });
                 EfectoAnotador::Nada
             }
@@ -288,6 +401,22 @@ impl Anotador {
                 if p.distancia(g.inicio) > UMBRAL_ARRASTRE {
                     g.arrastrando = true;
                 }
+                // Con la mano, arrastrar mueve lo seleccionado en vez de
+                // dibujar. Alt hace primero una copia y mueve la copia.
+                if self.herramienta == Herramienta::Mano {
+                    if !g.arrastrando || self.seleccion.is_none() {
+                        return EfectoAnotador::Nada;
+                    }
+                    if self.alt && !g.duplicado {
+                        g.duplicado = true;
+                        // El punto no avanza: el desplazamiento de este paso
+                        // se lo lleva la copia en el evento siguiente.
+                        return EfectoAnotador::DuplicarSeleccion;
+                    }
+                    let (dx, dy) = (p.x - g.ultimo.x, p.y - g.ultimo.y);
+                    g.ultimo = p;
+                    return EfectoAnotador::MoverSeleccion { dx, dy };
+                }
                 g.puntos.push(p);
                 match self.construir(false) {
                     Some(e) => EfectoAnotador::EnCurso(Box::new(e)),
@@ -299,10 +428,23 @@ impl Anotador {
                 let Some(g) = self.gesto.as_mut() else {
                     return EfectoAnotador::Nada;
                 };
-                g.puntos.push(p);
                 if p.distancia(g.inicio) > UMBRAL_ARRASTRE {
                     g.arrastrando = true;
                 }
+                // La mano no deja elemento: cierra el arrastre diciendo
+                // cuanto se movio en total, que es lo que se deshace.
+                if self.herramienta == Herramienta::Mano {
+                    let (inicio, arrastrado) = (g.inicio, g.arrastrando);
+                    self.gesto = None;
+                    if !arrastrado || self.seleccion.is_none() {
+                        return EfectoAnotador::Nada;
+                    }
+                    return EfectoAnotador::MovimientoTerminado {
+                        dx: p.x - inicio.x,
+                        dy: p.y - inicio.y,
+                    };
+                }
+                g.puntos.push(p);
                 let arrastrado = g.arrastrando;
                 let elemento = self.construir(true);
                 self.gesto = None;
@@ -390,6 +532,11 @@ impl Anotador {
             return None;
         }
         let ultimo = *g.puntos.last()?;
+        let ultimo = if self.shift {
+            restringir(g.inicio, ultimo, self.herramienta)
+        } else {
+            ultimo
+        };
         let (x0, y0) = (g.inicio.x.min(ultimo.x), g.inicio.y.min(ultimo.y));
         let (x1, y1) = (g.inicio.x.max(ultimo.x), g.inicio.y.max(ultimo.y));
 
@@ -475,6 +622,153 @@ mod pruebas {
         a.procesar(EventoAnotador::Pulsar(desde));
         a.procesar(EventoAnotador::Mover(hasta));
         a.procesar(EventoAnotador::Soltar(hasta))
+    }
+
+    /// Un anotador con la mano puesta y algo ya seleccionado, como quedaria
+    /// tras pulsar sobre un elemento.
+    fn con_mano_y_seleccion() -> Anotador {
+        let mut a = Anotador::nuevo(7);
+        a.procesar(EventoAnotador::CambiarHerramienta(Herramienta::Mano));
+        a
+    }
+
+    #[test]
+    fn la_mano_pregunta_que_hay_debajo_y_luego_arrastra_lo_elegido() {
+        // Antes la mano no hacia nada: estaba en la paleta y no se podia
+        // ni seleccionar ni mover lo dibujado.
+        let mut a = con_mano_y_seleccion();
+        assert_eq!(
+            a.procesar(EventoAnotador::Pulsar(p(10.0, 10.0))),
+            EfectoAnotador::SeleccionarEn(p(10.0, 10.0))
+        );
+        // El consumidor mira la escena y contesta.
+        a.poner_seleccion(Some(42));
+        assert_eq!(a.seleccion(), Some(42));
+
+        // Cada paso da SU desplazamiento, no el acumulado.
+        assert_eq!(
+            a.procesar(EventoAnotador::Mover(p(30.0, 10.0))),
+            EfectoAnotador::MoverSeleccion { dx: 20.0, dy: 0.0 }
+        );
+        assert_eq!(
+            a.procesar(EventoAnotador::Mover(p(35.0, 15.0))),
+            EfectoAnotador::MoverSeleccion { dx: 5.0, dy: 5.0 }
+        );
+        // Y al soltar se cierra con el total, que es lo que se deshace.
+        assert_eq!(
+            a.procesar(EventoAnotador::Soltar(p(35.0, 15.0))),
+            EfectoAnotador::MovimientoTerminado { dx: 25.0, dy: 5.0 }
+        );
+    }
+
+    #[test]
+    fn un_clic_en_vacio_con_la_mano_no_mueve_nada() {
+        // Caso negativo: sin seleccion, arrastrar con la mano no debe
+        // producir movimientos huerfanos.
+        let mut a = con_mano_y_seleccion();
+        a.procesar(EventoAnotador::Pulsar(p(10.0, 10.0)));
+        a.poner_seleccion(None);
+        assert_eq!(
+            a.procesar(EventoAnotador::Mover(p(60.0, 60.0))),
+            EfectoAnotador::Nada
+        );
+        assert_eq!(
+            a.procesar(EventoAnotador::Soltar(p(60.0, 60.0))),
+            EfectoAnotador::Nada
+        );
+    }
+
+    #[test]
+    fn alt_duplica_una_sola_vez_por_arrastre() {
+        let mut a = con_mano_y_seleccion();
+        a.poner_modificadores(false, true);
+        a.procesar(EventoAnotador::Pulsar(p(10.0, 10.0)));
+        a.poner_seleccion(Some(1));
+        assert_eq!(
+            a.procesar(EventoAnotador::Mover(p(40.0, 10.0))),
+            EfectoAnotador::DuplicarSeleccion
+        );
+        // El consumidor selecciona la copia y a partir de ahi se mueve ella.
+        a.poner_seleccion(Some(2));
+        assert_eq!(
+            a.procesar(EventoAnotador::Mover(p(50.0, 10.0))),
+            EfectoAnotador::MoverSeleccion { dx: 40.0, dy: 0.0 }
+        );
+        assert!(matches!(
+            a.procesar(EventoAnotador::Mover(p(60.0, 10.0))),
+            EfectoAnotador::MoverSeleccion { .. }
+        ));
+    }
+
+    #[test]
+    fn suprimir_borra_lo_elegido_y_si_no_hay_nada_deshace() {
+        let mut a = con_mano_y_seleccion();
+        assert_eq!(
+            a.procesar(EventoAnotador::Tecla(TeclaAnotador::Suprimir)),
+            EfectoAnotador::Deshacer,
+            "sin nada elegido, Suprimir sigue siendo deshacer"
+        );
+        a.poner_seleccion(Some(3));
+        assert_eq!(
+            a.procesar(EventoAnotador::Tecla(TeclaAnotador::Suprimir)),
+            EfectoAnotador::BorrarSeleccion
+        );
+    }
+
+    #[test]
+    fn coger_una_herramienta_de_dibujo_suelta_la_seleccion() {
+        let mut a = con_mano_y_seleccion();
+        a.poner_seleccion(Some(9));
+        a.procesar(EventoAnotador::CambiarHerramienta(Herramienta::Lapiz));
+        assert_eq!(a.seleccion(), None);
+    }
+
+    #[test]
+    fn mayusculas_engancha_la_flecha_a_angulos_redondos() {
+        let mut a = Anotador::nuevo(1);
+        a.procesar(EventoAnotador::CambiarHerramienta(Herramienta::Flecha));
+        a.poner_modificadores(true, false);
+        // Casi horizontal (5 grados) se endereza del todo.
+        let ef = arrastrar(&mut a, p(0.0, 0.0), p(100.0, 8.75));
+        let EfectoAnotador::Terminado(e) = ef else {
+            panic!("{ef:?}");
+        };
+        let Figura::Flecha { puntos, .. } = &e.figura else {
+            panic!("{:?}", e.figura);
+        };
+        assert!(
+            (puntos[1].y - puntos[0].y).abs() < 0.01,
+            "queda horizontal: {puntos:?}"
+        );
+        assert!((puntos[1].x - 100.38).abs() < 1.0, "y conserva el largo");
+    }
+
+    #[test]
+    fn mayusculas_hace_cuadrado_el_rectangulo_sin_saltar_de_cuadrante() {
+        let mut a = Anotador::nuevo(1);
+        a.procesar(EventoAnotador::CambiarHerramienta(Herramienta::Rectangulo));
+        a.poner_modificadores(true, false);
+        // Arrastrando hacia arriba a la izquierda: el cuadrado tiene que
+        // quedarse ahi, no rebotar al otro lado del punto de partida.
+        let ef = arrastrar(&mut a, p(100.0, 100.0), p(40.0, 80.0));
+        let EfectoAnotador::Terminado(e) = ef else {
+            panic!("{ef:?}");
+        };
+        assert_eq!((e.ancho, e.alto), (60.0, 60.0), "lados iguales");
+        assert_eq!((e.x, e.y), (40.0, 40.0), "y sigue arriba a la izquierda");
+    }
+
+    #[test]
+    fn sin_mayusculas_no_se_restringe_nada() {
+        // Caso negativo del anterior: si restringiera siempre, no se podria
+        // dibujar un rectangulo normal.
+        let mut a = Anotador::nuevo(1);
+        a.procesar(EventoAnotador::CambiarHerramienta(Herramienta::Rectangulo));
+        let ef = arrastrar(&mut a, p(0.0, 0.0), p(100.0, 30.0));
+        let EfectoAnotador::Terminado(e) = ef else {
+            panic!("{ef:?}");
+        };
+        assert_eq!((e.ancho, e.alto), (100.0, 30.0));
     }
 
     #[test]

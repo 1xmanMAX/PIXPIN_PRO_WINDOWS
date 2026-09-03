@@ -278,6 +278,15 @@ impl CapaViva {
     }
 
     fn anotar(&mut self, evento: EventoAnotador) {
+        // El anotador es puro y no lee el teclado: se le dicen los
+        // modificadores justo antes de cada gesto del puntero.
+        if matches!(
+            evento,
+            EventoAnotador::Pulsar(_) | EventoAnotador::Mover(_) | EventoAnotador::Soltar(_)
+        ) {
+            let (shift, alt) = pixpin_shell::modificadores();
+            self.anotador.poner_modificadores(shift, alt);
+        }
         let efecto = self.anotador.procesar(evento);
         self.aplicar(efecto);
         // El cursor sigue a la herramienta (lo pidio el usuario): cruz para
@@ -298,7 +307,7 @@ impl CapaViva {
             }
             EfectoAnotador::BorrarEn(p) => {
                 if let Some(v) = self.escena.elemento_en(p) {
-                    self.escena.borrar(v);
+                    self.escena.borrar_apuntando(v);
                 }
             }
             EfectoAnotador::Deshacer => {
@@ -306,6 +315,38 @@ impl CapaViva {
             }
             EfectoAnotador::Rehacer => {
                 self.escena.rehacer();
+            }
+            // La mano: el anotador pregunta que hay debajo porque no ve la
+            // escena, y aqui se le contesta.
+            EfectoAnotador::SeleccionarEn(p) => {
+                let elegido = self.escena.elemento_en(p);
+                self.anotador.poner_seleccion(elegido);
+            }
+            EfectoAnotador::MoverSeleccion { dx, dy } => {
+                if let Some(id) = self.anotador.seleccion() {
+                    self.escena.mover(id, dx, dy);
+                }
+            }
+            EfectoAnotador::MovimientoTerminado { dx, dy } => {
+                if let Some(id) = self.anotador.seleccion() {
+                    self.escena.apuntar_movimiento(id, dx, dy);
+                }
+            }
+            EfectoAnotador::DuplicarSeleccion => {
+                if let Some(copia) = self
+                    .anotador
+                    .seleccion()
+                    .and_then(|id| self.escena.buscar(id).cloned())
+                {
+                    let nuevo = self.escena.anadir(copia);
+                    self.anotador.poner_seleccion(Some(nuevo));
+                }
+            }
+            EfectoAnotador::BorrarSeleccion => {
+                if let Some(id) = self.anotador.seleccion() {
+                    self.escena.borrar_apuntando(id);
+                    self.anotador.poner_seleccion(None);
+                }
             }
             EfectoAnotador::Salir => return false,
         }
@@ -335,6 +376,19 @@ impl CapaViva {
         let mut ordenes = pixpin_motor2d::ordenes_de_escena(&self.escena);
         if let Some(e) = &self.en_curso {
             ordenes.extend(pixpin_motor2d::ordenes(e));
+        }
+        // El marco de lo seleccionado va encima de todo. Con la capa
+        // pasante no se enseña: ahi no se puede tocar nada.
+        if cromo {
+            if let Some(marco) = self.anotador.seleccion().and_then(|id| {
+                pixpin_motor2d::marco_de_seleccion(
+                    &self.escena,
+                    id,
+                    self.escala_por_cien as f32 / 100.0,
+                )
+            }) {
+                ordenes.push(marco);
+            }
         }
         let pasante = self.ventana.es_pasante() || !cromo;
 
