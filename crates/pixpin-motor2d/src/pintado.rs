@@ -298,9 +298,66 @@ pub fn ordenes_de_escena(escena: &Escena) -> Vec<Orden> {
     escena.visibles().flat_map(ordenes).collect()
 }
 
+/// Holgura del marco de seleccion alrededor de la caja del elemento, en
+/// pixeles logicos: pegado al borde no se distingue del propio trazo.
+pub const HOLGURA_SELECCION: f32 = 4.0;
+
+/// El azul del marco de seleccion. Un color que no esta en la paleta de
+/// dibujo: asi se lee como interfaz y no como algo dibujado.
+pub const COLOR_SELECCION: ColorRgba = ColorRgba {
+    r: 0.36,
+    g: 0.42,
+    b: 0.95,
+    a: 1.0,
+};
+
+/// Marco alrededor de lo seleccionado, para que se vea que esta elegido.
+/// Devuelve `None` si el elemento no esta o esta borrado.
+pub fn marco_de_seleccion(escena: &Escena, id: u64, escala: f32) -> Option<Orden> {
+    let e = escena.buscar(id).filter(|e| !e.borrado)?;
+    let (x0, y0, x1, y1) = e.caja();
+    let h = HOLGURA_SELECCION * escala.max(0.01);
+    let (x0, y0, x1, y1) = (x0 - h, y0 - h, x1 + h, y1 + h);
+    Some(Orden::Polilinea {
+        // Cerrado: el ultimo punto repite el primero.
+        puntos: vec![
+            Punto2::nuevo(x0, y0),
+            Punto2::nuevo(x1, y0),
+            Punto2::nuevo(x1, y1),
+            Punto2::nuevo(x0, y1),
+            Punto2::nuevo(x0, y0),
+        ],
+        color: COLOR_SELECCION,
+        grosor: (1.5 * escala.max(0.01)).max(1.0),
+        estilo: EstiloTrazo::Discontinuo,
+    })
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn el_marco_de_seleccion_rodea_la_caja_con_holgura() {
+        let mut escena = Escena::nueva();
+        let id = escena.anadir(base());
+        let (x0, y0, x1, y1) = escena.buscar(id).unwrap().caja();
+
+        let Some(Orden::Polilinea { puntos, .. }) = marco_de_seleccion(&escena, id, 1.0) else {
+            panic!("tiene que haber marco");
+        };
+        assert_eq!(puntos.len(), 5, "cerrado: el ultimo repite el primero");
+        assert_eq!(puntos[0], puntos[4]);
+        let h = HOLGURA_SELECCION;
+        assert_eq!((puntos[0].x, puntos[0].y), (x0 - h, y0 - h));
+        assert_eq!((puntos[2].x, puntos[2].y), (x1 + h, y1 + h));
+
+        // Caso negativo: lo borrado no se marca, y un id que no existe
+        // tampoco. Si no, quedaria un marco flotando sobre nada.
+        escena.borrar(id);
+        assert!(marco_de_seleccion(&escena, id, 1.0).is_none());
+        assert!(marco_de_seleccion(&escena, 9999, 1.0).is_none());
+    }
 
     fn base() -> Elemento {
         Elemento {

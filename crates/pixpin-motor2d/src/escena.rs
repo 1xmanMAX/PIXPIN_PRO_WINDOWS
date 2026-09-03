@@ -25,6 +25,27 @@ pub struct Escena {
     pub siguiente_id: u64,
     #[serde(default)]
     pub elementos: Vec<Elemento>,
+    /// Lo que se ha hecho en ESTA sesion, para deshacerlo. No se guarda: el
+    /// historial es estado de la interfaz, no del documento, y deshacer al
+    /// abrir un dibujo de ayer un trazo que no se ve hacer confunde mas de
+    /// lo que ayuda.
+    #[serde(skip)]
+    historia: Vec<Cambio>,
+    #[serde(skip)]
+    rehacer: Vec<Cambio>,
+}
+
+/// Un paso deshacible. Cada uno sabe invertirse.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Cambio {
+    Anadido(u64),
+    Borrado(u64),
+    /// Un arrastre entero, no cada pixel: el desplazamiento total.
+    Movido {
+        id: u64,
+        dx: f32,
+        dy: f32,
+    },
 }
 
 fn version_uno() -> u32 {
@@ -41,6 +62,8 @@ impl Default for Escena {
             version: 1,
             siguiente_id: 1,
             elementos: Vec::new(),
+            historia: Vec::new(),
+            rehacer: Vec::new(),
         }
     }
 }
@@ -56,7 +79,48 @@ impl Escena {
         self.siguiente_id = id + 1;
         e.id = id;
         self.elementos.push(e);
+        self.apuntar(Cambio::Anadido(id));
         id
+    }
+
+    /// Apunta un paso deshacible. Hacer algo nuevo corta la rama de rehacer,
+    /// como en cualquier editor.
+    fn apuntar(&mut self, c: Cambio) {
+        self.historia.push(c);
+        self.rehacer.clear();
+    }
+
+    /// Desplaza un elemento SIN apuntarlo: es cada pixel de un arrastre en
+    /// curso. Lo que se deshace es el arrastre entero, y ese se apunta al
+    /// soltar con `apuntar_movimiento`.
+    pub fn mover(&mut self, id: u64, dx: f32, dy: f32) -> bool {
+        match self.buscar_mut(id) {
+            Some(e) => {
+                e.mover(dx, dy);
+                e.tocar();
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Cierra un arrastre: apunta el desplazamiento total como UN paso. Un
+    /// arrastre que acaba donde empezo no deja rastro en el historial.
+    pub fn apuntar_movimiento(&mut self, id: u64, dx: f32, dy: f32) {
+        if dx != 0.0 || dy != 0.0 {
+            self.apuntar(Cambio::Movido { id, dx, dy });
+        }
+    }
+
+    /// Borrado a peticion del usuario (el borrador, la tecla Suprimir): se
+    /// apunta para poder deshacerlo.
+    pub fn borrar_apuntando(&mut self, id: u64) -> bool {
+        if self.borrar(id) {
+            self.apuntar(Cambio::Borrado(id));
+            true
+        } else {
+            false
+        }
     }
 
     pub fn buscar(&self, id: u64) -> Option<&Elemento> {
@@ -99,18 +163,58 @@ impl Escena {
         }
     }
 
-    /// Deshace el ultimo elemento visible. Devuelve su id.
+    /// Deshace el ultimo paso de esta sesion: un trazo anadido, un borrado o
+    /// un arrastre. Devuelve el id afectado.
     pub fn deshacer(&mut self) -> Option<u64> {
-        let id = self.elementos.iter().rev().find(|e| !e.borrado)?.id;
-        self.borrar(id);
+        let c = self.historia.pop()?;
+        let id = self.invertir(c);
+        self.rehacer.push(c);
         Some(id)
     }
 
-    /// Rehace el ultimo borrado. Devuelve su id.
+    /// Rehace el ultimo paso deshecho.
     pub fn rehacer(&mut self) -> Option<u64> {
-        let id = self.elementos.iter().rev().find(|e| e.borrado)?.id;
-        self.restaurar(id);
+        let c = self.rehacer.pop()?;
+        // Rehacer es invertir la inversion; con el paso ya invertido en la
+        // pila, volver a invertirlo lo devuelve a su sitio.
+        let id = match c {
+            Cambio::Anadido(id) => {
+                self.restaurar(id);
+                id
+            }
+            Cambio::Borrado(id) => {
+                self.borrar(id);
+                id
+            }
+            Cambio::Movido { id, dx, dy } => {
+                self.mover(id, dx, dy);
+                id
+            }
+        };
+        self.historia.push(c);
         Some(id)
+    }
+
+    fn invertir(&mut self, c: Cambio) -> u64 {
+        match c {
+            Cambio::Anadido(id) => {
+                self.borrar(id);
+                id
+            }
+            Cambio::Borrado(id) => {
+                self.restaurar(id);
+                id
+            }
+            Cambio::Movido { id, dx, dy } => {
+                self.mover(id, -dx, -dy);
+                id
+            }
+        }
+    }
+
+    /// Si hay algo que deshacer en esta sesion.
+    pub fn hay_que_deshacer(&self) -> bool {
+        !self.historia.is_empty()
     }
 
     /// Sube el elemento al frente sin cambiar el resto del orden.
@@ -171,6 +275,88 @@ mod pruebas {
             version: 0,
             borrado: false,
         }
+    }
+
+    #[test]
+    fn deshacer_un_arrastre_devuelve_el_elemento_a_su_sitio() {
+        // Antes solo se deshacian altas y bajas: mover algo no se podia
+        // deshacer, que es justo lo que se nota al poder seleccionar.
+        let mut e = Escena::nueva();
+        let id = e.anadir(rect(10.0));
+        // Un arrastre son muchos pasos y UN solo paso de historial.
+        e.mover(id, 5.0, 0.0);
+        e.mover(id, 25.0, 10.0);
+        e.apuntar_movimiento(id, 30.0, 10.0);
+        assert_eq!(
+            (e.buscar(id).unwrap().x, e.buscar(id).unwrap().y),
+            (40.0, 10.0)
+        );
+
+        assert_eq!(e.deshacer(), Some(id));
+        assert_eq!(
+            (e.buscar(id).unwrap().x, e.buscar(id).unwrap().y),
+            (10.0, 0.0),
+            "el arrastre entero se deshace de una vez"
+        );
+        assert!(!e.buscar(id).unwrap().borrado, "deshacer mover no borra");
+
+        assert_eq!(e.rehacer(), Some(id));
+        assert_eq!(
+            (e.buscar(id).unwrap().x, e.buscar(id).unwrap().y),
+            (40.0, 10.0)
+        );
+
+        // Y el siguiente deshacer se lleva el alta, que es el paso anterior.
+        e.deshacer();
+        assert_eq!(e.deshacer(), Some(id));
+        assert!(e.buscar(id).unwrap().borrado);
+    }
+
+    #[test]
+    fn un_arrastre_que_acaba_donde_empezo_no_deja_paso() {
+        let mut e = Escena::nueva();
+        let id = e.anadir(rect(10.0));
+        e.apuntar_movimiento(id, 0.0, 0.0);
+        // Solo esta el alta: deshacer una vez y ya no queda nada.
+        assert!(e.hay_que_deshacer());
+        e.deshacer();
+        assert!(!e.hay_que_deshacer());
+    }
+
+    #[test]
+    fn hacer_algo_nuevo_corta_la_rama_de_rehacer() {
+        let mut e = Escena::nueva();
+        let uno = e.anadir(rect(0.0));
+        e.deshacer();
+        e.anadir(rect(100.0));
+        assert_eq!(e.rehacer(), None, "el rehacer viejo ya no vale");
+        assert!(
+            e.buscar(uno).unwrap().borrado,
+            "y lo deshecho sigue deshecho"
+        );
+    }
+
+    #[test]
+    fn el_borrador_se_deshace() {
+        let mut e = Escena::nueva();
+        let id = e.anadir(rect(0.0));
+        assert!(e.borrar_apuntando(id));
+        assert_eq!(e.cuantos_visibles(), 0);
+        e.deshacer();
+        assert_eq!(e.cuantos_visibles(), 1, "vuelve lo borrado a mano");
+    }
+
+    #[test]
+    fn el_historial_no_viaja_en_el_fichero() {
+        // Caso negativo: al abrir un dibujo de ayer no hay nada que
+        // deshacer, porque no se hizo nada en esta sesion.
+        let mut e = Escena::nueva();
+        e.anadir(rect(0.0));
+        let texto = serde_json::to_string(&e).unwrap();
+        let vuelta: Escena = serde_json::from_str(&texto).unwrap();
+        assert_eq!(vuelta.cuantos_visibles(), 1);
+        assert!(!vuelta.hay_que_deshacer());
+        assert_eq!(vuelta.elementos, e.elementos);
     }
 
     #[test]

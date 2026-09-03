@@ -117,22 +117,42 @@ Ya estaba hecho de antes, y coincide con lo que hace QuickView: la ventana
 del pin recortada al escritorio (la superficie nunca es mayor que la
 pantalla) y la histéresis al crecer y compactar la superficie.
 
-**Del plugin Excalidraw:** ver §4; se aborda en la tanda siguiente.
+**Del plugin Excalidraw, la anotación (D92–D95):**
+
+- **D92 · La herramienta «mano» ya hace algo.** Estaba en la paleta desde
+  S3-A devolviendo «nada»: no se podía seleccionar, mover ni borrar lo ya
+  dibujado. Ahora un clic elige el elemento de más arriba bajo el cursor y
+  arrastrar lo mueve. El anotador sigue siendo puro y sin acceso a la
+  escena: pregunta con `SeleccionarEn` y el consumidor le contesta con
+  `poner_seleccion`.
+- **D93 · Modificadores con el significado de siempre.** Mayúsculas
+  restringe: las líneas y flechas se enganchan cada 15°, y los rectángulos,
+  elipses y focos salen cuadrados o círculos sin saltar de cuadrante. Alt
+  duplica al arrastrar, una sola copia por arrastre.
+- **D94 · Suprimir borra lo elegido**; sin nada elegido sigue siendo
+  deshacer, como antes.
+- **D95 · Deshacer de verdad.** Era «borra el último elemento visible», así
+  que mover algo no se deshacía y el borrador tampoco. Ahora la escena
+  lleva una pila de pasos (añadido, borrado, movido) con su rama de
+  rehacer, que se corta al hacer algo nuevo. Un arrastre entero es **un**
+  paso, y uno que acaba donde empezó no deja rastro. El historial **no se
+  guarda en el fichero**: al abrir un dibujo de ayer no hay nada que
+  deshacer, que es lo que hacen los editores y evita deshacer a ciegas.
+- **D96 · Se ve qué está seleccionado**: un marco azul alrededor, con
+  holgura, siempre encima del dibujo. El azul no está en la paleta a
+  propósito, para que se lea como interfaz y no como algo dibujado.
 
 ## 4. Plan por delante, ordenado por valor/esfuerzo
 
 **Barato y de valor alto**
 
-1. **La herramienta «mano» no hace nada.** Está en la paleta desde S3-A y
-   devuelve «nada»: no se puede seleccionar, mover, borrar ni recolorear lo
-   ya dibujado. Es el hueco más grande de la anotación.
-2. **Modificadores**: mayúsculas restringe ángulos y proporciones, alt
-   duplica al arrastrar.
+1. ~~La herramienta «mano» no hace nada.~~ Hecho (D92).
+2. ~~Modificadores: mayúsculas restringe, alt duplica.~~ Hecho (D93).
 3. **Estilos recordados** entre sesiones (color, grosor, opacidad).
 4. **Bloqueo de herramienta** y doble toque del lápiz para el borrador.
 5. **Bloquear un elemento** para anotar encima sin moverlo.
-6. **Deshacer de verdad**: hoy solo deshace altas y bajas, no movimientos ni
-   cambios de estilo.
+6. ~~Deshacer de verdad.~~ Hecho (D95).
+7. ~~Aviso de lo seleccionado.~~ Hecho (D96).
 
 **Coste medio**
 

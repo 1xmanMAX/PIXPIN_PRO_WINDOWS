@@ -32,7 +32,7 @@ pub use dialogo::{confirmar_destructivo, mostrar_error_fatal, preguntar};
 pub use entorno::{
     appdata, directorio_del_ejecutable, locale_del_sistema, posicion_del_cursor, tema_claro,
 };
-pub use entrada::{escape_pulsado, rueda_en};
+pub use entrada::{escape_pulsado, modificadores, rueda_en};
 pub use gestos::{GanchoRaton, gesto_en_curso};
 pub use instancia::{ErrorInstanciaUnica, InstanciaUnica, adquirir_instancia_unica};
 pub use overlay::esperar_composicion;

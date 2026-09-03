@@ -133,6 +133,17 @@ impl Anotacion {
         if let Some(e) = &self.en_curso {
             v.extend(pixpin_motor2d::ordenes(e));
         }
+        // El marco va el ultimo: encima de todo, para que se vea que hay
+        // algo elegido aunque quede debajo de otro trazo.
+        if let Some(marco) = self.anotador.seleccion().and_then(|id| {
+            pixpin_motor2d::marco_de_seleccion(
+                &self.escena,
+                id,
+                self.escala_por_cien as f32 / 100.0,
+            )
+        }) {
+            v.push(marco);
+        }
         v
     }
 }
@@ -811,6 +822,15 @@ impl Pines {
                 y: p.y as i32,
             };
         }
+        // El anotador es puro y no lee el teclado: se le dicen los
+        // modificadores justo antes de cada gesto del puntero.
+        if matches!(
+            evento,
+            EventoAnotador::Pulsar(_) | EventoAnotador::Mover(_) | EventoAnotador::Soltar(_)
+        ) {
+            let (shift, alt) = pixpin_shell::modificadores();
+            a.anotador.poner_modificadores(shift, alt);
+        }
         let efecto = a.anotador.procesar(evento);
         let mut repintar = true;
         let mut salir = false;
@@ -825,7 +845,7 @@ impl Pines {
             }
             EfectoAnotador::BorrarEn(p) => {
                 if let Some(victima) = a.escena.elemento_en(p) {
-                    a.escena.borrar(victima);
+                    a.escena.borrar_apuntando(victima);
                 }
             }
             EfectoAnotador::Deshacer => {
@@ -833,6 +853,37 @@ impl Pines {
             }
             EfectoAnotador::Rehacer => {
                 a.escena.rehacer();
+            }
+            // La mano: el anotador no ve la escena y pregunta.
+            EfectoAnotador::SeleccionarEn(p) => {
+                let elegido = a.escena.elemento_en(p);
+                a.anotador.poner_seleccion(elegido);
+            }
+            EfectoAnotador::MoverSeleccion { dx, dy } => {
+                if let Some(sel) = a.anotador.seleccion() {
+                    a.escena.mover(sel, dx, dy);
+                }
+            }
+            EfectoAnotador::MovimientoTerminado { dx, dy } => {
+                if let Some(sel) = a.anotador.seleccion() {
+                    a.escena.apuntar_movimiento(sel, dx, dy);
+                }
+            }
+            EfectoAnotador::DuplicarSeleccion => {
+                if let Some(copia) = a
+                    .anotador
+                    .seleccion()
+                    .and_then(|sel| a.escena.buscar(sel).cloned())
+                {
+                    let nuevo = a.escena.anadir(copia);
+                    a.anotador.poner_seleccion(Some(nuevo));
+                }
+            }
+            EfectoAnotador::BorrarSeleccion => {
+                if let Some(sel) = a.anotador.seleccion() {
+                    a.escena.borrar_apuntando(sel);
+                    a.anotador.poner_seleccion(None);
+                }
             }
             EfectoAnotador::Salir => salir = true,
         }

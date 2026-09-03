@@ -48,6 +48,20 @@ pub fn escape_pulsado() -> bool {
     unsafe { (GetAsyncKeyState(VK_ESCAPE.0 as i32) as u16 & 0x8000) != 0 }
 }
 
+/// Si estan pulsadas ahora mismo las mayusculas y Alt, en ese orden. Las
+/// consulta el anotador antes de cada evento de puntero: mayusculas
+/// restringe angulos y proporciones, y Alt duplica al arrastrar.
+pub fn modificadores() -> (bool, bool) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_MENU, VK_SHIFT};
+    // SAFETY: consulta pura del estado del teclado.
+    unsafe {
+        (
+            (GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0,
+            (GetAsyncKeyState(VK_MENU.0 as i32) as u16 & 0x8000) != 0,
+        )
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
