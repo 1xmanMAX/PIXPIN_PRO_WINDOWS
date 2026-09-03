@@ -19,7 +19,9 @@ pub use contenido::{
     Contenido, DOCUMENTO_FRANJA_LOGICA, FICHA_ALTO_LOGICO, FICHA_ANCHO_LOGICO, Presentacion,
     presentacion_de, tamano_humano, tamano_natural,
 };
-pub use estado::{EfectoPin, EstadoPin, EventoPin, MINIMO_LOGICO, ZONA_ESQUINA_LOGICA};
+pub use estado::{
+    EfectoPin, EstadoPin, EventoPin, MAXIMO_FISICO, MINIMO_LOGICO, ZONA_ESQUINA_LOGICA,
+};
 pub use icono::{LADO_ICONO, icono_de, miniatura_de};
 pub use menu::{
     CMD_ABRIR_UBICACION, CMD_CERRAR, CMD_COLOR_BASE, CMD_COPIAR, CMD_ELIMINAR, CMD_GUARDAR_COMO,

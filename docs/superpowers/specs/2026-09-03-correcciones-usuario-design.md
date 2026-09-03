@@ -15,6 +15,31 @@ binario de S1-B3 y reportó siete cosas (2026-09-02).
 | 6 | El vídeo pineado no se reproduce | El fichero del usuario es HEVC (`hvc1`) y el equipo no tiene la extensión «HEVC Video Extensions»; Media Foundation no lo decodifica y el pin se degradaba a ficha/documento sin decir por qué | El pin degradado lleva la coletilla «sin códec de vídeo» (`pin-sin-codec`). H.264 (mkv de OBS) se reproduce |
 | 7 | Con una herramienta activa el puntero sigue siendo las cuatro flechas | El pin siempre ponía `IDC_SIZEALL`/`IDC_SIZENWSE`; la capa siempre la cruz | `CursorAnotacion` en el pin y `FormaCursorWin::{Texto, Flecha}` en el shell: cruz para dibujar, barra para texto, flecha para la mano; el gestor lo pone al cambiar de herramienta |
 
+### 1.1 Segunda vuelta del reporte 1 (el usuario: «sigue pasando, con todo pin»)
+
+El tope de `WM_GETMINMAXINFO` no bastaba. La captura de la prueba lo mostró: la
+ventana sí crecía más allá de la pantalla, pero **el contenido dejaba de pintarse**
+(la superficie de composición no se podía recrear a ese tamaño y el error se
+tragaba en silencio). Como el zoom es desde el centro, la esquina de la ventana
+se iba hacia arriba a la izquierda mientras la imagen no crecía y se «escondía».
+
+Arreglo (D83): **la ventana del pin nunca es mayor que el escritorio virtual**.
+`ventana_visible` recorta la ventana ideal al escritorio; el contenido se pinta
+desplazado dentro de ella (`Pintor::desplazar`, transformación D2D que
+`dibujar` reinicia en cada fotograma porque el contexto es compartido). Los
+puntos del ratón, el IME y las anotaciones usan el origen real del contenido
+(`origen_contenido`, preguntado a la ventana). Mover un pin mayor que la
+pantalla cambia su parte visible: es una redimensión de ventana. La superficie
+se redimensiona en sitio con `ResizeBuffers` (`Superficie::redimensionar`) y
+solo se recrea si eso falla; ambos fallos quedan en el log. El tope pasa a
+20 000 px por lado (`MAXIMO_FISICO`): el tamaño real ya no cuesta memoria.
+
+**Zoom por arrastre (D84, idea del usuario):** `Ctrl + clic y arrastrar` sobre
+el pin; hacia arriba agranda, hacia abajo encoge, exponencial (300 px = el
+doble), desde el centro, con los mismos topes que la rueda. En la ficha y la
+nota, `Ctrl + arrastrar` mueve como un arrastre normal. Sin modificador el clic
+sigue moviendo, y `Alt` está reservado a los gestos globales.
+
 ## 2. Decisiones
 
 | # | Decisión | Elección | Razón |

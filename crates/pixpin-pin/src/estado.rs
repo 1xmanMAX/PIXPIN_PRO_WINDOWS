@@ -16,6 +16,9 @@ pub const MINIMO_LOGICO: u32 = 48;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventoPin {
     BotonPulsado(Punto),
+    /// Ctrl + boton: empieza un zoom por arrastre vertical (arriba agranda,
+    /// abajo encoge), desde el centro del pin.
+    EscalarPulsado(Punto),
     RatonMovido(Punto),
     BotonSoltado,
     DobleClic,
@@ -40,9 +43,29 @@ pub enum EfectoPin {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Gesto {
     Ninguno,
-    Moviendo { agarre: Punto, origen: Rect },
-    Redimensionando { esquina: Esquina, origen: Rect },
+    Moviendo {
+        agarre: Punto,
+        origen: Rect,
+    },
+    Redimensionando {
+        esquina: Esquina,
+        origen: Rect,
+    },
+    /// Zoom por arrastre vertical desde `agarre`, escalando `origen` desde
+    /// su centro.
+    Escalando {
+        agarre: Punto,
+        origen: Rect,
+    },
 }
+
+/// Pixeles de arrastre vertical que duplican (hacia arriba) o parten por
+/// la mitad (hacia abajo) el tamano del pin.
+pub const PIXELES_POR_DOBLE: f32 = 300.0;
+/// Lado maximo del pin en pixeles fisicos. Muy por encima de cualquier
+/// pantalla: la ventana se recorta al escritorio, asi que el tamano real no
+/// cuesta memoria.
+pub const MAXIMO_FISICO: u32 = 20_000;
 
 #[derive(Debug)]
 pub struct EstadoPin {
@@ -136,8 +159,45 @@ impl EstadoPin {
                 };
                 EfectoPin::Nada
             }
+            EventoPin::EscalarPulsado(p) => {
+                if self.fijo {
+                    // La ficha y la nota no se escalan: Ctrl + arrastrar
+                    // las mueve como un arrastre normal.
+                    return self.procesar(EventoPin::BotonPulsado(p));
+                }
+                self.gesto = Gesto::Escalando {
+                    agarre: p,
+                    origen: self.rect,
+                };
+                EfectoPin::Nada
+            }
             EventoPin::RatonMovido(p) => match self.gesto {
                 Gesto::Ninguno => EfectoPin::Nada,
+                Gesto::Escalando { agarre, origen } => {
+                    // Arriba agranda, abajo encoge; exponencial para que
+                    // cada tramo de arrastre valga lo mismo en proporcion.
+                    let factor = 2f32.powf((agarre.y - p.y) as f32 / PIXELES_POR_DOBLE);
+                    let minimo = self.minimo() as f32;
+                    let maximo = MAXIMO_FISICO as f32;
+                    // El factor se limita por el lado que toque primero, y
+                    // el otro lado sigue en proporcion.
+                    let f_min = (minimo / origen.ancho.max(1) as f32)
+                        .max(minimo / origen.alto.max(1) as f32);
+                    let f_max = (maximo / origen.ancho.max(1) as f32)
+                        .min(maximo / origen.alto.max(1) as f32);
+                    let factor = factor.clamp(f_min.min(f_max), f_max.max(f_min));
+                    let ancho = (origen.ancho as f32 * factor).round().max(1.0) as u32;
+                    let alto = (origen.alto as f32 * factor).round().max(1.0) as u32;
+                    // Desde el centro: crecer desde la esquina hace que el
+                    // pin se escape hacia abajo a la derecha.
+                    self.rect = Rect {
+                        x: origen.x + (origen.ancho as i32 - ancho as i32) / 2,
+                        y: origen.y + (origen.alto as i32 - alto as i32) / 2,
+                        ancho,
+                        alto,
+                    };
+                    EfectoPin::Redimensionar(self.rect)
+                }
                 Gesto::Moviendo { agarre, origen } => {
                     self.rect = Rect {
                         x: origen.x + (p.x - agarre.x),
@@ -245,6 +305,50 @@ mod pruebas {
         let prop = r.ancho as f64 / r.alto as f64;
         assert!((prop - 4.0 / 3.0).abs() < 0.02, "proporcion rota: {prop}");
         assert!(r.ancho > 400);
+    }
+
+    #[test]
+    fn ctrl_y_arrastrar_hacia_arriba_agranda_desde_el_centro() {
+        let mut e = pin();
+        e.procesar(EventoPin::EscalarPulsado(Punto { x: 300, y: 250 }));
+        // 300 px hacia arriba = el doble.
+        let ef = e.procesar(EventoPin::RatonMovido(Punto { x: 300, y: -50 }));
+        let EfectoPin::Redimensionar(r) = ef else {
+            panic!("Ctrl + arrastrar debe redimensionar: {ef:?}");
+        };
+        assert_eq!((r.ancho, r.alto), (800, 600), "el doble, en proporcion");
+        assert_eq!((r.x, r.y), (-100, -50), "centrado en el mismo punto");
+        // Hacia abajo, la mitad; y sin bajar del minimo.
+        let ef = e.procesar(EventoPin::RatonMovido(Punto { x: 300, y: 550 }));
+        let EfectoPin::Redimensionar(r) = ef else {
+            panic!("{ef:?}");
+        };
+        assert_eq!((r.ancho, r.alto), (200, 150));
+        let ef = e.procesar(EventoPin::RatonMovido(Punto { x: 300, y: 5000 }));
+        let EfectoPin::Redimensionar(r) = ef else {
+            panic!("{ef:?}");
+        };
+        assert!(r.ancho >= MINIMO_LOGICO && r.alto >= MINIMO_LOGICO, "{r:?}");
+        assert!(matches!(
+            e.procesar(EventoPin::BotonSoltado),
+            EfectoPin::GestoTerminado(_)
+        ));
+    }
+
+    #[test]
+    fn ctrl_y_arrastrar_sobre_una_ficha_solo_mueve() {
+        let mut e = EstadoPin::nuevo_fijo(
+            Rect {
+                x: 100,
+                y: 100,
+                ancho: 280,
+                alto: 72,
+            },
+            100,
+        );
+        e.procesar(EventoPin::EscalarPulsado(Punto { x: 200, y: 130 }));
+        let ef = e.procesar(EventoPin::RatonMovido(Punto { x: 200, y: 30 }));
+        assert!(matches!(ef, EfectoPin::Mover(_)), "{ef:?}");
     }
 
     #[test]

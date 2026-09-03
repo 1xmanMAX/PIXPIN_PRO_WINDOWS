@@ -74,6 +74,9 @@ impl MotorRender {
         unsafe {
             c.SetTarget(destino);
             c.BeginDraw();
+            // El contexto es compartido entre ventanas: un desplazamiento
+            // que dejara el fotograma anterior no debe contaminar este.
+            c.SetTransform(&windows_numerics::Matrix3x2::identity());
         }
         let pintor = Pintor { motor: self };
         pintar(&pintor);
@@ -116,6 +119,19 @@ impl Pintor<'_> {
             b: 0.0,
             a: 0.0,
         });
+    }
+
+    /// Desplaza el origen de todo lo que se pinte a partir de aqui. Lo usa
+    /// el pin cuando su ventana es mas pequena que su contenido (recortada
+    /// al escritorio): el contenido se dibuja donde le toca y la ventana
+    /// ensena la parte visible.
+    pub fn desplazar(&self, dx: f32, dy: f32) {
+        // SAFETY: SetTransform sobre el contexto vivo, dentro del fotograma.
+        unsafe {
+            self.motor
+                .contexto()
+                .SetTransform(&windows_numerics::Matrix3x2::translation(dx, dy));
+        }
     }
 
     pub fn rellenar(&self, r: RectF, color: Color) {
