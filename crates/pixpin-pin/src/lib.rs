@@ -10,6 +10,7 @@
 pub mod contenido;
 pub mod estado;
 pub mod icono;
+pub mod markdown;
 pub mod menu;
 pub mod paleta;
 pub mod ventana;

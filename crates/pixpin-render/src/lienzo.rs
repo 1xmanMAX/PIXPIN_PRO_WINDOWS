@@ -13,8 +13,10 @@ use windows::Win32::Graphics::Direct2D::{
     ID2D1StrokeStyle,
 };
 use windows::Win32::Graphics::DirectWrite::{
-    DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT_NORMAL,
-    DWRITE_TEXT_METRICS, IDWriteTextFormat, IDWriteTextLayout,
+    DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL,
+    DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_METRICS, DWRITE_TEXT_RANGE,
+    DWRITE_TRIMMING, DWRITE_TRIMMING_GRANULARITY_CHARACTER, DWRITE_WORD_WRAPPING_NO_WRAP,
+    IDWriteFactory, IDWriteTextLayout,
 };
 use windows::core::Interface;
 use windows::core::w;
@@ -92,6 +94,92 @@ impl MotorRender {
 /// Primitivas de dibujo validas SOLO dentro de `MotorRender::dibujar`.
 pub struct Pintor<'a> {
     motor: &'a MotorRender,
+}
+
+/// Estilo de un tramo de texto. Sin nada marcado es el texto normal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct EstiloTexto {
+    pub negrita: bool,
+    pub cursiva: bool,
+    /// Monoespaciada (codigo).
+    pub mono: bool,
+}
+
+/// Un tramo de texto con estilo. Las posiciones van en unidades UTF-16,
+/// que es lo que cuenta DirectWrite.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tramo {
+    pub inicio: u32,
+    pub longitud: u32,
+    pub estilo: EstiloTexto,
+}
+
+/// Construye la disposicion DirectWrite de un texto: partido a `ancho_max`
+/// (o en una sola linea con puntos suspensivos si `una_linea`), con los
+/// tramos de estilo aplicados. Es la unica fabrica de disposiciones: la
+/// usan el pintor (dentro del fotograma) y el motor (para medir fuera).
+pub(crate) fn disposicion_dwrite(
+    dwrite: &IDWriteFactory,
+    texto: &str,
+    tam: f32,
+    ancho_max: f32,
+    tramos: &[Tramo],
+    una_linea: bool,
+) -> Option<(IDWriteTextLayout, f32, f32)> {
+    let contenido: Vec<u16> = texto.encode_utf16().collect();
+    // SAFETY: cadenas constantes terminadas en cero; la disposicion copia
+    // el texto y no retiene nada del llamante; los rangos se limitan al
+    // texto (DirectWrite recorta los que se pasen).
+    unsafe {
+        let formato = dwrite
+            .CreateTextFormat(
+                w!("Segoe UI"),
+                None,
+                DWRITE_FONT_WEIGHT_NORMAL,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                tam,
+                w!("es-ES"),
+            )
+            .ok()?;
+        let disposicion = dwrite
+            .CreateTextLayout(&contenido, &formato, ancho_max, f32::MAX)
+            .ok()?;
+        if una_linea {
+            disposicion
+                .SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP)
+                .ok()?;
+            let signo = dwrite.CreateEllipsisTrimmingSign(&formato).ok()?;
+            let recorte = DWRITE_TRIMMING {
+                granularity: DWRITE_TRIMMING_GRANULARITY_CHARACTER,
+                delimiter: 0,
+                delimiterCount: 0,
+            };
+            disposicion.SetTrimming(&recorte, &signo).ok()?;
+        }
+        for t in tramos {
+            let rango = DWRITE_TEXT_RANGE {
+                startPosition: t.inicio,
+                length: t.longitud,
+            };
+            if t.estilo.negrita {
+                disposicion
+                    .SetFontWeight(DWRITE_FONT_WEIGHT_BOLD, rango)
+                    .ok()?;
+            }
+            if t.estilo.cursiva {
+                disposicion
+                    .SetFontStyle(DWRITE_FONT_STYLE_ITALIC, rango)
+                    .ok()?;
+            }
+            if t.estilo.mono {
+                disposicion.SetFontFamilyName(w!("Consolas"), rango).ok()?;
+            }
+        }
+        let mut metricas = DWRITE_TEXT_METRICS::default();
+        disposicion.GetMetrics(&mut metricas).ok()?;
+        Some((disposicion, metricas.width, metricas.height))
+    }
 }
 
 impl Pintor<'_> {
@@ -242,25 +330,6 @@ impl Pintor<'_> {
         };
     }
 
-    fn formato(&self, tam: f32) -> Option<IDWriteTextFormat> {
-        // SAFETY: la factoria DirectWrite vive en el motor; Segoe UI existe
-        // en todo Windows soportado y si faltara, el Err corta el texto.
-        unsafe {
-            self.motor
-                .dwrite()
-                .CreateTextFormat(
-                    w!("Segoe UI"),
-                    None,
-                    DWRITE_FONT_WEIGHT_NORMAL,
-                    DWRITE_FONT_STYLE_NORMAL,
-                    DWRITE_FONT_STRETCH_NORMAL,
-                    tam,
-                    w!("es-ES"),
-                )
-                .ok()
-        }
-    }
-
     fn disposicion(&self, texto: &str, tam: f32) -> Option<(IDWriteTextLayout, f32, f32)> {
         self.disposicion_ajustada(texto, tam, f32::MAX)
     }
@@ -273,19 +342,65 @@ impl Pintor<'_> {
         tam: f32,
         ancho_max: f32,
     ) -> Option<(IDWriteTextLayout, f32, f32)> {
-        let formato = self.formato(tam)?;
-        let contenido: Vec<u16> = texto.encode_utf16().collect();
-        // SAFETY: la disposicion copia el texto; medir no tiene mas
-        // precondiciones que punteros validos durante la llamada.
-        unsafe {
-            let disposicion = self
-                .motor
-                .dwrite()
-                .CreateTextLayout(&contenido, &formato, ancho_max, f32::MAX)
-                .ok()?;
-            let mut metricas = DWRITE_TEXT_METRICS::default();
-            disposicion.GetMetrics(&mut metricas).ok()?;
-            Some((disposicion, metricas.width, metricas.height))
+        disposicion_dwrite(self.motor.dwrite(), texto, tam, ancho_max, &[], false)
+    }
+
+    /// Un parrafo con tramos de estilo (negrita, cursiva, monoespaciada):
+    /// lo que pinta una nota en Markdown.
+    #[allow(clippy::too_many_arguments)] // texto, posicion, tamano, ancho, tramos y color
+    pub fn parrafo(
+        &self,
+        texto: &str,
+        x: f32,
+        y: f32,
+        tam: f32,
+        ancho_max: f32,
+        tramos: &[Tramo],
+        color: Color,
+    ) {
+        let Some((disposicion, _, _)) =
+            disposicion_dwrite(self.motor.dwrite(), texto, tam, ancho_max, tramos, false)
+        else {
+            return;
+        };
+        self.dibujar_disposicion(&disposicion, x, y, color);
+    }
+
+    /// Mide un parrafo con estilos, dentro de un fotograma.
+    pub fn medir_parrafo(
+        &self,
+        texto: &str,
+        tam: f32,
+        ancho_max: f32,
+        tramos: &[Tramo],
+    ) -> (f32, f32) {
+        disposicion_dwrite(self.motor.dwrite(), texto, tam, ancho_max, tramos, false)
+            .map(|(_, w, h)| (w, h))
+            .unwrap_or((0.0, 0.0))
+    }
+
+    /// Una sola linea que, si no cabe en `ancho_max`, termina en puntos
+    /// suspensivos en vez de partirse o salirse: el nombre de una ficha.
+    pub fn texto_linea(&self, texto: &str, x: f32, y: f32, tam: f32, ancho_max: f32, color: Color) {
+        let Some((disposicion, _, _)) =
+            disposicion_dwrite(self.motor.dwrite(), texto, tam, ancho_max, &[], true)
+        else {
+            return;
+        };
+        self.dibujar_disposicion(&disposicion, x, y, color);
+    }
+
+    fn dibujar_disposicion(&self, disposicion: &IDWriteTextLayout, x: f32, y: f32, color: Color) {
+        if let Some(p) = self.pincel(color) {
+            // SAFETY: dentro del fotograma; objetos vivos.
+            unsafe {
+                self.motor.contexto().DrawTextLayout(
+                    Vector2 { X: x, Y: y },
+                    disposicion,
+                    &p,
+                    Default::default(),
+                )
+            };
         }
     }
 

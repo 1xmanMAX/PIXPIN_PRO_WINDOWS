@@ -31,7 +31,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{VK_BACK, VK_RETURN, VK_SPACE};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
-use crate::contenido::{Contenido, DOCUMENTO_FRANJA_LOGICA, NOTA_MARGEN_LOGICO, NOTA_TEXTO_LOGICO};
+use crate::contenido::{
+    Contenido, DOCUMENTO_FRANJA_LOGICA, FICHA_DETALLE_LOGICO, FICHA_ICONO_LOGICO,
+    FICHA_MARGEN_LOGICO, FICHA_NOMBRE_LOGICO, NOTA_MARGEN_LOGICO, NOTA_TEXTO_LOGICO,
+};
 use crate::estado::{EfectoPin, EstadoPin, EventoPin, MINIMO_LOGICO};
 use crate::video::Reproductor;
 
@@ -40,8 +43,10 @@ pub const MARGEN_SOMBRA_LOGICO: u32 = 24;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CambioPin {
-    Movido(Rect),
-    Redimensionado(Rect),
+    /// Rect nuevo y zoom del texto en por ciento (100 salvo en notas): lo
+    /// que el gestor persiste.
+    Movido(Rect, u32),
+    Redimensionado(Rect, u32),
     Cerrado,
     /// `Ctrl+C` sobre el pin enfocado (spec 4.2). Que significa copiar
     /// depende del tipo, y eso lo sabe el gestor, no la ventana.
@@ -115,6 +120,40 @@ const RETARDO_GUARDADO_MS: u32 = 300;
 /// El temporizador que pregunta por fotogramas nuevos a un pin de video
 /// (D67). Solo corre mientras el video se reproduce.
 const ID_TEMPORIZADOR_VIDEO: usize = 2;
+/// El zoom animado de la rueda: un tick por fotograma hasta llegar.
+const ID_TEMPORIZADOR_ZOOM: usize = 3;
+const RITMO_ZOOM_MS: u32 = 16;
+/// Lo que dura ir de un tamano al siguiente. Corto: la rueda encadena
+/// muescas y una animacion larga iria por detras de la mano.
+const DURACION_ZOOM_MS: u32 = 140;
+
+/// Un zoom animado en curso.
+struct Animacion {
+    desde: Rect,
+    hasta: Rect,
+    zoom_desde: f32,
+    zoom_hasta: f32,
+    inicio: std::time::Instant,
+}
+
+impl Animacion {
+    /// Progreso 0..=1 con salida suave (cubica): arranca rapido y frena.
+    fn progreso(&self) -> f32 {
+        let t = self.inicio.elapsed().as_secs_f32() / (DURACION_ZOOM_MS as f32 / 1000.0);
+        let t = t.clamp(0.0, 1.0);
+        1.0 - (1.0 - t).powi(3)
+    }
+
+    fn rect_en(&self, t: f32) -> Rect {
+        let mezcla = |a: i32, b: i32| a + ((b - a) as f32 * t).round() as i32;
+        Rect {
+            x: mezcla(self.desde.x, self.hasta.x),
+            y: mezcla(self.desde.y, self.hasta.y),
+            ancho: mezcla(self.desde.ancho as i32, self.hasta.ancho as i32).max(1) as u32,
+            alto: mezcla(self.desde.alto as i32, self.hasta.alto as i32).max(1) as u32,
+        }
+    }
+}
 /// Distancia a la que el borde del area de trabajo atrae al pin (px logicos).
 const IMAN_LOGICO: i32 = 8;
 
@@ -284,6 +323,11 @@ struct PinInterno {
     /// El cursor que toca mientras se anota; lo pone el gestor al cambiar de
     /// herramienta.
     cursor_anotacion: CursorAnotacion,
+    /// Zoom del texto de una nota (1.0 = como nacio). Lo cambian la rueda y
+    /// Ctrl + arrastrar (en proporcion); estirar la caja por la esquina no.
+    zoom_texto: f32,
+    /// Zoom animado en curso (la rueda): de donde a donde y desde cuando.
+    animacion: Option<Animacion>,
     /// El reproductor, solo en un pin de video (D63). Si no pudo crearse,
     /// `video_fallido` avisa al gestor en el primer tick (D72).
     video: Option<Reproductor>,
@@ -367,6 +411,8 @@ impl Pin {
 
         let estado = if !contenido.redimensionable() {
             EstadoPin::nuevo_fijo(rect_contenido, escala_por_cien)
+        } else if contenido.redimension_libre() {
+            EstadoPin::nuevo_libre(rect_contenido, escala_por_cien)
         } else if contenido.solo_ancho() {
             EstadoPin::nuevo_solo_ancho(rect_contenido, escala_por_cien)
         } else {
@@ -404,6 +450,8 @@ impl Pin {
             anotando: false,
             lupa: None,
             cursor_anotacion: CursorAnotacion::Cruz,
+            zoom_texto: 1.0,
+            animacion: None,
             hwnd,
             video,
             video_fallido,
@@ -455,12 +503,92 @@ impl Pin {
     /// Tiñe la sombra con el color del grupo, o la devuelve a negra con
     /// `None`. El gestor traduce `ColorGrupo` a RGB: este crate no puede
     /// ver `pixpin-store` (misma capa).
-    /// Coloca el pin en un rect nuevo (la rueda hace zoom con esto).
+    /// Coloca el pin en un rect nuevo sin tocar el zoom del texto.
     pub fn poner_rect(&self, contenido: Rect) {
         if let Some(i) = interno_de(self.hwnd) {
             i.estado.poner_rect(contenido);
         }
         aplicar(self.hwnd, EfectoPin::Redimensionar(contenido));
+    }
+
+    /// Escala el pin en proporcion a un rect nuevo, texto incluido si es
+    /// una nota. Es lo que hace la rueda: el gesto Ctrl + arrastrar llega
+    /// por el mismo camino desde la maquina de estado.
+    pub fn escalar(&self, contenido: Rect) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.animacion = None;
+            i.estado.poner_rect(contenido);
+        }
+        aplicar(self.hwnd, EfectoPin::Escalar(contenido));
+    }
+
+    /// Como `escalar`, pero animado: el pin va de donde esta a `contenido`
+    /// en unos fotogramas (la rueda, para que no vaya a saltos). Una rueda
+    /// que sigue girando encadena desde el destino, no desde el fotograma
+    /// intermedio.
+    pub fn escalar_animado(&self, contenido: Rect) {
+        let Some(i) = interno_de(self.hwnd) else {
+            return;
+        };
+        let desde = i.estado.rect();
+        i.animacion = Some(Animacion {
+            desde,
+            hasta: contenido,
+            zoom_desde: i.zoom_texto,
+            zoom_hasta: i.zoom_texto * contenido.ancho as f32 / desde.ancho.max(1) as f32,
+            inicio: std::time::Instant::now(),
+        });
+        // SAFETY: temporizador sobre ventana propia; se mata al terminar.
+        unsafe {
+            SetTimer(Some(self.hwnd), ID_TEMPORIZADOR_ZOOM, RITMO_ZOOM_MS, None);
+        }
+    }
+
+    /// El rect al que va el pin: el destino de la animacion si la hay, o
+    /// el actual. La rueda encadena pasos desde aqui.
+    pub fn rect_objetivo(&self) -> Rect {
+        match interno_de(self.hwnd) {
+            Some(i) => i
+                .animacion
+                .as_ref()
+                .map(|a| a.hasta)
+                .unwrap_or(i.estado.rect()),
+            None => self.rect_contenido(),
+        }
+    }
+
+    /// Zoom del texto de una nota, en por ciento (100 = como nacio).
+    pub fn zoom_por_cien(&self) -> u32 {
+        interno_de(self.hwnd)
+            .map(|i| (i.zoom_texto * 100.0).round().max(1.0) as u32)
+            .unwrap_or(100)
+    }
+
+    /// El zoom que tendra el texto cuando el pin llegue a `hasta` desde su
+    /// destino en curso: lo que el gestor guarda al girar la rueda, sin
+    /// esperar a que la animacion termine.
+    pub fn zoom_objetivo_por_cien(&self, hasta: Rect) -> u32 {
+        let Some(i) = interno_de(self.hwnd) else {
+            return 100;
+        };
+        if !matches!(i.contenido, Contenido::Nota { .. }) {
+            return 100;
+        }
+        let (zoom, rect) = match i.animacion.as_ref() {
+            Some(a) => (a.zoom_hasta, a.hasta),
+            None => (i.zoom_texto, i.estado.rect()),
+        };
+        (zoom * 100.0 * hasta.ancho as f32 / rect.ancho.max(1) as f32)
+            .round()
+            .max(1.0) as u32
+    }
+
+    /// Fija el zoom del texto (al restaurar del almacen) y repinta.
+    pub fn poner_zoom_por_cien(&self, zoom: u32) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.zoom_texto = (zoom.max(1) as f32) / 100.0;
+            pintar(i);
+        }
     }
 
     /// Entra o sale del modo anotacion (D47). Mientras se anota, el pin no
@@ -651,6 +779,16 @@ fn registrar_clase() {
 }
 
 /// Dibuja el fotograma completo del pin: sombra + imagen. Cero cromo (D23).
+/// El zoom del texto en por ciento, para persistirlo (100 fuera de las
+/// notas: los demas contenidos no tienen zoom de texto).
+fn zoom_por_cien_de(i: &PinInterno) -> u32 {
+    if matches!(i.contenido, Contenido::Nota { .. }) {
+        (i.zoom_texto * 100.0).round().max(1.0) as u32
+    } else {
+        100
+    }
+}
+
 fn pintar(i: &PinInterno) {
     let destino = match i.superficie.empezar(&i.motor) {
         Ok(d) => d,
@@ -775,15 +913,31 @@ fn pintar(i: &PinInterno) {
                 );
             }
 
+            // La nota es Markdown (titulos, listas, codigo...) y su texto
+            // lleva el zoom de la rueda / Ctrl + arrastrar; estirar la caja
+            // por la esquina solo recoloca el texto al ancho nuevo.
             Contenido::Nota { texto } => {
-                let margen = NOTA_MARGEN_LOGICO * escala;
-                p.texto_ajustado(
-                    texto,
+                let z = i.zoom_texto;
+                let margen = NOTA_MARGEN_LOGICO * escala * z;
+                let tam = NOTA_TEXTO_LOGICO * escala * z;
+                let bloques = crate::markdown::analizar(texto);
+                let ancho_texto = (w - 2.0 * margen).max(1.0);
+                let d = crate::markdown::disponer(
+                    &bloques,
+                    ancho_texto,
+                    tam,
+                    &|t, tam, max, tramos| p.medir_parrafo(t, tam, max, tramos),
+                );
+                pintar_markdown(
+                    p,
+                    &bloques,
+                    &d,
                     m + margen,
                     m + margen,
-                    NOTA_TEXTO_LOGICO * escala,
-                    (w - 2.0 * margen).max(1.0),
+                    ancho_texto,
+                    tam,
                     tinta,
+                    tinta_tenue,
                 );
             }
 
@@ -793,8 +947,8 @@ fn pintar(i: &PinInterno) {
                 existe,
                 ..
             } => {
-                let margen = 12.0 * escala;
-                let lado = 32.0 * escala;
+                let margen = FICHA_MARGEN_LOGICO * escala;
+                let lado = FICHA_ICONO_LOGICO * escala;
                 if let Some(b) = &i.bitmap {
                     p.bitmap(
                         b,
@@ -810,11 +964,13 @@ fn pintar(i: &PinInterno) {
                 }
                 let x_texto = m + margen + lado + margen;
                 let ancho_texto = (w - (x_texto - m) - margen).max(1.0);
-                p.texto_ajustado(
+                // Una linea con puntos suspensivos: un nombre largo no se
+                // sale de la tarjeta (lo vio el usuario).
+                p.texto_linea(
                     nombre,
                     x_texto,
                     m + h / 2.0 - 17.0 * escala,
-                    14.0 * escala,
+                    FICHA_NOMBRE_LOGICO * escala,
                     ancho_texto,
                     tinta,
                 );
@@ -830,11 +986,11 @@ fn pintar(i: &PinInterno) {
                         a: 1.0,
                     }
                 };
-                p.texto_ajustado(
+                p.texto_linea(
                     detalle,
                     x_texto,
                     m + h / 2.0 + 2.0 * escala,
-                    12.0 * escala,
+                    FICHA_DETALLE_LOGICO * escala,
                     ancho_texto,
                     color_detalle,
                 );
@@ -870,6 +1026,78 @@ fn pintar(i: &PinInterno) {
         }
     });
     let _ = i.superficie.presentar();
+}
+
+/// Pinta una nota ya dispuesta como Markdown: prefijos de lista, barra de
+/// cita, fondo del codigo, reglas y los parrafos con sus tramos.
+#[allow(clippy::too_many_arguments)] // geometria y colores de un solo pintado
+fn pintar_markdown(
+    p: &pixpin_render::Pintor,
+    bloques: &[crate::markdown::Bloque],
+    d: &crate::markdown::Disposicion,
+    x0: f32,
+    y0: f32,
+    ancho_texto: f32,
+    tam: f32,
+    tinta: Color,
+    tenue: Color,
+) {
+    use crate::markdown::{Tipo, tramos_de};
+    let fondo_codigo = Color { a: 0.10, ..tinta };
+    for c in &d.colocados {
+        let b = &bloques[c.bloque];
+        match b.tipo {
+            Tipo::Regla => {
+                p.rellenar(
+                    RectF {
+                        x: x0,
+                        y: y0 + c.y + c.alto / 2.0,
+                        ancho: ancho_texto,
+                        alto: (tam * 0.08).max(1.0),
+                    },
+                    tenue,
+                );
+                continue;
+            }
+            Tipo::Codigo => {
+                let relleno = tam * 0.4;
+                p.rellenar_redondeado(
+                    RectF {
+                        x: x0 + c.x - tam * 0.4,
+                        y: y0 + c.y - relleno,
+                        ancho: (ancho_texto - c.x + tam * 0.4).max(1.0),
+                        alto: c.alto + 2.0 * relleno,
+                    },
+                    tam * 0.3,
+                    fondo_codigo,
+                );
+            }
+            Tipo::Cita => {
+                p.rellenar(
+                    RectF {
+                        x: x0 + c.x - tam * 0.7,
+                        y: y0 + c.y,
+                        ancho: tam * 0.2,
+                        alto: c.alto,
+                    },
+                    tenue,
+                );
+            }
+            _ => {}
+        }
+        if let Some(prefijo) = &c.prefijo {
+            p.texto(prefijo, x0 + c.prefijo_x, y0 + c.y, c.tam, tinta);
+        }
+        p.parrafo(
+            &b.texto,
+            x0 + c.x,
+            y0 + c.y,
+            c.tam,
+            (ancho_texto - c.x).max(1.0),
+            &tramos_de(b),
+            tinta,
+        );
+    }
 }
 
 /// Pinta las ordenes de dibujo del motor 2D sobre el contenido del pin.
@@ -973,7 +1201,17 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
                 pintar(i);
             }
         }
+        EfectoPin::Escalar(contenido) => {
+            // En proporcion: el texto de una nota acompaña al tamano.
+            let antes = i.estado.rect().ancho.max(1) as f32;
+            if matches!(i.contenido, Contenido::Nota { .. }) {
+                i.zoom_texto = (i.zoom_texto * contenido.ancho as f32 / antes).clamp(0.05, 50.0);
+            }
+            i.estado.poner_rect(contenido);
+            aplicar(hwnd, EfectoPin::Redimensionar(contenido));
+        }
         EfectoPin::Redimensionar(contenido) => {
+            let t0 = std::time::Instant::now();
             let v = ventana_visible(contenido, i.escala_por_cien);
             // SAFETY: SetWindowPos sobre ventana propia, con tamano.
             unsafe {
@@ -987,9 +1225,10 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
                     SWP_NOZORDER | SWP_NOACTIVATE,
                 );
             }
-            // La superficie es del tamano de la ventana: se redimensiona
-            // en sitio y, si eso falla, se recrea.
-            if let Err(e) = i.superficie.redimensionar(v.ancho, v.alto) {
+            // La superficie cubre al menos la ventana; crece con margen
+            // para que un zoom no reasigne memoria en cada fotograma, y se
+            // compacta al acabar el gesto. Si no puede, se recrea.
+            if let Err(e) = i.superficie.asegurar(v.ancho, v.alto) {
                 tracing::warn!(?e, ancho = v.ancho, alto = v.alto, "ResizeBuffers fallo");
                 match Superficie::nueva(&i.motor, &i.d3d, hwnd, v.ancho, v.alto) {
                     Ok(s) => i.superficie = s,
@@ -1002,12 +1241,40 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
                 }
             }
             pintar(i);
+            // Un fotograma lento se anota: es la unica pista para el lag que
+            // el usuario ve en su equipo y no se reproduce aqui.
+            let ms = t0.elapsed().as_millis() as u64;
+            if ms > 24 {
+                tracing::info!(ms, ancho = v.ancho, alto = v.alto, "redimension lenta");
+            }
         }
         EfectoPin::AlternarTamano => {
             if i.estado.es_fijo() {
                 return;
             }
             let actual = i.estado.rect();
+            if let Contenido::Nota { .. } = i.contenido {
+                // La nota vuelve a como nacio: zoom 1 y su tamano natural.
+                i.zoom_texto = 1.0;
+                let motor = Rc::clone(&i.motor);
+                let (nw, nh) = crate::contenido::tamano_natural(
+                    &i.contenido,
+                    i.escala_por_cien,
+                    &|t, tam, max, tramos| motor.medir_parrafo(t, tam, max, tramos),
+                );
+                let nuevo = Rect {
+                    x: actual.x,
+                    y: actual.y,
+                    ancho: nw,
+                    alto: nh,
+                };
+                i.estado.poner_rect(nuevo);
+                aplicar(hwnd, EfectoPin::Redimensionar(nuevo));
+                if let Some(i2) = interno_de(hwnd) {
+                    (i2.al_cambiar)(CambioPin::Redimensionado(nuevo, zoom_por_cien_de(i2)));
+                }
+                return;
+            }
             let (nw, nh) = i.imagen_nativa;
             let al_natural = actual.ancho == nw && actual.alto == nh;
             let nuevo = if al_natural {
@@ -1032,7 +1299,7 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
             i.estado.poner_rect(nuevo);
             aplicar(hwnd, EfectoPin::Redimensionar(nuevo));
             if let Some(i2) = interno_de(hwnd) {
-                (i2.al_cambiar)(CambioPin::Redimensionado(nuevo));
+                (i2.al_cambiar)(CambioPin::Redimensionado(nuevo, zoom_por_cien_de(i2)));
             }
         }
         EfectoPin::GestoTerminado(contenido) => {
@@ -1043,7 +1310,17 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
                 i.estado.poner_rect(pegado);
                 aplicar(hwnd, EfectoPin::Mover(pegado));
             }
-            (i.al_cambiar)(CambioPin::Movido(pegado));
+            // Fin de gesto: la superficie vuelve a su tamano justo si el
+            // gesto la dejo muy sobrada (histeresis del zoom).
+            let v = ventana_visible(pegado, i.escala_por_cien);
+            if i.superficie
+                .compactar(v.ancho, v.alto)
+                .is_ok_and(|hecho| hecho)
+            {
+                // ResizeBuffers descarta el contenido: repintar.
+                pintar(i);
+            }
+            (i.al_cambiar)(CambioPin::Movido(pegado, zoom_por_cien_de(i)));
         }
         EfectoPin::Cerrar => {
             (i.al_cambiar)(CambioPin::Cerrado);
@@ -1360,6 +1637,40 @@ extern "system" fn procedimiento_pin(
             }
             LRESULT(0)
         }
+        WM_TIMER if wparam.0 == ID_TEMPORIZADOR_ZOOM => {
+            if let Some(i) = interno_de(hwnd) {
+                let Some(a) = i.animacion.as_ref() else {
+                    // SAFETY: mata el temporizador propio.
+                    unsafe {
+                        let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_ZOOM);
+                    }
+                    return LRESULT(0);
+                };
+                let t = a.progreso();
+                let rect = a.rect_en(t);
+                let zoom = a.zoom_desde + (a.zoom_hasta - a.zoom_desde) * t;
+                let fin = t >= 1.0;
+                if matches!(i.contenido, Contenido::Nota { .. }) {
+                    i.zoom_texto = zoom;
+                }
+                i.estado.poner_rect(rect);
+                aplicar(hwnd, EfectoPin::Redimensionar(rect));
+                if fin {
+                    if let Some(i) = interno_de(hwnd) {
+                        i.animacion = None;
+                        let v = ventana_visible(rect, i.escala_por_cien);
+                        if i.superficie.compactar(v.ancho, v.alto).is_ok_and(|h| h) {
+                            pintar(i);
+                        }
+                    }
+                    // SAFETY: mata el temporizador propio.
+                    unsafe {
+                        let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_ZOOM);
+                    }
+                }
+            }
+            LRESULT(0)
+        }
         WM_TIMER if wparam.0 == ID_TEMPORIZADOR_GUARDADO => {
             // SAFETY: mata el temporizador propio armado arriba.
             unsafe {
@@ -1371,7 +1682,7 @@ extern "system" fn procedimiento_pin(
                     i.estado.poner_rect(pegado);
                     aplicar(hwnd, EfectoPin::Mover(pegado));
                 }
-                (i.al_cambiar)(CambioPin::Movido(i.estado.rect()));
+                (i.al_cambiar)(CambioPin::Movido(i.estado.rect(), zoom_por_cien_de(i)));
             }
             LRESULT(0)
         }
@@ -1403,10 +1714,10 @@ extern "system" fn procedimiento_pin(
                     if i.estado.sobre_esquina(Punto { x: p.x, y: p.y }) {
                         IDC_SIZENWSE
                     } else {
-                        IDC_SIZEALL
+                        IDC_ARROW
                     }
                 })
-                .unwrap_or(IDC_SIZEALL);
+                .unwrap_or(IDC_ARROW);
             // SAFETY: cursores del sistema, llamadas sin precondiciones.
             unsafe {
                 if let Ok(c) = LoadCursorW(None, id) {

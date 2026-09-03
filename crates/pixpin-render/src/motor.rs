@@ -156,39 +156,21 @@ impl MotorRender {
     /// necesita el tamano ANTES de tenerla: sin esto, una nota no podria
     /// saber de que tamano nace.
     pub fn medir_texto(&self, texto: &str, tam: f32, ancho_max: f32) -> (f32, f32) {
-        use windows::Win32::Graphics::DirectWrite::{
-            DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_WEIGHT_NORMAL,
-            DWRITE_TEXT_METRICS,
-        };
-        use windows::core::w;
+        self.medir_parrafo(texto, tam, ancho_max, &[])
+    }
 
-        // SAFETY: cadenas constantes terminadas en cero y buffers propios;
-        // la disposicion copia el texto y no retiene nada del llamante.
-        unsafe {
-            let Ok(formato) = self.dwrite.CreateTextFormat(
-                w!("Segoe UI"),
-                None,
-                DWRITE_FONT_WEIGHT_NORMAL,
-                DWRITE_FONT_STYLE_NORMAL,
-                DWRITE_FONT_STRETCH_NORMAL,
-                tam,
-                w!("es-ES"),
-            ) else {
-                return (0.0, 0.0);
-            };
-            let contenido: Vec<u16> = texto.encode_utf16().collect();
-            let Ok(disposicion) =
-                self.dwrite
-                    .CreateTextLayout(&contenido, &formato, ancho_max, f32::MAX)
-            else {
-                return (0.0, 0.0);
-            };
-            let mut m = DWRITE_TEXT_METRICS::default();
-            if disposicion.GetMetrics(&mut m).is_err() {
-                return (0.0, 0.0);
-            }
-            (m.width, m.height)
-        }
+    /// Como `medir_texto`, con tramos de estilo (negrita, cursiva, mono):
+    /// lo que necesita una nota en Markdown para saber de que tamano nace.
+    pub fn medir_parrafo(
+        &self,
+        texto: &str,
+        tam: f32,
+        ancho_max: f32,
+        tramos: &[crate::lienzo::Tramo],
+    ) -> (f32, f32) {
+        crate::lienzo::disposicion_dwrite(&self.dwrite, texto, tam, ancho_max, tramos, false)
+            .map(|(_, w, h)| (w, h))
+            .unwrap_or((0.0, 0.0))
     }
 
     /// Envuelve una textura como bitmap de SOLO LECTURA para dibujarla.

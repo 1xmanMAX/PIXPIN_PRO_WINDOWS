@@ -17,7 +17,8 @@ pub mod seleccion;
 pub use ajuste::{Candidato, resolver_ajuste};
 pub use monitores::{DisposicionMonitores, Monitor};
 pub use pin_geometria::{
-    Esquina, esquina_en, iman_de_bordes, recolocar_en_area, redimension_proporcional,
+    Esquina, esquina_en, iman_de_bordes, recolocar_en_area, redimension_libre,
+    redimension_proporcional,
 };
 pub use punto::Punto;
 pub use rect::Rect;

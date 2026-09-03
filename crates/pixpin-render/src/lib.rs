@@ -15,4 +15,4 @@ pub mod superficie;
 
 pub use superficie::Superficie;
 
-pub use lienzo::{Pintor, RectF};
+pub use lienzo::{EstiloTexto, Pintor, RectF, Tramo};

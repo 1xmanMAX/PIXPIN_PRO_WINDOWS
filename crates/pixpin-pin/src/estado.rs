@@ -6,7 +6,7 @@
 //! comportamiento entero se prueba sin abrir una ventana, igual que el
 //! overlay de S1-B2.
 
-use pixpin_geom::{Esquina, Punto, Rect, esquina_en, redimension_proporcional};
+use pixpin_geom::{Esquina, Punto, Rect, esquina_en, redimension_libre, redimension_proporcional};
 
 /// Zona de esquina en pixeles LOGICOS (D23); la escala la aplica el estado.
 pub const ZONA_ESQUINA_LOGICA: u32 = 12;
@@ -32,6 +32,10 @@ pub enum EfectoPin {
     Mover(Rect),
     /// Cambiar tamano de ventana y repintar.
     Redimensionar(Rect),
+    /// Como `Redimensionar`, pero en PROPORCION (Ctrl + arrastrar): el
+    /// dueno escala tambien el texto de una nota. Estirar por la esquina
+    /// no lo hace.
+    Escalar(Rect),
     /// Doble clic: 100% <-> ajustado (lo resuelve el dueno, que sabe el
     /// tamano nativo de la imagen).
     AlternarTamano,
@@ -79,6 +83,9 @@ pub struct EstadoPin {
     /// da su contenido, y estirarlas solo dejaba el texto donde estaba con
     /// un hueco creciendo alrededor (lo encontro el usuario).
     fijo: bool,
+    /// Las esquinas redimensionan libremente (cada eje por su lado): la
+    /// nota, cuyo texto se recoloca al ancho que le den.
+    libre: bool,
 }
 
 impl EstadoPin {
@@ -89,6 +96,15 @@ impl EstadoPin {
             gesto: Gesto::Ninguno,
             solo_ancho: false,
             fijo: false,
+            libre: false,
+        }
+    }
+
+    /// Como `nuevo`, con esquinas de redimension libre (la nota).
+    pub fn nuevo_libre(rect: Rect, escala_por_cien: u32) -> Self {
+        Self {
+            libre: true,
+            ..Self::nuevo(rect, escala_por_cien)
         }
     }
 
@@ -196,7 +212,7 @@ impl EstadoPin {
                         ancho,
                         alto,
                     };
-                    EfectoPin::Redimensionar(self.rect)
+                    EfectoPin::Escalar(self.rect)
                 }
                 Gesto::Moviendo { agarre, origen } => {
                     self.rect = Rect {
@@ -208,6 +224,10 @@ impl EstadoPin {
                     EfectoPin::Mover(self.rect)
                 }
                 Gesto::Redimensionando { esquina, origen } => {
+                    if self.libre {
+                        self.rect = redimension_libre(origen, esquina, p, self.minimo());
+                        return EfectoPin::Redimensionar(self.rect);
+                    }
                     let propuesto = redimension_proporcional(origen, esquina, p, self.minimo());
                     self.rect = if self.solo_ancho {
                         // El alto y la fila superior se quedan como estaban:
@@ -313,19 +333,19 @@ mod pruebas {
         e.procesar(EventoPin::EscalarPulsado(Punto { x: 300, y: 250 }));
         // 300 px hacia arriba = el doble.
         let ef = e.procesar(EventoPin::RatonMovido(Punto { x: 300, y: -50 }));
-        let EfectoPin::Redimensionar(r) = ef else {
-            panic!("Ctrl + arrastrar debe redimensionar: {ef:?}");
+        let EfectoPin::Escalar(r) = ef else {
+            panic!("Ctrl + arrastrar debe escalar: {ef:?}");
         };
         assert_eq!((r.ancho, r.alto), (800, 600), "el doble, en proporcion");
         assert_eq!((r.x, r.y), (-100, -50), "centrado en el mismo punto");
         // Hacia abajo, la mitad; y sin bajar del minimo.
         let ef = e.procesar(EventoPin::RatonMovido(Punto { x: 300, y: 550 }));
-        let EfectoPin::Redimensionar(r) = ef else {
+        let EfectoPin::Escalar(r) = ef else {
             panic!("{ef:?}");
         };
         assert_eq!((r.ancho, r.alto), (200, 150));
         let ef = e.procesar(EventoPin::RatonMovido(Punto { x: 300, y: 5000 }));
-        let EfectoPin::Redimensionar(r) = ef else {
+        let EfectoPin::Escalar(r) = ef else {
             panic!("{ef:?}");
         };
         assert!(r.ancho >= MINIMO_LOGICO && r.alto >= MINIMO_LOGICO, "{r:?}");
@@ -333,6 +353,35 @@ mod pruebas {
             e.procesar(EventoPin::BotonSoltado),
             EfectoPin::GestoTerminado(_)
         ));
+    }
+
+    #[test]
+    fn una_nota_se_estira_libremente_por_la_esquina() {
+        // Cada eje sigue al raton: una nota mas ancha y mas baja tiene
+        // sentido (el texto se recoloca), al reves que una imagen.
+        let mut e = EstadoPin::nuevo_libre(
+            Rect {
+                x: 100,
+                y: 100,
+                ancho: 400,
+                alto: 300,
+            },
+            100,
+        );
+        e.procesar(EventoPin::BotonPulsado(Punto { x: 497, y: 397 }));
+        let ef = e.procesar(EventoPin::RatonMovido(Punto { x: 700, y: 250 }));
+        let EfectoPin::Redimensionar(r) = ef else {
+            panic!("{ef:?}");
+        };
+        assert_eq!((r.x, r.y, r.ancho, r.alto), (100, 100, 600, 150));
+        // Y Ctrl + arrastrar la escala en proporcion, texto incluido.
+        e.procesar(EventoPin::BotonSoltado);
+        e.procesar(EventoPin::EscalarPulsado(Punto { x: 300, y: 200 }));
+        let ef = e.procesar(EventoPin::RatonMovido(Punto { x: 300, y: -100 }));
+        let EfectoPin::Escalar(r) = ef else {
+            panic!("{ef:?}");
+        };
+        assert_eq!((r.ancho, r.alto), (1200, 300));
     }
 
     #[test]
