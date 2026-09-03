@@ -102,6 +102,24 @@ pub fn redimension_proporcional(
     Rect { x, y, ancho, alto }
 }
 
+/// Redimension LIBRE: cada eje sigue al cursor por separado, con la esquina
+/// opuesta clavada y un lado minimo. Es la de la nota: su texto se
+/// recoloca al ancho que le den, y una caja mas alta o mas ancha tiene
+/// sentido sin conservar proporcion.
+pub fn redimension_libre(original: Rect, esquina: Esquina, cursor: Punto, minimo: u32) -> Rect {
+    let ancla = esquina.ancla(original);
+    let minimo = minimo.max(1) as i32;
+    let ancho = (cursor.x - ancla.x).abs().max(minimo) as u32;
+    let alto = (cursor.y - ancla.y).abs().max(minimo) as u32;
+    let (x, y) = match esquina {
+        Esquina::Sureste => (ancla.x, ancla.y),
+        Esquina::Noroeste => (ancla.x - ancho as i32, ancla.y - alto as i32),
+        Esquina::Noreste => (ancla.x, ancla.y - alto as i32),
+        Esquina::Suroeste => (ancla.x - ancho as i32, ancla.y),
+    };
+    Rect { x, y, ancho, alto }
+}
+
 /// Desliza el rect al interior del area sin cambiar su tamano. Un rect mas
 /// grande que el area queda alineado a la esquina superior izquierda.
 pub fn recolocar_en_area(rect: Rect, area_trabajo: Rect) -> Rect {

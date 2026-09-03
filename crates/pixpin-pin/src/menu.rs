@@ -368,14 +368,17 @@ mod pruebas {
     }
 
     #[test]
-    fn una_nota_se_guarda_pero_no_tiene_tamano_original() {
-        // La nota no se redimensiona (la pidio el usuario): la entrada de
-        // «Tamaño original» solo confundiria.
+    fn una_nota_se_guarda_y_tiene_tamano_original() {
+        // La nota se estira por la esquina y se escala con la rueda; el
+        // doble clic ("Tamaño original") la devuelve a como nacio.
         let nota = Contenido::Nota { texto: "x".into() };
         let v = entradas_del_menu(&nota, false, false, &textos());
         let ids = ids(&v);
         assert!(ids.contains(&CMD_GUARDAR_COMO));
-        assert!(!ids.contains(&CMD_TAMANO_ORIGINAL));
+        assert!(
+            ids.contains(&CMD_TAMANO_ORIGINAL),
+            "el doble clic devuelve la nota a como nacio"
+        );
     }
 
     #[test]

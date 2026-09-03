@@ -40,6 +40,17 @@ doble), desde el centro, con los mismos topes que la rueda. En la ficha y la
 nota, `Ctrl + arrastrar` mueve como un arrastre normal. Sin modificador el clic
 sigue moviendo, y `Alt` está reservado a los gestos globales.
 
+### 1.2 Tercera tanda (2026-09-03): fichas, notas, Markdown, cursor, zoom fluido, lag
+
+| Reporte | Arreglo |
+|---|---|
+| El nombre largo de una ficha se sale de la tarjeta | La ficha crece a lo ancho con el nombre hasta 560 px lógicos (`FICHA_ANCHO_MAX_LOGICO`); más allá, nombre y detalle van en **una línea con puntos suspensivos** (`Pintor::texto_linea`, recorte DirectWrite) |
+| Las notas deben poder redimensionarse y hacer zoom | D85: la nota tiene **redimensión libre** por las esquinas (cada eje por su lado, el texto se recoloca al ancho nuevo, `redimension_libre`) y **zoom proporcional** con la rueda o `Ctrl + arrastrar` (texto incluido, `zoom_texto`, persistido en `PinGuardado::zoom_por_cien`). Doble clic = «Tamaño original»: zoom 1 y tamaño natural |
+| Markdown en las notas | D86: `pixpin-pin::markdown`, puro y probado: títulos `#`, listas `-`/`1.`, citas `>`, código con vallas, reglas `---`, `**negrita**`, `*cursiva*`, `` `código` ``, `[texto](enlace)`. Las líneas de un párrafo se conservan (una nota es texto pegado). El pintor gana texto con tramos de estilo (`Pintor::parrafo`, `EstiloTexto`, `Tramo`) y el motor `medir_parrafo` |
+| El cursor sobre un pin es una «cruz» (las cuatro flechas) | Flecha normal sobre el pin; diagonal solo en las esquinas (el único aviso de que ahí se redimensiona) |
+| El zoom con la rueda va a saltos | D87: cada muesca **anima** el pin hacia el destino (140 ms, salida cúbica, temporizador de 16 ms) y las muescas encadenan desde el destino en curso, no desde el fotograma intermedio; el giro fraccionado de una rueda fina da pasos proporcionales |
+| Lag al capturar o mover | D88: la superficie del pin ya no reasigna memoria en cada fotograma: crece con un cuarto de margen (`Superficie::asegurar`) y se compacta al acabar el gesto (`compactar`). Mover un pin sin recorte sigue sin repintar. Los fotogramas de redimensión de más de 24 ms quedan en el registro («redimension lenta») para diagnosticar en el equipo del usuario. La captura en este equipo va por WGC porque el duplicador lo tiene tomado el escritorio remoto: 50-90 ms, no arreglable desde aquí |
+
 ## 2. Decisiones
 
 | # | Decisión | Elección | Razón |

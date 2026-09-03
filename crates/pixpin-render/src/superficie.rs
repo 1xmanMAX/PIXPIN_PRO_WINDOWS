@@ -32,6 +32,10 @@ pub struct Superficie {
     _objetivo: IDCompositionTarget,
     _visual: IDCompositionVisual,
     swapchain: IDXGISwapChain1,
+    /// Tamano real de los buffers. Puede ser MAYOR que la ventana: la
+    /// composicion recorta al area de la ventana, y asi un zoom no tiene
+    /// que reasignar memoria de video en cada fotograma (histeresis).
+    asignado: std::cell::Cell<(u32, u32)>,
 }
 
 impl Superficie {
@@ -89,7 +93,44 @@ impl Superficie {
             _objetivo: objetivo,
             _visual: visual,
             swapchain,
+            asignado: std::cell::Cell::new((ancho.max(1), alto.max(1))),
         })
+    }
+
+    /// Garantiza buffers de al menos `ancho` x `alto`. Si hay que crecer,
+    /// crece con margen (un cuarto mas) para que el siguiente paso de un
+    /// zoom no vuelva a reasignar. Encoger lo hace `compactar`, al acabar
+    /// el gesto: durante el gesto, encoger cada fotograma es tan caro como
+    /// crecer.
+    pub fn asegurar(&self, ancho: u32, alto: u32) -> Result<(), ErrorRender> {
+        let (aw, ah) = self.asignado.get();
+        if ancho <= aw && alto <= ah {
+            return Ok(());
+        }
+        let nw = if ancho > aw {
+            (ancho + ancho / 4).min(16_384)
+        } else {
+            aw
+        };
+        let nh = if alto > ah {
+            (alto + alto / 4).min(16_384)
+        } else {
+            ah
+        };
+        self.redimensionar(nw, nh)
+    }
+
+    /// Devuelve los buffers al tamano justo si estan muy sobrados (mas del
+    /// doble en alguna dimension). Para el final de un gesto. Devuelve si
+    /// los toco: entonces el contenido se perdio y hay que repintar.
+    pub fn compactar(&self, ancho: u32, alto: u32) -> Result<bool, ErrorRender> {
+        let (aw, ah) = self.asignado.get();
+        if aw > ancho.max(1) * 2 || ah > alto.max(1) * 2 {
+            self.redimensionar(ancho, alto)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     /// El backbuffer ACTUAL envuelto como destino D2D. Hay que volver a
@@ -118,6 +159,7 @@ impl Superficie {
                 DXGI_SWAP_CHAIN_FLAG(0),
             )?
         };
+        self.asignado.set((ancho.max(1), alto.max(1)));
         Ok(())
     }
 

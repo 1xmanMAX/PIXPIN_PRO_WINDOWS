@@ -10,9 +10,18 @@ use std::path::{Path, PathBuf};
 
 use pixpin_codec::ImagenRgba;
 
-/// Ficha de archivo: alto fijo, ancho por defecto (px logicos, D32).
+/// Ficha de archivo: alto fijo, ancho minimo (px logicos, D32). El ancho
+/// crece con el nombre hasta el maximo; mas alla, el nombre termina en
+/// puntos suspensivos (el usuario vio nombres salirse de la tarjeta).
 pub const FICHA_ANCHO_LOGICO: u32 = 280;
+pub const FICHA_ANCHO_MAX_LOGICO: u32 = 560;
 pub const FICHA_ALTO_LOGICO: u32 = 72;
+/// Geometria interior de la ficha (px logicos): margen, lado del icono y
+/// cuerpos de los dos textos. La comparten el tamano natural y el pintado.
+pub const FICHA_MARGEN_LOGICO: f32 = 12.0;
+pub const FICHA_ICONO_LOGICO: f32 = 32.0;
+pub const FICHA_NOMBRE_LOGICO: f32 = 14.0;
+pub const FICHA_DETALLE_LOGICO: f32 = 12.0;
 /// La franja con el nombre bajo la miniatura de un documento (D71).
 pub const DOCUMENTO_FRANJA_LOGICA: u32 = 28;
 /// Tamano de un video mientras no se conocen sus metadatos (px logicos).
@@ -95,10 +104,18 @@ impl Contenido {
         matches!(self, Contenido::Archivo { .. })
     }
 
-    /// Si el pin se puede agrandar o encoger. La ficha y la nota no: su
-    /// tamano lo da el contenido, y estirarlas solo abria un hueco.
+    /// Si el pin se puede agrandar o encoger. La ficha no: su tamano lo da
+    /// el contenido, y estirarla solo abria un hueco.
     pub fn redimensionable(&self) -> bool {
-        !matches!(self, Contenido::Archivo { .. } | Contenido::Nota { .. })
+        !matches!(self, Contenido::Archivo { .. })
+    }
+
+    /// Si las esquinas redimensionan LIBREMENTE (cada eje por su lado) en
+    /// vez de en proporcion: la nota, cuyo texto se recoloca al ancho que le
+    /// den. La rueda y Ctrl + arrastrar la escalan en proporcion, texto
+    /// incluido (lo pidio el usuario).
+    pub fn redimension_libre(&self) -> bool {
+        matches!(self, Contenido::Nota { .. })
     }
 
     /// La imagen nativa, para el 100 % del doble clic. La nota y la ficha no
@@ -122,7 +139,7 @@ impl Contenido {
 pub fn tamano_natural(
     contenido: &Contenido,
     escala_por_cien: u32,
-    medidor: &dyn Fn(&str, f32, f32) -> (f32, f32),
+    medidor: &crate::markdown::Medidor,
 ) -> (u32, u32) {
     let escala = escala_por_cien as f32 / 100.0;
     let fis = |logico: u32| ((logico as f32) * escala).round() as u32;
@@ -132,19 +149,40 @@ pub fn tamano_natural(
         // en pantalla (D26/3.2).
         Contenido::Imagen(img) => (img.ancho.max(1), img.alto.max(1)),
 
+        // La nota se dispone como Markdown (titulos, listas, codigo...).
         Contenido::Nota { texto } => {
             let margen = NOTA_MARGEN_LOGICO * escala;
             let ancho_texto = fis(NOTA_ANCHO_MAX_LOGICO) as f32 - 2.0 * margen;
-            let (tw, th) = medidor(texto, NOTA_TEXTO_LOGICO * escala, ancho_texto);
-            let ancho = (tw + 2.0 * margen).round() as u32;
-            let alto = (th + 2.0 * margen).round() as u32;
+            let bloques = crate::markdown::analizar(texto);
+            let d = crate::markdown::disponer(
+                &bloques,
+                ancho_texto,
+                NOTA_TEXTO_LOGICO * escala,
+                medidor,
+            );
+            let ancho = (d.ancho + 2.0 * margen).round() as u32;
+            let alto = (d.alto + 2.0 * margen).round() as u32;
             (
                 ancho.clamp(fis(80), fis(NOTA_ANCHO_MAX_LOGICO)),
                 alto.clamp(fis(40), fis(NOTA_ALTO_MAX_LOGICO)),
             )
         }
 
-        Contenido::Archivo { .. } => (fis(FICHA_ANCHO_LOGICO), fis(FICHA_ALTO_LOGICO)),
+        // La ficha crece a lo ancho con el nombre (o el detalle), hasta un
+        // tope; el pintado recorta con puntos suspensivos lo que no quepa.
+        Contenido::Archivo {
+            nombre, detalle, ..
+        } => {
+            let margen = FICHA_MARGEN_LOGICO * escala;
+            let icono = FICHA_ICONO_LOGICO * escala;
+            let (wn, _) = medidor(nombre, FICHA_NOMBRE_LOGICO * escala, f32::MAX, &[]);
+            let (wd, _) = medidor(detalle, FICHA_DETALLE_LOGICO * escala, f32::MAX, &[]);
+            let ancho = (margen + icono + margen + wn.max(wd) + margen).ceil() as u32;
+            (
+                ancho.clamp(fis(FICHA_ANCHO_LOGICO), fis(FICHA_ANCHO_MAX_LOGICO)),
+                fis(FICHA_ALTO_LOGICO),
+            )
+        }
 
         // Como una imagen: el video es una imagen en movimiento (D71). Sin
         // tamano conocido, el provisional.
@@ -193,7 +231,7 @@ mod pruebas {
     /// Medidor de mentira: cada caracter ocupa medio cuerpo de ancho y el
     /// texto se parte al llegar al ancho maximo. Determinista, que es lo
     /// unico que se le pide.
-    fn medidor(texto: &str, tam: f32, ancho_max: f32) -> (f32, f32) {
+    fn medidor(texto: &str, tam: f32, ancho_max: f32, _: &[pixpin_render::Tramo]) -> (f32, f32) {
         let ancho_char = tam * 0.5;
         let por_linea = (ancho_max / ancho_char).floor().max(1.0);
         let n = texto.chars().count() as f32;

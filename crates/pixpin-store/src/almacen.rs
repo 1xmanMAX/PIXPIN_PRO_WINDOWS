@@ -32,6 +32,15 @@ pub struct PinGuardado {
     pub alto: u32,
     /// DPI del monitor donde vivia, para restaurar con sentido (spec 5.2).
     pub escala_por_cien: u32,
+    /// Zoom del texto de una nota (100 = el tamano con el que nacio). La
+    /// rueda y Ctrl + arrastrar lo cambian; estirar la caja por la esquina
+    /// no. Los demas tipos lo ignoran. Ausente en indices viejos: 100.
+    #[serde(default = "cien")]
+    pub zoom_por_cien: u32,
+}
+
+fn cien() -> u32 {
+    100
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -415,6 +424,7 @@ mod pruebas {
             ancho: 300,
             alto: 150,
             escala_por_cien: 150,
+            zoom_por_cien: 100,
         }
     }
 

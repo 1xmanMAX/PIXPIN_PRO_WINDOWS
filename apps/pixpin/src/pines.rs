@@ -169,13 +169,14 @@ impl Pines {
         })
     }
 
-    fn guardado_desde(region: Rect, escala: u32) -> PinGuardado {
+    fn guardado_desde(region: Rect, escala: u32, zoom_por_cien: u32) -> PinGuardado {
         PinGuardado {
             x: region.x,
             y: region.y,
             ancho: region.ancho,
             alto: region.alto,
             escala_por_cien: escala,
+            zoom_por_cien,
         }
     }
 
@@ -200,9 +201,9 @@ impl Pines {
             self.ritmo_video.unwrap_or(16),
             Box::new(move |cambio| {
                 let resultado = match cambio {
-                    CambioPin::Movido(r) | CambioPin::Redimensionado(r) => almacen
+                    CambioPin::Movido(r, zoom) | CambioPin::Redimensionado(r, zoom) => almacen
                         .borrow_mut()
-                        .actualizar_pin(id, Some(Pines::guardado_desde(r, escala))),
+                        .actualizar_pin(id, Some(Pines::guardado_desde(r, escala, zoom))),
                     CambioPin::Cerrado => {
                         cerrados.borrow_mut().push(id);
                         pixpin_shell::despertar(hwnd_app);
@@ -268,7 +269,11 @@ impl Pines {
         let id = self
             .almacen
             .borrow_mut()
-            .guardar_imagen(&png, "recorte", Some(Pines::guardado_desde(region, escala)))
+            .guardar_imagen(
+                &png,
+                "recorte",
+                Some(Pines::guardado_desde(region, escala, 100)),
+            )
             .context("no se pudo guardar en el almacen")?;
         self.crear_ventana(id, Contenido::Imagen(imagen.clone()), region, escala)
     }
@@ -285,7 +290,7 @@ impl Pines {
             .guardar_nota(
                 texto,
                 "portapapeles",
-                Some(Pines::guardado_desde(region, monitor.escala_por_cien)),
+                Some(Pines::guardado_desde(region, monitor.escala_por_cien, 100)),
             )
             .context("no se pudo guardar la nota")?;
         self.crear_ventana(id, contenido, region, monitor.escala_por_cien)
@@ -377,8 +382,8 @@ impl Pines {
         };
         // Conserva el ancho del pin; el alto se adapta al contenido nuevo.
         let motor = Rc::clone(&self.motor);
-        let (nw, nh) = tamano_natural(&contenido, escala, &|t, tam, max| {
-            motor.medir_texto(t, tam, max)
+        let (nw, nh) = tamano_natural(&contenido, escala, &|t, tam, max, tramos| {
+            motor.medir_parrafo(t, tam, max, tramos)
         });
         let alto = if contenido.solo_ancho() {
             // La ficha tiene alto fijo: el contenido manda, no el ancho.
@@ -414,7 +419,7 @@ impl Pines {
             .borrow_mut()
             .guardar_archivo(
                 ruta,
-                Some(Pines::guardado_desde(region, monitor.escala_por_cien)),
+                Some(Pines::guardado_desde(region, monitor.escala_por_cien, 100)),
             )
             .context("no se pudo guardar la referencia")?;
         let hecho = self.crear_ventana(id, contenido, region, monitor.escala_por_cien);
@@ -439,7 +444,7 @@ impl Pines {
             .guardar_imagen(
                 &png,
                 "portapapeles",
-                Some(Pines::guardado_desde(region, monitor.escala_por_cien)),
+                Some(Pines::guardado_desde(region, monitor.escala_por_cien, 100)),
             )
             .context("no se pudo guardar en el almacen")?;
         self.crear_ventana(id, contenido, region, monitor.escala_por_cien)
@@ -449,9 +454,11 @@ impl Pines {
     /// del cursor, encogido al 80 % del area de trabajo si no cabe.
     fn region_centrada(&self, contenido: &Contenido, monitor: &Monitor) -> Rect {
         let motor = Rc::clone(&self.motor);
-        let (mut w, mut h) = tamano_natural(contenido, monitor.escala_por_cien, &|t, tam, max| {
-            motor.medir_texto(t, tam, max)
-        });
+        let (mut w, mut h) = tamano_natural(
+            contenido,
+            monitor.escala_por_cien,
+            &|t, tam, max, tramos| motor.medir_parrafo(t, tam, max, tramos),
+        );
 
         let tope_w = (monitor.area_trabajo.ancho as f32 * 0.8) as u32;
         let tope_h = (monitor.area_trabajo.alto as f32 * 0.8) as u32;
@@ -567,7 +574,15 @@ impl Pines {
                 },
             };
             match self.crear_ventana(id, contenido, rect, escala) {
-                Ok(()) => restaurados += 1,
+                Ok(()) => {
+                    restaurados += 1;
+                    // El zoom del texto de una nota vuelve con ella.
+                    if guardado.zoom_por_cien != 100 {
+                        if let Some(pin) = self.vivos.get(&id) {
+                            pin.poner_zoom_por_cien(guardado.zoom_por_cien);
+                        }
+                    }
+                }
                 Err(e) => tracing::warn!(?e, id, "no se pudo restaurar el pin"),
             }
         }
@@ -879,15 +894,20 @@ impl Pines {
         let Some(pin) = self.vivos.get(&id) else {
             return Ok(());
         };
-        // La ficha y la nota no se redimensionan, tampoco con la rueda.
+        // La ficha no se redimensiona, tampoco con la rueda.
         if !pin.redimensionable() {
             return Ok(());
         }
-        let r = pin.rect_contenido();
+        // Desde el DESTINO en curso, no desde el fotograma intermedio: una
+        // rueda que sigue girando encadena pasos y la animacion los sigue
+        // sin saltos (el usuario los veia «de salto en salto»).
+        let r = pin.rect_objetivo();
         if r.ancho == 0 || r.alto == 0 {
             return Ok(());
         }
-        let paso = if delta > 0 { 1.1 } else { 1.0 / 1.1 };
+        // Proporcional al giro: una rueda fina (tactil) da deltas pequenos
+        // y pasos pequenos; una muesca entera, el 10 %.
+        let paso = 1.1f32.powf(delta as f32 / 120.0);
         // Se escala desde el CENTRO: crecer desde la esquina hace que el pin
         // se escape hacia abajo a la derecha con cada giro de rueda.
         // El tope es el mismo que el del zoom por arrastre: la ventana se
@@ -901,14 +921,15 @@ impl Pines {
             ancho,
             alto,
         };
-        pin.poner_rect(nuevo);
+        let zoom = pin.zoom_objetivo_por_cien(nuevo);
+        pin.escalar_animado(nuevo);
         self.almacen
             .borrow_mut()
             // Con la escala REAL del pin: guardar 100 en un monitor al 150 %
             // hacia que el pin volviera 1,5 veces mas grande tras reiniciar.
             .actualizar_pin(
                 id,
-                Some(Pines::guardado_desde(nuevo, pin.escala_por_cien())),
+                Some(Pines::guardado_desde(nuevo, pin.escala_por_cien(), zoom)),
             )
             .ok();
         Ok(())
