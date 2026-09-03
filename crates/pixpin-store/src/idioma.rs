@@ -189,8 +189,8 @@ mod pruebas {
         let es = Catalogo::nuevo(Idioma::Espanol);
         let en = Catalogo::nuevo(Idioma::Ingles);
 
-        assert_eq!(es.t("bandeja-salir"), "Salir");
-        assert_eq!(en.t("bandeja-salir"), "Exit");
+        assert_eq!(es.t("comando-salir"), "Salir");
+        assert_eq!(en.t("comando-salir"), "Quit");
         // El nombre del producto no se traduce.
         assert_eq!(es.t("app-nombre"), "PixPin Max");
         assert_eq!(en.t("app-nombre"), "PixPin Max");

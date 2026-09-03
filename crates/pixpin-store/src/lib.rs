@@ -7,12 +7,14 @@
 
 pub mod ajustes;
 pub mod almacen;
+pub mod comandos;
 pub mod idioma;
 pub mod rutas;
 
 pub use ajustes::{
     Ajustes, Atajos, ErrorAjustes, FormatoColor, PreferenciaIdioma, cargar, guardar,
 };
+pub use comandos::{CATALOGO, Comando, Descriptor, Enlaces};
 pub use idioma::{Catalogo, Idioma, resolver_idioma};
 pub use rutas::{NOMBRE_AJUSTES, Ubicacion, resolver};
 

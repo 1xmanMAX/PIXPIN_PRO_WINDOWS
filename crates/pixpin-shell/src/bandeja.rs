@@ -17,16 +17,21 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{HSTRING, PCWSTR, Result as WinResult};
 
-use crate::ventana::{ID_MENU_AJUSTES, ID_MENU_CAPTURAR, ID_MENU_SALIR, WM_BANDEJA};
+use crate::ventana::WM_BANDEJA;
 
 /// Identificador del icono dentro de nuestra propia ventana. Solo hay uno.
 const ID_ICONO: u32 = 1;
 
 /// Textos del menu, ya traducidos por el catalogo Fluent.
 pub struct EtiquetasMenu {
-    pub capturar: String,
-    pub ajustes: String,
-    pub salir: String,
+    /// Las entradas del menu, cada una con el identificador que llegara en
+    /// `Evento::Menu` y su titulo ya traducido. Las monta quien tiene el
+    /// catalogo de comandos: la bandeja solo las pinta, y asi anadir una
+    /// funcion no obliga a tocar este crate.
+    pub acciones: Vec<(u32, String)>,
+    /// La ultima entrada va separada del resto: es la de cerrar, y no debe
+    /// pulsarse por inercia al buscar otra cosa.
+    pub aparte: Option<(u32, String)>,
     /// Titulo de la seccion de grupos ocultos, ya traducido.
     pub grupos_ocultos: String,
     /// Un grupo oculto: su identificador y la etiqueta ya montada
@@ -178,18 +183,14 @@ impl Bandeja {
             // todo este cierre; las cadenas se pasan como HSTRING, que
             // gestiona su propia memoria durante la llamada.
             unsafe {
-                AppendMenuW(
-                    menu,
-                    MF_STRING,
-                    ID_MENU_CAPTURAR as usize,
-                    &HSTRING::from(etiquetas.capturar.as_str()),
-                )?;
-                AppendMenuW(
-                    menu,
-                    MF_STRING,
-                    ID_MENU_AJUSTES as usize,
-                    &HSTRING::from(etiquetas.ajustes.as_str()),
-                )?;
+                for (id, titulo) in &etiquetas.acciones {
+                    AppendMenuW(
+                        menu,
+                        MF_STRING,
+                        *id as usize,
+                        &HSTRING::from(titulo.as_str()),
+                    )?;
+                }
                 // Los grupos ocultos, si los hay: es la UNICA via de vuelta
                 // para unos pines que ya no estan en pantalla (D24).
                 if !etiquetas.ocultos.is_empty() {
@@ -212,13 +213,15 @@ impl Bandeja {
                     )?;
                 }
 
-                AppendMenuW(menu, MF_SEPARATOR, 0, None)?;
-                AppendMenuW(
-                    menu,
-                    MF_STRING,
-                    ID_MENU_SALIR as usize,
-                    &HSTRING::from(etiquetas.salir.as_str()),
-                )?;
+                if let Some((id, titulo)) = &etiquetas.aparte {
+                    AppendMenuW(menu, MF_SEPARATOR, 0, None)?;
+                    AppendMenuW(
+                        menu,
+                        MF_STRING,
+                        *id as usize,
+                        &HSTRING::from(titulo.as_str()),
+                    )?;
+                }
             }
 
             let mut punto = POINT::default();
