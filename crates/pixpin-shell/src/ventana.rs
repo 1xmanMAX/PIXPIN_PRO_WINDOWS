@@ -41,6 +41,20 @@ pub fn despertar(hwnd: HWND) {
     }
 }
 
+/// Mensaje propio del gancho de raton (`gestos.rs`): Alt + boton pulsado
+/// en cualquier sitio de la pantalla. wParam lleva el boton, lParam el
+/// punto en pixeles fisicos (x en la palabra baja, y en la alta).
+pub const WM_GESTO: u32 = WM_APP + 3;
+
+/// El boton con el que arranco un gesto con Alt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BotonGesto {
+    /// Alt + izquierdo: seleccionar y copiar directo.
+    Izquierdo,
+    /// Alt + derecho: seleccionar y pinear directo.
+    Derecho,
+}
+
 /// Identificadores de los elementos del menu de la bandeja.
 pub const ID_MENU_CAPTURAR: u32 = 1;
 pub const ID_MENU_AJUSTES: u32 = 2;
@@ -65,6 +79,12 @@ pub enum Evento {
     Despertar,
     /// Clic izquierdo en el icono de la bandeja.
     IconoPulsado,
+    /// Alt + boton pulsado en la pantalla (gancho de raton): abrir la
+    /// captura ya con el arrastre en marcha desde `punto` (fisico).
+    Gesto {
+        boton: BotonGesto,
+        punto: pixpin_geom::Punto,
+    },
 }
 
 /// Que hacer despues de atender un evento.
@@ -240,6 +260,21 @@ extern "system" fn procedimiento(
         // la bandeja (tarea futura) debe revisar esto si cambia la version
         // notificada.
         WM_DESPERTAR => Some(Evento::Despertar),
+        WM_GESTO => {
+            let boton = if wparam.0 == 0 {
+                BotonGesto::Izquierdo
+            } else {
+                BotonGesto::Derecho
+            };
+            // Las coordenadas van en dos palabras de 16 bits con signo: un
+            // monitor a la izquierda del principal tiene x negativa.
+            let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
+            let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
+            Some(Evento::Gesto {
+                boton,
+                punto: pixpin_geom::Punto { x, y },
+            })
+        }
         WM_BANDEJA if (lparam.0 as u32) == WM_LBUTTONUP => Some(Evento::IconoPulsado),
         WM_DESTROY => {
             // SAFETY: llamada sin argumentos que solo encola WM_QUIT en la

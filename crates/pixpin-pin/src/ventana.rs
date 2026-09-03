@@ -96,6 +96,18 @@ pub struct LupaPin {
     pub destino: Rect,
 }
 
+/// El cursor mientras se anota, segun la herramienta. Lo decide el gestor
+/// (que conoce la herramienta); la ventana solo lo ensena. Sin esto el
+/// cursor se quedaba en las cuatro flechas de mover, que es lo que el
+/// usuario vio.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CursorAnotacion {
+    #[default]
+    Cruz,
+    Texto,
+    Flecha,
+}
+
 /// Identificador del temporizador que agrupa el guardado tras una rafaga de
 /// flechas, y su retardo (spec 5.2: 300 ms tras el ultimo cambio).
 const ID_TEMPORIZADOR_GUARDADO: usize = 1;
@@ -209,6 +221,9 @@ struct PinInterno {
     /// La lupa, mientras la herramienta activa sea la lupa. No es un
     /// elemento: no se guarda (D52).
     lupa: Option<LupaPin>,
+    /// El cursor que toca mientras se anota; lo pone el gestor al cambiar de
+    /// herramienta.
+    cursor_anotacion: CursorAnotacion,
     /// El reproductor, solo en un pin de video (D63). Si no pudo crearse,
     /// `video_fallido` avisa al gestor en el primer tick (D72).
     video: Option<Reproductor>,
@@ -290,7 +305,9 @@ impl Pin {
             _ => (rect_contenido.ancho, rect_contenido.alto),
         };
 
-        let estado = if contenido.solo_ancho() {
+        let estado = if !contenido.redimensionable() {
+            EstadoPin::nuevo_fijo(rect_contenido, escala_por_cien)
+        } else if contenido.solo_ancho() {
             EstadoPin::nuevo_solo_ancho(rect_contenido, escala_por_cien)
         } else {
             EstadoPin::nuevo(rect_contenido, escala_por_cien)
@@ -326,6 +343,7 @@ impl Pin {
             anotaciones: Vec::new(),
             anotando: false,
             lupa: None,
+            cursor_anotacion: CursorAnotacion::Cruz,
             video,
             video_fallido,
             ritmo_video_ms,
@@ -493,6 +511,29 @@ impl Pin {
                 pintar(i);
             }
         }
+    }
+
+    /// El cursor mientras se anota. Ademas de guardarlo, lo aplica ya si el
+    /// raton esta sobre el pin: sin eso el cambio se veria solo al mover.
+    pub fn poner_cursor_anotacion(&self, cursor: CursorAnotacion) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.cursor_anotacion = cursor;
+            // SAFETY: un mensaje sincrono a la propia ventana; Windows lo
+            // ignora si el raton no esta encima.
+            unsafe {
+                let _ = SendMessageW(
+                    self.hwnd,
+                    WM_SETCURSOR,
+                    Some(WPARAM(self.hwnd.0 as usize)),
+                    Some(LPARAM(HTCLIENT as isize)),
+                );
+            }
+        }
+    }
+
+    /// Si el pin acepta redimension (la ficha y la nota no).
+    pub fn redimensionable(&self) -> bool {
+        interno_de(self.hwnd).is_some_and(|i| !i.estado.es_fijo())
     }
 
     /// Entrega las etiquetas del menu, ya traducidas. Hasta que llegan, el
@@ -865,6 +906,9 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
             pintar(i);
         }
         EfectoPin::AlternarTamano => {
+            if i.estado.es_fijo() {
+                return;
+            }
             let actual = i.estado.rect();
             let (nw, nh) = i.imagen_nativa;
             let al_natural = actual.ancho == nw && actual.alto == nh;
@@ -1229,8 +1273,17 @@ extern "system" fn procedimiento_pin(
             LRESULT(0)
         }
         WM_SETCURSOR => {
-            let diagonal = interno_de(hwnd)
+            let id = interno_de(hwnd)
                 .map(|i| {
+                    if i.anotando {
+                        // Anotando no se mueve ni se redimensiona: el cursor
+                        // es el de la herramienta.
+                        return match i.cursor_anotacion {
+                            CursorAnotacion::Cruz => IDC_CROSS,
+                            CursorAnotacion::Texto => IDC_IBEAM,
+                            CursorAnotacion::Flecha => IDC_ARROW,
+                        };
+                    }
                     // La posicion del cursor en pantalla, preguntada aqui:
                     // WM_SETCURSOR no trae coordenadas utiles.
                     let mut p = windows::Win32::Foundation::POINT::default();
@@ -1238,10 +1291,13 @@ extern "system" fn procedimiento_pin(
                     unsafe {
                         let _ = GetCursorPos(&mut p);
                     }
-                    i.estado.sobre_esquina(Punto { x: p.x, y: p.y })
+                    if i.estado.sobre_esquina(Punto { x: p.x, y: p.y }) {
+                        IDC_SIZENWSE
+                    } else {
+                        IDC_SIZEALL
+                    }
                 })
-                .unwrap_or(false);
-            let id = if diagonal { IDC_SIZENWSE } else { IDC_SIZEALL };
+                .unwrap_or(IDC_SIZEALL);
             // SAFETY: cursores del sistema, llamadas sin precondiciones.
             unsafe {
                 if let Ok(c) = LoadCursorW(None, id) {
@@ -1257,6 +1313,28 @@ extern "system" fn procedimiento_pin(
             }
             if let Some(i) = interno_de(hwnd) {
                 pintar(i);
+            }
+            LRESULT(0)
+        }
+        WM_GETMINMAXINFO => {
+            // Windows limita por defecto el tamano de una ventana al de la
+            // pantalla. Al agrandar un pin mas alla, SetWindowPos aplicaba
+            // la posicion pero recortaba el tamano: el pin "se escapaba"
+            // hacia arriba y a la izquierda sin crecer, y su superficie,
+            // creada con el tamano pedido, quedaba mas grande que la
+            // ventana, con la sombra cortada por abajo y por la derecha.
+            // SAFETY: durante WM_GETMINMAXINFO, lparam apunta a un
+            // MINMAXINFO valido que el sistema espera que se rellene.
+            unsafe {
+                let info = lparam.0 as *mut MINMAXINFO;
+                if !info.is_null() {
+                    let tope = windows::Win32::Foundation::POINT {
+                        x: 32_000,
+                        y: 32_000,
+                    };
+                    (*info).ptMaxTrackSize = tope;
+                    (*info).ptMaxSize = tope;
+                }
             }
             LRESULT(0)
         }

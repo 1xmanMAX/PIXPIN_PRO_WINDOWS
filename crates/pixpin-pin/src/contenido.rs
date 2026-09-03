@@ -95,6 +95,12 @@ impl Contenido {
         matches!(self, Contenido::Archivo { .. })
     }
 
+    /// Si el pin se puede agrandar o encoger. La ficha y la nota no: su
+    /// tamano lo da el contenido, y estirarlas solo abria un hueco.
+    pub fn redimensionable(&self) -> bool {
+        !matches!(self, Contenido::Archivo { .. } | Contenido::Nota { .. })
+    }
+
     /// La imagen nativa, para el 100 % del doble clic. La nota y la ficha no
     /// tienen "tamano original" de pixeles.
     pub fn imagen(&self) -> Option<&ImagenRgba> {

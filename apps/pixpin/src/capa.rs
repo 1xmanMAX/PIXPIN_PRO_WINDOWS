@@ -18,7 +18,7 @@ use pixpin_geom::{Monitor, Punto, Rect};
 use pixpin_motor2d::{Escena, Orden, Punto2};
 use pixpin_nivel::Nivel;
 use pixpin_render::{Color, MotorRender, RectF, Superficie};
-use pixpin_shell::overlay::{MSG_DESPIERTA, VentanaOverlay};
+use pixpin_shell::overlay::{FormaCursorWin, MSG_DESPIERTA, VentanaOverlay};
 use pixpin_ui::{
     Anotador, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, Herramienta, Lupa,
     TeclaAnotador,
@@ -126,6 +126,8 @@ impl CapaViva {
     }
 
     pub fn mostrar(&self) {
+        self.ventana
+            .poner_cursor(cursor_de(self.anotador.herramienta()));
         self.ventana.mostrar();
         self.ventana.enfocar();
         self.pintar();
@@ -278,6 +280,10 @@ impl CapaViva {
     fn anotar(&mut self, evento: EventoAnotador) {
         let efecto = self.anotador.procesar(evento);
         self.aplicar(efecto);
+        // El cursor sigue a la herramienta (lo pidio el usuario): cruz para
+        // dibujar, barra para el texto, flecha para la mano.
+        self.ventana
+            .poner_cursor(cursor_de(self.anotador.herramienta()));
     }
 
     /// Aplica un efecto de la maquina. Devuelve `false` si pide salir.
@@ -490,6 +496,16 @@ const VK_CONTROL: u32 = 0x11;
 /// Espacio alterna entre dibujar y dejar pasar los clics: es la tecla mas
 /// grande del teclado y la unica que se acierta sin mirar mientras dibujas.
 const VK_SPACE: u32 = 0x20;
+
+/// El cursor de cada herramienta: cruz para dibujar, barra para escribir,
+/// flecha para la mano (seleccionar y mover).
+fn cursor_de(h: Herramienta) -> FormaCursorWin {
+    match h {
+        Herramienta::Mano => FormaCursorWin::Flecha,
+        Herramienta::Texto => FormaCursorWin::Texto,
+        _ => FormaCursorWin::Cruz,
+    }
+}
 
 /// Abre la capa sobre el monitor principal, viva o congelada, y bombea sus
 /// eventos hasta que el usuario la cierra. Devuelve la imagen del dibujo si

@@ -60,8 +60,8 @@ use overlay::{AccionFinal, ModoConfirmacion, Recursos, TextosBarra, ejecutar_ove
 use pines::Pines;
 use pixpin_nivel::{Nivel, Preferencia};
 use pixpin_shell::{
-    Bandeja, Continuar, EtiquetasMenu, Evento, VentanaMensajes, adquirir_instancia_unica, arranque,
-    atajos, entorno,
+    Bandeja, BotonGesto, Continuar, EtiquetasMenu, Evento, VentanaMensajes,
+    adquirir_instancia_unica, arranque, atajos, entorno,
 };
 use pixpin_store::ajustes::PreferenciaNivel;
 use pixpin_store::{Almacen, Catalogo, Ubicacion, ajustes, idioma, rutas};
@@ -191,17 +191,37 @@ fn arrancar(
     let bandeja = Bandeja::nueva(ventana.handle(), &textos.t("app-nombre"))
         .context("no se pudo añadir el icono de bandeja")?;
 
-    let peticiones = [
+    // Tres funciones no tienen atajo salvo que el TOML se lo de (D81): la
+    // region con barra (va por la bandeja o por Alt + boton), el
+    // cuentagotas y la anotacion congelada.
+    let peticiones: Vec<(u32, pixpin_shell::Atajo)> = [
         (atajos::ID_REGION, config.atajos.region),
-        (atajos::ID_COPIAR, config.atajos.copiar),
-        (atajos::ID_SCROLL, config.atajos.scroll),
+        (atajos::ID_COPIAR, Some(config.atajos.copiar)),
+        (atajos::ID_SCROLL, Some(config.atajos.scroll)),
         (atajos::ID_CUENTAGOTAS, config.atajos.cuentagotas),
-        (atajos::ID_PIN, config.atajos.pin),
-        (atajos::ID_PORTAPAPELES, config.atajos.portapapeles),
-        (atajos::ID_ANOTAR, config.atajos.anotar),
+        (atajos::ID_PIN, Some(config.atajos.pin)),
+        (atajos::ID_PORTAPAPELES, Some(config.atajos.portapapeles)),
+        (atajos::ID_ANOTAR, Some(config.atajos.anotar)),
         (atajos::ID_ANOTAR_CONGELADA, config.atajos.anotar_congelada),
-    ];
+    ]
+    .into_iter()
+    .filter_map(|(id, atajo)| atajo.map(|a| (id, a)))
+    .collect();
     let (_registrados, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
+    tracing::info!(
+        pedidos = peticiones.len(),
+        fallidos = fallidos.len(),
+        "atajos globales registrados"
+    );
+
+    // Los gestos con Alt (D81): Alt + izquierdo copia, Alt + derecho pinea.
+    let gancho = match pixpin_shell::GanchoRaton::instalar(ventana.handle()) {
+        Ok(g) => Some(g),
+        Err(e) => {
+            tracing::warn!(?e, "sin gancho de raton: los gestos con Alt no funcionaran");
+            None
+        }
+    };
     for (id, atajo) in &fallidos {
         // Se registra el problema pero no se aborta: otra aplicacion puede
         // tener ese atajo y el resto de PixPin Max sigue siendo util.
@@ -276,6 +296,33 @@ fn arrancar(
     }
 
     ventana.ejecutar(|evento| {
+        // Todo lo que abre el overlay de captura, en un sitio: los atajos,
+        // «Capturar» de la bandeja y los gestos con Alt (D81). El gesto
+        // trae el punto donde ya esta pulsado el boton: el overlay arranca
+        // con el arrastre en marcha desde ahi.
+        let modo_overlay: Option<(ModoConfirmacion, Option<pixpin_geom::Punto>)> = match evento {
+            Evento::Atajo(id) if id == atajos::ID_REGION => {
+                Some((ModoConfirmacion::ConBarra, None))
+            }
+            Evento::Atajo(id) if id == atajos::ID_PIN => Some((ModoConfirmacion::Pinear, None)),
+            Evento::Atajo(id) if id == atajos::ID_SCROLL => Some((ModoConfirmacion::Scroll, None)),
+            Evento::Atajo(id) if id == atajos::ID_CUENTAGOTAS => {
+                Some((ModoConfirmacion::Cuentagotas, None))
+            }
+            Evento::Atajo(id) if id == atajos::ID_COPIAR => {
+                Some((ModoConfirmacion::DirectoAlPortapapeles, None))
+            }
+            Evento::MenuCapturar => Some((ModoConfirmacion::ConBarra, None)),
+            Evento::Gesto {
+                boton: BotonGesto::Izquierdo,
+                punto,
+            } => Some((ModoConfirmacion::DirectoAlPortapapeles, Some(punto))),
+            Evento::Gesto {
+                boton: BotonGesto::Derecho,
+                punto,
+            } => Some((ModoConfirmacion::Pinear, Some(punto))),
+            _ => None,
+        };
         let seguir = match evento {
             Evento::MenuSalir => {
                 tracing::info!("salida pedida por el usuario");
@@ -294,24 +341,9 @@ fn arrancar(
                 }
                 Continuar::Si
             }
-            Evento::Atajo(id)
-                if id == atajos::ID_REGION
-                    || id == atajos::ID_COPIAR
-                    || id == atajos::ID_PIN
-                    || id == atajos::ID_SCROLL
-                    || id == atajos::ID_CUENTAGOTAS =>
-            {
-                let modo = if id == atajos::ID_REGION {
-                    ModoConfirmacion::ConBarra
-                } else if id == atajos::ID_PIN {
-                    ModoConfirmacion::Pinear
-                } else if id == atajos::ID_SCROLL {
-                    ModoConfirmacion::Scroll
-                } else if id == atajos::ID_CUENTAGOTAS {
-                    ModoConfirmacion::Cuentagotas
-                } else {
-                    ModoConfirmacion::DirectoAlPortapapeles
-                };
+            _ if modo_overlay.is_some() => {
+                let (modo, inicio) = modo_overlay.expect("comprobado en la guarda");
+                tracing::info!(?modo, ?inicio, "abrir captura");
                 let etiquetas_barra = TextosBarra {
                     copiar: textos.t("barra-copiar"),
                     guardar: textos.t("barra-guardar"),
@@ -324,11 +356,21 @@ fn arrancar(
                     ajustes::FormatoColor::Rgb => FormatoColorLupa::Rgb,
                     ajustes::FormatoColor::Hsl => FormatoColorLupa::Hsl,
                 };
+                // Con el overlay delante, un Alt+clic es del overlay: el
+                // gancho se aparta mientras tanto.
+                if let Some(g) = &gancho {
+                    g.suspender(true);
+                }
                 let accion = match &mut recursos_overlay {
                     Some(r) => Ok(r),
                     nada => Recursos::nuevos().map(|r| nada.insert(r)),
                 }
-                .and_then(|r| ejecutar_overlay(r, decision.nivel, modo, &etiquetas_barra, formato));
+                .and_then(|r| {
+                    ejecutar_overlay(r, decision.nivel, modo, &etiquetas_barra, formato, inicio)
+                });
+                if let Some(g) = &gancho {
+                    g.suspender(false);
+                }
                 let resultado = accion.and_then(|accion| match accion {
                     // La captura con scroll (D75/D77): el overlay ya esta
                     // oculto; ahora se recorre la region y la pagina cosida
@@ -404,7 +446,14 @@ fn arrancar(
                     Some(r) => Ok(r),
                     nada => Recursos::nuevos().map(|r| nada.insert(r)),
                 };
-                match listo.and_then(|r| capa::ejecutar_capa(r, modo, decision.nivel)) {
+                if let Some(g) = &gancho {
+                    g.suspender(true);
+                }
+                let capa_hecha = listo.and_then(|r| capa::ejecutar_capa(r, modo, decision.nivel));
+                if let Some(g) = &gancho {
+                    g.suspender(false);
+                }
+                match capa_hecha {
                     // D54: cerrar sin avisar tirando cinco minutos de
                     // anotaciones es el peor fallo posible aqui. Se pregunta
                     // con la capa ya cerrada, para que el cuadro no salga en
@@ -470,10 +519,9 @@ fn arrancar(
                 tracing::info!(id, "atajo pulsado, todavia sin accion");
                 Continuar::Si
             }
-            Evento::MenuCapturar => {
-                tracing::info!("capturar pedido desde el menu");
-                Continuar::Si
-            }
+            // Ya atendidos por la guarda `modo_overlay` de arriba; quedan
+            // solo para que el match sea exhaustivo.
+            Evento::MenuCapturar | Evento::Gesto { .. } => Continuar::Si,
             Evento::MenuAjustes => {
                 tracing::info!("ajustes pedidos desde el menu");
                 Continuar::Si
@@ -529,6 +577,7 @@ fn preparar_pines<'a>(
             textos.t("pin-no-encontrado"),
             textos_del_pin(textos),
             textos.t("pin-eliminar-confirmar"),
+            textos.t("pin-sin-codec"),
             hwnd_app,
             // Sin soporte de video en el dispositivo (D66) no hay reproductor:
             // los videos se ensenan como documento.

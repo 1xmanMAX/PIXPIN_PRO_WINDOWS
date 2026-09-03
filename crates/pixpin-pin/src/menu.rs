@@ -105,10 +105,13 @@ pub fn entradas_del_menu(
                 id: CMD_GUARDAR_COMO,
                 etiqueta: t.guardar_como.clone(),
             });
-            v.push(EntradaMenu::Accion {
-                id: CMD_TAMANO_ORIGINAL,
-                etiqueta: t.tamano_original.clone(),
-            });
+            // La nota no se redimensiona: «Tamaño original» no diria nada.
+            if contenido.redimensionable() {
+                v.push(EntradaMenu::Accion {
+                    id: CMD_TAMANO_ORIGINAL,
+                    etiqueta: t.tamano_original.clone(),
+                });
+            }
         }
     }
 
@@ -362,6 +365,17 @@ mod pruebas {
             !ids.contains(&CMD_ABRIR_UBICACION),
             "una imagen del almacen no tiene ubicacion que abrir"
         );
+    }
+
+    #[test]
+    fn una_nota_se_guarda_pero_no_tiene_tamano_original() {
+        // La nota no se redimensiona (la pidio el usuario): la entrada de
+        // «Tamaño original» solo confundiria.
+        let nota = Contenido::Nota { texto: "x".into() };
+        let v = entradas_del_menu(&nota, false, false, &textos());
+        let ids = ids(&v);
+        assert!(ids.contains(&CMD_GUARDAR_COMO));
+        assert!(!ids.contains(&CMD_TAMANO_ORIGINAL));
     }
 
     #[test]
