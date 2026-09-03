@@ -50,3 +50,4 @@ pin-reproducir = Play
 pin-pausar = Pause
 pin-sonido = Sound
 barra-todo = Select all
+pin-sin-codec = no video codec

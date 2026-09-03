@@ -12,6 +12,7 @@ pub mod bandeja;
 pub mod dialogo;
 pub mod entorno;
 pub mod entrada;
+pub mod gestos;
 pub mod guardar;
 pub mod hechos;
 pub mod instancia;
@@ -32,9 +33,10 @@ pub use entorno::{
     appdata, directorio_del_ejecutable, locale_del_sistema, posicion_del_cursor, tema_claro,
 };
 pub use entrada::{escape_pulsado, rueda_en};
+pub use gestos::{GanchoRaton, gesto_en_curso};
 pub use instancia::{ErrorInstanciaUnica, InstanciaUnica, adquirir_instancia_unica};
 pub use overlay::esperar_composicion;
 pub use ventana::{
-    Continuar, Evento, ID_MENU_AJUSTES, ID_MENU_CAPTURAR, ID_MENU_SALIR, VentanaMensajes,
-    WM_BANDEJA, despertar,
+    BotonGesto, Continuar, Evento, ID_MENU_AJUSTES, ID_MENU_CAPTURAR, ID_MENU_SALIR,
+    VentanaMensajes, WM_BANDEJA, WM_GESTO, despertar,
 };

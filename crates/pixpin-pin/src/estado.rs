@@ -52,6 +52,10 @@ pub struct EstadoPin {
     /// La ficha de archivo solo estira a lo ancho (spec 4.1): su alto lo
     /// manda el contenido, no el raton.
     solo_ancho: bool,
+    /// Sin redimension alguna: la ficha y la nota tienen el tamano que les
+    /// da su contenido, y estirarlas solo dejaba el texto donde estaba con
+    /// un hueco creciendo alrededor (lo encontro el usuario).
+    fijo: bool,
 }
 
 impl EstadoPin {
@@ -61,6 +65,7 @@ impl EstadoPin {
             escala_por_cien: escala_por_cien.max(100),
             gesto: Gesto::Ninguno,
             solo_ancho: false,
+            fijo: false,
         }
     }
 
@@ -70,6 +75,18 @@ impl EstadoPin {
             solo_ancho: true,
             ..Self::nuevo(rect, escala_por_cien)
         }
+    }
+
+    /// Como `nuevo`, pero sin redimension: solo se mueve.
+    pub fn nuevo_fijo(rect: Rect, escala_por_cien: u32) -> Self {
+        Self {
+            fijo: true,
+            ..Self::nuevo(rect, escala_por_cien)
+        }
+    }
+
+    pub fn es_fijo(&self) -> bool {
+        self.fijo
     }
 
     pub fn rect(&self) -> Rect {
@@ -94,7 +111,7 @@ impl EstadoPin {
 
     /// Para el cursor diagonal: el unico feedback de las esquinas (D23).
     pub fn sobre_esquina(&self, p: Punto) -> bool {
-        esquina_en(self.rect, p, self.zona()).is_some()
+        !self.fijo && esquina_en(self.rect, p, self.zona()).is_some()
     }
 
     pub fn procesar(&mut self, evento: EventoPin) -> EfectoPin {
@@ -102,7 +119,12 @@ impl EstadoPin {
             EventoPin::Escape => EfectoPin::Cerrar,
             EventoPin::DobleClic => EfectoPin::AlternarTamano,
             EventoPin::BotonPulsado(p) => {
-                self.gesto = match esquina_en(self.rect, p, self.zona()) {
+                let esquina = if self.fijo {
+                    None
+                } else {
+                    esquina_en(self.rect, p, self.zona())
+                };
+                self.gesto = match esquina {
                     Some(esquina) => Gesto::Redimensionando {
                         esquina,
                         origen: self.rect,

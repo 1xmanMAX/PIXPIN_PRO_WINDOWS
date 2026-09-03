@@ -27,6 +27,7 @@ pub use menu::{
 };
 pub use paleta::{Paleta, PintorPaleta};
 pub use ventana::{
-    CambioPin, ErrorPin, LupaPin, MARGEN_SOMBRA_LOGICO, Pin, contenido_desde_ventana, rect_ventana,
+    CambioPin, CursorAnotacion, ErrorPin, LupaPin, MARGEN_SOMBRA_LOGICO, Pin,
+    contenido_desde_ventana, rect_ventana,
 };
 pub use video::Reproductor;

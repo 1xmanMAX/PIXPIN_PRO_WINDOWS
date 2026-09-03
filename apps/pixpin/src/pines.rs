@@ -13,8 +13,8 @@ use pixpin_codec::{ImagenRgba, cargar, codificar_png};
 use pixpin_geom::{DisposicionMonitores, Monitor, Punto, Rect, recolocar_en_area};
 use pixpin_motor2d::Escena;
 use pixpin_pin::{
-    CambioPin, Contenido, LupaPin, Paleta, Pin, Presentacion, TextosPin, icono_de, miniatura_de,
-    presentacion_de, tamano_humano, tamano_natural,
+    CambioPin, Contenido, CursorAnotacion, LupaPin, Paleta, Pin, Presentacion, TextosPin, icono_de,
+    miniatura_de, presentacion_de, tamano_humano, tamano_natural,
 };
 use pixpin_render::MotorRender;
 use pixpin_store::{Almacen, ColorGrupo, PinGuardado, TipoEntrada};
@@ -42,6 +42,16 @@ fn rgb_de(color: ColorGrupo) -> (f32, f32, f32) {
 
 /// La ficha de un archivo: icono real, nombre y tamano, o el aviso de que
 /// la ruta ya no lleva a ninguna parte (D28).
+/// El cursor de cada herramienta dentro del pin: cruz para dibujar, barra
+/// para escribir, flecha para la mano.
+fn cursor_pin_de(h: Herramienta) -> CursorAnotacion {
+    match h {
+        Herramienta::Mano => CursorAnotacion::Flecha,
+        Herramienta::Texto => CursorAnotacion::Texto,
+        _ => CursorAnotacion::Cruz,
+    }
+}
+
 fn ficha_de(ruta: &Path, texto_no_encontrado: &str) -> Contenido {
     let nombre = ruta
         .file_name()
@@ -82,6 +92,9 @@ pub struct Pines {
     textos: TextosPin,
     /// El aviso antes de borrar del almacen, ya traducido.
     texto_confirmar_eliminar: String,
+    /// La coletilla del video que no se pudo reproducir, ya traducida: el
+    /// usuario vio un video parado y no supo por que.
+    texto_sin_codec: String,
     /// La ventana del bucle principal, para darle un toque cuando un pin
     /// deja algo pendiente que solo el gestor puede atender.
     hwnd_app: windows::Win32::Foundation::HWND,
@@ -133,6 +146,7 @@ impl Pines {
         texto_no_encontrado: String,
         textos: TextosPin,
         texto_confirmar_eliminar: String,
+        texto_sin_codec: String,
         hwnd_app: windows::Win32::Foundation::HWND,
         ritmo_video: Option<u32>,
     ) -> Result<Pines> {
@@ -148,6 +162,7 @@ impl Pines {
             texto_no_encontrado,
             textos,
             texto_confirmar_eliminar,
+            texto_sin_codec,
             hwnd_app,
             anotacion: None,
             ritmo_video,
@@ -340,14 +355,25 @@ impl Pines {
         };
         tracing::warn!(id, ruta = %ruta.display(), "video no reproducible; se ensena como documento o ficha");
         let contenido = match miniatura_de(&ruta, 1024) {
+            // El nombre lleva la coletilla «sin codec de video»: un video
+            // parado sin explicacion parece un fallo del programa.
             Some(vista) => Contenido::Documento {
-                nombre: ruta
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default(),
+                nombre: format!(
+                    "{} · {}",
+                    ruta.file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    self.texto_sin_codec
+                ),
                 vista,
             },
-            None => ficha_de(&ruta, &self.texto_no_encontrado),
+            None => {
+                let mut ficha = ficha_de(&ruta, &self.texto_no_encontrado);
+                if let Contenido::Archivo { detalle, .. } = &mut ficha {
+                    *detalle = format!("{detalle} · {}", self.texto_sin_codec);
+                }
+                ficha
+            }
         };
         // Conserva el ancho del pin; el alto se adapta al contenido nuevo.
         let motor = Rc::clone(&self.motor);
@@ -672,6 +698,7 @@ impl Pines {
         .context("no se pudo crear la paleta del pin")?;
 
         pin.poner_modo_anotacion(true);
+        pin.poner_cursor_anotacion(cursor_pin_de(anotador.herramienta()));
         pin.poner_anotaciones(pixpin_motor2d::ordenes_de_escena(&escena));
         self.anotacion = Some(Anotacion {
             id,
@@ -722,6 +749,10 @@ impl Pines {
             BotonCaja::Elegir(h) => {
                 self.anotar(id, EventoAnotador::CambiarHerramienta(h))?;
                 self.repintar_paleta();
+                // El cursor sigue a la herramienta (lo pidio el usuario).
+                if let Some(pin) = self.vivos.get(&id) {
+                    pin.poner_cursor_anotacion(cursor_pin_de(h));
+                }
             }
             BotonCaja::Deshacer => {
                 self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Deshacer))?
@@ -848,6 +879,10 @@ impl Pines {
         let Some(pin) = self.vivos.get(&id) else {
             return Ok(());
         };
+        // La ficha y la nota no se redimensionan, tampoco con la rueda.
+        if !pin.redimensionable() {
+            return Ok(());
+        }
         let r = pin.rect_contenido();
         if r.ancho == 0 || r.alto == 0 {
             return Ok(());

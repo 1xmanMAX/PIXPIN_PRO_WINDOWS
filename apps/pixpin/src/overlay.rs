@@ -264,6 +264,7 @@ pub fn ejecutar_overlay(
     modo: ModoConfirmacion,
     textos: &TextosBarra,
     formato_color: FormatoColorLupa,
+    inicio: Option<Punto>,
 ) -> Result<AccionFinal> {
     let t0 = Instant::now();
 
@@ -338,6 +339,42 @@ pub fn ejecutar_overlay(
         p.ventana().invalidar();
     }
 
+    // Gesto con Alt (D81): el boton ya esta pulsado desde `inicio`, antes
+    // de que el overlay existiera. Se toma la captura del raton y se
+    // reproduce el pulsado, y el overlay arranca ya trazando; al soltar se
+    // confirma solo. Si el boton se solto antes de llegar aqui (un clic sin
+    // arrastre), el overlay abre normal, en exploracion.
+    let gesto = inicio.is_some() && pixpin_shell::gesto_en_curso();
+    if let Some(p) = inicio.filter(|_| gesto) {
+        let pieza = piezas
+            .iter()
+            .position(|z| z.monitor().area.contiene(p))
+            .unwrap_or(0);
+        let hwnd0 = piezas[pieza].ventana().handle();
+        piezas[pieza].ventana().capturar_raton();
+        for evento in [
+            EventoOverlay::RatonMovido(p),
+            EventoOverlay::BotonPulsado(p),
+        ] {
+            procesar_evento(
+                hwnd0,
+                evento,
+                &mut estado,
+                &mut barra,
+                &mut muestra_color,
+                &mut piezas,
+                &uia,
+                dispositivo,
+                motor,
+                nivel,
+                modo,
+                textos,
+                formato_color,
+                gesto,
+            );
+        }
+    }
+
     // 4. El bucle modal. Las ventanas viven en `piezas`; el slice del
     //    contrato queda vacio porque el bombeo no filtra por ventana.
     bucle_modal(&[], |hwnd, evento| {
@@ -355,6 +392,7 @@ pub fn ejecutar_overlay(
             modo,
             textos,
             formato_color,
+            gesto,
         )
     });
 
@@ -439,6 +477,7 @@ fn procesar_evento(
     modo: ModoConfirmacion,
     textos: &TextosBarra,
     formato_color: FormatoColorLupa,
+    gesto: bool,
 ) -> Continuar {
     let invalidar_todas = |piezas: &[Pieza]| {
         for p in piezas {
@@ -528,7 +567,7 @@ fn procesar_evento(
                 }
             }
             let efecto = estado.procesar(EventoEntrada::BotonSoltado(p));
-            aplicar_efecto(
+            let seguir = aplicar_efecto(
                 efecto,
                 estado,
                 barra,
@@ -537,7 +576,24 @@ fn procesar_evento(
                 motor,
                 nivel,
                 modo,
-            )
+            );
+            // En un gesto con Alt (D81) soltar ya es confirmar: no hay
+            // segundo paso. Solo si el arrastre dejo una seleccion; un clic
+            // sin arrastre deja el overlay abierto para seleccionar a mano.
+            if seguir == Continuar::Si && gesto && estado.fase() == Fase::Lista {
+                let efecto = estado.procesar(EventoEntrada::Tecla(TeclaOverlay::Enter));
+                return aplicar_efecto(
+                    efecto,
+                    estado,
+                    barra,
+                    piezas,
+                    dispositivo,
+                    motor,
+                    nivel,
+                    modo,
+                );
+            }
+            seguir
         }
         EventoOverlay::Tecla { vk, shift, ctrl } => {
             // Ctrl+A: la pantalla entera bajo el cursor, lista para

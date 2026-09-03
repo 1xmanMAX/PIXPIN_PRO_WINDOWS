@@ -51,3 +51,4 @@ pin-reproducir = Reproducir
 pin-pausar = Pausar
 pin-sonido = Sonido
 barra-todo = Seleccionar todo
+pin-sin-codec = sin códec de vídeo

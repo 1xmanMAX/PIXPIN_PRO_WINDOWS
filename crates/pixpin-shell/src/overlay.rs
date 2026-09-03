@@ -87,6 +87,10 @@ pub enum FormaCursorWin {
     RedimEO,
     RedimNeSo,
     RedimNoSe,
+    /// La barra vertical de escribir (herramienta de texto).
+    Texto,
+    /// La flecha normal (seleccionar / deshacer).
+    Flecha,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -278,6 +282,15 @@ impl VentanaOverlay {
         }
     }
 
+    /// Toma la captura del raton como si el boton se hubiera pulsado sobre
+    /// el overlay. Para los gestos con Alt: el boton se pulso ANTES de que
+    /// el overlay existiera, y sin captura el arrastre se perderia al soltar
+    /// fuera de la ventana (o al soltar sin haberse movido nunca encima).
+    pub fn capturar_raton(&self) {
+        // SAFETY: SetCapture sobre ventana propia.
+        unsafe { SetCapture(self.hwnd) };
+    }
+
     pub fn poner_cursor(&self, f: FormaCursorWin) {
         CURSOR.with(|c| {
             let mut c = c.borrow_mut();
@@ -393,14 +406,17 @@ extern "system" fn procedimiento_overlay(
             encolar(EventoOverlay::Rueda(delta));
             LRESULT(0)
         }
-        WM_LBUTTONDOWN => {
+        // El boton derecho vale lo mismo que el izquierdo: el gesto de
+        // «Alt + derecho y arrastrar» pinea directo, y la seleccion que
+        // arranca con el derecho se termina con el derecho.
+        WM_LBUTTONDOWN | WM_RBUTTONDOWN => {
             // SAFETY: SetCapture sobre ventana propia: el arrastre no se
             // pierde al salir del borde.
             unsafe { SetCapture(hwnd) };
             encolar(EventoOverlay::BotonPulsado(punto(lparam)));
             LRESULT(0)
         }
-        WM_LBUTTONUP => {
+        WM_LBUTTONUP | WM_RBUTTONUP => {
             // SAFETY: libera la captura tomada arriba.
             unsafe {
                 let _ = ReleaseCapture();
@@ -470,6 +486,8 @@ extern "system" fn procedimiento_overlay(
                 FormaCursorWin::RedimEO => IDC_SIZEWE,
                 FormaCursorWin::RedimNeSo => IDC_SIZENESW,
                 FormaCursorWin::RedimNoSe => IDC_SIZENWSE,
+                FormaCursorWin::Texto => IDC_IBEAM,
+                FormaCursorWin::Flecha => IDC_ARROW,
             };
             // SAFETY: LoadCursorW de un cursor del sistema y SetCursor son
             // llamadas sin precondiciones sobre recursos compartidos.
