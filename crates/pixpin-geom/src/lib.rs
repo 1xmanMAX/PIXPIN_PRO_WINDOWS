@@ -9,6 +9,7 @@
 
 pub mod ajuste;
 pub mod monitores;
+pub mod parrafos;
 pub mod pin_geometria;
 pub mod punto;
 pub mod rect;
@@ -16,6 +17,7 @@ pub mod seleccion;
 
 pub use ajuste::{Candidato, resolver_ajuste};
 pub use monitores::{DisposicionMonitores, Monitor};
+pub use parrafos::{LineaTexto, a_texto, agrupar};
 pub use pin_geometria::{
     Esquina, esquina_en, iman_de_bordes, recolocar_en_area, redimension_libre,
     redimension_proporcional,

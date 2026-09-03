@@ -115,13 +115,13 @@ De `docs/investigacion/2026-09-03-quickview-y-excalidraw-guia.md` §1.
 - Modificar: `apps/pixpin/src/pines.rs`
 
 **Pasos**
-- [ ] Prueba: escalar anclado a un punto deja ese punto quieto.
-- [ ] Prueba: el controlador exponencial converge y es independiente de los fotogramas (mismo resultado con pasos de 8 ms y de 33 ms, dentro de tolerancia).
-- [ ] Prueba: el paso se acota entre 1/240 s y 50 ms.
-- [ ] Implementar el controlador puro.
-- [ ] Sustituir `Animacion` por el controlador; el destino se actualiza sin reiniciar.
-- [ ] La rueda pasa a anclar en el cursor (`WM_MOUSEWHEEL` trae coordenadas de pantalla).
-- [ ] Bandera de interacción con antirrebote de 150 ms: mientras dura, textura estirada y filtro barato; al parar, un repintado nítido.
+- [x] Prueba: escalar anclado a un punto deja ese punto quieto.
+- [x] Prueba: el controlador exponencial converge y es independiente de los fotogramas (mismo resultado con pasos de 8 ms y de 33 ms, dentro de tolerancia).
+- [x] Prueba: el paso se acota entre 1/240 s y 50 ms.
+- [x] Implementar el controlador puro (`pixpin-pin::zoom`).
+- [x] Sustituir `Animacion` por el controlador; el destino se actualiza sin reiniciar.
+- [x] La rueda pasa a anclar en el cursor (`WM_MOUSEWHEEL` trae coordenadas de pantalla).
+- [x] Bandera de interacción con antirrebote de 150 ms: mientras dura, textura estirada y filtro barato; al parar, un repintado nítido.
 - [ ] Filtro por escala: vecino más cercano en 1:1 exacto y en ampliación grande de imagen pequeña.
 - [ ] Puerta y fusión.
 
@@ -134,10 +134,10 @@ zoom encadenado no da saltos ni en el equipo suelo.
 
 Todos son filas nuevas del registro de P0.1 más una acción pequeña.
 
-- [ ] **P1.1 Restaurar el último pin cerrado.** El almacén ya conserva la entrada al cerrar (borrado lógico). Pila de cerrados en `Pines`; el comando reabre el último con su rect y su grupo. Prueba pura de la pila (tope, vaciado, no revive lo eliminado del almacén).
-- [ ] **P1.2 Cerrar todos los pines** y **P1.3 ocultar y mostrar todos**, sobre lo que ya existe por grupos.
+- [x] **P1.1 Restaurar el último pin cerrado.** El almacén ya conserva la entrada al cerrar (borrado lógico). Pila de cerrados en `Pines`; el comando reabre el último con su rect y su grupo. Prueba pura de la pila (tope, vaciado, no revive lo eliminado del almacén).
+- [x] **P1.2 Cerrar todos los pines** y **P1.3 ocultar y mostrar todos**, sobre lo que ya existe por grupos.
 - [ ] **P1.4 Paso de clics en un pin.** `WS_EX_TRANSPARENT | WS_EX_LAYERED` sobre la ventana del pin, igual que en la capa viva. Alterna por comando y por el menú del pin.
-- [ ] **P1.5 Poner encima la ventana bajo el ratón.** `WindowFromPoint` + `SetWindowPos(HWND_TOPMOST)`, con aviso de qué ventana se fijó. Vive en `pixpin-shell`.
+- [x] **P1.5 Poner encima la ventana bajo el ratón.** `WindowFromPoint` + `SetWindowPos(HWND_TOPMOST)`, con aviso de qué ventana se fijó. Vive en `pixpin-shell`.
 - [ ] **P1.6 Pinear lo seleccionado en el Explorador.** Por automatización de la Shell, sin tocar el portapapeles del usuario.
 - [ ] **P1.7 Silenciar los atajos un rato.** Estado en el bucle; los atajos globales se desregistran y se vuelven a registrar. Icono de bandeja distinto mientras dure.
 - [ ] **P1.8 Lista de programas a ignorar.** En el TOML; si la ventana en primer plano es de esa lista, los atajos no actúan.
@@ -164,13 +164,13 @@ conexión y no añade un solo byte al ejecutable.
 
 - [ ] **P4.1 Envoltorio** `pixpin-shell::ocr`, con la lista de idiomas instalados y degradación limpia si no hay ninguno.
 - [ ] **P4.2 Comando «reconocer texto»** sobre un pin o sobre una selección: copia el texto al portapapeles.
-- [ ] **P4.3 Agrupar en párrafos** por geometría de las cajas devueltas (puro y con pruebas), para que el texto copiado tenga saltos de línea con sentido.
+- [x] **P4.3 Agrupar en párrafos** por geometría de las cajas devueltas (puro y con pruebas), para que el texto copiado tenga saltos de línea con sentido.
 
 ## Fase P5 — Grabar GIF
 
 Sin FFmpeg ni x264: un GIF es paleta de 256 colores más compresión LZW.
 
-- [ ] **P5.1 Codificador GIF** en `pixpin-codec` (puro, con pruebas): cuantización por octree o mediana, LZW, fotogramas con retardo y bucle.
+- [x] **P5.1 Codificador GIF** en `pixpin-codec` (puro, con pruebas): cuantización por octree o mediana, LZW, fotogramas con retardo y bucle.
 - [ ] **P5.2 Grabación de una región** con el bucle de captura que ya existe, tope de tiempo y de tamaño, y aviso de cuánto lleva.
 - [ ] **P5.3 Pausa y reanudación**, como el original.
 

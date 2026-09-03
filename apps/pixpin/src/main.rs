@@ -344,6 +344,49 @@ fn arrancar(
                 tracing::info!("salida pedida por el usuario");
                 Continuar::No
             }
+            // Los comandos de pines: los tres necesitan la disposicion de
+            // monitores para devolver cada uno a su sitio.
+            _ if matches!(
+                comando,
+                Some(
+                    comandos::Comando::AlternarPines
+                        | comandos::Comando::RestaurarUltimoPin
+                        | comandos::Comando::CerrarTodosLosPines
+                )
+            ) =>
+            {
+                match pines.as_mut() {
+                    None => tracing::info!("todavia no hay ningun pin"),
+                    Some(p) => match comando {
+                        Some(comandos::Comando::CerrarTodosLosPines) => {
+                            tracing::info!(cuantos = p.cerrar_todos(), "pines cerrados");
+                        }
+                        _ => match pixpin_capture::enumerar_monitores() {
+                            Err(e) => tracing::warn!(?e, "sin monitores"),
+                            Ok(d) if comando == Some(comandos::Comando::AlternarPines) => {
+                                let (ocultados, cuantos) = p.alternar_todos(&d);
+                                tracing::info!(ocultados, cuantos, "pines ocultados o mostrados");
+                            }
+                            Ok(d) => {
+                                let hecho = p.restaurar_ultimo_cerrado(&d);
+                                tracing::info!(hecho, "devolver el ultimo pin cerrado");
+                            }
+                        },
+                    },
+                }
+                Continuar::Si
+            }
+            _ if comando == Some(comandos::Comando::VentanaEncima) => {
+                match pixpin_shell::alternar_ventana_bajo_el_cursor() {
+                    pixpin_shell::Fijada::Cambiada { encima, titulo } => {
+                        tracing::info!(encima, %titulo, "ventana fijada encima o bajada")
+                    }
+                    pixpin_shell::Fijada::SinVentana => {
+                        tracing::info!("bajo el cursor no hay ventana que fijar")
+                    }
+                }
+                Continuar::Si
+            }
             _ if comando == Some(comandos::Comando::AbrirAjustes) => {
                 // La ventana de ajustes llega en P6; hasta entonces, al
                 // menos queda dicho donde esta el fichero que se edita.

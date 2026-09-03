@@ -73,7 +73,12 @@ pub enum CambioPin {
     PunteroMovido(Punto),
     PunteroSoltado(Punto),
     /// Rueda del raton. Positivo hacia arriba (D55).
-    RuedaGirada(i32),
+    /// La rueda, con el punto de pantalla donde estaba el cursor: el zoom
+    /// se ancla ahi, no en el centro del pin.
+    RuedaGirada {
+        delta: i32,
+        cursor: Punto,
+    },
     /// Escape mientras se anota: lo interpreta la maquina, no la ventana.
     EscapeAnotando,
     /// Un caracter escrito mientras se anota, ya compuesto (WM_CHAR, IME
@@ -122,36 +127,37 @@ const RETARDO_GUARDADO_MS: u32 = 300;
 const ID_TEMPORIZADOR_VIDEO: usize = 2;
 /// El zoom animado de la rueda: un tick por fotograma hasta llegar.
 const ID_TEMPORIZADOR_ZOOM: usize = 3;
+/// Un disparo tras el ultimo cambio de un gesto continuo (Ctrl + arrastrar),
+/// para dibujar nitido sin esperar a que el usuario suelte el boton.
+const ID_TEMPORIZADOR_REPOSO: usize = 4;
 const RITMO_ZOOM_MS: u32 = 16;
 /// Lo que dura ir de un tamano al siguiente. Corto: la rueda encadena
-/// muescas y una animacion larga iria por detras de la mano.
-const DURACION_ZOOM_MS: u32 = 140;
+/// muescas y una persecucion lenta iria por detras de la mano.
+///
+/// Cuanto se espera, tras el ultimo cambio, para redibujar nitido. Mientras
+/// se interactua basta con estirar la textura, que es gratis; el dibujo de
+/// verdad se paga UNA vez, al parar.
+const REPOSO_ZOOM_MS: u32 = 150;
 
-/// Un zoom animado en curso.
-struct Animacion {
-    desde: Rect,
-    hasta: Rect,
-    zoom_desde: f32,
-    zoom_hasta: f32,
-    inicio: std::time::Instant,
+/// Un zoom en curso: la persecucion del destino y lo que hace falta para
+/// llevar con ella el zoom del texto de una nota.
+struct ZoomEnCurso {
+    control: crate::zoom::ControlZoom,
+    /// Cuando fue el ultimo paso, para saber cuanto tiempo ha pasado de
+    /// verdad. La persecucion es independiente de los fotogramas justamente
+    /// porque mide el tiempo en vez de contar ticks.
+    ultimo_paso: std::time::Instant,
+    /// El zoom del texto y el ancho con los que empezo: el texto de una nota
+    /// crece en la misma proporcion que la caja, asi que basta una regla de
+    /// tres desde estos dos.
+    zoom_texto_inicial: f32,
+    ancho_inicial: u32,
 }
 
-impl Animacion {
-    /// Progreso 0..=1 con salida suave (cubica): arranca rapido y frena.
-    fn progreso(&self) -> f32 {
-        let t = self.inicio.elapsed().as_secs_f32() / (DURACION_ZOOM_MS as f32 / 1000.0);
-        let t = t.clamp(0.0, 1.0);
-        1.0 - (1.0 - t).powi(3)
-    }
-
-    fn rect_en(&self, t: f32) -> Rect {
-        let mezcla = |a: i32, b: i32| a + ((b - a) as f32 * t).round() as i32;
-        Rect {
-            x: mezcla(self.desde.x, self.hasta.x),
-            y: mezcla(self.desde.y, self.hasta.y),
-            ancho: mezcla(self.desde.ancho as i32, self.hasta.ancho as i32).max(1) as u32,
-            alto: mezcla(self.desde.alto as i32, self.hasta.alto as i32).max(1) as u32,
-        }
+impl ZoomEnCurso {
+    /// El zoom de texto que corresponde a un ancho dado.
+    fn zoom_texto_en(&self, ancho: u32) -> f32 {
+        self.zoom_texto_inicial * ancho as f32 / self.ancho_inicial.max(1) as f32
     }
 }
 /// Distancia a la que el borde del area de trabajo atrae al pin (px logicos).
@@ -330,7 +336,7 @@ struct PinInterno {
     /// Ctrl + arrastrar (en proporcion); estirar la caja por la esquina no.
     zoom_texto: f32,
     /// Zoom animado en curso (la rueda): de donde a donde y desde cuando.
-    animacion: Option<Animacion>,
+    zoom: Option<ZoomEnCurso>,
     /// El rect de contenido con el que se pinto la superficie por ultima
     /// vez. Mientras dura una animacion, la superficie sigue teniendo ese
     /// dibujo y el compositor lo estira; de aqui sale la transformada.
@@ -466,7 +472,7 @@ impl Pin {
             lupa: None,
             cursor_anotacion: CursorAnotacion::Cruz,
             zoom_texto: 1.0,
-            animacion: None,
+            zoom: None,
             base_pintado: Cell::new(rect_contenido),
             hwnd,
             video,
@@ -532,42 +538,49 @@ impl Pin {
     /// por el mismo camino desde la maquina de estado.
     pub fn escalar(&self, contenido: Rect) {
         if let Some(i) = interno_de(self.hwnd) {
-            i.animacion = None;
+            i.zoom = None;
             i.estado.poner_rect(contenido);
         }
         aplicar(self.hwnd, EfectoPin::Escalar(contenido));
     }
 
-    /// Como `escalar`, pero animado: el pin va de donde esta a `contenido`
-    /// en unos fotogramas (la rueda, para que no vaya a saltos). Una rueda
-    /// que sigue girando encadena desde el destino, no desde el fotograma
-    /// intermedio.
-    pub fn escalar_animado(&self, contenido: Rect) {
+    /// Como `escalar`, pero persiguiendo el destino en vez de saltar a el
+    /// (la rueda). Volver a llamarlo con otro destino NO reinicia nada: la
+    /// persecucion sigue desde donde iba, que es lo que hace que encadenar
+    /// muescas salga continuo.
+    pub fn escalar_persiguiendo(&self, contenido: Rect) {
         let Some(i) = interno_de(self.hwnd) else {
             return;
         };
-        let desde = i.estado.rect();
-        i.animacion = Some(Animacion {
-            desde,
-            hasta: contenido,
-            zoom_desde: i.zoom_texto,
-            zoom_hasta: i.zoom_texto * contenido.ancho as f32 / desde.ancho.max(1) as f32,
-            inicio: std::time::Instant::now(),
-        });
-        // SAFETY: temporizador sobre ventana propia; se mata al terminar.
+        match i.zoom.as_mut() {
+            Some(z) => z.control.pedir(contenido),
+            None => {
+                let actual = i.estado.rect();
+                let mut control = crate::zoom::ControlZoom::nuevo(actual);
+                control.pedir(contenido);
+                i.zoom = Some(ZoomEnCurso {
+                    control,
+                    ultimo_paso: std::time::Instant::now(),
+                    zoom_texto_inicial: i.zoom_texto,
+                    ancho_inicial: actual.ancho,
+                });
+            }
+        }
+        // SAFETY: temporizador sobre ventana propia; se mata al llegar.
         unsafe {
             SetTimer(Some(self.hwnd), ID_TEMPORIZADOR_ZOOM, RITMO_ZOOM_MS, None);
         }
     }
 
-    /// El rect al que va el pin: el destino de la animacion si la hay, o
-    /// el actual. La rueda encadena pasos desde aqui.
+    /// El rect al que va el pin: el destino que persigue si hay uno, o el
+    /// actual. La rueda encadena pasos desde aqui y no desde el fotograma
+    /// intermedio, que iria por detras de la mano.
     pub fn rect_objetivo(&self) -> Rect {
         match interno_de(self.hwnd) {
             Some(i) => i
-                .animacion
+                .zoom
                 .as_ref()
-                .map(|a| a.hasta)
+                .map(|z| z.control.objetivo())
                 .unwrap_or(i.estado.rect()),
             None => self.rect_contenido(),
         }
@@ -590,8 +603,11 @@ impl Pin {
         if !matches!(i.contenido, Contenido::Nota { .. }) {
             return 100;
         }
-        let (zoom, rect) = match i.animacion.as_ref() {
-            Some(a) => (a.zoom_hasta, a.hasta),
+        let (zoom, rect) = match i.zoom.as_ref() {
+            Some(z) => {
+                let objetivo = z.control.objetivo();
+                (z.zoom_texto_en(objetivo.ancho), objetivo)
+            }
             None => (i.zoom_texto, i.estado.rect()),
         };
         (zoom * 100.0 * hasta.ancho as f32 / rect.ancho.max(1) as f32)
@@ -1311,8 +1327,14 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
             i.estado.poner_rect(contenido);
             // Escalar es proporcional, asi que estirar la textura da
             // exactamente el fotograma que tocaria dibujar, y gratis. El
-            // dibujo nitido llega al soltar.
+            // dibujo nitido llega al soltar o, si el usuario se queda quieto
+            // a media faena, cuando pare: cada cambio rearma el temporizador,
+            // asi que solo dispara cuando de verdad ha dejado de moverse.
             estirar_hasta(hwnd, i, contenido);
+            // SAFETY: temporizador sobre ventana propia; se mata al disparar.
+            unsafe {
+                SetTimer(Some(hwnd), ID_TEMPORIZADOR_REPOSO, REPOSO_ZOOM_MS, None);
+            }
         }
         EfectoPin::Redimensionar(contenido) => {
             let t0 = std::time::Instant::now();
@@ -1505,7 +1527,14 @@ extern "system" fn procedimiento_pin(
             if let Some(i) = interno_de(hwnd) {
                 // La palabra alta del wparam trae el giro, con signo.
                 let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as i32;
-                (i.al_cambiar)(CambioPin::RuedaGirada(delta));
+                // A diferencia del resto de mensajes del raton, WM_MOUSEWHEEL
+                // trae el punto en coordenadas de PANTALLA, que es justo lo
+                // que necesita el zoom anclado: no hay que convertir nada.
+                let cursor = Punto {
+                    x: (lparam.0 & 0xFFFF) as i16 as i32,
+                    y: ((lparam.0 >> 16) & 0xFFFF) as i16 as i32,
+                };
+                (i.al_cambiar)(CambioPin::RuedaGirada { delta, cursor });
             }
             LRESULT(0)
         }
@@ -1748,31 +1777,35 @@ extern "system" fn procedimiento_pin(
         }
         WM_TIMER if wparam.0 == ID_TEMPORIZADOR_ZOOM => {
             if let Some(i) = interno_de(hwnd) {
-                let Some(a) = i.animacion.as_ref() else {
+                let Some(z) = i.zoom.as_mut() else {
                     // SAFETY: mata el temporizador propio.
                     unsafe {
                         let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_ZOOM);
                     }
                     return LRESULT(0);
                 };
-                let t = a.progreso();
-                let rect = a.rect_en(t);
-                let zoom = a.zoom_desde + (a.zoom_hasta - a.zoom_desde) * t;
-                let fin = t >= 1.0;
+                // El tiempo REAL transcurrido, no el ritmo nominal del
+                // temporizador: Windows entrega los WM_TIMER cuando puede, y
+                // contar ticks haria que el zoom fuera mas lento cuanto mas
+                // cargado estuviera el equipo. El controlador ya acota el
+                // paso por su cuenta.
+                let dt = z.ultimo_paso.elapsed().as_secs_f32();
+                z.ultimo_paso = std::time::Instant::now();
+                let rect = z.control.paso(dt);
+                let zoom_texto = z.zoom_texto_en(rect.ancho);
+                let fin = z.control.terminado();
+
                 if matches!(i.contenido, Contenido::Nota { .. }) {
-                    i.zoom_texto = zoom;
+                    i.zoom_texto = zoom_texto;
                 }
                 i.estado.poner_rect(rect);
                 if fin {
-                    // El ultimo fotograma se dibuja de verdad: nitido y con
-                    // la superficie a su tamano.
+                    // Ya se ha llegado: se dibuja de verdad, nitido y con la
+                    // superficie a su tamano. Es el unico dibujo de todo el
+                    // zoom; los fotogramas intermedios solo estiran.
                     aplicar(hwnd, EfectoPin::Redimensionar(rect));
-                } else {
-                    estirar_hasta(hwnd, i, rect);
-                }
-                if fin {
                     if let Some(i) = interno_de(hwnd) {
-                        i.animacion = None;
+                        i.zoom = None;
                         let v = ventana_visible(rect, i.escala_por_cien);
                         if i.superficie.compactar(v.ancho, v.alto).is_ok_and(|h| h) {
                             pintar(i);
@@ -1782,6 +1815,22 @@ extern "system" fn procedimiento_pin(
                     unsafe {
                         let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_ZOOM);
                     }
+                } else {
+                    estirar_hasta(hwnd, i, rect);
+                }
+            }
+            LRESULT(0)
+        }
+        WM_TIMER if wparam.0 == ID_TEMPORIZADOR_REPOSO => {
+            // SAFETY: de un disparo; se mata siempre al entrar.
+            unsafe {
+                let _ = KillTimer(Some(hwnd), ID_TEMPORIZADOR_REPOSO);
+            }
+            if let Some(i) = interno_de(hwnd) {
+                // Si hay una persecucion en marcha, ella se encarga del
+                // dibujo nitido al llegar: repintar aqui seria trabajo doble.
+                if i.zoom.is_none() && i.superficie.esta_estirada() {
+                    aplicar(hwnd, EfectoPin::Redimensionar(i.estado.rect()));
                 }
             }
             LRESULT(0)
@@ -1851,7 +1900,7 @@ extern "system" fn procedimiento_pin(
                 // estirada por el compositor: repintar aqui tiraria por
                 // tierra justo el ahorro que hace fluido el zoom. El
                 // fotograma final ya repinta nitido.
-                if i.animacion.is_none() {
+                if i.zoom.is_none() {
                     pintar(i);
                 }
             }

@@ -44,6 +44,14 @@ pub enum Comando {
     Anotar,
     /// Anotar sobre una captura estatica de la pantalla.
     AnotarCongelada,
+    /// Cerrar todos los pines de la pantalla.
+    CerrarTodosLosPines,
+    /// Quitar los pines de la pantalla, o devolverlos si ya no estan.
+    AlternarPines,
+    /// Devolver a la pantalla el ultimo pin que se cerro.
+    RestaurarUltimoPin,
+    /// Fijar encima de todo la ventana que haya bajo el raton, o bajarla.
+    VentanaEncima,
     /// Abrir la ventana de ajustes.
     AbrirAjustes,
     /// Cerrar el programa.
@@ -122,6 +130,38 @@ pub const CATALOGO: &[Descriptor] = &[
         comando: Comando::AnotarCongelada,
         nombre: "anotar-congelada",
         clave_titulo: "comando-anotar-congelada",
+        atajo_por_defecto: None,
+        en_bandeja: false,
+    },
+    // Los tres de pines nacen SIN atajo a proposito: son de uso ocasional y
+    // meter combinaciones nuevas por defecto es la forma mas rapida de
+    // pisar las de otro programa. Quien los use a diario se los pone en el
+    // fichero de ajustes.
+    Descriptor {
+        comando: Comando::AlternarPines,
+        nombre: "alternar-pines",
+        clave_titulo: "comando-alternar-pines",
+        atajo_por_defecto: None,
+        en_bandeja: true,
+    },
+    Descriptor {
+        comando: Comando::RestaurarUltimoPin,
+        nombre: "restaurar-ultimo-pin",
+        clave_titulo: "comando-restaurar-ultimo-pin",
+        atajo_por_defecto: None,
+        en_bandeja: true,
+    },
+    Descriptor {
+        comando: Comando::CerrarTodosLosPines,
+        nombre: "cerrar-todos-los-pines",
+        clave_titulo: "comando-cerrar-todos-los-pines",
+        atajo_por_defecto: None,
+        en_bandeja: true,
+    },
+    Descriptor {
+        comando: Comando::VentanaEncima,
+        nombre: "ventana-encima",
+        clave_titulo: "comando-ventana-encima",
         atajo_por_defecto: None,
         en_bandeja: false,
     },
@@ -308,6 +348,10 @@ mod pruebas {
         Comando::PinearPortapapeles,
         Comando::Anotar,
         Comando::AnotarCongelada,
+        Comando::AlternarPines,
+        Comando::RestaurarUltimoPin,
+        Comando::CerrarTodosLosPines,
+        Comando::VentanaEncima,
         Comando::AbrirAjustes,
         Comando::Salir,
     ];
