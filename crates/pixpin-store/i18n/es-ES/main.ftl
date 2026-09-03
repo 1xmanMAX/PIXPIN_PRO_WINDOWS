@@ -59,3 +59,7 @@ comando-anotar = Anotar la pantalla
 comando-anotar-congelada = Anotar una captura de la pantalla
 comando-abrir-ajustes = Ajustes
 comando-salir = Salir
+comando-alternar-pines = Ocultar o mostrar los pines
+comando-restaurar-ultimo-pin = Devolver el último pin cerrado
+comando-cerrar-todos-los-pines = Cerrar todos los pines
+comando-ventana-encima = Fijar encima la ventana bajo el ratón

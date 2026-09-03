@@ -10,6 +10,7 @@ pub mod atajo;
 pub mod atajos;
 pub mod bandeja;
 pub mod dialogo;
+pub mod encima;
 pub mod entorno;
 pub mod entrada;
 pub mod gestos;
@@ -29,6 +30,7 @@ pub use atajos::{
 };
 pub use bandeja::{Bandeja, EtiquetasMenu};
 pub use dialogo::{confirmar_destructivo, mostrar_error_fatal, preguntar};
+pub use encima::{Fijada, alternar_ventana_bajo_el_cursor};
 pub use entorno::{
     appdata, directorio_del_ejecutable, locale_del_sistema, posicion_del_cursor, tema_claro,
 };

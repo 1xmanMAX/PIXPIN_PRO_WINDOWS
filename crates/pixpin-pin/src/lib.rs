@@ -15,6 +15,7 @@ pub mod menu;
 pub mod paleta;
 pub mod ventana;
 pub mod video;
+pub mod zoom;
 
 pub use contenido::{
     Contenido, DOCUMENTO_FRANJA_LOGICA, FICHA_ALTO_LOGICO, FICHA_ANCHO_LOGICO, Presentacion,
@@ -34,3 +35,4 @@ pub use ventana::{
     contenido_desde_ventana, rect_ventana,
 };
 pub use video::Reproductor;
+pub use zoom::{ControlZoom, escalar_anclado};

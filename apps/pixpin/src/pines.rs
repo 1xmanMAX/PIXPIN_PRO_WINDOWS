@@ -52,6 +52,18 @@ fn cursor_pin_de(h: Herramienta) -> CursorAnotacion {
     }
 }
 
+/// Donde esta guardado un pin ahora mismo, si el almacen lo da por abierto.
+/// Se consulta justo antes de cerrarlo: al marcarlo cerrado esa posicion se
+/// pierde, y sin ella no se puede devolver a su sitio.
+fn posicion_guardada(almacen: &Rc<RefCell<Almacen>>, id: u64) -> Option<PinGuardado> {
+    almacen
+        .borrow()
+        .entradas()
+        .iter()
+        .find(|e| e.id == id)
+        .and_then(|e| e.pin)
+}
+
 fn ficha_de(ruta: &Path, texto_no_encontrado: &str) -> Contenido {
     let nombre = ruta
         .file_name()
@@ -79,6 +91,11 @@ pub struct Pines {
     vivos: HashMap<u64, Pin>,
     /// Ids cerrados desde los callbacks; purgar() los drena en el bucle.
     cerrados: Rc<RefCell<Vec<u64>>>,
+    /// Pila de los que se han cerrado, con la posicion que tenian: cerrar
+    /// marca el pin como cerrado en el almacen y con ello se pierde donde
+    /// estaba, asi que hay que guardarlo ANTES para poder devolverlo a su
+    /// sitio. El ultimo cerrado es el primero en volver.
+    reabrir: Rc<RefCell<Vec<(u64, PinGuardado)>>>,
     /// Peticiones del menu y del teclado que el pin no puede resolver.
     /// Se atienden en `purgar`, ya fuera del callback: dentro, el almacen
     /// esta prestado y volver a pedirlo entraria en panico.
@@ -168,6 +185,7 @@ impl Pines {
             motor,
             vivos: HashMap::new(),
             cerrados: Rc::new(RefCell::new(Vec::new())),
+            reabrir: Rc::new(RefCell::new(Vec::new())),
             pedidos: Rc::new(RefCell::new(Vec::new())),
             tema_claro: pixpin_shell::entorno::tema_claro(),
             texto_no_encontrado,
@@ -200,6 +218,7 @@ impl Pines {
     ) -> Result<()> {
         let almacen = Rc::clone(&self.almacen);
         let cerrados = Rc::clone(&self.cerrados);
+        let reabrir = Rc::clone(&self.reabrir);
         let pedidos = Rc::clone(&self.pedidos);
         let hwnd_app = self.hwnd_app;
         let pin = Pin::nuevo(
@@ -217,6 +236,13 @@ impl Pines {
                         .actualizar_pin(id, Some(Pines::guardado_desde(r, escala, zoom))),
                     CambioPin::Cerrado => {
                         cerrados.borrow_mut().push(id);
+                        // Apuntar DONDE estaba antes de marcarlo cerrado:
+                        // marcarlo borra esa posicion del almacen, y sin
+                        // ella «restaurar el ultimo cerrado» no sabria
+                        // adonde devolverlo.
+                        if let Some(g) = posicion_guardada(&almacen, id) {
+                            reabrir.borrow_mut().push((id, g));
+                        }
                         pixpin_shell::despertar(hwnd_app);
                         almacen.borrow_mut().actualizar_pin(id, None)
                     }
@@ -637,13 +663,13 @@ impl Pines {
             CambioPin::PunteroPulsado(p) => self.anotar(id, EventoAnotador::Pulsar(a_punto2(p))),
             CambioPin::PunteroMovido(p) => self.anotar(id, EventoAnotador::Mover(a_punto2(p))),
             CambioPin::PunteroSoltado(p) => self.anotar(id, EventoAnotador::Soltar(a_punto2(p))),
-            CambioPin::RuedaGirada(delta) => {
+            CambioPin::RuedaGirada { delta, cursor } => {
                 // Anotando, la rueda cambia el grosor; si no, hace zoom del
                 // pin, que es lo que pidio el usuario (D55).
                 if self.anotacion.as_ref().is_some_and(|a| a.id == id) {
                     self.anotar(id, EventoAnotador::Rueda(delta))
                 } else {
-                    self.zoom(id, delta)
+                    self.zoom(id, delta, cursor)
                 }
             }
             CambioPin::EscapeAnotando => {
@@ -941,7 +967,7 @@ impl Pines {
     }
 
     /// Rueda sobre un pin que no se esta anotando: agranda o encoge (D55).
-    fn zoom(&mut self, id: u64, delta: i32) -> Result<()> {
+    fn zoom(&mut self, id: u64, delta: i32, cursor: Punto) -> Result<()> {
         let Some(pin) = self.vivos.get(&id) else {
             return Ok(());
         };
@@ -959,21 +985,20 @@ impl Pines {
         // Proporcional al giro: una rueda fina (tactil) da deltas pequenos
         // y pasos pequenos; una muesca entera, el 10 %.
         let paso = 1.1f32.powf(delta as f32 / 120.0);
-        // Se escala desde el CENTRO: crecer desde la esquina hace que el pin
-        // se escape hacia abajo a la derecha con cada giro de rueda.
+        // Anclado en el CURSOR, no en el centro: lo que el usuario esta
+        // mirando se queda bajo el puntero mientras crece todo lo demas. Con
+        // el centro, el detalle se le escapaba de debajo del raton.
         // El tope es el mismo que el del zoom por arrastre: la ventana se
         // recorta al escritorio, asi que un pin enorme no cuesta memoria.
-        let tope = pixpin_pin::MAXIMO_FISICO;
-        let ancho = ((r.ancho as f32 * paso).round() as u32).clamp(48, tope);
-        let alto = ((r.alto as f32 * paso).round() as u32).clamp(48, tope);
-        let nuevo = Rect {
-            x: r.x + (r.ancho as i32 - ancho as i32) / 2,
-            y: r.y + (r.alto as i32 - alto as i32) / 2,
-            ancho,
-            alto,
-        };
+        let nuevo = pixpin_pin::escalar_anclado(
+            r,
+            paso,
+            cursor,
+            pixpin_pin::MINIMO_LOGICO,
+            pixpin_pin::MAXIMO_FISICO,
+        );
         let zoom = pin.zoom_objetivo_por_cien(nuevo);
-        pin.escalar_animado(nuevo);
+        pin.escalar_persiguiendo(nuevo);
         self.almacen
             .borrow_mut()
             // Con la escala REAL del pin: guardar 100 en un monitor al 150 %
@@ -1167,6 +1192,79 @@ impl Pines {
             pin.poner_color(color.map(rgb_de));
         }
         Ok(())
+    }
+
+    /// Cierra todos los pines de la pantalla, dejandolos en el almacen y
+    /// apuntados para poder devolverlos uno a uno. Devuelve cuantos cerro.
+    pub fn cerrar_todos(&mut self) -> usize {
+        let ids: Vec<u64> = self.vivos.keys().copied().collect();
+        for id in &ids {
+            if let Some(g) = posicion_guardada(&self.almacen, *id) {
+                self.reabrir.borrow_mut().push((*id, g));
+            }
+            if let Err(e) = self.almacen.borrow_mut().actualizar_pin(*id, None) {
+                tracing::warn!(?e, id = *id, "no se pudo marcar el pin como cerrado");
+            }
+            self.vivos.remove(id);
+        }
+        ids.len()
+    }
+
+    /// Quita los pines de la pantalla SIN cerrarlos: el almacen los sigue
+    /// dando por abiertos, asi que `mostrar_todos` los devuelve enteros.
+    /// Es la diferencia con `cerrar_todos`, que si los cierra.
+    pub fn ocultar_todos(&mut self) -> usize {
+        let cuantos = self.vivos.len();
+        self.vivos.clear();
+        cuantos
+    }
+
+    /// Devuelve a la pantalla todo lo que el almacen da por abierto. Los
+    /// grupos ocultos siguen ocultos: para eso estan.
+    pub fn mostrar_todos(&mut self, disposicion: &DisposicionMonitores) -> usize {
+        self.restaurar(disposicion)
+    }
+
+    /// Un solo comando para las dos cosas, como en el original: si hay algo
+    /// en pantalla lo esconde, y si no, lo saca. Devuelve si escondio y
+    /// cuantos pines movio.
+    pub fn alternar_todos(&mut self, disposicion: &DisposicionMonitores) -> (bool, usize) {
+        if self.vivos.is_empty() {
+            (false, self.mostrar_todos(disposicion))
+        } else {
+            (true, self.ocultar_todos())
+        }
+    }
+
+    /// Devuelve el ultimo pin cerrado a donde estaba. `false` si no queda
+    /// ninguno por devolver o si su entrada ya no existe en el almacen.
+    pub fn restaurar_ultimo_cerrado(&mut self, disposicion: &DisposicionMonitores) -> bool {
+        loop {
+            // El `pop` va en su propia sentencia para soltar el prestamo de
+            // la pila antes de tocar el almacen y las ventanas: encadenarlo
+            // en el `while let` lo mantendria vivo todo el cuerpo.
+            let siguiente = self.reabrir.borrow_mut().pop();
+            let Some((id, guardado)) = siguiente else {
+                return false;
+            };
+            // Puede haberse eliminado del almacen despues de cerrarlo: eso
+            // es definitivo y no se deshace, asi que se pasa al siguiente.
+            let existe = self
+                .almacen
+                .borrow()
+                .entradas()
+                .iter()
+                .any(|e| e.id == id && e.pin.is_none());
+            if !existe {
+                continue;
+            }
+            if let Err(e) = self.almacen.borrow_mut().actualizar_pin(id, Some(guardado)) {
+                tracing::warn!(?e, id, "no se pudo devolver el pin al almacen");
+                continue;
+            }
+            self.restaurar(disposicion);
+            return self.vivos.contains_key(&id);
+        }
     }
 
     pub fn abiertos(&self) -> usize {
