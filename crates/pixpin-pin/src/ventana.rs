@@ -299,6 +299,9 @@ struct PinInterno {
     /// El bitmap solo existe si hay imagen que dibujar (imagen o icono de
     /// ficha); la nota se pinta entera con texto.
     bitmap: Option<ID2D1Bitmap1>,
+    /// El contenido tapa la tarjeta por completo (una captura opaca), asi
+    /// que no hace falta pintarla debajo.
+    tapa_la_tarjeta: bool,
     contenido: Contenido,
     tema_claro: bool,
     /// RGB del grupo, que tiñe la sombra (D24/D30). `None` = sin grupo,
@@ -328,6 +331,10 @@ struct PinInterno {
     zoom_texto: f32,
     /// Zoom animado en curso (la rueda): de donde a donde y desde cuando.
     animacion: Option<Animacion>,
+    /// El rect de contenido con el que se pinto la superficie por ultima
+    /// vez. Mientras dura una animacion, la superficie sigue teniendo ese
+    /// dibujo y el compositor lo estira; de aqui sale la transformada.
+    base_pintado: Cell<Rect>,
     /// El reproductor, solo en un pin de video (D63). Si no pudo crearse,
     /// `video_fallido` avisa al gestor en el primer tick (D72).
     video: Option<Reproductor>,
@@ -400,6 +407,13 @@ impl Pin {
             Some(img) => Some(motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles)?),
             None => None,
         };
+        // Una captura opaca cubre la tarjeta entera: pintarla debajo es un
+        // relleno del tamano del pin desperdiciado en cada fotograma. Se
+        // pregunta una sola vez, aqui.
+        let tapa_la_tarjeta = match &contenido {
+            Contenido::Imagen(img) => img.es_opaca(),
+            _ => false,
+        };
         let imagen_nativa = match &contenido {
             Contenido::Imagen(img) => (img.ancho, img.alto),
             Contenido::Documento { vista, .. } => (vista.ancho, vista.alto),
@@ -441,6 +455,7 @@ impl Pin {
             superficie,
             imagen_nativa,
             bitmap,
+            tapa_la_tarjeta,
             contenido,
             tema_claro,
             color_sombra: None,
@@ -452,6 +467,7 @@ impl Pin {
             cursor_anotacion: CursorAnotacion::Cruz,
             zoom_texto: 1.0,
             animacion: None,
+            base_pintado: Cell::new(rect_contenido),
             hwnd,
             video,
             video_fallido,
@@ -779,6 +795,42 @@ fn registrar_clase() {
 }
 
 /// Dibuja el fotograma completo del pin: sombra + imagen. Cero cromo (D23).
+/// Un fotograma intermedio de la animacion de zoom, SIN redibujar nada: la
+/// ventana toma su tamano nuevo y el compositor estira lo ya dibujado (la
+/// tecnica que usan los visores rapidos; redibujar el contenido en cada
+/// fotograma es lo que producia tirones en graficos integrados).
+///
+/// La superficie contiene el pin tal como estaba en `base_pintado`. El zoom
+/// lleva un punto `q` de aquel pin a `rect.origen + (q - base.origen) * s`.
+/// Pasando eso a coordenadas de la ventana nueva sale la transformada.
+fn estirar_hasta(hwnd: HWND, i: &PinInterno, rect: Rect) {
+    let base = i.base_pintado.get();
+    if base.ancho == 0 || base.alto == 0 {
+        return;
+    }
+    let base_ventana = ventana_visible(base, i.escala_por_cien);
+    let v = ventana_visible(rect, i.escala_por_cien);
+    // SAFETY: SetWindowPos sobre ventana propia. SWP_NOREDRAW evita el
+    // WM_PAINT que provocaria el crecimiento: no hay nada que repintar,
+    // el compositor ya ensena el contenido estirado.
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            v.x,
+            v.y,
+            v.ancho as i32,
+            v.alto as i32,
+            SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW,
+        );
+    }
+    let sx = rect.ancho as f32 / base.ancho as f32;
+    let sy = rect.alto as f32 / base.alto as f32;
+    let dx = rect.x as f32 + (base_ventana.x - base.x) as f32 * sx - v.x as f32;
+    let dy = rect.y as f32 + (base_ventana.y - base.y) as f32 * sy - v.y as f32;
+    i.superficie.estirar(sx, sy, dx, dy);
+}
+
 /// El zoom del texto en por ciento, para persistirlo (100 fuera de las
 /// notas: los demas contenidos no tienen zoom de texto).
 fn zoom_por_cien_de(i: &PinInterno) -> u32 {
@@ -800,6 +852,10 @@ fn pintar(i: &PinInterno) {
     let escala = i.escala_por_cien as f32 / 100.0;
     let m = MARGEN_SOMBRA_LOGICO as f32 * escala;
     let contenido = i.estado.rect();
+    // Se dibuja de verdad: fuera la transformada de estirado y esta pasa a
+    // ser la base desde la que estiraran los siguientes fotogramas.
+    i.superficie.dejar_de_estirar();
+    i.base_pintado.set(contenido);
     let (w, h) = (contenido.ancho as f32, contenido.alto as f32);
     let radio = 8.0 * escala;
     // Con la ventana recortada al escritorio, el contenido no empieza en el
@@ -819,23 +875,66 @@ fn pintar(i: &PinInterno) {
         // pin enfocado la lleva mas intensa y algo mas amplia.
         let (sr, sg, sb) = i.color_sombra.unwrap_or((0.0, 0.0, 0.0));
         let refuerzo = if i.enfocado { 1.7 } else { 1.0 };
-        for (paso, alfa) in [0.10f32, 0.08, 0.06, 0.045, 0.03, 0.02].iter().enumerate() {
-            let crece = (paso as f32 + 1.0) * 2.0 * escala * if i.enfocado { 1.25 } else { 1.0 };
-            p.rellenar_redondeado(
-                RectF {
-                    x: m - crece,
-                    y: m - crece + desplome,
-                    ancho: w + 2.0 * crece,
-                    alto: h + 2.0 * crece,
-                },
-                radio + crece,
-                Color {
-                    r: sr,
-                    g: sg,
-                    b: sb,
-                    a: (*alfa * refuerzo).min(1.0),
-                },
-            );
+        // Los seis aros se pintan SOLO en el anillo que rodea a la tarjeta:
+        // debajo de ella quedan tapados, y rellenarlos costaba seis veces el
+        // area del pin en cada fotograma. Con un pin a pantalla completa eso
+        // era el tiron que veia el usuario al hacer zoom. Las cuatro bandas
+        // son disjuntas (si se solaparan, el alfa se sumaria dos veces) y
+        // entre todas cubren lo que la tarjeta redondeada deja fuera.
+        let aros = |p: &pixpin_render::Pintor| {
+            for (paso, alfa) in [0.10f32, 0.08, 0.06, 0.045, 0.03, 0.02].iter().enumerate() {
+                let crece =
+                    (paso as f32 + 1.0) * 2.0 * escala * if i.enfocado { 1.25 } else { 1.0 };
+                p.rellenar_redondeado(
+                    RectF {
+                        x: m - crece,
+                        y: m - crece + desplome,
+                        ancho: w + 2.0 * crece,
+                        alto: h + 2.0 * crece,
+                    },
+                    radio + crece,
+                    Color {
+                        r: sr,
+                        g: sg,
+                        b: sb,
+                        a: (*alfa * refuerzo).min(1.0),
+                    },
+                );
+            }
+        };
+        // Arriba y abajo van a lo ancho y entran `radio` en la tarjeta: asi
+        // cubren sus cuatro esquinas redondeadas. Los lados van entre ambas.
+        let ancho_total = w + 2.0 * m;
+        let alto_banda = m + radio;
+        for banda in [
+            RectF {
+                x: 0.0,
+                y: 0.0,
+                ancho: ancho_total,
+                alto: alto_banda,
+            },
+            RectF {
+                x: 0.0,
+                y: m + h - radio,
+                ancho: ancho_total,
+                alto: alto_banda,
+            },
+            RectF {
+                x: 0.0,
+                y: alto_banda,
+                ancho: m,
+                alto: (h - 2.0 * radio).max(0.0),
+            },
+            RectF {
+                x: m + w,
+                y: alto_banda,
+                ancho: m,
+                alto: (h - 2.0 * radio).max(0.0),
+            },
+        ] {
+            if banda.ancho > 0.0 && banda.alto > 0.0 {
+                p.con_recorte(banda, aros);
+            }
         }
         // La tarjeta: blanca o negra segun el tema del sistema (D30). Bajo
         // una imagen opaca no se ve, pero es el lienzo de la nota y la
@@ -872,7 +971,9 @@ fn pintar(i: &PinInterno) {
             ancho: w,
             alto: h,
         };
-        p.rellenar_redondeado(caja, radio, lienzo);
+        if !i.tapa_la_tarjeta {
+            p.rellenar_redondeado(caja, radio, lienzo);
+        }
 
         match &i.contenido {
             // La imagen va sin recorte redondeado (simplificacion consciente
@@ -1208,7 +1309,10 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
                 i.zoom_texto = (i.zoom_texto * contenido.ancho as f32 / antes).clamp(0.05, 50.0);
             }
             i.estado.poner_rect(contenido);
-            aplicar(hwnd, EfectoPin::Redimensionar(contenido));
+            // Escalar es proporcional, asi que estirar la textura da
+            // exactamente el fotograma que tocaria dibujar, y gratis. El
+            // dibujo nitido llega al soltar.
+            estirar_hasta(hwnd, i, contenido);
         }
         EfectoPin::Redimensionar(contenido) => {
             let t0 = std::time::Instant::now();
@@ -1309,6 +1413,11 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
             if pegado != contenido {
                 i.estado.poner_rect(pegado);
                 aplicar(hwnd, EfectoPin::Mover(pegado));
+            }
+            // Si el gesto dejo la textura estirada (un zoom con Ctrl), al
+            // soltar se dibuja de verdad: es el fotograma que se queda.
+            if i.superficie.esta_estirada() {
+                aplicar(hwnd, EfectoPin::Redimensionar(pegado));
             }
             // Fin de gesto: la superficie vuelve a su tamano justo si el
             // gesto la dejo muy sobrada (histeresis del zoom).
@@ -1654,7 +1763,13 @@ extern "system" fn procedimiento_pin(
                     i.zoom_texto = zoom;
                 }
                 i.estado.poner_rect(rect);
-                aplicar(hwnd, EfectoPin::Redimensionar(rect));
+                if fin {
+                    // El ultimo fotograma se dibuja de verdad: nitido y con
+                    // la superficie a su tamano.
+                    aplicar(hwnd, EfectoPin::Redimensionar(rect));
+                } else {
+                    estirar_hasta(hwnd, i, rect);
+                }
                 if fin {
                     if let Some(i) = interno_de(hwnd) {
                         i.animacion = None;
@@ -1732,7 +1847,13 @@ extern "system" fn procedimiento_pin(
                 let _ = ValidateRect(Some(hwnd), None);
             }
             if let Some(i) = interno_de(hwnd) {
-                pintar(i);
+                // Durante una animacion de zoom lo que se ve es la textura
+                // estirada por el compositor: repintar aqui tiraria por
+                // tierra justo el ahorro que hace fluido el zoom. El
+                // fotograma final ya repinta nitido.
+                if i.animacion.is_none() {
+                    pintar(i);
+                }
             }
             LRESULT(0)
         }
