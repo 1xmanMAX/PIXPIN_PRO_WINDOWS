@@ -344,8 +344,15 @@ pub fn ejecutar_overlay(
     // reproduce el pulsado, y el overlay arranca ya trazando; al soltar se
     // confirma solo. Si el boton se solto antes de llegar aqui (un clic sin
     // arrastre), el overlay abre normal, en exploracion.
-    let gesto = inicio.is_some() && pixpin_shell::gesto_en_curso();
-    if let Some(p) = inicio.filter(|_| gesto) {
+    // Dos cosas distintas que antes iban en la misma bandera, y por eso el
+    // gesto acababa pidiendo Enter: que el overlay lo haya abierto un gesto,
+    // que es lo que decide si soltar confirma, y que el boton siga pulsado,
+    // que es lo que decide si hay que reproducir el arrastre. Lo segundo
+    // depende de un instante concreto y puede fallar; lo primero no.
+    let gesto = inicio.is_some();
+    let arrastrando =
+        gesto && (pixpin_shell::gesto_en_curso() || pixpin_shell::boton_del_raton_pulsado());
+    if let Some(p) = inicio.filter(|_| arrastrando) {
         let pieza = piezas
             .iter()
             .position(|z| z.monitor().area.contiene(p))

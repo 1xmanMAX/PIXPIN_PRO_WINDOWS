@@ -48,6 +48,19 @@ pub fn escape_pulsado() -> bool {
     unsafe { (GetAsyncKeyState(VK_ESCAPE.0 as i32) as u16 & 0x8000) != 0 }
 }
 
+/// Si algun boton principal del raton esta pulsado ahora mismo. El gancho
+/// de gestos se traga la pulsacion, pero el estado asincrono del sistema si
+/// la refleja, asi que sirve de segunda opinion cuando la bandera del
+/// gancho no basta.
+pub fn boton_del_raton_pulsado() -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_LBUTTON, VK_RBUTTON};
+    // SAFETY: consulta pura del estado de los botones.
+    unsafe {
+        (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0
+            || (GetAsyncKeyState(VK_RBUTTON.0 as i32) as u16 & 0x8000) != 0
+    }
+}
+
 /// Si estan pulsadas ahora mismo las mayusculas y Alt, en ese orden. Las
 /// consulta el anotador antes de cada evento de puntero: mayusculas
 /// restringe angulos y proporciones, y Alt duplica al arrastrar.
