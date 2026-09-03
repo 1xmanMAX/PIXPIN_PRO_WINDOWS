@@ -34,3 +34,6 @@ desktop.ini
 
 # Espacio de trabajo de la ejecucion por subagentes (borradores, informes)
 /.superpowers/
+
+# Material de referencia de terceros: no se distribuye con el proyecto.
+proyectos de referencia/
