@@ -890,8 +890,11 @@ impl Pines {
         let paso = if delta > 0 { 1.1 } else { 1.0 / 1.1 };
         // Se escala desde el CENTRO: crecer desde la esquina hace que el pin
         // se escape hacia abajo a la derecha con cada giro de rueda.
-        let ancho = ((r.ancho as f32 * paso).round() as u32).clamp(48, 8000);
-        let alto = ((r.alto as f32 * paso).round() as u32).clamp(48, 8000);
+        // El tope es el mismo que el del zoom por arrastre: la ventana se
+        // recorta al escritorio, asi que un pin enorme no cuesta memoria.
+        let tope = pixpin_pin::MAXIMO_FISICO;
+        let ancho = ((r.ancho as f32 * paso).round() as u32).clamp(48, tope);
+        let alto = ((r.alto as f32 * paso).round() as u32).clamp(48, tope);
         let nuevo = Rect {
             x: r.x + (r.ancho as i32 - ancho as i32) / 2,
             y: r.y + (r.alto as i32 - alto as i32) / 2,

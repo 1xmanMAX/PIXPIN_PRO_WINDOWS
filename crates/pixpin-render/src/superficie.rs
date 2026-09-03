@@ -15,11 +15,13 @@ use windows::Win32::Graphics::DirectComposition::{
     DCompositionCreateDevice, IDCompositionDevice, IDCompositionTarget, IDCompositionVisual,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC,
+    DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_UNKNOWN,
+    DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{
-    DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
-    DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIDevice, IDXGIFactory2, IDXGISwapChain1,
+    DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_CHAIN_FLAG,
+    DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, DXGI_USAGE_RENDER_TARGET_OUTPUT, IDXGIDevice, IDXGIFactory2,
+    IDXGISwapChain1,
 };
 use windows::core::Interface;
 
@@ -97,6 +99,26 @@ impl Superficie {
         // SAFETY: el indice 0 es siempre el backbuffer escribible actual.
         let textura: ID3D11Texture2D = unsafe { self.swapchain.GetBuffer(0)? };
         motor.destino_backbuffer(&textura)
+    }
+
+    /// Cambia el tamano de los buffers sin recrear la composicion. Mucho
+    /// mas barato que una `Superficie` nueva (el pin lo hace en cada paso
+    /// de un arrastre) y sin el riesgo de que la ventana se quede con la
+    /// superficie vieja si la nueva falla.
+    pub fn redimensionar(&self, ancho: u32, alto: u32) -> Result<(), ErrorRender> {
+        // SAFETY: ningun bitmap del backbuffer sigue vivo fuera de un
+        // fotograma (`empezar` lo envuelve de nuevo en cada uno), que es la
+        // condicion de ResizeBuffers.
+        unsafe {
+            self.swapchain.ResizeBuffers(
+                0,
+                ancho.max(1),
+                alto.max(1),
+                DXGI_FORMAT_UNKNOWN,
+                DXGI_SWAP_CHAIN_FLAG(0),
+            )?
+        };
+        Ok(())
     }
 
     pub fn presentar(&self) -> Result<(), ErrorRender> {

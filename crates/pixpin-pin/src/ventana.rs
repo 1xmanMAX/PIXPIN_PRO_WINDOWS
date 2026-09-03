@@ -187,8 +187,68 @@ pub fn contenido_desde_ventana(ventana: Rect, escala_por_cien: u32) -> Rect {
     }
 }
 
+/// El escritorio virtual (todos los monitores), en pixeles fisicos.
+fn escritorio_virtual() -> Rect {
+    // SAFETY: consultas puras de metricas del sistema.
+    unsafe {
+        Rect {
+            x: GetSystemMetrics(SM_XVIRTUALSCREEN),
+            y: GetSystemMetrics(SM_YVIRTUALSCREEN),
+            ancho: GetSystemMetrics(SM_CXVIRTUALSCREEN).max(1) as u32,
+            alto: GetSystemMetrics(SM_CYVIRTUALSCREEN).max(1) as u32,
+        }
+    }
+}
+
+/// La ventana REAL de un contenido: `rect_ventana` recortado al escritorio.
+///
+/// Un pin puede ser mas grande que la pantalla (agrandado con la rueda o
+/// con Ctrl + arrastrar). La ventana no lo acompaña: se queda con la parte
+/// visible y el contenido se pinta desplazado dentro de ella. Asi la
+/// superficie de dibujo nunca supera el escritorio, que es donde estaba el
+/// fallo que vio el usuario: la ventana crecia y el contenido dejaba de
+/// pintarse (la superficie no se podia crear tan grande) y parecia que el
+/// pin se desplazaba hacia arriba a la izquierda escondiendo la imagen.
+pub fn ventana_visible(contenido: Rect, escala_por_cien: u32) -> Rect {
+    recortar_al_escritorio(
+        rect_ventana(contenido, escala_por_cien),
+        escritorio_virtual(),
+    )
+}
+
+/// Parte pura de `ventana_visible`: recorta `ideal` al escritorio. Si no
+/// se tocan (un pin arrastrado fuera del todo), conserva la posicion y
+/// solo limita el tamano.
+pub fn recortar_al_escritorio(ideal: Rect, escritorio: Rect) -> Rect {
+    match ideal.interseccion(escritorio) {
+        Some(r) if r.ancho > 0 && r.alto > 0 => r,
+        _ => Rect {
+            x: ideal.x,
+            y: ideal.y,
+            ancho: ideal.ancho.min(escritorio.ancho),
+            alto: ideal.alto.min(escritorio.alto),
+        },
+    }
+}
+
+/// Donde empieza el contenido dentro de la ventana real, en pixeles de
+/// ventana. Sin recorte es el margen de sombra; con recorte, menos lo que
+/// quedo fuera. Se pregunta a la ventana de verdad para no llevar un
+/// segundo estado que pueda desincronizarse.
+fn origen_contenido(hwnd: HWND, contenido: Rect) -> (i32, i32) {
+    let mut r = RECT::default();
+    // SAFETY: GetWindowRect sobre ventana propia.
+    unsafe {
+        let _ = GetWindowRect(hwnd, &mut r);
+    }
+    (contenido.x - r.left, contenido.y - r.top)
+}
+
 /// Todo lo que el WndProc necesita, colgado de GWLP_USERDATA.
 struct PinInterno {
+    /// La propia ventana: el pintado necesita saber donde esta de verdad
+    /// para desplazar el contenido cuando la ventana esta recortada.
+    hwnd: HWND,
     estado: EstadoPin,
     escala_por_cien: u32,
     motor: Rc<MotorRender>,
@@ -261,7 +321,7 @@ impl Pin {
         al_cambiar: Box<dyn Fn(CambioPin)>,
     ) -> Result<Pin, ErrorPin> {
         REGISTRO.call_once(registrar_clase);
-        let ventana = rect_ventana(rect_contenido, escala_por_cien);
+        let ventana = ventana_visible(rect_contenido, escala_por_cien);
         // SAFETY: la clase quedo registrada en call_once; estilos constantes
         // documentados; modulo propio.
         let hwnd = unsafe {
@@ -344,6 +404,7 @@ impl Pin {
             anotando: false,
             lupa: None,
             cursor_anotacion: CursorAnotacion::Cruz,
+            hwnd,
             video,
             video_fallido,
             ritmo_video_ms,
@@ -472,7 +533,7 @@ impl Pin {
         let Some(i) = interno_de(self.hwnd) else {
             return;
         };
-        let m = (MARGEN_SOMBRA_LOGICO * i.escala_por_cien / 100) as i32;
+        let (ox, oy) = origen_contenido(self.hwnd, i.estado.rect());
         // SAFETY: contexto del IME de una ventana propia, tomado y devuelto
         // en la misma llamada; la estructura es local y valida.
         unsafe {
@@ -483,8 +544,8 @@ impl Pin {
             let forma = COMPOSITIONFORM {
                 dwStyle: CFS_POINT,
                 ptCurrentPos: POINT {
-                    x: p.x + m,
-                    y: p.y + m,
+                    x: p.x + ox,
+                    y: p.y + oy,
                 },
                 ..Default::default()
             };
@@ -591,17 +652,26 @@ fn registrar_clase() {
 
 /// Dibuja el fotograma completo del pin: sombra + imagen. Cero cromo (D23).
 fn pintar(i: &PinInterno) {
-    let Ok(destino) = i.superficie.empezar(&i.motor) else {
-        return;
+    let destino = match i.superficie.empezar(&i.motor) {
+        Ok(d) => d,
+        Err(e) => {
+            tracing::warn!(?e, "el pin no pudo empezar a pintar");
+            return;
+        }
     };
     let escala = i.escala_por_cien as f32 / 100.0;
     let m = MARGEN_SOMBRA_LOGICO as f32 * escala;
     let contenido = i.estado.rect();
     let (w, h) = (contenido.ancho as f32, contenido.alto as f32);
     let radio = 8.0 * escala;
+    // Con la ventana recortada al escritorio, el contenido no empieza en el
+    // margen de sombra sino donde le toque: todo lo de abajo pinta como si
+    // la ventana fuera entera y el desplazamiento lo corrige.
+    let (ox, oy) = origen_contenido(i.hwnd, contenido);
 
     let _ = i.motor.dibujar(&destino, |p| {
         p.limpiar_transparente();
+        p.desplazar(ox as f32 - m, oy as f32 - m);
         // Sombra difusa: seis aros redondeados concentricos de alfa
         // decreciente, desplazados hacia abajo. Sin desenfoque real y
         // suficiente para el look de recorte elevado (D30). El cache por
@@ -870,9 +940,21 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
     match efecto {
         EfectoPin::Nada => {}
         EfectoPin::Mover(contenido) => {
-            let v = rect_ventana(contenido, i.escala_por_cien);
-            // SAFETY: SetWindowPos sobre ventana propia; sin redibujar: la
-            // composicion mueve el visual entero.
+            let v = ventana_visible(contenido, i.escala_por_cien);
+            let mut actual = RECT::default();
+            // SAFETY: GetWindowRect sobre ventana propia.
+            unsafe {
+                let _ = GetWindowRect(hwnd, &mut actual);
+            }
+            let mismo_tamano = (actual.right - actual.left) as u32 == v.ancho
+                && (actual.bottom - actual.top) as u32 == v.alto;
+            if !mismo_tamano {
+                // Un pin mayor que la pantalla cambia de parte visible al
+                // moverse: es una redimension de la ventana, no un traslado.
+                aplicar(hwnd, EfectoPin::Redimensionar(contenido));
+                return;
+            }
+            // SAFETY: SetWindowPos sobre ventana propia.
             unsafe {
                 let _ = SetWindowPos(
                     hwnd,
@@ -884,10 +966,16 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
                 );
             }
+            if v != rect_ventana(contenido, i.escala_por_cien) {
+                // Recortada: el contenido se desplaza dentro de la ventana
+                // y hay que repintar. Sin recorte la composicion mueve el
+                // visual entero y no hace falta.
+                pintar(i);
+            }
         }
         EfectoPin::Redimensionar(contenido) => {
-            let v = rect_ventana(contenido, i.escala_por_cien);
-            // SAFETY: igual que arriba, con tamano.
+            let v = ventana_visible(contenido, i.escala_por_cien);
+            // SAFETY: SetWindowPos sobre ventana propia, con tamano.
             unsafe {
                 let _ = SetWindowPos(
                     hwnd,
@@ -899,9 +987,19 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
                     SWP_NOZORDER | SWP_NOACTIVATE,
                 );
             }
-            // La superficie es del tamano de la ventana: se recrea.
-            if let Ok(s) = Superficie::nueva(&i.motor, &i.d3d, hwnd, v.ancho, v.alto) {
-                i.superficie = s;
+            // La superficie es del tamano de la ventana: se redimensiona
+            // en sitio y, si eso falla, se recrea.
+            if let Err(e) = i.superficie.redimensionar(v.ancho, v.alto) {
+                tracing::warn!(?e, ancho = v.ancho, alto = v.alto, "ResizeBuffers fallo");
+                match Superficie::nueva(&i.motor, &i.d3d, hwnd, v.ancho, v.alto) {
+                    Ok(s) => i.superficie = s,
+                    Err(e) => tracing::warn!(
+                        ?e,
+                        ancho = v.ancho,
+                        alto = v.alto,
+                        "no se pudo recrear la superficie del pin"
+                    ),
+                }
             }
             pintar(i);
         }
@@ -980,10 +1078,12 @@ extern "system" fn procedimiento_pin(
     /// descontado: es el sistema en el que vive el documento de anotacion,
     /// y por eso las anotaciones acompañan al pin al moverlo sin recalcular.
     fn punto_contenido(i: &PinInterno, lparam: LPARAM) -> Punto {
-        let m = (MARGEN_SOMBRA_LOGICO * i.escala_por_cien / 100) as i32;
+        // Con la ventana recortada al escritorio el contenido no empieza en
+        // el margen de sombra: se pregunta donde esta de verdad.
+        let (ox, oy) = origen_contenido(i.hwnd, i.estado.rect());
         Punto {
-            x: (lparam.0 & 0xFFFF) as i16 as i32 - m,
-            y: ((lparam.0 >> 16) & 0xFFFF) as i16 as i32 - m,
+            x: (lparam.0 & 0xFFFF) as i16 as i32 - ox,
+            y: ((lparam.0 >> 16) & 0xFFFF) as i16 as i32 - oy,
         }
     }
 
@@ -1000,7 +1100,16 @@ extern "system" fn procedimiento_pin(
                 if i.anotando {
                     (i.al_cambiar)(CambioPin::PunteroPulsado(punto_contenido(i, lparam)));
                 } else {
-                    let e = i.estado.procesar(EventoPin::BotonPulsado(punto(lparam)));
+                    // Ctrl + arrastrar: zoom (arriba agranda, abajo encoge).
+                    // Lo pidio el usuario como alternativa a la rueda.
+                    // SAFETY: consulta pura del estado del teclado.
+                    let ctrl = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
+                    let evento = if ctrl {
+                        EventoPin::EscalarPulsado(punto(lparam))
+                    } else {
+                        EventoPin::BotonPulsado(punto(lparam))
+                    };
+                    let e = i.estado.procesar(evento);
                     aplicar(hwnd, e);
                 }
             }
