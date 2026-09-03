@@ -7,10 +7,10 @@
 
 use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 use windows::Win32::Graphics::Direct2D::{
-    D2D1_CAP_STYLE_FLAT, D2D1_DASH_STYLE_DASH, D2D1_INTERPOLATION_MODE_LINEAR,
-    D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_LINE_JOIN_MITER, D2D1_ROUNDED_RECT,
-    D2D1_STROKE_STYLE_PROPERTIES1, ID2D1Bitmap1, ID2D1PathGeometry1, ID2D1SolidColorBrush,
-    ID2D1StrokeStyle,
+    D2D1_ANTIALIAS_MODE_ALIASED, D2D1_CAP_STYLE_FLAT, D2D1_DASH_STYLE_DASH,
+    D2D1_INTERPOLATION_MODE_LINEAR, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_LINE_JOIN_MITER,
+    D2D1_ROUNDED_RECT, D2D1_STROKE_STYLE_PROPERTIES1, ID2D1Bitmap1, ID2D1PathGeometry1,
+    ID2D1SolidColorBrush, ID2D1StrokeStyle,
 };
 use windows::Win32::Graphics::DirectWrite::{
     DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL,
@@ -220,6 +220,23 @@ impl Pintor<'_> {
                 .contexto()
                 .SetTransform(&windows_numerics::Matrix3x2::translation(dx, dy));
         }
+    }
+
+    /// Ejecuta `pintar` con todo lo que dibuje recortado a `r`. Lo que caiga
+    /// fuera no se rasteriza siquiera, asi que sirve para no pagar el relleno
+    /// de una zona que luego va a quedar tapada (la sombra bajo la tarjeta).
+    pub fn con_recorte(&self, r: RectF, pintar: impl FnOnce(&Pintor)) {
+        // SAFETY: Push/Pop emparejados dentro del fotograma; el modo de
+        // suavizado por defecto (aliased) es el mas barato y basta para un
+        // recorte con bordes rectos.
+        unsafe {
+            self.motor
+                .contexto()
+                .PushAxisAlignedClip(&r.a_d2d(), D2D1_ANTIALIAS_MODE_ALIASED);
+        }
+        pintar(self);
+        // SAFETY: cierra el Push de arriba, siempre.
+        unsafe { self.motor.contexto().PopAxisAlignedClip() };
     }
 
     pub fn rellenar(&self, r: RectF, color: Color) {

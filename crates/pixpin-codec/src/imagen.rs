@@ -19,6 +19,15 @@ pub struct ImagenRgba {
 }
 
 impl ImagenRgba {
+    /// Si NINGUN pixel es translucido. Una captura de pantalla siempre lo
+    /// es, y saberlo deja al pin ahorrarse pintar la tarjeta de debajo: es
+    /// un relleno del tamano entero del pin en cada fotograma. Se responde
+    /// una vez, al crear el pin, y se corta en cuanto encuentra un alfa
+    /// distinto de 255.
+    pub fn es_opaca(&self) -> bool {
+        self.pixeles.len() >= 4 && self.pixeles.iter().skip(3).step_by(4).all(|a| *a == 255)
+    }
+
     /// Bytes que deberia tener `pixeles` para ser coherente con las medidas.
     pub fn bytes_esperados(&self) -> usize {
         self.ancho as usize * self.alto as usize * 4
@@ -167,6 +176,33 @@ pub fn guardar(imagen: &ImagenRgba, ruta: &Path, formato: FormatoImagen) -> Resu
 mod pruebas {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn una_imagen_es_opaca_solo_si_todos_sus_alfas_estan_al_maximo() {
+        let opaca = ImagenRgba {
+            ancho: 2,
+            alto: 1,
+            pixeles: vec![1, 2, 3, 255, 4, 5, 6, 255],
+        };
+        assert!(opaca.es_opaca());
+        // Caso negativo: un solo pixel translucido obliga a pintar la
+        // tarjeta de debajo, o se veria el escritorio a traves.
+        let con_alfa = ImagenRgba {
+            ancho: 2,
+            alto: 1,
+            pixeles: vec![1, 2, 3, 255, 4, 5, 6, 254],
+        };
+        assert!(!con_alfa.es_opaca());
+        // Y una imagen vacia no se considera opaca: no tapa nada.
+        assert!(
+            !ImagenRgba {
+                ancho: 0,
+                alto: 0,
+                pixeles: Vec::new(),
+            }
+            .es_opaca()
+        );
+    }
 
     fn temporal(etiqueta: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("pixpin-codec-{etiqueta}"));

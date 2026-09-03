@@ -12,7 +12,8 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
 use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11Texture2D};
 use windows::Win32::Graphics::DirectComposition::{
-    DCompositionCreateDevice, IDCompositionDevice, IDCompositionTarget, IDCompositionVisual,
+    DCOMPOSITION_BITMAP_INTERPOLATION_MODE_LINEAR, DCompositionCreateDevice, IDCompositionDevice,
+    IDCompositionTarget, IDCompositionVisual,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_UNKNOWN,
@@ -28,14 +29,16 @@ use windows::core::Interface;
 use crate::motor::{ErrorRender, MotorRender};
 
 pub struct Superficie {
-    _dcomp: IDCompositionDevice,
+    dcomp: IDCompositionDevice,
     _objetivo: IDCompositionTarget,
-    _visual: IDCompositionVisual,
+    visual: IDCompositionVisual,
     swapchain: IDXGISwapChain1,
     /// Tamano real de los buffers. Puede ser MAYOR que la ventana: la
     /// composicion recorta al area de la ventana, y asi un zoom no tiene
     /// que reasignar memoria de video en cada fotograma (histeresis).
     asignado: std::cell::Cell<(u32, u32)>,
+    /// Hay una transformada de estirado puesta en el visual.
+    estirada: std::cell::Cell<bool>,
 }
 
 impl Superficie {
@@ -89,12 +92,72 @@ impl Superficie {
         };
 
         Ok(Self {
-            _dcomp: dcomp,
+            dcomp,
             _objetivo: objetivo,
-            _visual: visual,
+            visual,
             swapchain,
             asignado: std::cell::Cell::new((ancho.max(1), alto.max(1))),
+            estirada: std::cell::Cell::new(false),
         })
+    }
+
+    /// Estira lo YA dibujado sin volver a dibujarlo: el compositor escala la
+    /// textura en la GPU. Es como se hace un zoom fluido — redibujar el
+    /// contenido en cada fotograma de la animacion es lo que producia
+    /// tirones en equipos con graficos integrados.
+    ///
+    /// `escala_x`/`escala_y` multiplican, `dx`/`dy` desplazan despues, todo
+    /// en pixeles de la ventana. Mientras hay transformada, el filtro pasa a
+    /// ser el barato: es un fotograma intermedio de una animacion, y el
+    /// nitido llega al terminar, con el repintado de verdad.
+    pub fn estirar(&self, escala_x: f32, escala_y: f32, dx: f32, dy: f32) {
+        let m = windows_numerics::Matrix3x2 {
+            M11: escala_x,
+            M12: 0.0,
+            M21: 0.0,
+            M22: escala_y,
+            M31: dx,
+            M32: dy,
+        };
+        // SAFETY: la matriz vive durante la llamada; el visual y el
+        // dispositivo son propios y siguen vivos. Los errores solo
+        // significan que el fotograma sale sin estirar.
+        unsafe {
+            let _ = self.visual.SetTransform2(&m);
+            let _ = self
+                .visual
+                .SetBitmapInterpolationMode(DCOMPOSITION_BITMAP_INTERPOLATION_MODE_LINEAR);
+            let _ = self.dcomp.Commit();
+        }
+        self.estirada.set(true);
+    }
+
+    /// Si hay una transformada de estirado puesta, es decir, si lo que se ve
+    /// es una textura escalada y no un dibujo nitido.
+    pub fn esta_estirada(&self) -> bool {
+        self.estirada.get()
+    }
+
+    /// Deshace `estirar`. Solo toca la composicion si habia algo que
+    /// deshacer: un Commit por fotograma en balde tambien cuesta.
+    pub fn dejar_de_estirar(&self) {
+        if !self.estirada.get() {
+            return;
+        }
+        let identidad = windows_numerics::Matrix3x2 {
+            M11: 1.0,
+            M12: 0.0,
+            M21: 0.0,
+            M22: 1.0,
+            M31: 0.0,
+            M32: 0.0,
+        };
+        // SAFETY: igual que en `estirar`.
+        unsafe {
+            let _ = self.visual.SetTransform2(&identidad);
+            let _ = self.dcomp.Commit();
+        }
+        self.estirada.set(false);
     }
 
     /// Garantiza buffers de al menos `ancho` x `alto`. Si hay que crecer,
