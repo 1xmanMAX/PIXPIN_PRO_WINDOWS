@@ -122,7 +122,13 @@ impl Default for Atajos {
 #[serde(default)]
 pub struct Ajustes {
     pub idioma: PreferenciaIdioma,
+    /// La tabla vieja, de cuando cada atajo era un campo. Se sigue leyendo
+    /// para no romper el fichero de nadie, pero lo que manda es `comandos`.
     pub atajos: Atajos,
+    /// Nombre de comando -> atajo, la tabla nueva (ver `comandos.rs`). Lo
+    /// que no se nombra conserva su atajo por defecto; una cadena vacia deja
+    /// el comando sin atajo.
+    pub comandos: std::collections::BTreeMap<String, String>,
     /// Si es `None` se usa la carpeta Imagenes del usuario.
     pub carpeta_capturas: Option<PathBuf>,
     pub formato_color: FormatoColor,
@@ -138,6 +144,7 @@ impl Default for Ajustes {
         Self {
             idioma: PreferenciaIdioma::default(),
             atajos: Atajos::default(),
+            comandos: std::collections::BTreeMap::new(),
             carpeta_capturas: None,
             formato_color: FormatoColor::default(),
             rendimiento: Rendimiento::default(),

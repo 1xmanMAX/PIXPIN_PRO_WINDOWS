@@ -37,6 +37,5 @@ pub use gestos::{GanchoRaton, gesto_en_curso};
 pub use instancia::{ErrorInstanciaUnica, InstanciaUnica, adquirir_instancia_unica};
 pub use overlay::esperar_composicion;
 pub use ventana::{
-    BotonGesto, Continuar, Evento, ID_MENU_AJUSTES, ID_MENU_CAPTURAR, ID_MENU_SALIR,
-    VentanaMensajes, WM_BANDEJA, WM_GESTO, despertar,
+    BotonGesto, Continuar, Evento, VentanaMensajes, WM_BANDEJA, WM_GESTO, despertar,
 };

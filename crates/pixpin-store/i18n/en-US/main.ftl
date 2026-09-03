@@ -2,9 +2,6 @@
 
 app-nombre = PixPin Max
 
-bandeja-capturar = Capture
-bandeja-ajustes = Settings
-bandeja-salir = Exit
 
 resultado-copiar = Copy
 resultado-guardar-como = Save as…
@@ -51,3 +48,13 @@ pin-pausar = Pause
 pin-sonido = Sound
 barra-todo = Select all
 pin-sin-codec = no video codec
+comando-capturar-region = Capture
+comando-capturar-y-copiar = Capture and copy
+comando-capturar-con-scroll = Scrolling capture
+comando-cuentagotas = Colour picker
+comando-pinear = Crop and pin
+comando-pinear-portapapeles = Pin the clipboard
+comando-anotar = Annotate the screen
+comando-anotar-congelada = Annotate a screenshot
+comando-abrir-ajustes = Settings
+comando-salir = Quit

@@ -3,9 +3,6 @@
 
 app-nombre = PixPin Max
 
-bandeja-capturar = Capturar
-bandeja-ajustes = Ajustes
-bandeja-salir = Salir
 
 resultado-copiar = Copiar
 resultado-guardar-como = Guardar como…
@@ -52,3 +49,13 @@ pin-pausar = Pausar
 pin-sonido = Sonido
 barra-todo = Seleccionar todo
 pin-sin-codec = sin códec de vídeo
+comando-capturar-region = Capturar
+comando-capturar-y-copiar = Capturar y copiar
+comando-capturar-con-scroll = Captura larga con scroll
+comando-cuentagotas = Cuentagotas
+comando-pinear = Recortar y pinear
+comando-pinear-portapapeles = Pinear el portapapeles
+comando-anotar = Anotar la pantalla
+comando-anotar-congelada = Anotar una captura de la pantalla
+comando-abrir-ajustes = Ajustes
+comando-salir = Salir

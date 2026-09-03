@@ -64,7 +64,7 @@ use pixpin_shell::{
     adquirir_instancia_unica, arranque, atajos, entorno,
 };
 use pixpin_store::ajustes::PreferenciaNivel;
-use pixpin_store::{Almacen, Catalogo, Ubicacion, ajustes, idioma, rutas};
+use pixpin_store::{Almacen, Catalogo, Ubicacion, ajustes, comandos, idioma, rutas};
 use pixpin_ui::FormatoColorLupa;
 
 fn main() -> Result<()> {
@@ -191,22 +191,20 @@ fn arrancar(
     let bandeja = Bandeja::nueva(ventana.handle(), &textos.t("app-nombre"))
         .context("no se pudo añadir el icono de bandeja")?;
 
-    // Tres funciones no tienen atajo salvo que el TOML se lo de (D81): la
-    // region con barra (va por la bandeja o por Alt + boton), el
-    // cuentagotas y la anotacion congelada.
-    let peticiones: Vec<(u32, pixpin_shell::Atajo)> = [
-        (atajos::ID_REGION, config.atajos.region),
-        (atajos::ID_COPIAR, Some(config.atajos.copiar)),
-        (atajos::ID_SCROLL, Some(config.atajos.scroll)),
-        (atajos::ID_CUENTAGOTAS, config.atajos.cuentagotas),
-        (atajos::ID_PIN, Some(config.atajos.pin)),
-        (atajos::ID_PORTAPAPELES, Some(config.atajos.portapapeles)),
-        (atajos::ID_ANOTAR, Some(config.atajos.anotar)),
-        (atajos::ID_ANOTAR_CONGELADA, config.atajos.anotar_congelada),
-    ]
-    .into_iter()
-    .filter_map(|(id, atajo)| atajo.map(|a| (id, a)))
-    .collect();
+    // Los atajos salen del registro de comandos: la tabla `[comandos]` del
+    // TOML manda, y por debajo se sigue leyendo la tabla vieja `[atajos]`
+    // para no romper el fichero de nadie. Tres funciones nacen sin atajo
+    // (D81): la region con barra, el cuentagotas y la anotacion congelada.
+    let (enlaces, avisos) = comandos::Enlaces::de_ajustes(&config);
+    for aviso in &avisos {
+        tracing::warn!(%aviso, "entrada de [comandos] que no se entiende; se ignora");
+    }
+    if let Some((a, b)) = enlaces.choque() {
+        // Dos comandos con el mismo atajo: el segundo no llegaria a
+        // dispararse nunca, y sin aviso parece que el programa lo ignora.
+        tracing::warn!(?a, ?b, "dos comandos comparten atajo; solo actuara uno");
+    }
+    let peticiones = enlaces.registrables();
     let (_registrados, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
     tracing::info!(
         pedidos = peticiones.len(),
@@ -228,12 +226,25 @@ fn arrancar(
         tracing::warn!(id, %atajo, "no se pudo registrar el atajo; otra aplicacion lo tiene");
     }
 
-    let etiquetas_base = |ocultos: Vec<(u32, String)>| EtiquetasMenu {
-        capturar: textos.t("bandeja-capturar"),
-        ajustes: textos.t("bandeja-ajustes"),
-        salir: textos.t("bandeja-salir"),
-        grupos_ocultos: textos.t("grupos-ocultos"),
-        ocultos,
+    // El menu de la bandeja sale del catalogo de comandos, no de una lista
+    // escrita a mano: anadir una funcion es anadir su fila.
+    let etiquetas_base = |ocultos: Vec<(u32, String)>| {
+        let entrada = |d: &comandos::Descriptor| (d.comando.id(), textos.t(d.clave_titulo));
+        EtiquetasMenu {
+            acciones: comandos::CATALOGO
+                .iter()
+                // «Salir» sale aparte, al final y tras una raya: no debe
+                // pulsarse por inercia al buscar otra cosa.
+                .filter(|d| d.en_bandeja && d.comando != comandos::Comando::Salir)
+                .map(entrada)
+                .collect(),
+            aparte: comandos::CATALOGO
+                .iter()
+                .find(|d| d.en_bandeja && d.comando == comandos::Comando::Salir)
+                .map(entrada),
+            grupos_ocultos: textos.t("grupos-ocultos"),
+            ocultos,
+        }
     };
 
     // 7b. Precalentamiento diferido (5.3 del diseno de rendimiento): cargar
@@ -300,19 +311,13 @@ fn arrancar(
         // «Capturar» de la bandeja y los gestos con Alt (D81). El gesto
         // trae el punto donde ya esta pulsado el boton: el overlay arranca
         // con el arrastre en marcha desde ahi.
+        // Un atajo y una entrada del menu son la misma cosa vista por dos
+        // vias: las dos traen el identificador del comando.
+        let comando = match evento {
+            Evento::Atajo(id) | Evento::Menu(id) => comandos::Comando::desde_id(id),
+            _ => None,
+        };
         let modo_overlay: Option<(ModoConfirmacion, Option<pixpin_geom::Punto>)> = match evento {
-            Evento::Atajo(id) if id == atajos::ID_REGION => {
-                Some((ModoConfirmacion::ConBarra, None))
-            }
-            Evento::Atajo(id) if id == atajos::ID_PIN => Some((ModoConfirmacion::Pinear, None)),
-            Evento::Atajo(id) if id == atajos::ID_SCROLL => Some((ModoConfirmacion::Scroll, None)),
-            Evento::Atajo(id) if id == atajos::ID_CUENTAGOTAS => {
-                Some((ModoConfirmacion::Cuentagotas, None))
-            }
-            Evento::Atajo(id) if id == atajos::ID_COPIAR => {
-                Some((ModoConfirmacion::DirectoAlPortapapeles, None))
-            }
-            Evento::MenuCapturar => Some((ModoConfirmacion::ConBarra, None)),
             Evento::Gesto {
                 boton: BotonGesto::Izquierdo,
                 punto,
@@ -321,12 +326,29 @@ fn arrancar(
                 boton: BotonGesto::Derecho,
                 punto,
             } => Some((ModoConfirmacion::Pinear, Some(punto))),
-            _ => None,
+            _ => match comando {
+                Some(comandos::Comando::CapturarRegion) => Some((ModoConfirmacion::ConBarra, None)),
+                Some(comandos::Comando::Pinear) => Some((ModoConfirmacion::Pinear, None)),
+                Some(comandos::Comando::CapturarConScroll) => {
+                    Some((ModoConfirmacion::Scroll, None))
+                }
+                Some(comandos::Comando::Cuentagotas) => Some((ModoConfirmacion::Cuentagotas, None)),
+                Some(comandos::Comando::CapturarYCopiar) => {
+                    Some((ModoConfirmacion::DirectoAlPortapapeles, None))
+                }
+                _ => None,
+            },
         };
         let seguir = match evento {
-            Evento::MenuSalir => {
+            _ if comando == Some(comandos::Comando::Salir) => {
                 tracing::info!("salida pedida por el usuario");
                 Continuar::No
+            }
+            _ if comando == Some(comandos::Comando::AbrirAjustes) => {
+                // La ventana de ajustes llega en P6; hasta entonces, al
+                // menos queda dicho donde esta el fichero que se edita.
+                tracing::info!(fichero = ?ubicacion.fichero_ajustes(), "ajustes pedidos");
+                Continuar::Si
             }
             Evento::IconoPulsado => {
                 // La lista de grupos ocultos se monta AL ABRIR el menu, no
@@ -515,17 +537,15 @@ fn arrancar(
                 }
                 Continuar::Si
             }
-            Evento::Atajo(id) => {
-                tracing::info!(id, "atajo pulsado, todavia sin accion");
+            // Todo comando del catalogo se atiende arriba; si algo llega
+            // hasta aqui es que se anadio una fila y se olvido la accion.
+            Evento::Atajo(id) | Evento::Menu(id) => {
+                tracing::warn!(id, ?comando, "comando sin accion");
                 Continuar::Si
             }
-            // Ya atendidos por la guarda `modo_overlay` de arriba; quedan
+            // Ya atendido por la guarda `modo_overlay` de arriba; queda
             // solo para que el match sea exhaustivo.
-            Evento::MenuCapturar | Evento::Gesto { .. } => Continuar::Si,
-            Evento::MenuAjustes => {
-                tracing::info!("ajustes pedidos desde el menu");
-                Continuar::Si
-            }
+            Evento::Gesto { .. } => Continuar::Si,
             // Un pin dejo algo pendiente; el trabajo esta tras el match, en
             // `purgar`. Aqui no hay nada que hacer salvo haber girado.
             Evento::Despertar => Continuar::Si,

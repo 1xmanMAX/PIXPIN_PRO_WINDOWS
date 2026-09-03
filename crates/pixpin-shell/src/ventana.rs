@@ -55,12 +55,9 @@ pub enum BotonGesto {
     Derecho,
 }
 
-/// Identificadores de los elementos del menu de la bandeja.
-pub const ID_MENU_CAPTURAR: u32 = 1;
-pub const ID_MENU_AJUSTES: u32 = 2;
-pub const ID_MENU_SALIR: u32 = 3;
 /// Primer identificador de la seccion «Grupos ocultos»: al elegir uno, el
-/// numero de grupo sale de restar esta base (spec 4.3).
+/// numero de grupo sale de restar esta base (spec 4.3). Por debajo viven los
+/// identificadores de los comandos, que los reparte el catalogo.
 pub const ID_MENU_GRUPO_BASE: u32 = 200;
 
 /// Lo que le puede pasar a la aplicacion.
@@ -69,9 +66,10 @@ pub enum Evento {
     /// Se pulso un atajo global. El numero es el identificador con el que se
     /// registro (ver `atajos.rs`).
     Atajo(u32),
-    MenuCapturar,
-    MenuAjustes,
-    MenuSalir,
+    /// Se eligio una entrada del menu de la bandeja. El numero es el mismo
+    /// identificador de comando que viaja en `Atajo`: una funcion, un
+    /// numero, dos vias de llegada.
+    Menu(u32),
     /// Se eligio un grupo oculto en la bandeja: vuelve a la pantalla (D24).
     MostrarGrupo(u32),
     /// Un pin dejo algo pendiente y pide una vuelta del bucle. No hay nada
@@ -244,11 +242,9 @@ extern "system" fn procedimiento(
     let evento = match mensaje {
         WM_HOTKEY => Some(Evento::Atajo(wparam.0 as u32)),
         WM_COMMAND => match (wparam.0 & 0xFFFF) as u32 {
-            ID_MENU_CAPTURAR => Some(Evento::MenuCapturar),
-            ID_MENU_AJUSTES => Some(Evento::MenuAjustes),
-            ID_MENU_SALIR => Some(Evento::MenuSalir),
             c if c >= ID_MENU_GRUPO_BASE => Some(Evento::MostrarGrupo(c - ID_MENU_GRUPO_BASE)),
-            _ => None,
+            0 => None,
+            c => Some(Evento::Menu(c)),
         },
         // Esta comparacion asume la semantica "clasica" de Shell_NotifyIconW,
         // donde lParam es directamente el mensaje del raton (WM_LBUTTONUP,
