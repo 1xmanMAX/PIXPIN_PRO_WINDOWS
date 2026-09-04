@@ -37,6 +37,14 @@ pub struct PinGuardado {
     /// no. Los demas tipos lo ignoran. Ausente en indices viejos: 100.
     #[serde(default = "cien")]
     pub zoom_por_cien: u32,
+    /// Cuartos de vuelta a la derecha (0 a 3) y volteos, para que un pin
+    /// girado vuelva girado. Ausentes en indices viejos: sin girar.
+    #[serde(default)]
+    pub giro: u8,
+    #[serde(default)]
+    pub volteo_h: bool,
+    #[serde(default)]
+    pub volteo_v: bool,
 }
 
 fn cien() -> u32 {
@@ -425,6 +433,9 @@ mod pruebas {
             alto: 150,
             escala_por_cien: 150,
             zoom_por_cien: 100,
+            giro: 0,
+            volteo_h: false,
+            volteo_v: false,
         }
     }
 
