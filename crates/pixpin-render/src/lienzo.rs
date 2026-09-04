@@ -284,6 +284,40 @@ impl Pintor<'_> {
         self.desplazar(base.0, base.1);
     }
 
+    /// Recorte y transformada sueltos, para cuando lo que hay que envolver
+    /// es un bloque largo y meterlo en una clausura solo lo haria ilegible.
+    /// Van siempre en pareja con `soltar_recorte` y `desplazar`.
+    pub fn empujar_recorte(&self, r: RectF) {
+        // SAFETY: Push emparejado con el Pop de `soltar_recorte`, dentro del
+        // mismo fotograma.
+        unsafe {
+            self.motor
+                .contexto()
+                .PushAxisAlignedClip(&r.a_d2d(), D2D1_ANTIALIAS_MODE_ALIASED);
+        }
+    }
+
+    pub fn soltar_recorte(&self) {
+        // SAFETY: cierra el Push de `empujar_recorte`.
+        unsafe { self.motor.contexto().PopAxisAlignedClip() };
+    }
+
+    /// Mira el contenido de cerca sin mover la ventana: lo amplia por
+    /// `escala` y lo corre `desplazamiento`, encima del desplazamiento
+    /// `base` de la escena. Es el zoom con la ventana bloqueada.
+    pub fn poner_vista(&self, base: (f32, f32), escala: f32, desplazamiento: (f32, f32)) {
+        let m = windows_numerics::Matrix3x2 {
+            M11: escala,
+            M12: 0.0,
+            M21: 0.0,
+            M22: escala,
+            M31: base.0 + desplazamiento.0,
+            M32: base.1 + desplazamiento.1,
+        };
+        // SAFETY: SetTransform sobre el contexto vivo, dentro del fotograma.
+        unsafe { self.motor.contexto().SetTransform(&m) };
+    }
+
     pub fn rellenar(&self, r: RectF, color: Color) {
         if let Some(p) = self.pincel(color) {
             // SAFETY: dentro del fotograma; pincel y contexto vivos.
