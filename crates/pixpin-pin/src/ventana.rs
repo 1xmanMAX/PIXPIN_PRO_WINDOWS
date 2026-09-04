@@ -261,6 +261,84 @@ pub fn ventana_visible(contenido: Rect, escala_por_cien: u32) -> Rect {
     )
 }
 
+/// Como encajar el pin en la pantalla, con las teclas 1, 2 y 3.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Vista {
+    /// Un pixel de la imagen, un pixel de la pantalla. Es la unica escala en
+    /// la que la captura se ve tal cual se hizo, sin filtro que la suavice.
+    Original,
+    /// La mayor que cabe entera en el monitor.
+    Ajustar,
+    /// La menor que cubre el monitor: llena, recortando lo que sobra.
+    Rellenar,
+}
+
+/// El area de trabajo del monitor donde esta la ventana (sin la barra de
+/// tareas), en pixeles fisicos.
+fn area_de_trabajo(hwnd: HWND) -> Rect {
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    };
+    let mut info = MONITORINFO {
+        cbSize: size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: MonitorFromWindow siempre devuelve un monitor con
+    // DEFAULTTONEAREST; GetMonitorInfoW escribe en la estructura local, que
+    // lleva su cbSize puesto.
+    let ok = unsafe {
+        let m = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        GetMonitorInfoW(m, &mut info).as_bool()
+    };
+    if !ok {
+        return escritorio_virtual();
+    }
+    let r = info.rcWork;
+    Rect {
+        x: r.left,
+        y: r.top,
+        ancho: (r.right - r.left).max(1) as u32,
+        alto: (r.bottom - r.top).max(1) as u32,
+    }
+}
+
+/// El rect que le toca al pin para una vista dada, centrado en su monitor.
+///
+/// `Ajustar` y `Rellenar` conservan la proporcion NATIVA de la imagen, no la
+/// que tenga el pin ahora: si no, encadenar dos ajustes iria deformando el
+/// resultado poco a poco.
+fn rect_para_vista(hwnd: HWND, i: &PinInterno, vista: Vista) -> Rect {
+    let area = area_de_trabajo(hwnd);
+    let (nw, nh) = i.imagen_nativa;
+    let (nw, nh) = (nw.max(1), nh.max(1));
+
+    let (ancho, alto) = match vista {
+        Vista::Original => (nw, nh),
+        Vista::Ajustar | Vista::Rellenar => {
+            let fx = area.ancho as f32 / nw as f32;
+            let fy = area.alto as f32 / nh as f32;
+            // Caber entero es el menor de los dos factores; cubrir, el mayor.
+            let f = if vista == Vista::Ajustar {
+                fx.min(fy)
+            } else {
+                fx.max(fy)
+            };
+            (
+                ((nw as f32 * f).round() as u32).max(1),
+                ((nh as f32 * f).round() as u32).max(1),
+            )
+        }
+    };
+    // Centrado en el area de trabajo: al rellenar se sale por los cuatro
+    // lados por igual, que es lo que se espera.
+    Rect {
+        x: area.x + (area.ancho as i32 - ancho as i32) / 2,
+        y: area.y + (area.alto as i32 - alto as i32) / 2,
+        ancho,
+        alto,
+    }
+}
+
 /// El rectangulo mas pequeno que contiene a los dos. Con el se prepara la
 /// ventana antes de un zoom, para que quepa el recorrido entero.
 fn envolvente(a: Rect, b: Rect) -> Rect {
@@ -360,6 +438,12 @@ struct PinInterno {
     /// destino la ventana NO se mueve, asi que este rect y el de verdad son
     /// el mismo, y de ahi sale la transformada.
     base_ventana: Cell<Rect>,
+    /// Cuartos de vuelta a la derecha, de 0 a 3, y volteos. No tocan los
+    /// pixeles: son una transformada al dibujar, asi que girar y volver a
+    /// girar deja la imagen exactamente como estaba.
+    giro: u8,
+    volteo_h: bool,
+    volteo_v: bool,
     /// El reproductor, solo en un pin de video (D63). Si no pudo crearse,
     /// `video_fallido` avisa al gestor en el primer tick (D72).
     video: Option<Reproductor>,
@@ -494,6 +578,9 @@ impl Pin {
             zoom: None,
             base_pintado: Cell::new(rect_contenido),
             base_ventana: Cell::new(ventana),
+            giro: 0,
+            volteo_h: false,
+            volteo_v: false,
             hwnd,
             video,
             video_fallido,
@@ -1062,7 +1149,32 @@ fn pintar(i: &PinInterno) {
             // fotograma, o nada hasta que llegue el primero (D63).
             Contenido::Imagen(_) | Contenido::Video { .. } => {
                 if let Some(b) = &i.bitmap {
-                    p.bitmap(b, caja, None, false);
+                    if i.giro == 0 && !i.volteo_h && !i.volteo_v {
+                        p.bitmap(b, caja, None, false);
+                    } else {
+                        // Girado un cuarto, la imagen entra en la caja con
+                        // los lados cambiados: se dibuja en la caja
+                        // traspuesta y la transformada la coloca.
+                        let destino = if i.giro % 2 == 1 {
+                            RectF {
+                                x: caja.x + (caja.ancho - caja.alto) / 2.0,
+                                y: caja.y + (caja.alto - caja.ancho) / 2.0,
+                                ancho: caja.alto,
+                                alto: caja.ancho,
+                            }
+                        } else {
+                            caja
+                        };
+                        let centro = (caja.x + caja.ancho / 2.0, caja.y + caja.alto / 2.0);
+                        p.con_giro(
+                            (ox as f32 - m, oy as f32 - m),
+                            centro,
+                            i.giro,
+                            i.volteo_h,
+                            i.volteo_v,
+                            |p| p.bitmap(b, destino, None, false),
+                        );
+                    }
                 }
             }
 
@@ -1751,6 +1863,67 @@ extern "system" fn procedimiento_pin(
                     } else {
                         CambioPin::RetrocesoAnotando
                     });
+                }
+            }
+            LRESULT(0)
+        }
+        // 1, 2 y 3: tamano original exacto, ajustar a la pantalla y
+        // rellenarla. Solo fuera del modo anotacion, donde las teclas son
+        // texto. Un pin que no se redimensiona (la ficha) las ignora.
+        WM_KEYDOWN
+            if matches!(wparam.0 as u32, 0x31..=0x33)
+                && interno_de(hwnd).is_some_and(|i| !i.anotando && !i.estado.es_fijo()) =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                let vista = match wparam.0 as u32 {
+                    0x31 => Vista::Original,
+                    0x32 => Vista::Ajustar,
+                    _ => Vista::Rellenar,
+                };
+                let nuevo = rect_para_vista(hwnd, i, vista);
+                i.zoom = None;
+                i.estado.poner_rect(nuevo);
+                aplicar(hwnd, EfectoPin::Redimensionar(nuevo));
+                if let Some(i) = interno_de(hwnd) {
+                    let z = zoom_por_cien_de(i);
+                    (i.al_cambiar)(CambioPin::Redimensionado(nuevo, z));
+                }
+            }
+            LRESULT(0)
+        }
+        // R gira a la derecha, Shift+R a la izquierda; H y V voltean. Como
+        // el giro es de 90 grados, el pin intercambia ancho y alto.
+        WM_KEYDOWN
+            if matches!(wparam.0 as u32, x if x == b'R' as u32 || x == b'H' as u32 || x == b'V' as u32)
+                && interno_de(hwnd).is_some_and(|i| !i.anotando) =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                match wparam.0 as u32 {
+                    x if x == b'R' as u32 => {
+                        let cuartos = if tecla_pulsada(VK_SHIFT) { 3 } else { 1 };
+                        i.giro = (i.giro + cuartos) % 4;
+                        let r = i.estado.rect();
+                        // Girar un cuarto de vuelta cambia la forma de la
+                        // caja: se intercambian los lados alrededor del
+                        // centro, para que el pin no salte de sitio.
+                        let nuevo = Rect {
+                            x: r.x + (r.ancho as i32 - r.alto as i32) / 2,
+                            y: r.y + (r.alto as i32 - r.ancho as i32) / 2,
+                            ancho: r.alto,
+                            alto: r.ancho,
+                        };
+                        i.estado.poner_rect(nuevo);
+                        i.imagen_nativa = (i.imagen_nativa.1, i.imagen_nativa.0);
+                        aplicar(hwnd, EfectoPin::Redimensionar(nuevo));
+                    }
+                    x if x == b'H' as u32 => {
+                        i.volteo_h = !i.volteo_h;
+                        pintar(i);
+                    }
+                    _ => {
+                        i.volteo_v = !i.volteo_v;
+                        pintar(i);
+                    }
                 }
             }
             LRESULT(0)

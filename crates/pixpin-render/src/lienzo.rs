@@ -239,6 +239,51 @@ impl Pintor<'_> {
         unsafe { self.motor.contexto().PopAxisAlignedClip() };
     }
 
+    /// Dibuja girado en cuartos de vuelta y volteado alrededor de `centro`,
+    /// encima del desplazamiento `base` que ya tuviera la escena. Al salir
+    /// deja solo `base`, para que lo de despues no herede el giro.
+    ///
+    /// Se hace con una transformada y no rotando los pixeles: girar y
+    /// volver a girar devuelve la imagen exacta, y una imagen grande no se
+    /// copia en memoria cada vez.
+    pub fn con_giro(
+        &self,
+        base: (f32, f32),
+        centro: (f32, f32),
+        cuartos: u8,
+        volteo_h: bool,
+        volteo_v: bool,
+        pintar: impl FnOnce(&Pintor),
+    ) {
+        let (cos, sin) = match cuartos % 4 {
+            0 => (1.0f32, 0.0f32),
+            1 => (0.0, 1.0),
+            2 => (-1.0, 0.0),
+            _ => (0.0, -1.0),
+        };
+        let (fx, fy) = (
+            if volteo_h { -1.0f32 } else { 1.0 },
+            if volteo_v { -1.0f32 } else { 1.0 },
+        );
+        // Voltear y luego girar, todo alrededor del centro; el
+        // desplazamiento base se suma al final.
+        let (m11, m12) = (fx * cos, fx * sin);
+        let (m21, m22) = (-fy * sin, fy * cos);
+        let m = windows_numerics::Matrix3x2 {
+            M11: m11,
+            M12: m12,
+            M21: m21,
+            M22: m22,
+            M31: centro.0 - (centro.0 * m11 + centro.1 * m21) + base.0,
+            M32: centro.1 - (centro.0 * m12 + centro.1 * m22) + base.1,
+        };
+        // SAFETY: SetTransform sobre el contexto vivo, dentro del fotograma;
+        // se restaura siempre justo despues.
+        unsafe { self.motor.contexto().SetTransform(&m) };
+        pintar(self);
+        self.desplazar(base.0, base.1);
+    }
+
     pub fn rellenar(&self, r: RectF, color: Color) {
         if let Some(p) = self.pincel(color) {
             // SAFETY: dentro del fotograma; pincel y contexto vivos.
