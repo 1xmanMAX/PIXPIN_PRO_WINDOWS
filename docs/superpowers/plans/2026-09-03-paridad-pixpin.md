@@ -162,8 +162,8 @@ El original trae 34 MB de modelos cifrados. Nosotros usamos
 **`Windows.Media.Ocr`**, que ya viene en Windows 10 y 11, funciona sin
 conexión y no añade un solo byte al ejecutable.
 
-- [ ] **P4.1 Envoltorio** `pixpin-shell::ocr`, con la lista de idiomas instalados y degradación limpia si no hay ninguno.
-- [ ] **P4.2 Comando «reconocer texto»** sobre un pin o sobre una selección: copia el texto al portapapeles.
+- [x] **P4.1 Envoltorio** `pixpin-shell::ocr`, con la lista de idiomas instalados y degradación limpia si no hay ninguno.
+- [x] **P4.2 Comando «reconocer texto»** sobre un pin o sobre una selección: copia el texto al portapapeles.
 - [x] **P4.3 Agrupar en párrafos** por geometría de las cajas devueltas (puro y con pruebas), para que el texto copiado tenga saltos de línea con sentido.
 
 ## Fase P5 — Grabar GIF

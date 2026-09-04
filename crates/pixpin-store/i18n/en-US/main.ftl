@@ -62,3 +62,4 @@ comando-alternar-pines = Hide or show pins
 comando-restaurar-ultimo-pin = Reopen last closed pin
 comando-cerrar-todos-los-pines = Close all pins
 comando-ventana-encima = Keep the window under the pointer on top
+comando-copiar-texto = Copy text from an area

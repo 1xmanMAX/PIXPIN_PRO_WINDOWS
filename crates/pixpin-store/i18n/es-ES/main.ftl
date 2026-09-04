@@ -63,3 +63,4 @@ comando-alternar-pines = Ocultar o mostrar los pines
 comando-restaurar-ultimo-pin = Devolver el último pin cerrado
 comando-cerrar-todos-los-pines = Cerrar todos los pines
 comando-ventana-encima = Fijar encima la ventana bajo el ratón
+comando-copiar-texto = Copiar el texto de una zona

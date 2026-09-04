@@ -333,6 +333,7 @@ fn arrancar(
                     Some((ModoConfirmacion::Scroll, None))
                 }
                 Some(comandos::Comando::Cuentagotas) => Some((ModoConfirmacion::Cuentagotas, None)),
+                Some(comandos::Comando::CopiarTexto) => Some((ModoConfirmacion::Texto, None)),
                 Some(comandos::Comando::CapturarYCopiar) => {
                     Some((ModoConfirmacion::DirectoAlPortapapeles, None))
                 }
@@ -741,6 +742,30 @@ fn ejecutar_accion(
 ) -> Result<Option<std::path::PathBuf>> {
     match accion {
         AccionFinal::Nada => Ok(None),
+        // Reconocer el texto del recorte y copiarlo. Las lineas llegan sin
+        // orden de lectura: agruparlas en parrafos y columnas es lo que
+        // hace que el texto pegado se parezca al que se veia.
+        AccionFinal::Texto(imagen) => {
+            let lineas = pixpin_ocr::reconocer(imagen.ancho, imagen.alto, &imagen.pixeles)
+                .context("no se pudo reconocer el texto")?;
+            let cuantas = lineas.len();
+            let texto = pixpin_geom::parrafos::a_texto(&pixpin_geom::parrafos::agrupar(
+                lineas
+                    .into_iter()
+                    .map(|l| pixpin_geom::parrafos::LineaTexto {
+                        caja: l.caja,
+                        texto: l.texto,
+                    })
+                    .collect(),
+            ));
+            if texto.trim().is_empty() {
+                tracing::info!("no se leyo texto en la zona elegida");
+                return Ok(None);
+            }
+            pixpin_codec::copiar_texto(&texto).context("no se pudo copiar el texto")?;
+            tracing::info!(lineas = cuantas, largo = texto.len(), "texto copiado");
+            Ok(None)
+        }
         AccionFinal::Copiar(imagen) => {
             pixpin_codec::copiar_imagen(&imagen).context("no se pudo copiar al portapapeles")?;
             Ok(None)
