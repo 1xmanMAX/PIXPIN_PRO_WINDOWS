@@ -135,17 +135,21 @@ pub const CATALOGO: &[Descriptor] = &[
         atajo_por_defecto: None,
         en_bandeja: false,
     },
-    // Los tres de pines nacen SIN atajo a proposito: son de uso ocasional y
-    // meter combinaciones nuevas por defecto es la forma mas rapida de
-    // pisar las de otro programa. Quien los use a diario se los pone en el
-    // fichero de ajustes.
+    // Esconder y sacar los pines es de uso constante y el usuario lo pidio
+    // con esta tecla, la misma del PixPin original. Aviso conocido: Ctrl+2
+    // se lo quita a las demas aplicaciones mientras PixPin este abierto, y
+    // en un navegador esa combinacion cambia de pestana. Se cambia en el
+    // fichero de ajustes si estorba.
     Descriptor {
         comando: Comando::AlternarPines,
         nombre: "alternar-pines",
         clave_titulo: "comando-alternar-pines",
-        atajo_por_defecto: None,
+        atajo_por_defecto: Some("Ctrl+2"),
         en_bandeja: true,
     },
+    // Los otros dos de pines nacen SIN atajo: son de uso ocasional y meter
+    // combinaciones nuevas por defecto es la forma mas rapida de pisar las
+    // de otro programa.
     Descriptor {
         comando: Comando::RestaurarUltimoPin,
         nombre: "restaurar-ultimo-pin",

@@ -41,12 +41,24 @@ use crate::video::Reproductor;
 /// Margen transparente alrededor del contenido: ahi vive la sombra (D30).
 pub const MARGEN_SOMBRA_LOGICO: u32 = 24;
 
+/// Todo lo que hay que guardar de un pin para devolverlo tal cual: donde
+/// esta, a que tamano, con que zoom de texto y como esta girado.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Colocacion {
+    pub rect: Rect,
+    /// 100 salvo en las notas, donde la rueda cambia el tamano del texto.
+    pub zoom_por_cien: u32,
+    /// Cuartos de vuelta a la derecha, de 0 a 3.
+    pub giro: u8,
+    pub volteo_h: bool,
+    pub volteo_v: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CambioPin {
-    /// Rect nuevo y zoom del texto en por ciento (100 salvo en notas): lo
-    /// que el gestor persiste.
-    Movido(Rect, u32),
-    Redimensionado(Rect, u32),
+    /// Lo que el gestor persiste cuando el pin se mueve o cambia de tamano.
+    Movido(Colocacion),
+    Redimensionado(Colocacion),
     Cerrado,
     /// `Ctrl+C` sobre el pin enfocado (spec 4.2). Que significa copiar
     /// depende del tipo, y eso lo sabe el gestor, no la ventana.
@@ -714,6 +726,24 @@ impl Pin {
         }
     }
 
+    /// Como esta girado y volteado: cuartos de vuelta a la derecha (0 a 3)
+    /// y los dos volteos. Lo guarda el gestor para devolverlo asi.
+    pub fn giro(&self) -> (u8, bool, bool) {
+        interno_de(self.hwnd)
+            .map(|i| (i.giro, i.volteo_h, i.volteo_v))
+            .unwrap_or((0, false, false))
+    }
+
+    /// Lo pone al restaurar del almacen y repinta.
+    pub fn poner_giro(&self, giro: u8, volteo_h: bool, volteo_v: bool) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.giro = giro % 4;
+            i.volteo_h = volteo_h;
+            i.volteo_v = volteo_v;
+            pintar(i);
+        }
+    }
+
     /// Zoom del texto de una nota, en por ciento (100 = como nacio).
     pub fn zoom_por_cien(&self) -> u32 {
         interno_de(self.hwnd)
@@ -1037,6 +1067,17 @@ fn estirar_hasta(_hwnd: HWND, i: &PinInterno, rect: Rect) {
 
 /// El zoom del texto en por ciento, para persistirlo (100 fuera de las
 /// notas: los demas contenidos no tienen zoom de texto).
+/// Lo que se guarda de un pin en un momento dado, para un rect concreto.
+fn colocacion_de(i: &PinInterno, rect: Rect) -> Colocacion {
+    Colocacion {
+        rect,
+        zoom_por_cien: zoom_por_cien_de(i),
+        giro: i.giro,
+        volteo_h: i.volteo_h,
+        volteo_v: i.volteo_v,
+    }
+}
+
 fn zoom_por_cien_de(i: &PinInterno) -> u32 {
     if matches!(i.contenido, Contenido::Nota { .. }) {
         (i.zoom_texto * 100.0).round().max(1.0) as u32
@@ -1643,7 +1684,7 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
                 i.estado.poner_rect(nuevo);
                 aplicar(hwnd, EfectoPin::Redimensionar(nuevo));
                 if let Some(i2) = interno_de(hwnd) {
-                    (i2.al_cambiar)(CambioPin::Redimensionado(nuevo, zoom_por_cien_de(i2)));
+                    (i2.al_cambiar)(CambioPin::Redimensionado(colocacion_de(i2, nuevo)));
                 }
                 return;
             }
@@ -1671,7 +1712,7 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
             i.estado.poner_rect(nuevo);
             aplicar(hwnd, EfectoPin::Redimensionar(nuevo));
             if let Some(i2) = interno_de(hwnd) {
-                (i2.al_cambiar)(CambioPin::Redimensionado(nuevo, zoom_por_cien_de(i2)));
+                (i2.al_cambiar)(CambioPin::Redimensionado(colocacion_de(i2, nuevo)));
             }
         }
         EfectoPin::GestoTerminado(contenido) => {
@@ -1697,7 +1738,7 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
                 // ResizeBuffers descarta el contenido: repintar.
                 pintar(i);
             }
-            (i.al_cambiar)(CambioPin::Movido(pegado, zoom_por_cien_de(i)));
+            (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, pegado)));
         }
         EfectoPin::Cerrar => {
             (i.al_cambiar)(CambioPin::Cerrado);
@@ -2009,8 +2050,7 @@ extern "system" fn procedimiento_pin(
                 i.estado.poner_rect(nuevo);
                 aplicar(hwnd, EfectoPin::Redimensionar(nuevo));
                 if let Some(i) = interno_de(hwnd) {
-                    let z = zoom_por_cien_de(i);
-                    (i.al_cambiar)(CambioPin::Redimensionado(nuevo, z));
+                    (i.al_cambiar)(CambioPin::Redimensionado(colocacion_de(i, nuevo)));
                 }
             }
             LRESULT(0)
@@ -2208,7 +2248,7 @@ extern "system" fn procedimiento_pin(
                     i.estado.poner_rect(pegado);
                     aplicar(hwnd, EfectoPin::Mover(pegado));
                 }
-                (i.al_cambiar)(CambioPin::Movido(i.estado.rect(), zoom_por_cien_de(i)));
+                (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, i.estado.rect())));
             }
             LRESULT(0)
         }

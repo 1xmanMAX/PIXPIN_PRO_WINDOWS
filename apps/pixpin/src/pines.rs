@@ -206,6 +206,26 @@ impl Pines {
             alto: region.alto,
             escala_por_cien: escala,
             zoom_por_cien,
+            // Sin girar: es lo que vale para un pin recien creado. Los que
+            // ya estan en pantalla conservan el suyo con `con_giro_de`.
+            giro: 0,
+            volteo_h: false,
+            volteo_v: false,
+        }
+    }
+
+    /// Lo que el pin dice de si mismo, tal cual, para el almacen.
+    fn guardado_de(c: pixpin_pin::Colocacion, escala: u32) -> PinGuardado {
+        PinGuardado {
+            x: c.rect.x,
+            y: c.rect.y,
+            ancho: c.rect.ancho,
+            alto: c.rect.alto,
+            escala_por_cien: escala,
+            zoom_por_cien: c.zoom_por_cien,
+            giro: c.giro,
+            volteo_h: c.volteo_h,
+            volteo_v: c.volteo_v,
         }
     }
 
@@ -231,9 +251,9 @@ impl Pines {
             self.ritmo_video.unwrap_or(16),
             Box::new(move |cambio| {
                 let resultado = match cambio {
-                    CambioPin::Movido(r, zoom) | CambioPin::Redimensionado(r, zoom) => almacen
+                    CambioPin::Movido(c) | CambioPin::Redimensionado(c) => almacen
                         .borrow_mut()
-                        .actualizar_pin(id, Some(Pines::guardado_desde(r, escala, zoom))),
+                        .actualizar_pin(id, Some(Pines::guardado_de(c, escala))),
                     CambioPin::Cerrado => {
                         cerrados.borrow_mut().push(id);
                         // Apuntar DONDE estaba antes de marcarlo cerrado:
