@@ -151,10 +151,10 @@ Todos son filas nuevas del registro de P0.1 más una acción pequeña.
 
 ## Fase P3 — Zoom y vista del pin (lo que eligió el usuario)
 
-- [ ] **P3.1 Teclas de zoom**: 100 % exacto (escala clavada en 1.0 y filtro nítido), ajustar al monitor, rellenar.
-- [ ] **P3.2 Rotar 90° a izquierda y derecha, voltear en horizontal y vertical.** El `Elemento` ya tiene `angulo`; para el pin es una transformada en el pintado y un campo persistido.
+- [x] **P3.1 Teclas de zoom**: 100 % exacto (escala clavada en 1.0 y filtro nítido), ajustar al monitor, rellenar.
+- [x] **P3.2 Rotar 90° a izquierda y derecha, voltear en horizontal y vertical.** El `Elemento` ya tiene `angulo`; para el pin es una transformada en el pintado y un campo persistido.
 - [ ] **P3.3 Arrastre vertical con el botón derecho = zoom.** Un clic derecho sin arrastrar sigue abriendo el menú.
-- [ ] **P3.4 `Ctrl` + rueda: zoom con la ventana bloqueada** y desplazamiento del contenido dentro. Es lo que el usuario pidió para las notas.
+- [x] **P3.4 `Ctrl` + rueda: zoom con la ventana bloqueada** y desplazamiento del contenido dentro. Es lo que el usuario pidió para las notas.
 
 ## Fase P4 — Reconocimiento de texto, sin distribuir modelos
 

@@ -444,6 +444,16 @@ struct PinInterno {
     giro: u8,
     volteo_h: bool,
     volteo_v: bool,
+    /// Zoom del CONTENIDO dentro de la ventana, que no cambia de tamano
+    /// (Ctrl + rueda). 1.0 = el contenido cabe justo. Con mas, se ve un
+    /// trozo mas grande y el resto se alcanza arrastrando con el boton
+    /// central. Es lo que pidio el usuario para las notas: mismo tamano de
+    /// caja, mas texto a la vista.
+    vista_escala: f32,
+    vista_dx: f32,
+    vista_dy: f32,
+    /// Desde donde se empezo a arrastrar con el boton central, para panear.
+    paneo: Option<(i32, i32, f32, f32)>,
     /// El reproductor, solo en un pin de video (D63). Si no pudo crearse,
     /// `video_fallido` avisa al gestor en el primer tick (D72).
     video: Option<Reproductor>,
@@ -581,6 +591,10 @@ impl Pin {
             giro: 0,
             volteo_h: false,
             volteo_v: false,
+            vista_escala: 1.0,
+            vista_dx: 0.0,
+            vista_dy: 0.0,
+            paneo: None,
             hwnd,
             video,
             video_fallido,
@@ -965,6 +979,42 @@ fn preparar_ventana_para(hwnd: HWND, i: &mut PinInterno, destino: Rect) {
     pintar(i);
 }
 
+/// Amplia o reduce el contenido dentro de la ventana, anclando en el cursor.
+/// `lparam` viene de `WM_MOUSEWHEEL`, que trae el punto en coordenadas de
+/// pantalla.
+fn ajustar_vista(i: &mut PinInterno, paso: f32, lparam: LPARAM) {
+    let contenido = i.estado.rect();
+    let (cx, cy) = (
+        (lparam.0 & 0xFFFF) as i16 as f32 - contenido.x as f32,
+        ((lparam.0 >> 16) & 0xFFFF) as i16 as f32 - contenido.y as f32,
+    );
+
+    let antes = i.vista_escala;
+    // Menos de 1 no tiene sentido: el contenido ya cabe justo, y encoger
+    // solo dejaria huecos dentro de la tarjeta.
+    let ahora = (antes * paso).clamp(1.0, 40.0);
+    // El punto bajo el cursor se queda donde esta: el desplazamiento se
+    // corrige por la diferencia de escalas.
+    i.vista_dx = cx - (cx - i.vista_dx) * ahora / antes;
+    i.vista_dy = cy - (cy - i.vista_dy) * ahora / antes;
+    i.vista_escala = ahora;
+    limitar_vista(i);
+}
+
+/// Impide que el contenido se despegue de la tarjeta y deje un hueco: el
+/// desplazamiento vive entre «pegado al borde derecho» y cero.
+fn limitar_vista(i: &mut PinInterno) {
+    let r = i.estado.rect();
+    let sobra_x = r.ancho as f32 * (1.0 - i.vista_escala);
+    let sobra_y = r.alto as f32 * (1.0 - i.vista_escala);
+    i.vista_dx = i.vista_dx.clamp(sobra_x.min(0.0), 0.0);
+    i.vista_dy = i.vista_dy.clamp(sobra_y.min(0.0), 0.0);
+    if i.vista_escala <= 1.0 {
+        i.vista_dx = 0.0;
+        i.vista_dy = 0.0;
+    }
+}
+
 fn estirar_hasta(_hwnd: HWND, i: &PinInterno, rect: Rect) {
     let base = i.base_pintado.get();
     if base.ancho == 0 || base.alto == 0 {
@@ -1142,6 +1192,20 @@ fn pintar(i: &PinInterno) {
             p.rellenar_redondeado(caja, radio, lienzo);
         }
 
+        // El zoom con la ventana bloqueada: se amplia lo de dentro y se
+        // recorta a la tarjeta, para que lo que se sale no invada la sombra.
+        // La tarjeta y la sombra quedan fuera a proposito: son el marco, y
+        // el marco no se amplia.
+        let con_vista = i.vista_escala > 1.0;
+        if con_vista {
+            p.empujar_recorte(caja);
+            p.poner_vista(
+                (ox as f32 - m, oy as f32 - m),
+                i.vista_escala,
+                (i.vista_dx, i.vista_dy),
+            );
+        }
+
         match &i.contenido {
             // La imagen va sin recorte redondeado (simplificacion consciente
             // heredada de S2-A): el redondeo se aprecia en la sombra.
@@ -1288,6 +1352,11 @@ fn pintar(i: &PinInterno) {
                     color_detalle,
                 );
             }
+        }
+
+        if con_vista {
+            p.desplazar(ox as f32 - m, oy as f32 - m);
+            p.soltar_recorte();
         }
 
         // Las anotaciones van ENCIMA de todo lo demas: son una capa, y el
@@ -1700,10 +1769,61 @@ extern "system" fn procedimiento_pin(
             }
             LRESULT(0)
         }
+        // El boton central arrastra el contenido dentro de la ventana, que
+        // es la pareja natural del zoom con Ctrl. No se usa el izquierdo
+        // porque ese mueve el pin entero, y no se quiere elegir entre las
+        // dos cosas con un modificador mas.
+        WM_MBUTTONDOWN => {
+            if let Some(i) = interno_de(hwnd) {
+                if i.vista_escala > 1.0 {
+                    // SAFETY: captura sobre ventana propia, se suelta abajo.
+                    unsafe { SetCapture(hwnd) };
+                    i.paneo = Some((
+                        (lparam.0 & 0xFFFF) as i16 as i32,
+                        ((lparam.0 >> 16) & 0xFFFF) as i16 as i32,
+                        i.vista_dx,
+                        i.vista_dy,
+                    ));
+                }
+            }
+            LRESULT(0)
+        }
+        WM_MBUTTONUP => {
+            // SAFETY: libera la captura tomada arriba.
+            unsafe {
+                let _ = ReleaseCapture();
+            }
+            if let Some(i) = interno_de(hwnd) {
+                i.paneo = None;
+            }
+            LRESULT(0)
+        }
+        WM_MOUSEMOVE if interno_de(hwnd).is_some_and(|i| i.paneo.is_some()) => {
+            if let Some(i) = interno_de(hwnd) {
+                if let Some((x0, y0, dx0, dy0)) = i.paneo {
+                    let x = (lparam.0 & 0xFFFF) as i16 as i32;
+                    let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
+                    i.vista_dx = dx0 + (x - x0) as f32;
+                    i.vista_dy = dy0 + (y - y0) as f32;
+                    limitar_vista(i);
+                    pintar(i);
+                }
+            }
+            LRESULT(0)
+        }
         WM_MOUSEWHEEL => {
             if let Some(i) = interno_de(hwnd) {
                 // La palabra alta del wparam trae el giro, con signo.
                 let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as i32;
+                // Con Ctrl la rueda NO cambia el tamano de la ventana: mira
+                // el contenido de cerca dentro de la caja que ya hay. Es lo
+                // que se quiere en una nota, donde agrandar la caja no cabe.
+                if tecla_pulsada(VK_CONTROL) && !i.anotando {
+                    let paso = 1.15f32.powf(delta as f32 / 120.0);
+                    ajustar_vista(i, paso, lparam);
+                    pintar(i);
+                    return LRESULT(0);
+                }
                 // A diferencia del resto de mensajes del raton, WM_MOUSEWHEEL
                 // trae el punto en coordenadas de PANTALLA, que es justo lo
                 // que necesita el zoom anclado: no hay que convertir nada.
@@ -1875,6 +1995,10 @@ extern "system" fn procedimiento_pin(
                 && interno_de(hwnd).is_some_and(|i| !i.anotando && !i.estado.es_fijo()) =>
         {
             if let Some(i) = interno_de(hwnd) {
+                // Cualquiera de las tres devuelve la vista de dentro a su
+                // sitio: si no, encajar el pin dejaria el contenido corrido.
+                i.vista_escala = 1.0;
+                limitar_vista(i);
                 let vista = match wparam.0 as u32 {
                     0x31 => Vista::Original,
                     0x32 => Vista::Ajustar,
