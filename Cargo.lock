@@ -348,6 +348,7 @@ dependencies = [
  "pixpin-geom",
  "pixpin-motor2d",
  "pixpin-nivel",
+ "pixpin-ocr",
  "pixpin-pin",
  "pixpin-render",
  "pixpin-shell",
@@ -412,6 +413,12 @@ version = "0.1.0"
 [[package]]
 name = "pixpin-ocr"
 version = "0.1.0"
+dependencies = [
+ "pixpin-geom",
+ "thiserror",
+ "windows",
+ "windows-future",
+]
 
 [[package]]
 name = "pixpin-pdf"

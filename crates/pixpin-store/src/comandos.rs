@@ -50,6 +50,8 @@ pub enum Comando {
     AlternarPines,
     /// Devolver a la pantalla el ultimo pin que se cerro.
     RestaurarUltimoPin,
+    /// Capturar una region y copiar el texto que se lea en ella.
+    CopiarTexto,
     /// Fijar encima de todo la ventana que haya bajo el raton, o bajarla.
     VentanaEncima,
     /// Abrir la ventana de ajustes.
@@ -155,6 +157,13 @@ pub const CATALOGO: &[Descriptor] = &[
         comando: Comando::CerrarTodosLosPines,
         nombre: "cerrar-todos-los-pines",
         clave_titulo: "comando-cerrar-todos-los-pines",
+        atajo_por_defecto: None,
+        en_bandeja: true,
+    },
+    Descriptor {
+        comando: Comando::CopiarTexto,
+        nombre: "copiar-texto",
+        clave_titulo: "comando-copiar-texto",
         atajo_por_defecto: None,
         en_bandeja: true,
     },
@@ -351,6 +360,7 @@ mod pruebas {
         Comando::AlternarPines,
         Comando::RestaurarUltimoPin,
         Comando::CerrarTodosLosPines,
+        Comando::CopiarTexto,
         Comando::VentanaEncima,
         Comando::AbrirAjustes,
         Comando::Salir,

@@ -6,3 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+pixpin-geom = { version = "0.1.0", path = "../pixpin-geom" }
+thiserror = "2.0"
+windows-future = "0.3"
+windows = { version = "0.62.2", features = ["Media_Ocr", "Globalization", "Graphics_Imaging", "Security_Cryptography", "Storage_Streams", "Foundation_Collections"] }

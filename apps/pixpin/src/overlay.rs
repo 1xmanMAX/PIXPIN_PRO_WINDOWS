@@ -55,11 +55,15 @@ pub enum ModoConfirmacion {
     /// Sin recuadro: un clic copia el color bajo el cursor y cierra
     /// (Ctrl+Alt+D, D78).
     Cuentagotas,
+    /// Confirmar lee el texto del recorte y lo copia.
+    Texto,
 }
 
 /// Lo que el overlay decidio. La imagen ya esta recortada y en CPU.
 pub enum AccionFinal {
     Copiar(ImagenRgba),
+    /// El recorte del que hay que leer el texto (P4).
+    Texto(ImagenRgba),
     Guardar(ImagenRgba),
     GuardarComo(ImagenRgba),
     /// El pin nace 1:1 exactamente donde se recorto (D26): la region viaja.
@@ -431,6 +435,7 @@ pub fn ejecutar_overlay(
                 a_imagen(dispositivo, &recorte).context("no se pudo bajar la seleccion a CPU")?;
             Ok(match que {
                 QueAccion::Copiar => AccionFinal::Copiar(imagen),
+                QueAccion::Texto => AccionFinal::Texto(imagen),
                 QueAccion::Guardar => AccionFinal::Guardar(imagen),
                 QueAccion::GuardarComo => AccionFinal::GuardarComo(imagen),
                 QueAccion::Pinear => AccionFinal::Pinear { imagen, region },
@@ -446,6 +451,8 @@ pub fn ejecutar_overlay(
 #[derive(Clone, Copy)]
 enum QueAccion {
     Copiar,
+    /// Leer el texto del recorte y copiarlo, en vez de la imagen.
+    Texto,
     Guardar,
     GuardarComo,
     Pinear,
@@ -793,6 +800,10 @@ fn aplicar_efecto(
             }
             ModoConfirmacion::Pinear => {
                 PENDIENTE.poner(QueAccion::Pinear, region);
+                Continuar::No
+            }
+            ModoConfirmacion::Texto => {
+                PENDIENTE.poner(QueAccion::Texto, region);
                 Continuar::No
             }
             ModoConfirmacion::Scroll => {
