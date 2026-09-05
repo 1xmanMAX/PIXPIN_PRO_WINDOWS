@@ -51,6 +51,7 @@
 
 mod caja_dibujo;
 mod capa;
+mod gif;
 mod overlay;
 mod pines;
 mod scroll;
@@ -338,6 +339,7 @@ fn arrancar(
                 }
                 Some(comandos::Comando::Cuentagotas) => Some((ModoConfirmacion::Cuentagotas, None)),
                 Some(comandos::Comando::CopiarTexto) => Some((ModoConfirmacion::Texto, None)),
+                Some(comandos::Comando::GrabarGif) => Some((ModoConfirmacion::Gif, None)),
                 // Capturar y anotar abre la misma captura que pinear; lo
                 // que cambia es lo que pasa despues, ya con el pin hecho.
                 Some(comandos::Comando::CapturarYAnotar) => Some((ModoConfirmacion::Pinear, None)),
@@ -508,6 +510,41 @@ fn arrancar(
                         p.pinear_imagen_centrada(&imagen, &m)?;
                         tracing::info!(alto = imagen.alto, "pagina cosida pineada");
                         Ok(None)
+                    }
+                    // Grabar en GIF (P5): como el scroll, el overlay ya esta
+                    // oculto y ahora se captura la region una y otra vez.
+                    AccionFinal::Gif { region } => {
+                        let grabado = {
+                            let r = recursos_overlay
+                                .as_mut()
+                                .context("sin recursos para grabar")?;
+                            gif::ejecutar_grabacion(r, region)?
+                        };
+                        let Some(g) = grabado else {
+                            tracing::info!("grabacion sin fotogramas aprovechables");
+                            return Ok(None);
+                        };
+                        let bytes = pixpin_codec::codificar_gif(
+                            &g.fotogramas,
+                            pixpin_codec::OpcionesGif {
+                                centesimas_por_fotograma: gif::centesimas_por_fotograma(),
+                                bucle: true,
+                            },
+                        )
+                        .context("no se pudo codificar el GIF")?;
+                        // A fichero y no al portapapeles: el portapapeles de
+                        // Windows solo guarda un fotograma, asi que pegar un
+                        // GIF daria una imagen quieta y parecerian rotos.
+                        let ruta = ruta_captura_libre(&ubicacion)?.with_extension("gif");
+                        std::fs::write(&ruta, &bytes)
+                            .with_context(|| format!("no se pudo escribir {}", ruta.display()))?;
+                        tracing::info!(
+                            fotogramas = g.fotogramas.len(),
+                            kb = bytes.len() / 1024,
+                            fin = ?g.fin,
+                            "GIF guardado"
+                        );
+                        Ok(Some(ruta))
                     }
                     AccionFinal::Pinear { imagen, region } => {
                         // El gestor consume la accion aqui, no en
@@ -822,10 +859,11 @@ fn ejecutar_accion(
             pixpin_codec::guardar(&imagen, &ruta, pixpin_codec::FormatoImagen::Png)?;
             Ok(Some(ruta))
         }
-        AccionFinal::Pinear { .. } | AccionFinal::Scroll { .. } => {
-            // El bucle intercepta Pinear y Scroll antes de llamar aqui (el
-            // gestor vive alli); llegar seria un error de cableado.
-            tracing::warn!("Pinear o Scroll llego a ejecutar_accion; se ignora");
+        AccionFinal::Pinear { .. } | AccionFinal::Scroll { .. } | AccionFinal::Gif { .. } => {
+            // El bucle los intercepta antes de llamar aqui, porque necesitan
+            // el gestor o los recursos de captura; llegar seria un error de
+            // cableado.
+            tracing::warn!("una accion diferida llego a ejecutar_accion; se ignora");
             Ok(None)
         }
         AccionFinal::GuardarComo(imagen) => {

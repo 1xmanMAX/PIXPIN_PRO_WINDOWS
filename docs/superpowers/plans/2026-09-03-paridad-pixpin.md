@@ -171,7 +171,7 @@ conexión y no añade un solo byte al ejecutable.
 Sin FFmpeg ni x264: un GIF es paleta de 256 colores más compresión LZW.
 
 - [x] **P5.1 Codificador GIF** en `pixpin-codec` (puro, con pruebas): cuantización por octree o mediana, LZW, fotogramas con retardo y bucle.
-- [ ] **P5.2 Grabación de una región** con el bucle de captura que ya existe, tope de tiempo y de tamaño, y aviso de cuánto lleva.
+- [x] **P5.2 Grabación de una región** con el bucle de captura que ya existe, tope de tiempo y de tamaño, y aviso de cuánto lleva.
 - [ ] **P5.3 Pausa y reanudación**, como el original.
 
 ## Fase P6 — Ventana de ajustes (la S3-D del plan maestro)
