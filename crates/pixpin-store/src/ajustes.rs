@@ -172,6 +172,9 @@ pub struct Ajustes {
     /// deje de responder, y una lista con algo dentro de fabrica seria
     /// una sorpresa muy dificil de averiguar.
     pub ignorar_programas: Vec<String>,
+    /// Segundos que espera la captura con retardo antes de abrirse
+    /// (P2.1). Tres es lo justo para desplegar un menu y soltar el raton.
+    pub retardo_captura_s: u32,
 }
 
 impl Default for Ajustes {
@@ -187,6 +190,7 @@ impl Default for Ajustes {
             limite_scroll_px: 30_000,
             gif: Gif::default(),
             ignorar_programas: Vec::new(),
+            retardo_captura_s: 3,
         }
     }
 }

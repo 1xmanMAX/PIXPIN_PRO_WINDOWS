@@ -98,3 +98,7 @@ aviso-atajos-silenciados = Shortcuts muted
 aviso-atajos-silenciados-detalle = Turn them back on from this same menu.
 aviso-atajos-activos = Shortcuts active
 aviso-atajos-activos-detalle = { $cuantos } shortcuts respond again.
+
+# Delayed capture (P2.1).
+comando-capturar-con-retardo = Capture after a countdown
+cuenta-atras-cancelar = Esc to stop
