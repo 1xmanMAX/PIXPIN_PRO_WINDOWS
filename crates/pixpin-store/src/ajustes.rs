@@ -134,7 +134,7 @@ pub struct Gif {
     /// lista para que el fichero siga significando lo mismo si algun dia
     /// se ofrecen otros ritmos.
     pub por_segundo: u32,
-    /// Segundos de cortesia entre pulsar Â«GrabarÂ» y el primer fotograma.
+    /// Segundos de cortesia entre pulsar «Grabar» y el primer fotograma.
     pub retardo_s: u32,
 }
 
@@ -239,7 +239,7 @@ pub fn guardar(ubicacion: &Ubicacion, ajustes: &Ajustes) -> Result<(), ErrorAjus
 /// orden, lineas en blanco y hasta las claves que no conocemos.
 ///
 /// La fusion es generica y no campo a campo a proposito. Escribir a mano
-/// Â«pon idioma, pon comandos, pon gif...Â» significa que el dia que se
+/// «pon idioma, pon comandos, pon gif...» significa que el dia que se
 /// anada un ajuste, alguien se olvidara de anadirlo aqui y ese ajuste
 /// dejara de guardarse sin que falle nada. Lo vigila ademas la prueba
 /// `ningun_ajuste_se_queda_sin_guardar`.

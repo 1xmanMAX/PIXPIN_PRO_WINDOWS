@@ -122,7 +122,7 @@ pub fn entradas_del_menu(
         }
     }
 
-    // Â«Dejar pasar el clicÂ» solo se ofrece si NO lo esta ya: estando
+    // «Dejar pasar el clic» solo se ofrece si NO lo esta ya: estando
     // pasante, este menu ni siquiera se abre, porque el clic derecho pasa
     // de largo. Ofrecer una entrada para desactivarlo seria prometer algo
     // a lo que no se puede llegar.

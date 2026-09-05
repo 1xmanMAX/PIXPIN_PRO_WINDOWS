@@ -52,7 +52,7 @@ pub const MEMORIA_MAXIMA: usize = 256 * 1024 * 1024;
 pub enum Fase {
     /// Marco azul: eligiendo zona y ajustes, sin grabar todavia.
     Esperando,
-    /// Marco azul y cuenta atras: ya se pulso Â«GrabarÂ», pero el retardo
+    /// Marco azul y cuenta atras: ya se pulso «Grabar», pero el retardo
     /// da tiempo a colocar el raton antes del primer fotograma.
     Contando,
     /// Marco rojo: contando fotogramas.
@@ -233,7 +233,7 @@ pub fn botones(fase: Fase) -> Vec<(Boton, RectF)> {
     };
     match fase {
         // La cuenta atras ensena los mismos botones que la espera: se
-        // puede cerrar sin haber grabado nada, y volver a pulsar Â«GrabarÂ»
+        // puede cerrar sin haber grabado nada, y volver a pulsar «Grabar»
         // se salta lo que quede de retardo.
         Fase::Esperando | Fase::Contando => {
             poner(Boton::Grabar, 94.0, &mut x);
