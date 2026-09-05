@@ -18,6 +18,7 @@ use pixpin_codec::ImagenRgba;
 use pixpin_geom::{Punto, Rect};
 use pixpin_render::{Color, MotorRender, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
+use pixpin_store::Catalogo;
 
 use crate::grabador::{
     Asa, BARRA_ALTO, BARRA_ANCHO, Boton, Fase, Fin, GROSOR, Grabacion, MARGEN, RITMO_HUECO, RITMOS,
@@ -235,7 +236,7 @@ impl Barra {
         boton_en(fase, x, y)
     }
 
-    fn pintar(&self, fase: Fase, ritmo: u32, segundo: u64, tope: u64) {
+    fn pintar(&self, fase: Fase, ritmo: u32, segundo: u64, tope: u64, textos: &Catalogo) {
         let Ok(destino) = self.superficie.empezar(&self.motor) else {
             return;
         };
@@ -289,7 +290,7 @@ impl Barra {
                             ROJO,
                         );
                         p.texto(
-                            "Grabar",
+                            &textos.t("grabar-empezar"),
                             r.x + 29.0 * e,
                             r.y + (r.alto - 15.0 * e) / 2.0,
                             13.0 * e,
@@ -308,7 +309,7 @@ impl Barra {
                             ROJO,
                         );
                         p.texto(
-                            "Parar",
+                            &textos.t("grabar-parar"),
                             r.x + 29.0 * e,
                             r.y + (r.alto - 15.0 * e) / 2.0,
                             13.0 * e,
@@ -317,15 +318,15 @@ impl Barra {
                     }
                     Boton::Pausar => {
                         let texto = if fase == Fase::Pausada {
-                            "Seguir"
+                            textos.t("grabar-seguir")
                         } else {
-                            "Pausa"
+                            textos.t("grabar-pausa")
                         };
-                        centrar(texto, r, 13.0 * e, TINTA);
+                        centrar(&texto, r, 13.0 * e, TINTA);
                     }
                     Boton::MenosRitmo => centrar("-", r, 16.0 * e, TINTA),
                     Boton::MasRitmo => centrar("+", r, 16.0 * e, TINTA),
-                    Boton::Cerrar => centrar("Cerrar", r, 13.0 * e, TENUE),
+                    Boton::Cerrar => centrar(&textos.t("grabar-cerrar"), r, 13.0 * e, TENUE),
                 }
             }
             match fase {
@@ -342,9 +343,13 @@ impl Barra {
                     // ese momento, y no hace falta ensanchar la barra
                     // para meter un rotulo mas.
                     let rotulo = if fase == Fase::Contando {
-                        format!("{segundo}...")
+                        let mut args = fluent_bundle::FluentArgs::new();
+                        args.set("segundos", segundo.to_string());
+                        textos.t_args("grabar-cuenta-atras", &args)
                     } else {
-                        format!("{ritmo}/s")
+                        let mut args = fluent_bundle::FluentArgs::new();
+                        args.set("ritmo", ritmo.to_string());
+                        textos.t_args("grabar-por-segundo", &args)
                     };
                     centrar(
                         &rotulo,
@@ -426,6 +431,7 @@ pub fn ejecutar_sesion(
     id_atajo_gif: Option<u32>,
     por_segundo_inicial: u32,
     retardo: Duration,
+    textos: &Catalogo,
 ) -> Result<Option<Grabacion>> {
     if zona_inicial.ancho == 0 || zona_inicial.alto == 0 {
         return Ok(None);
@@ -649,7 +655,7 @@ pub fn ejecutar_sesion(
                 m.pintar(fase);
             }
             if let Some(b) = &barra {
-                b.pintar(fase, ritmo, segundo, tope);
+                b.pintar(fase, ritmo, segundo, tope, textos);
             }
         }
         std::thread::sleep(LATIDO);

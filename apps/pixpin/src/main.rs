@@ -51,10 +51,12 @@
 
 mod caja_dibujo;
 mod capa;
+mod editor;
 mod gif;
 mod grabador;
 mod overlay;
 mod pines;
+mod reproductor;
 mod scroll;
 
 use anyhow::{Context, Result};
@@ -530,6 +532,7 @@ fn arrancar(
                                     .gif_por_segundo
                                     .unwrap_or(config.gif.por_segundo),
                                 std::time::Duration::from_secs(config.gif.retardo_s as u64),
+                                &textos,
                             )?
                         };
                         let Some(g) = grabado else {
@@ -548,6 +551,28 @@ fn arrancar(
                                 tracing::warn!(?e, "no se pudo recordar el ritmo");
                             }
                         }
+                        // El editor: se ve lo grabado antes de decidir que
+                        // hacer con ello. Media grabacion sale mal a la
+                        // primera, y guardarlas sin mirar llena la carpeta
+                        // de ficheros que hay que borrar despues.
+                        let salida = {
+                            let d = pixpin_capture::enumerar_monitores()?;
+                            let m = d
+                                .monitores()
+                                .iter()
+                                .find(|m| m.area.interseccion(region).is_some())
+                                .or_else(|| d.principal())
+                                .context("sin monitor para el editor")?
+                                .to_owned();
+                            let r = recursos_overlay
+                                .as_ref()
+                                .context("sin recursos para el editor")?;
+                            editor::abrir(r, &g, &m, &textos)?
+                        };
+                        if salida == reproductor::Salida::Descartar {
+                            tracing::info!("grabacion descartada");
+                            return Ok(None);
+                        }
                         let bytes = pixpin_codec::codificar_gif(
                             &g.fotogramas,
                             pixpin_codec::OpcionesGif {
@@ -556,16 +581,42 @@ fn arrancar(
                             },
                         )
                         .context("no se pudo codificar el GIF")?;
-                        // A fichero y no al portapapeles: el portapapeles de
-                        // Windows solo guarda un fotograma, asi que pegar un
-                        // GIF daria una imagen quieta y parecerian rotos.
-                        let ruta = ruta_captura_libre(&ubicacion)?.with_extension("gif");
+                        let ruta = match salida {
+                            reproductor::Salida::Guardar => {
+                                match pixpin_shell::guardar::pedir_ruta_guardado(
+                                    hwnd,
+                                    "grabacion.gif",
+                                    pixpin_shell::guardar::Formatos::Animacion,
+                                ) {
+                                    Some(r) => r,
+                                    // Cancelar el dialogo cancela el guardado
+                                    // entero. Dejarlo caer a la carpeta de
+                                    // capturas seria escribir un fichero que
+                                    // se acaba de decir que no.
+                                    None => return Ok(None),
+                                }
+                            }
+                            _ => ruta_captura_libre(&ubicacion)?.with_extension("gif"),
+                        };
                         std::fs::write(&ruta, &bytes)
                             .with_context(|| format!("no se pudo escribir {}", ruta.display()))?;
+                        // Copiar deja el FICHERO en el portapapeles, no la
+                        // imagen: el portapapeles de Windows solo guarda un
+                        // fotograma, asi que pegar la imagen daria una foto
+                        // quieta y pareceria que el GIF salio roto. Como
+                        // fichero se pega entero y sigue moviendose.
+                        if salida == reproductor::Salida::Copiar {
+                            if let Err(e) =
+                                pixpin_codec::copiar_ficheros(std::slice::from_ref(&ruta))
+                            {
+                                tracing::warn!(?e, "el GIF no se pudo copiar");
+                            }
+                        }
                         tracing::info!(
                             fotogramas = g.fotogramas.len(),
                             kb = bytes.len() / 1024,
                             fin = ?g.fin,
+                            ?salida,
                             "GIF guardado"
                         );
                         Ok(Some(ruta))
@@ -891,7 +942,11 @@ fn ejecutar_accion(
             Ok(None)
         }
         AccionFinal::GuardarComo(imagen) => {
-            match pixpin_shell::guardar::pedir_ruta_guardado(hwnd, "captura.png") {
+            match pixpin_shell::guardar::pedir_ruta_guardado(
+                hwnd,
+                "captura.png",
+                pixpin_shell::guardar::Formatos::Imagen,
+            ) {
                 None => Ok(None), // cancelado: la imagen se descarta sin drama
                 Some(ruta) => {
                     let formato = ruta

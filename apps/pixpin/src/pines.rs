@@ -1171,7 +1171,11 @@ impl Pines {
             .map(|p| p.hwnd())
             .context("el pin ya no esta abierto")?;
         // Cancelar no es un fallo: el usuario cambio de idea.
-        if let Some(destino) = pixpin_shell::guardar::pedir_ruta_guardado(hwnd, sugerido) {
+        if let Some(destino) = pixpin_shell::guardar::pedir_ruta_guardado(
+            hwnd,
+            sugerido,
+            pixpin_shell::guardar::Formatos::Imagen,
+        ) {
             std::fs::copy(&objeto, &destino).context("no se pudo escribir el fichero")?;
             tracing::info!(?destino, "contenido del pin guardado");
         }
