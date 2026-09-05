@@ -18,6 +18,7 @@ pub mod guardar;
 pub mod hechos;
 pub mod instancia;
 pub mod overlay;
+pub mod primer_plano;
 pub mod uia;
 pub mod ventana;
 

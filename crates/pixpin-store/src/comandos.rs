@@ -57,6 +57,9 @@ pub enum Comando {
     /// Que los pines dejen pasar el clic a lo que hay debajo, o que
     /// vuelvan a recogerlo (P1.4).
     AlternarPasoDeClics,
+    /// Soltar todos los atajos globales un rato, y volver a tomarlos
+    /// (P1.7).
+    SilenciarAtajos,
     /// Devolver a la pantalla el ultimo pin que se cerro.
     RestaurarUltimoPin,
     /// Capturar una region y copiar el texto que se lea en ella.
@@ -174,6 +177,16 @@ pub const CATALOGO: &[Descriptor] = &[
     // se lo quita a las demas aplicaciones mientras PixPin este abierto, y
     // en un navegador esa combinacion cambia de pestana. Se cambia en el
     // fichero de ajustes si estorba.
+    Descriptor {
+        comando: Comando::SilenciarAtajos,
+        nombre: "silenciar-atajos",
+        clave_titulo: "comando-silenciar-atajos",
+        // Sin atajo de fabrica y SIEMPRE en la bandeja, por lo mismo que
+        // el paso de clics: al silenciar se sueltan todos los atajos, el
+        // suyo incluido, asi que la vuelta no puede ser por teclado.
+        atajo_por_defecto: None,
+        en_bandeja: true,
+    },
     Descriptor {
         comando: Comando::AlternarPasoDeClics,
         nombre: "alternar-paso-de-clics",
@@ -410,6 +423,7 @@ mod pruebas {
         Comando::AnotarCongelada,
         Comando::AlternarPines,
         Comando::AlternarPasoDeClics,
+        Comando::SilenciarAtajos,
         Comando::RestaurarUltimoPin,
         Comando::CerrarTodosLosPines,
         Comando::CopiarTexto,

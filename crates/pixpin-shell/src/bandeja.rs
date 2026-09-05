@@ -7,7 +7,8 @@
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
-    NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
+    NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
+    Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, GetSystemMetrics, HICON,
@@ -55,11 +56,19 @@ pub struct Bandeja {
 /// mitad de una pareja subrogada dejaria el sustituto alto suelto justo
 /// antes del cero final: una secuencia UTF-16 invalida aunque el array
 /// siguiera terminando en NUL.
-fn copiar_titulo(destino: &mut [u16; 128], titulo: &str) {
+/// Copia el texto a un campo de Win32, cortando por donde quepa y
+/// dejando el cero final.
+///
+/// Toma una rodaja y no un array de 128 porque los campos del aviso
+/// emergente miden otra cosa: el titulo 64 y el texto 256. Cortar por el
+/// tamano del destino y no por un numero escrito a mano es lo unico que
+/// evita pisar memoria ajena cuando el campo es mas pequeno.
+fn copiar_titulo(destino: &mut [u16], titulo: &str) {
+    let tope = destino.len().saturating_sub(1);
     let mut escritos = 0usize;
     for caracter in titulo.chars() {
         let ancho = caracter.len_utf16();
-        if escritos + ancho > 127 {
+        if escritos + ancho > tope {
             break;
         }
         let mut buf = [0u16; 2];
@@ -164,6 +173,41 @@ impl Bandeja {
         }
 
         Ok(Self { datos })
+    }
+
+    /// Cambia el texto que sale al pasar el raton por el icono.
+    ///
+    /// Es como se dice que los atajos estan silenciados (P1.7). No hay
+    /// un segundo icono en el ejecutable, y anadirlo por un estado que
+    /// dura un rato no compensa; el aviso emergente de abajo es lo que
+    /// se ve en el momento, y esto es lo que queda para comprobarlo
+    /// despues sin abrir el menu.
+    pub fn poner_titulo(&mut self, titulo: &str) -> WinResult<()> {
+        copiar_titulo(&mut self.datos.szTip, titulo);
+        self.datos.uFlags = NIF_TIP;
+        // SAFETY: `datos` sigue siendo la misma estructura que se dio de
+        // alta, con su cbSize y su uID; solo cambia el texto.
+        let r = unsafe { Shell_NotifyIconW(NIM_MODIFY, &self.datos).ok() };
+        // Se devuelven las banderas de siempre: si se quedaran en NIF_TIP,
+        // el siguiente NIM_MODIFY perderia el icono y el mensaje.
+        self.datos.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+        r
+    }
+
+    /// Un aviso emergente junto al reloj.
+    ///
+    /// Windows puede silenciarlos (en Â«Asistente de concentracionÂ» o en
+    /// los ajustes de notificaciones), asi que esto NO puede ser la unica
+    /// forma de enterarse de algo. Vale para confirmar lo que el usuario
+    /// acaba de pedir, no para pedirle nada.
+    pub fn avisar(&mut self, titulo: &str, texto: &str) -> WinResult<()> {
+        copiar_titulo(&mut self.datos.szInfoTitle, titulo);
+        copiar_titulo(&mut self.datos.szInfo, texto);
+        self.datos.uFlags = NIF_INFO;
+        // SAFETY: igual que arriba; los dos textos acaban de escribirse.
+        let r = unsafe { Shell_NotifyIconW(NIM_MODIFY, &self.datos).ok() };
+        self.datos.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+        r
     }
 
     /// Muestra el menu contextual donde este el raton.

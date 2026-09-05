@@ -192,7 +192,7 @@ fn arrancar(
 
     // 7. Ventana invisible, icono de bandeja y atajos.
     let ventana = VentanaMensajes::nueva().context("no se pudo crear la ventana de mensajes")?;
-    let bandeja = Bandeja::nueva(ventana.handle(), &textos.t("app-nombre"))
+    let mut bandeja = Bandeja::nueva(ventana.handle(), &textos.t("app-nombre"))
         .context("no se pudo añadir el icono de bandeja")?;
 
     // Los atajos salen del registro de comandos: la tabla `[comandos]` del
@@ -209,7 +209,13 @@ fn arrancar(
         tracing::warn!(?a, ?b, "dos comandos comparten atajo; solo actuara uno");
     }
     let peticiones = enlaces.registrables();
-    let (_registrados, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
+    // En un `Option` porque silenciar los atajos es soltar el guardia:
+    // `UnregisterHotKey` es lo unico que devuelve de verdad la
+    // combinacion al sistema, para que el programa de delante la reciba.
+    // Desviarlos a una bandera dejaria el atajo tomado y el otro programa
+    // seguiria sin verlo.
+    let (registrados, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
+    let mut registrados = Some(registrados);
     tracing::info!(
         pedidos = peticiones.len(),
         fallidos = fallidos.len(),
@@ -325,6 +331,47 @@ fn arrancar(
             Evento::Atajo(id) | Evento::Menu(id) => comandos::Comando::desde_id(id),
             _ => None,
         };
+        // La lista de programas a ignorar (P1.8). Solo frena los ATAJOS y
+        // los gestos: lo que se elige a mano en el menu de la bandeja se
+        // hace siempre, porque ahi el usuario ya esta mirando a PixPin y
+        // no puede querer decir otra cosa.
+        if !config.ignorar_programas.is_empty()
+            && !matches!(evento, Evento::Menu(_))
+            && let Some(programa) = pixpin_shell::primer_plano::programa_delante()
+            && pixpin_shell::primer_plano::esta_en_la_lista(&programa, &config.ignorar_programas)
+        {
+            tracing::debug!(%programa, "atajo ignorado: el programa esta en la lista");
+            return Continuar::Si;
+        }
+        if comando == Some(comandos::Comando::SilenciarAtajos) {
+            match registrados.take() {
+                Some(guardia) => {
+                    // Soltarlo es lo que los desregistra: el `Drop` del
+                    // guardia llama a UnregisterHotKey uno por uno.
+                    drop(guardia);
+                    let _ = bandeja.poner_titulo(&textos.t("bandeja-silenciada"));
+                    let _ = bandeja.avisar(
+                        &textos.t("aviso-atajos-silenciados"),
+                        &textos.t("aviso-atajos-silenciados-detalle"),
+                    );
+                    tracing::info!("atajos globales silenciados");
+                }
+                None => {
+                    let (guardia, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
+                    let cuantos = peticiones.len() - fallidos.len();
+                    registrados = Some(guardia);
+                    let _ = bandeja.poner_titulo(&textos.t("app-nombre"));
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("cuantos", cuantos.to_string());
+                    let _ = bandeja.avisar(
+                        &textos.t("aviso-atajos-activos"),
+                        &textos.t_args("aviso-atajos-activos-detalle", &args),
+                    );
+                    tracing::info!(cuantos, "atajos globales devueltos");
+                }
+            }
+            return Continuar::Si;
+        }
         let modo_overlay: Option<(ModoConfirmacion, Option<pixpin_geom::Punto>)> = match evento {
             Evento::Gesto {
                 boton: BotonGesto::Izquierdo,
