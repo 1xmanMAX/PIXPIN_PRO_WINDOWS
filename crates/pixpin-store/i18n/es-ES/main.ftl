@@ -67,3 +67,23 @@ comando-copiar-texto = Copiar el texto de una zona
 comando-capturar-y-anotar = Capturar y anotar
 comando-capturar-ultima-region = Repetir la última captura
 comando-grabar-gif = Grabar una zona como GIF
+
+# La barra de grabar en GIF (P5b).
+grabar-empezar = Grabar
+grabar-parar = Parar
+grabar-pausa = Pausa
+grabar-seguir = Seguir
+grabar-cerrar = Cerrar
+grabar-por-segundo = { $ritmo }/s
+grabar-cuenta-atras = { $segundos }...
+
+# El editor que se abre al parar de grabar (P5b.4).
+editor-ver = Ver
+editor-pausar = Pausa
+editor-anterior = Anterior
+editor-siguiente = Siguiente
+editor-velocidad = { $veces }x
+editor-guardar = Guardar
+editor-guardado-rapido = Rápido
+editor-copiar = Copiar
+editor-descartar = Descartar

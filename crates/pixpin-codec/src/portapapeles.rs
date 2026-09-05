@@ -9,13 +9,13 @@
 //! del reves, asi que aqui se invierten las filas al copiar. Es un coste
 //! pequeno y se paga una sola vez.
 
-use windows::Win32::Foundation::{HANDLE, HGLOBAL};
+use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL, TRUE};
 use windows::Win32::Graphics::Gdi::{BI_RGB, BITMAPINFOHEADER};
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, GetClipboardData, OpenClipboard, SetClipboardData,
 };
 use windows::Win32::System::Memory::{GHND, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock};
-use windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
+use windows::Win32::UI::Shell::{DROPFILES, DragQueryFileW, HDROP};
 
 use crate::imagen::{ErrorCodec, ImagenRgba};
 
@@ -184,6 +184,147 @@ pub fn copiar_texto(texto: &str) -> Result<(), ErrorCodec> {
         puesto.map_err(|_| ErrorCodec::Portapapeles)?;
     }
     Ok(())
+}
+
+/// Copia una lista de ficheros como `CF_HDROP`, el mismo formato que deja el
+/// Explorador al hacer Ctrl+C sobre un fichero.
+///
+/// Es lo que hace que al pegar en el Explorador, en WhatsApp, en Discord o en
+/// un correo viaje el fichero y no su nombre escrito como texto. La pareja de
+/// lectura es `leer_rutas`.
+///
+/// Las rutas deben ser absolutas; ver `construir_hdrop` para el porque.
+pub fn copiar_ficheros(rutas: &[std::path::PathBuf]) -> Result<(), ErrorCodec> {
+    // Primero se monta la carga entera y solo despues se toca Win32: si algo
+    // esta mal, el portapapeles del usuario ni se entera.
+    let carga = construir_hdrop(rutas)?;
+
+    // SAFETY: memoria movible del tamano exacto que se va a escribir. En el
+    // camino de exito el bloque se cede al portapapeles y no se libera; en
+    // cada camino de fallo de aqui abajo seguimos siendo duenos y se libera a
+    // mano, porque el bloque no cambia de dueno hasta que `SetClipboardData`
+    // devuelve exito.
+    let bloque = unsafe { GlobalAlloc(GHND, carga.len()).map_err(|_| ErrorCodec::Portapapeles)? };
+
+    // SAFETY: recien reservado, nadie mas lo tiene bloqueado.
+    let destino = unsafe { GlobalLock(bloque) };
+    if destino.is_null() {
+        // SAFETY: el bloque es nuestro y el bloqueo fallo, asi que no hay
+        // nadie dentro; sin este `GlobalFree` se filtraria memoria global,
+        // que es un recurso de todo el proceso.
+        unsafe {
+            let _ = GlobalFree(Some(bloque));
+        }
+        return Err(ErrorCodec::Portapapeles);
+    }
+
+    // SAFETY: `destino` apunta a `carga.len()` bytes escribibles y se escriben
+    // exactamente esos.
+    unsafe {
+        std::ptr::copy_nonoverlapping(carga.as_ptr(), destino as *mut u8, carga.len());
+        let _ = GlobalUnlock(bloque);
+    }
+
+    // SAFETY: abrir, vaciar, ceder y cerrar sin retornos intermedios que
+    // dejarian el portapapeles abierto para toda la sesion.
+    unsafe {
+        if OpenClipboard(None).is_err() {
+            let _ = GlobalFree(Some(bloque));
+            return Err(ErrorCodec::Portapapeles);
+        }
+        let vaciado = EmptyClipboard();
+        let puesto = SetClipboardData(CF_HDROP, Some(HANDLE(bloque.0)));
+        let _ = CloseClipboard();
+        // El unico caso en que el bloque sigue siendo nuestro es que la cesion
+        // fallara; si tuvo exito, liberarlo aqui seria una doble liberacion.
+        if puesto.is_err() {
+            let _ = GlobalFree(Some(bloque));
+            return Err(ErrorCodec::Portapapeles);
+        }
+        vaciado.map_err(|_| ErrorCodec::Portapapeles)?;
+    }
+
+    Ok(())
+}
+
+/// Monta la carga util de `CF_HDROP`: una cabecera `DROPFILES` seguida de las
+/// rutas en UTF-16, cada una terminada en NUL, y un NUL extra que cierra la
+/// lista.
+///
+/// Va aparte del trasiego de Win32 para poder comprobar los bytes en una
+/// prueba normal, sin abrir el portapapeles, que es un recurso global de la
+/// sesion y puede estar tomado por otro proceso.
+///
+/// Todos los rechazos de aqui devuelven `ErrorCodec::Portapapeles`, que es
+/// mas vago de lo que merecen: una variante propia por motivo (lista vacia,
+/// ruta relativa, NUL dentro del nombre) diria mucho mas al llamante, pero el
+/// enum vive en `imagen.rs`. Vale la pena partirlo cuando alguien necesite
+/// distinguirlos.
+fn construir_hdrop(rutas: &[std::path::PathBuf]) -> Result<Vec<u8>, ErrorCodec> {
+    use std::os::windows::ffi::OsStrExt;
+
+    // Publicar un HDROP sin ficheros vaciaria el portapapeles a cambio de
+    // nada: el usuario perderia lo que tenia copiado y no ganaria un pegado.
+    if rutas.is_empty() {
+        return Err(ErrorCodec::Portapapeles);
+    }
+
+    let mut nombres: Vec<u16> = Vec::new();
+    for ruta in rutas {
+        // Se rechaza la relativa en vez de convertirla. Convertir la resolveria
+        // contra el directorio de trabajo de PixPin, que en una aplicacion de
+        // escritorio puede ser cualquier cosa (System32 si arranca con la
+        // sesion), asi que daria una ruta absoluta igual de equivocada pero sin
+        // avisar: el destino pegaria un fichero inexistente. Mejor un error que
+        // el llamante ve.
+        if !ruta.is_absolute() {
+            return Err(ErrorCodec::Portapapeles);
+        }
+        let ancha: Vec<u16> = ruta.as_os_str().encode_wide().collect();
+        // Un NUL dentro del nombre cortaria la lista justo ahi y el receptor
+        // leeria el resto de rutas como si fueran otras entradas. No se
+        // publica nada antes que publicar una lista partida.
+        if ancha.contains(&0) {
+            return Err(ErrorCodec::Portapapeles);
+        }
+        nombres.extend_from_slice(&ancha);
+        nombres.push(0);
+    }
+    // El NUL de mas: es lo unico que le dice al receptor donde acaba la lista.
+    nombres.push(0);
+
+    let cabecera = DROPFILES {
+        // Desplazamiento en bytes desde el principio del bloque hasta el primer
+        // nombre. Los nombres van pegados detras de la cabecera, asi que es su
+        // tamano exacto.
+        pFiles: size_of::<DROPFILES>() as u32,
+        // TRUE porque los nombres van en UTF-16, y este es EL fallo clasico del
+        // formato: con fWide en FALSE el receptor lee los mismos bytes como
+        // ANSI, ve el primer byte de la primera letra seguido de un cero y pega
+        // un nombre de una sola letra o basura, sin un solo error que ayude a
+        // encontrarlo.
+        fWide: TRUE,
+        // `pt` y `fNC` solo importan cuando el HDROP viene de un arrastre; para
+        // un copiado valen cero.
+        ..Default::default()
+    };
+
+    let mut carga = Vec::with_capacity(size_of::<DROPFILES>() + nombres.len() * 2);
+    // SAFETY: `DROPFILES` es un POD `repr(C, packed)` con todos sus campos
+    // inicializados, asi que sus `size_of` bytes son legibles y no hay relleno
+    // sin inicializar. Solo se copian, no se guarda el puntero.
+    carga.extend_from_slice(unsafe {
+        std::slice::from_raw_parts(
+            &cabecera as *const DROPFILES as *const u8,
+            size_of::<DROPFILES>(),
+        )
+    });
+    // Win32 espera UTF-16 en el orden nativo, que en toda maquina Windows
+    // soportada es little endian.
+    for unidad in nombres {
+        carga.extend_from_slice(&unidad.to_le_bytes());
+    }
+    Ok(carga)
 }
 
 /// Requiere el portapapeles ya abierto por el llamante.
@@ -445,5 +586,105 @@ mod pruebas {
             pixeles: vec![0; 3],
         };
         assert!(copiar_imagen(&mala).is_err());
+    }
+
+    /// Devuelve las unidades UTF-16 que van detras de la cabecera `DROPFILES`.
+    fn nombres_de(carga: &[u8]) -> Vec<u16> {
+        carga[size_of::<DROPFILES>()..]
+            .chunks_exact(2)
+            .map(|par| u16::from_le_bytes([par[0], par[1]]))
+            .collect()
+    }
+
+    #[test]
+    fn la_cabecera_hdrop_apunta_tras_de_si_y_declara_texto_ancho() {
+        let carga = construir_hdrop(&[std::path::PathBuf::from(r"C:\tmp\a.png")])
+            .expect("una ruta absoluta deberia valer");
+
+        let desplazamiento = u32::from_le_bytes(carga[0..4].try_into().unwrap());
+        assert_eq!(
+            desplazamiento as usize,
+            size_of::<DROPFILES>(),
+            "pFiles debe ser el desplazamiento en bytes hasta el primer nombre"
+        );
+
+        // fWide es el ultimo campo de la cabecera. Si esto se pone a cero, el
+        // Explorador pega basura sin dar ningun error, asi que se blinda aqui.
+        let ancho =
+            i32::from_le_bytes(carga[size_of::<DROPFILES>() - 4..][..4].try_into().unwrap());
+        assert_eq!(
+            ancho, 1,
+            "fWide debe ser TRUE porque las rutas van en UTF-16"
+        );
+    }
+
+    #[test]
+    fn la_lista_de_rutas_acaba_en_un_nul_de_mas() {
+        let carga = construir_hdrop(&[
+            std::path::PathBuf::from(r"C:\tmp\a.png"),
+            std::path::PathBuf::from(r"C:\tmp\b.png"),
+        ])
+        .expect("dos rutas absolutas deberian valer");
+
+        let unidades = nombres_de(&carga);
+        let esperado: Vec<u16> = r"C:\tmp\a.png"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .chain(r"C:\tmp\b.png".encode_utf16())
+            .chain(std::iter::once(0))
+            // El NUL que cierra la lista entera.
+            .chain(std::iter::once(0))
+            .collect();
+        assert_eq!(unidades, esperado);
+    }
+
+    #[test]
+    fn las_rutas_relativas_no_se_copian() {
+        // Caso negativo: una relativa se resolveria contra el directorio de
+        // trabajo del que pega y el fichero no apareceria por ningun lado.
+        // Falla antes de tocar Win32, asi que no necesita escritorio.
+        let relativa = std::path::PathBuf::from("capturas/a.png");
+        assert!(construir_hdrop(std::slice::from_ref(&relativa)).is_err());
+        assert!(copiar_ficheros(std::slice::from_ref(&relativa)).is_err());
+    }
+
+    #[test]
+    fn una_lista_vacia_no_se_copia() {
+        // Vaciaria el portapapeles del usuario sin dejar nada a cambio.
+        assert!(copiar_ficheros(&[]).is_err());
+    }
+
+    #[test]
+    fn una_ruta_con_un_nul_dentro_no_se_copia() {
+        // Cortaria la lista por la mitad y el receptor leeria el resto como si
+        // fueran otras rutas.
+        use std::os::windows::ffi::OsStringExt;
+        let cruda = std::ffi::OsString::from_wide(&[
+            b'C' as u16,
+            b':' as u16,
+            b'\\' as u16,
+            b'a' as u16,
+            0,
+            b'b' as u16,
+        ]);
+        assert!(construir_hdrop(&[std::path::PathBuf::from(cruda)]).is_err());
+    }
+
+    #[test]
+    #[ignore = "toca el portapapeles real; ejecutar con --ignored"]
+    fn unos_ficheros_copiados_se_leen_de_vuelta_como_rutas() {
+        // La ida y vuelta completa contra Win32: si la cabecera estuviera mal,
+        // DragQueryFileW no devolveria estas mismas rutas. El fichero no hace
+        // falta que exista: HDROP transporta nombres, no contenido.
+        let rutas = vec![
+            std::env::temp_dir().join("pixpin-prueba-hdrop-1.png"),
+            std::env::temp_dir().join("pixpin-prueba-hdrop-2.png"),
+        ];
+        copiar_ficheros(&rutas).expect("deberia copiar los ficheros");
+
+        match leer() {
+            Some(ContenidoPortapapeles::Rutas(vuelta)) => assert_eq!(vuelta, rutas),
+            otro => panic!("se esperaban rutas, llego {otro:?}"),
+        }
     }
 }

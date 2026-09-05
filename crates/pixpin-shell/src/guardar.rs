@@ -15,13 +15,33 @@ use windows::core::{HSTRING, PCWSTR, w};
 /// Abre el dialogo y devuelve la ruta elegida, o None si se cancela o el
 /// dialogo falla: perder el dialogo no puede costar la captura, que el
 /// llamante conserva.
-pub fn pedir_ruta_guardado(hwnd_padre: HWND, nombre_sugerido: &str) -> Option<PathBuf> {
+/// Que tipos de fichero ofrece el dialogo.
+///
+/// Es un enumerado y no una lista de cadenas porque los filtros de Win32
+/// piden texto ancho constante; pasarlos como `&str` obligaria a
+/// convertirlos y a mantenerlos vivos durante la llamada, y no hay tantos
+/// casos como para que compense.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Formatos {
+    /// Una captura quieta.
+    Imagen,
+    /// Una grabacion. Sin PNG ni JPEG: guardar una animacion en un
+    /// formato que solo tiene un fotograma perderia todo menos el
+    /// primero, sin avisar.
+    Animacion,
+}
+
+pub fn pedir_ruta_guardado(
+    hwnd_padre: HWND,
+    nombre_sugerido: &str,
+    formatos: Formatos,
+) -> Option<PathBuf> {
     // SAFETY: COM ya esta inicializado en el hilo de interfaz (lo hace la
     // bandeja de S1-A); el dialogo es un objeto local que muere al salir.
     unsafe {
         let dialogo: IFileSaveDialog =
             CoCreateInstance(&FileSaveDialog, None, CLSCTX_INPROC_SERVER).ok()?;
-        let filtros = [
+        let de_imagen = [
             COMDLG_FILTERSPEC {
                 pszName: w!("PNG"),
                 pszSpec: w!("*.png"),
@@ -35,8 +55,20 @@ pub fn pedir_ruta_guardado(hwnd_padre: HWND, nombre_sugerido: &str) -> Option<Pa
                 pszSpec: w!("*.webp"),
             },
         ];
-        dialogo.SetFileTypes(&filtros).ok()?;
-        dialogo.SetDefaultExtension(w!("png")).ok()?;
+        let de_animacion = [COMDLG_FILTERSPEC {
+            pszName: w!("GIF"),
+            pszSpec: w!("*.gif"),
+        }];
+        match formatos {
+            Formatos::Imagen => {
+                dialogo.SetFileTypes(&de_imagen).ok()?;
+                dialogo.SetDefaultExtension(w!("png")).ok()?;
+            }
+            Formatos::Animacion => {
+                dialogo.SetFileTypes(&de_animacion).ok()?;
+                dialogo.SetDefaultExtension(w!("gif")).ok()?;
+            }
+        }
         let nombre = HSTRING::from(nombre_sugerido);
         dialogo.SetFileName(PCWSTR(nombre.as_ptr())).ok()?;
         // Show devuelve Err al cancelar: es el camino normal, no un fallo.

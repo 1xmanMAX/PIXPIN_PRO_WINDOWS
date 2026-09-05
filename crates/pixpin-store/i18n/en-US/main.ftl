@@ -66,3 +66,23 @@ comando-copiar-texto = Copy text from an area
 comando-capturar-y-anotar = Capture and annotate
 comando-capturar-ultima-region = Repeat last capture
 comando-grabar-gif = Record an area as GIF
+
+# The GIF recording bar (P5b).
+grabar-empezar = Record
+grabar-parar = Stop
+grabar-pausa = Pause
+grabar-seguir = Resume
+grabar-cerrar = Close
+grabar-por-segundo = { $ritmo }/s
+grabar-cuenta-atras = { $segundos }...
+
+# The editor that opens when recording stops (P5b.4).
+editor-ver = Play
+editor-pausar = Pause
+editor-anterior = Previous
+editor-siguiente = Next
+editor-velocidad = { $veces }x
+editor-guardar = Save
+editor-guardado-rapido = Quick
+editor-copiar = Copy
+editor-descartar = Discard
