@@ -175,6 +175,11 @@ pub struct Ajustes {
     /// Segundos que espera la captura con retardo antes de abrirse
     /// (P2.1). Tres es lo justo para desplegar un menu y soltar el raton.
     pub retardo_captura_s: u32,
+    /// Zonas guardadas con nombre, cada una con su atajo (P2.3).
+    ///
+    /// Es una tabla repetible (`[[regiones]]`) y por eso va DESPUES de
+    /// las claves sueltas en el fichero, como cualquier seccion.
+    pub regiones: Vec<crate::regiones::Region>,
 }
 
 impl Default for Ajustes {
@@ -191,6 +196,7 @@ impl Default for Ajustes {
             gif: Gif::default(),
             ignorar_programas: Vec::new(),
             retardo_captura_s: 3,
+            regiones: Vec::new(),
         }
     }
 }
