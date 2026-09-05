@@ -145,9 +145,9 @@ Todos son filas nuevas del registro de P0.1 más una acción pequeña.
 ## Fase P2 — Capturas que faltan
 
 - [ ] **P2.1 Captura con retardo** (3 s por defecto, configurable), con cuenta atrás en la bandeja.
-- [ ] **P2.2 Captura directa sin overlay** a la última región usada.
+- [x] **P2.2 Captura directa sin overlay** a la última región usada.
 - [ ] **P2.3 Regiones guardadas** con nombre en el TOML, y comando por región.
-- [ ] **P2.4 Capturar y entrar directo a anotar**, saltándose la barra.
+- [x] **P2.4 Capturar y entrar directo a anotar**, saltándose la barra.
 
 ## Fase P3 — Zoom y vista del pin (lo que eligió el usuario)
 

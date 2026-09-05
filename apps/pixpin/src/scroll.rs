@@ -144,7 +144,10 @@ fn capturar_asentado(
     }
 }
 
-fn capturar(
+/// Captura una region de un monitor SIN abrir el overlay: la usan la
+/// captura con scroll, paso a paso, y la captura directa, que repite el
+/// ultimo recorte sin preguntar nada.
+pub fn capturar(
     recursos: &mut Recursos,
     monitor: &pixpin_geom::Monitor,
     region: Rect,

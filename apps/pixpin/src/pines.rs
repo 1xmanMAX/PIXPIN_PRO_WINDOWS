@@ -321,7 +321,9 @@ impl Pines {
     }
 
     /// D26: el recorte queda flotando 1:1 exactamente donde estaba.
-    pub fn pinear(&mut self, imagen: &ImagenRgba, region: Rect, escala: u32) -> Result<()> {
+    /// Devuelve el id del pin nuevo: quien captura y anota lo necesita para
+    /// entrar a anotar en ese mismo, no en «el ultimo que haya».
+    pub fn pinear(&mut self, imagen: &ImagenRgba, region: Rect, escala: u32) -> Result<u64> {
         let png = codificar_png(imagen).context("no se pudo codificar el pin")?;
         let id = self
             .almacen
@@ -332,7 +334,14 @@ impl Pines {
                 Some(Pines::guardado_desde(region, escala, 100)),
             )
             .context("no se pudo guardar en el almacen")?;
-        self.crear_ventana(id, Contenido::Imagen(imagen.clone()), region, escala)
+        self.crear_ventana(id, Contenido::Imagen(imagen.clone()), region, escala)?;
+        Ok(id)
+    }
+
+    /// Entra en modo anotacion en un pin concreto. Publico para «capturar y
+    /// anotar», que encadena las dos cosas sin que el usuario haga nada.
+    pub fn anotar_pin(&mut self, id: u64) -> Result<()> {
+        self.entrar_a_anotar(id)
     }
 
     /// Una nota del portapapeles: nace centrada en el monitor pedido (D32).

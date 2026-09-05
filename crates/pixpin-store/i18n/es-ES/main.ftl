@@ -64,3 +64,5 @@ comando-restaurar-ultimo-pin = Devolver el último pin cerrado
 comando-cerrar-todos-los-pines = Cerrar todos los pines
 comando-ventana-encima = Fijar encima la ventana bajo el ratón
 comando-copiar-texto = Copiar el texto de una zona
+comando-capturar-y-anotar = Capturar y anotar
+comando-capturar-ultima-region = Repetir la última captura

@@ -270,6 +270,10 @@ fn arrancar(
     // viven entre capturas: son la diferencia entre 200 ms y menos de 50.
     let mut recursos_overlay: Option<Recursos> = None;
     let mut pines: Option<Pines> = None;
+    // La ultima region que el usuario confirmo, para poder repetirla sin
+    // volver a dibujarla. Se pierde al cerrar: es una comodidad de la
+    // sesion, no un ajuste que merezca ir al disco.
+    let mut ultima_region: Option<pixpin_geom::Rect> = None;
     let hwnd = ventana.handle();
 
     // 8b. Restauracion al arrancar (spec S2 5.2): el coste de crear los
@@ -334,6 +338,9 @@ fn arrancar(
                 }
                 Some(comandos::Comando::Cuentagotas) => Some((ModoConfirmacion::Cuentagotas, None)),
                 Some(comandos::Comando::CopiarTexto) => Some((ModoConfirmacion::Texto, None)),
+                // Capturar y anotar abre la misma captura que pinear; lo
+                // que cambia es lo que pasa despues, ya con el pin hecho.
+                Some(comandos::Comando::CapturarYAnotar) => Some((ModoConfirmacion::Pinear, None)),
                 Some(comandos::Comando::CapturarYCopiar) => {
                     Some((ModoConfirmacion::DirectoAlPortapapeles, None))
                 }
@@ -377,6 +384,38 @@ fn arrancar(
                 }
                 Continuar::Si
             }
+            // Repetir el ultimo recorte sin overlay ni preguntas: para
+            // capturar la misma zona una y otra vez, que es lo que se hace
+            // al seguir un proceso que va cambiando en el mismo sitio.
+            _ if comando == Some(comandos::Comando::CapturarUltimaRegion) => {
+                match ultima_region {
+                    None => tracing::info!("todavia no hay ninguna region que repetir"),
+                    Some(region) => {
+                        let hecho = (match &mut recursos_overlay {
+                            Some(r) => Ok(r),
+                            nada => Recursos::nuevos().map(|r| nada.insert(r)),
+                        })
+                        .and_then(|r| {
+                            let d = pixpin_capture::enumerar_monitores()?;
+                            let m = d
+                                .monitores()
+                                .iter()
+                                .find(|m| m.area.interseccion(region).is_some())
+                                .or_else(|| d.principal())
+                                .context("sin monitor para la region")?
+                                .to_owned();
+                            let imagen = scroll::capturar(r, &m, region)?;
+                            pixpin_codec::copiar_imagen(&imagen)
+                                .context("no se pudo copiar la captura")
+                        });
+                        match hecho {
+                            Ok(()) => tracing::info!(?region, "ultima region repetida y copiada"),
+                            Err(e) => tracing::warn!(?e, "no se pudo repetir la region"),
+                        }
+                    }
+                }
+                Continuar::Si
+            }
             _ if comando == Some(comandos::Comando::VentanaEncima) => {
                 match pixpin_shell::alternar_ventana_bajo_el_cursor() {
                     pixpin_shell::Fijada::Cambiada { encima, titulo } => {
@@ -409,7 +448,8 @@ fn arrancar(
             }
             _ if modo_overlay.is_some() => {
                 let (modo, inicio) = modo_overlay.expect("comprobado en la guarda");
-                tracing::info!(?modo, ?inicio, "abrir captura");
+                let anotar_al_pinear = comando == Some(comandos::Comando::CapturarYAnotar);
+                tracing::info!(?modo, ?inicio, anotar_al_pinear, "abrir captura");
                 let etiquetas_barra = TextosBarra {
                     copiar: textos.t("barra-copiar"),
                     guardar: textos.t("barra-guardar"),
@@ -481,8 +521,15 @@ fn arrancar(
                             hwnd,
                             ritmo_video,
                         )?;
-                        p.pinear(&imagen, region, escala_del_monitor(region))?;
+                        ultima_region = Some(region);
+                        let nuevo = p.pinear(&imagen, region, escala_del_monitor(region))?;
                         tracing::info!(abiertos = p.abiertos(), "pin creado");
+                        // «Capturar y anotar» encadena las dos cosas: el pin
+                        // nace ya con la paleta abierta y el lapiz listo,
+                        // que es lo que se quiere al senalar algo deprisa.
+                        if anotar_al_pinear {
+                            p.anotar_pin(nuevo)?;
+                        }
                         Ok(None)
                     }
                     otra => ejecutar_accion(otra, &ubicacion, hwnd),
