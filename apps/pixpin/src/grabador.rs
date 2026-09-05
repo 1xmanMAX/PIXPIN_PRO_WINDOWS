@@ -52,6 +52,9 @@ pub const MEMORIA_MAXIMA: usize = 256 * 1024 * 1024;
 pub enum Fase {
     /// Marco azul: eligiendo zona y ajustes, sin grabar todavia.
     Esperando,
+    /// Marco azul y cuenta atras: ya se pulso Â«GrabarÂ», pero el retardo
+    /// da tiempo a colocar el raton antes del primer fotograma.
+    Contando,
     /// Marco rojo: contando fotogramas.
     Grabando,
     /// Marco rojo apagado: el reloj y la captura estan detenidos.
@@ -229,7 +232,10 @@ pub fn botones(fase: Fase) -> Vec<(Boton, RectF)> {
         *x += ancho + 6.0;
     };
     match fase {
-        Fase::Esperando => {
+        // La cuenta atras ensena los mismos botones que la espera: se
+        // puede cerrar sin haber grabado nada, y volver a pulsar Â«GrabarÂ»
+        // se salta lo que quede de retardo.
+        Fase::Esperando | Fase::Contando => {
             poner(Boton::Grabar, 94.0, &mut x);
             poner(Boton::MenosRitmo, 28.0, &mut x);
             // El hueco del rotulo «10/s» va aqui: se salta sin boton.
@@ -267,6 +273,20 @@ pub fn tope_segundos(zona: Rect, por_segundo: u32) -> u64 {
     let caben = MEMORIA_MAXIMA / bytes;
     let por_memoria = (caben / por_segundo as usize) as u64;
     por_memoria.min(por_reloj).max(1)
+}
+
+/// El sitio que ocupa `por_segundo` en la lista de ritmos.
+///
+/// Lo que se guarda en los ajustes es el numero, no el indice: si un dia
+/// se ofrecen otros ritmos, el fichero de nadie empieza a significar otra
+/// cosa. Un numero que ya no este en la lista cae al mas cercano.
+pub fn indice_de_ritmo(por_segundo: u32) -> usize {
+    RITMOS
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, r)| r.abs_diff(por_segundo))
+        .map(|(i, _)| i)
+        .unwrap_or(RITMO_POR_DEFECTO)
 }
 
 /// Un tiempo en `m:ss`, que es como se lee de un vistazo.
@@ -337,7 +357,12 @@ mod pruebas {
 
     #[test]
     fn los_botones_caben_en_la_barra_y_no_se_pisan() {
-        for fase in [Fase::Esperando, Fase::Grabando, Fase::Pausada] {
+        for fase in [
+            Fase::Esperando,
+            Fase::Contando,
+            Fase::Grabando,
+            Fase::Pausada,
+        ] {
             let fila = botones(fase);
             assert!(!fila.is_empty(), "{fase:?} sin botones");
             for (b, r) in &fila {
@@ -413,6 +438,19 @@ mod pruebas {
             let error = (centesimas as i64 - (100 / por_segundo) as i64).abs();
             assert!(error <= 1, "{por_segundo}/s declara {centesimas} cs");
         }
+    }
+
+    #[test]
+    fn el_ritmo_guardado_vuelve_donde_estaba() {
+        for (i, r) in RITMOS.iter().enumerate() {
+            assert_eq!(indice_de_ritmo(*r), i, "{r}/s");
+        }
+        // Un numero que no esta en la lista, porque el fichero se escribio
+        // a mano o con otra version, cae al mas cercano en vez de tirar el
+        // ajuste entero.
+        assert_eq!(RITMOS[indice_de_ritmo(11)], 10);
+        assert_eq!(RITMOS[indice_de_ritmo(1)], 5);
+        assert_eq!(RITMOS[indice_de_ritmo(1000)], 30);
     }
 
     #[test]

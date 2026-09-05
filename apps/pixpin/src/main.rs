@@ -523,12 +523,31 @@ fn arrancar(
                                 r,
                                 region,
                                 Some(comandos::Comando::GrabarGif.id()),
+                                // Manda lo ultimo que se eligio en la
+                                // barra; los ajustes ponen el punto de
+                                // partida la primera vez.
+                                pixpin_store::estado::cargar(&ubicacion)
+                                    .gif_por_segundo
+                                    .unwrap_or(config.gif.por_segundo),
+                                std::time::Duration::from_secs(config.gif.retardo_s as u64),
                             )?
                         };
                         let Some(g) = grabado else {
                             tracing::info!("grabacion sin fotogramas aprovechables");
                             return Ok(None);
                         };
+                        // El ritmo elegido se recuerda para la proxima, y
+                        // va a `estado.toml` y no a los ajustes: guardar
+                        // los ajustes reescribe el fichero entero y se
+                        // llevaria por delante los comentarios que el
+                        // usuario tiene ahi explicando cada linea.
+                        let mut estado = pixpin_store::estado::cargar(&ubicacion);
+                        if estado.gif_por_segundo != Some(g.por_segundo) {
+                            estado.gif_por_segundo = Some(g.por_segundo);
+                            if let Err(e) = pixpin_store::estado::guardar(&ubicacion, &estado) {
+                                tracing::warn!(?e, "no se pudo recordar el ritmo");
+                            }
+                        }
                         let bytes = pixpin_codec::codificar_gif(
                             &g.fotogramas,
                             pixpin_codec::OpcionesGif {
