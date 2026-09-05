@@ -65,3 +65,4 @@ comando-ventana-encima = Keep the window under the pointer on top
 comando-copiar-texto = Copy text from an area
 comando-capturar-y-anotar = Capture and annotate
 comando-capturar-ultima-region = Repeat last capture
+comando-grabar-gif = Record an area as GIF

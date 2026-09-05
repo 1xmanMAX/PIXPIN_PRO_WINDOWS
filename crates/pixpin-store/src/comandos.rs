@@ -38,6 +38,8 @@ pub enum Comando {
     CapturarYAnotar,
     /// Repetir la ultima region capturada, sin overlay ni preguntas.
     CapturarUltimaRegion,
+    /// Grabar una zona de la pantalla como GIF animado.
+    GrabarGif,
     /// Cuentagotas: copiar el color bajo el cursor.
     Cuentagotas,
     /// Recortar y dejarlo flotando como pin.
@@ -108,6 +110,13 @@ pub const CATALOGO: &[Descriptor] = &[
         comando: Comando::CapturarYAnotar,
         nombre: "capturar-y-anotar",
         clave_titulo: "comando-capturar-y-anotar",
+        atajo_por_defecto: None,
+        en_bandeja: true,
+    },
+    Descriptor {
+        comando: Comando::GrabarGif,
+        nombre: "grabar-gif",
+        clave_titulo: "comando-grabar-gif",
         atajo_por_defecto: None,
         en_bandeja: true,
     },
@@ -376,6 +385,7 @@ mod pruebas {
         Comando::CapturarConScroll,
         Comando::CapturarYAnotar,
         Comando::CapturarUltimaRegion,
+        Comando::GrabarGif,
         Comando::Cuentagotas,
         Comando::Pinear,
         Comando::PinearPortapapeles,

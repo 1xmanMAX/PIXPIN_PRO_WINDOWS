@@ -57,6 +57,8 @@ pub enum ModoConfirmacion {
     Cuentagotas,
     /// Confirmar lee el texto del recorte y lo copia.
     Texto,
+    /// Confirmar oculta el overlay y arranca la grabacion en GIF (P5).
+    Gif,
 }
 
 /// Lo que el overlay decidio. La imagen ya esta recortada y en CPU.
@@ -73,6 +75,11 @@ pub enum AccionFinal {
     },
     /// La region elegida para la captura con scroll (D75). No hay imagen:
     /// se captura muchas veces DESPUES, con el overlay ya oculto.
+    /// La region elegida para grabar en GIF. Como el scroll, no hay
+    /// imagen: se captura muchas veces despues, con el overlay oculto.
+    Gif {
+        region: Rect,
+    },
     Scroll {
         region: Rect,
     },
@@ -428,6 +435,9 @@ pub fn ejecutar_overlay(
         // La captura con scroll no materializa nada aqui: se captura muchas
         // veces despues, con las ventanas ya ocultas (D75).
         Some((QueAccion::Scroll, region)) => Ok(AccionFinal::Scroll { region }),
+        // La grabacion tampoco materializa nada aqui: se captura muchas
+        // veces despues, con las ventanas ya ocultas.
+        Some((QueAccion::Gif, region)) => Ok(AccionFinal::Gif { region }),
         Some((que, region)) => {
             let recorte = componer_region(dispositivo, &fuentes, region)
                 .context("no se pudo recortar la seleccion")?;
@@ -440,6 +450,7 @@ pub fn ejecutar_overlay(
                 QueAccion::GuardarComo => AccionFinal::GuardarComo(imagen),
                 QueAccion::Pinear => AccionFinal::Pinear { imagen, region },
                 QueAccion::Scroll => AccionFinal::Scroll { region },
+                QueAccion::Gif => AccionFinal::Gif { region },
             })
         }
         None => Ok(AccionFinal::Nada),
@@ -451,6 +462,7 @@ pub fn ejecutar_overlay(
 #[derive(Clone, Copy)]
 enum QueAccion {
     Copiar,
+    Gif,
     /// Leer el texto del recorte y copiarlo, en vez de la imagen.
     Texto,
     Guardar,
@@ -800,6 +812,10 @@ fn aplicar_efecto(
             }
             ModoConfirmacion::Pinear => {
                 PENDIENTE.poner(QueAccion::Pinear, region);
+                Continuar::No
+            }
+            ModoConfirmacion::Gif => {
+                PENDIENTE.poner(QueAccion::Gif, region);
                 Continuar::No
             }
             ModoConfirmacion::Texto => {

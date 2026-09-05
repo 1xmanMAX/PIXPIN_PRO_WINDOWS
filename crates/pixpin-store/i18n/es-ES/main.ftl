@@ -66,3 +66,4 @@ comando-ventana-encima = Fijar encima la ventana bajo el ratón
 comando-copiar-texto = Copiar el texto de una zona
 comando-capturar-y-anotar = Capturar y anotar
 comando-capturar-ultima-region = Repetir la última captura
+comando-grabar-gif = Grabar una zona como GIF
