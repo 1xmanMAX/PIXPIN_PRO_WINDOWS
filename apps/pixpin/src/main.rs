@@ -879,6 +879,33 @@ fn arrancar(
                 }
                 Continuar::Si
             }
+            // Pinear lo seleccionado en el Explorador (P1.6). NO pasa por
+            // el portapapeles: usarlo obligaria a copiar y luego dejarlo
+            // pisado, y el usuario perderia lo que tuviera copiado sin que
+            // nadie se lo hubiera preguntado.
+            _ if comando == Some(comandos::Comando::PinearSeleccion) => {
+                let rutas = pixpin_shell::seleccion_del_explorador();
+                if rutas.is_empty() {
+                    tracing::info!("delante no hay un Explorador con nada seleccionado");
+                    return Continuar::Si;
+                }
+                let hecho = preparar_pines(
+                    &mut recursos_overlay,
+                    &mut pines,
+                    &ubicacion,
+                    &textos,
+                    hwnd,
+                    ritmo_video,
+                )
+                .and_then(|p| {
+                    pinear_portapapeles(p, pixpin_codec::ContenidoPortapapeles::Rutas(rutas))
+                });
+                match hecho {
+                    Ok(cuantos) => tracing::info!(cuantos, "pineada la seleccion del Explorador"),
+                    Err(e) => tracing::warn!(?e, "no se pudo pinear la seleccion"),
+                }
+                Continuar::Si
+            }
             Evento::Atajo(id) if id == atajos::ID_PORTAPAPELES => {
                 // Pinear el portapapeles NO abre overlay: aparece un pin
                 // centrado en el monitor del cursor y sin robar el foco

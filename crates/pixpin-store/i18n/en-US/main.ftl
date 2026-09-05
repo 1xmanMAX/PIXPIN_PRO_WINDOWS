@@ -102,3 +102,6 @@ aviso-atajos-activos-detalle = { $cuantos } shortcuts respond again.
 # Delayed capture (P2.1).
 comando-capturar-con-retardo = Capture after a countdown
 cuenta-atras-cancelar = Esc to stop
+
+# Pinning the Explorer selection (P1.6).
+comando-pinear-seleccion = Pin the Explorer selection

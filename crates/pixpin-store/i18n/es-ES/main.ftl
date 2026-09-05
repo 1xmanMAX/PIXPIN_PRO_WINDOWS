@@ -103,3 +103,6 @@ aviso-atajos-activos-detalle = { $cuantos } atajos vuelven a responder.
 # Captura con retardo (P2.1).
 comando-capturar-con-retardo = Capturar tras una cuenta atrás
 cuenta-atras-cancelar = Esc para parar
+
+# Pinear lo seleccionado en el Explorador (P1.6).
+comando-pinear-seleccion = Pinear lo seleccionado en el Explorador

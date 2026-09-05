@@ -63,6 +63,9 @@ pub enum Comando {
     /// Capturar despues de una cuenta atras, para poder dejar desplegado
     /// un menu que se cerraria al perder el foco (P2.1).
     CapturarConRetardo,
+    /// Pinear lo que este seleccionado ahora mismo en el Explorador o en
+    /// el escritorio, sin pasar por el portapapeles (P1.6).
+    PinearSeleccion,
     /// Devolver a la pantalla el ultimo pin que se cerro.
     RestaurarUltimoPin,
     /// Capturar una region y copiar el texto que se lea en ella.
@@ -180,6 +183,13 @@ pub const CATALOGO: &[Descriptor] = &[
     // se lo quita a las demas aplicaciones mientras PixPin este abierto, y
     // en un navegador esa combinacion cambia de pestana. Se cambia en el
     // fichero de ajustes si estorba.
+    Descriptor {
+        comando: Comando::PinearSeleccion,
+        nombre: "pinear-seleccion",
+        clave_titulo: "comando-pinear-seleccion",
+        atajo_por_defecto: None,
+        en_bandeja: true,
+    },
     Descriptor {
         comando: Comando::CapturarConRetardo,
         nombre: "capturar-con-retardo",
@@ -435,6 +445,7 @@ mod pruebas {
         Comando::AlternarPasoDeClics,
         Comando::SilenciarAtajos,
         Comando::CapturarConRetardo,
+        Comando::PinearSeleccion,
         Comando::RestaurarUltimoPin,
         Comando::CerrarTodosLosPines,
         Comando::CopiarTexto,
