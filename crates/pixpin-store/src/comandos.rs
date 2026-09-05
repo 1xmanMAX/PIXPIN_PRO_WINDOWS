@@ -54,6 +54,9 @@ pub enum Comando {
     CerrarTodosLosPines,
     /// Quitar los pines de la pantalla, o devolverlos si ya no estan.
     AlternarPines,
+    /// Que los pines dejen pasar el clic a lo que hay debajo, o que
+    /// vuelvan a recogerlo (P1.4).
+    AlternarPasoDeClics,
     /// Devolver a la pantalla el ultimo pin que se cerro.
     RestaurarUltimoPin,
     /// Capturar una region y copiar el texto que se lea en ella.
@@ -171,6 +174,16 @@ pub const CATALOGO: &[Descriptor] = &[
     // se lo quita a las demas aplicaciones mientras PixPin este abierto, y
     // en un navegador esa combinacion cambia de pestana. Se cambia en el
     // fichero de ajustes si estorba.
+    Descriptor {
+        comando: Comando::AlternarPasoDeClics,
+        nombre: "alternar-paso-de-clics",
+        clave_titulo: "comando-alternar-paso-de-clics",
+        // Sin atajo de fabrica, pero SIEMPRE en la bandeja: es la unica
+        // via de vuelta. Un pin que deja pasar el clic no puede abrir su
+        // propio menu, porque el clic derecho pasa de largo.
+        atajo_por_defecto: None,
+        en_bandeja: true,
+    },
     Descriptor {
         comando: Comando::AlternarPines,
         nombre: "alternar-pines",
@@ -396,6 +409,7 @@ mod pruebas {
         Comando::Anotar,
         Comando::AnotarCongelada,
         Comando::AlternarPines,
+        Comando::AlternarPasoDeClics,
         Comando::RestaurarUltimoPin,
         Comando::CerrarTodosLosPines,
         Comando::CopiarTexto,

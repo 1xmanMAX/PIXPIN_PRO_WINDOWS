@@ -45,6 +45,11 @@ pub struct PinGuardado {
     pub volteo_h: bool,
     #[serde(default)]
     pub volteo_v: bool,
+    /// Si el pin deja pasar los clics a lo que hay debajo (P1.4). Un pin
+    /// asi se ve pero no se toca, para tener una referencia delante sin
+    /// que estorbe. Ausente en indices viejos: se toca, como siempre.
+    #[serde(default)]
+    pub pasante: bool,
 }
 
 fn cien() -> u32 {
@@ -436,6 +441,7 @@ mod pruebas {
             giro: 0,
             volteo_h: false,
             volteo_v: false,
+            pasante: false,
         }
     }
 

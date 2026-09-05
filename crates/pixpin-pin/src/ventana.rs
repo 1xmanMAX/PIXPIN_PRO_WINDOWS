@@ -52,6 +52,8 @@ pub struct Colocacion {
     pub giro: u8,
     pub volteo_h: bool,
     pub volteo_v: bool,
+    /// Si deja pasar los clics a lo que hay debajo (P1.4).
+    pub pasante: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -456,6 +458,7 @@ struct PinInterno {
     giro: u8,
     volteo_h: bool,
     volteo_v: bool,
+    pasante: bool,
     /// Zoom del CONTENIDO dentro de la ventana, que no cambia de tamano
     /// (Ctrl + rueda). 1.0 = el contenido cabe justo. Con mas, se ve un
     /// trozo mas grande y el resto se alcanza arrastrando con el boton
@@ -603,6 +606,7 @@ impl Pin {
             giro: 0,
             volteo_h: false,
             volteo_v: false,
+            pasante: false,
             vista_escala: 1.0,
             vista_dx: 0.0,
             vista_dy: 0.0,
@@ -732,6 +736,25 @@ impl Pin {
         interno_de(self.hwnd)
             .map(|i| (i.giro, i.volteo_h, i.volteo_v))
             .unwrap_or((0, false, false))
+    }
+
+    /// Si el pin deja pasar los clics a lo que hay debajo.
+    pub fn es_pasante(&self) -> bool {
+        interno_de(self.hwnd).map(|i| i.pasante).unwrap_or(false)
+    }
+
+    /// Hace que el pin deje pasar los clics, o que vuelva a recogerlos.
+    ///
+    /// `WS_EX_TRANSPARENT` solo funciona en una ventana `WS_EX_LAYERED`,
+    /// asi que se ponen y se quitan juntos. Y afecta SOLO al raton: si el
+    /// pin tuviera el foco seguiria recibiendo teclas, asi que se le quita
+    /// tambien.
+    ///
+    /// Ojo con la unica via de vuelta: un pin pasante no puede abrir su
+    /// propio menu del clic derecho, porque el clic ya no llega. Se sale
+    /// de aqui con el comando global, que esta en el menu de la bandeja.
+    pub fn poner_pasante(&self, pasante: bool) {
+        poner_pasante_en(self.hwnd, pasante);
     }
 
     /// Lo pone al restaurar del almacen y repinta.
@@ -1068,6 +1091,37 @@ fn estirar_hasta(_hwnd: HWND, i: &PinInterno, rect: Rect) {
 /// El zoom del texto en por ciento, para persistirlo (100 fuera de las
 /// notas: los demas contenidos no tienen zoom de texto).
 /// Lo que se guarda de un pin en un momento dado, para un rect concreto.
+/// Hace que la ventana deje pasar los clics, o que vuelva a recogerlos.
+///
+/// Es una funcion libre y no un metodo de `Pin` porque el WndProc tiene
+/// que poder llamarla: `Pin` POSEE la ventana y la destruye al soltarlo,
+/// asi que fabricar uno ahi dentro mataria el pin en cuanto acabara la
+/// linea.
+fn poner_pasante_en(hwnd: HWND, pasante: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GWL_EXSTYLE, GetWindowLongPtrW, SetWindowLongPtrW, WS_EX_LAYERED, WS_EX_TRANSPARENT,
+    };
+    // `WS_EX_TRANSPARENT` solo deja pasar el raton en una ventana
+    // `WS_EX_LAYERED`, asi que se ponen y se quitan juntos.
+    let bits = WS_EX_LAYERED.0 | WS_EX_TRANSPARENT.0;
+    // SAFETY: leer y escribir el estilo extendido de una ventana propia y
+    // viva. Se conserva el resto de bits.
+    unsafe {
+        let actual = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        let nuevo = if pasante {
+            actual | bits
+        } else {
+            actual & !bits
+        };
+        if nuevo != actual {
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, nuevo as isize);
+        }
+    }
+    if let Some(i) = interno_de(hwnd) {
+        i.pasante = pasante;
+    }
+}
+
 fn colocacion_de(i: &PinInterno, rect: Rect) -> Colocacion {
     Colocacion {
         rect,
@@ -1075,6 +1129,7 @@ fn colocacion_de(i: &PinInterno, rect: Rect) -> Colocacion {
         giro: i.giro,
         volteo_h: i.volteo_h,
         volteo_v: i.volteo_v,
+        pasante: i.pasante,
     }
 }
 
@@ -1932,12 +1987,22 @@ extern "system" fn procedimiento_pin(
                     &i.contenido,
                     i.color_sombra.is_some(),
                     reproduciendo,
+                    i.pasante,
                     &t,
                 ) {
                     None => {}
                     // Las dos que puede resolver la propia ventana se
                     // resuelven aqui: pedirselas al gestor solo daria un
                     // rodeo para volver al mismo sitio.
+                    Some(crate::menu::CMD_PASANTE) => {
+                        // Se resuelve aqui, como el tamano: el paso de
+                        // clics es un estilo de ESTA ventana, y pedirselo
+                        // al gestor seria un rodeo para volver al mismo
+                        // sitio. Se avisa del cambio para que quede
+                        // guardado y el pin vuelva pasante tras reiniciar.
+                        poner_pasante_en(hwnd, true);
+                        (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, i.estado.rect())));
+                    }
                     Some(crate::menu::CMD_TAMANO_ORIGINAL) => {
                         aplicar(hwnd, EfectoPin::AlternarTamano)
                     }

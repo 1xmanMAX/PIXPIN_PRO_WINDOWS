@@ -87,3 +87,7 @@ editor-guardar = Guardar
 editor-guardado-rapido = Rápido
 editor-copiar = Copiar
 editor-descartar = Descartar
+
+# Pines que dejan pasar el clic (P1.4).
+comando-alternar-paso-de-clics = Que los pines dejen pasar el clic
+pin-dejar-pasar-clic = Dejar pasar el clic
