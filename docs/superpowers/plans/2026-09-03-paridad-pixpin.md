@@ -174,6 +174,42 @@ Sin FFmpeg ni x264: un GIF es paleta de 256 colores más compresión LZW.
 - [x] **P5.2 Grabación de una región** con el bucle de captura que ya existe, tope de tiempo y de tamaño, y aviso de cuánto lleva.
 - [ ] **P5.3 Pausa y reanudación**, como el original.
 
+## Fase P5b — La grabación como la especifica el original
+
+El usuario pasó la especificación de la función en el original
+(`pixpin.com/docs/capture/gif-capture2`). Lo que pide, y en qué estamos:
+
+| Lo que especifica | Estado |
+|---|---|
+| Atajo que **inicia y detiene** (en el original, `Ctrl+1`) | falta: hoy se para con Escape |
+| Recuadro **azul esperando** y **rojo grabando**, redimensionable | falta |
+| Barra con **tiempo de grabación** y **retardo** antes de empezar | parcial: hay tiempo, no retardo |
+| **Fotogramas por segundo ajustables** | falta: hoy son 10 fijos |
+| Botón de **grabar / detener** | falta: hoy solo Escape |
+| Botón de **pausa / reanudar** | falta |
+| Botón de **mover el área** | falta |
+| Botón de **cerrar y volver a grabar** | falta |
+| Barra de **anotación durante la grabación** | falta |
+| **Editor al terminar**: reproducción, línea de tiempo, velocidad | falta |
+| **Formato de guardado**: GIF, WEBP, MP4 | solo GIF |
+| Guardar, guardado rápido y copiar | solo guarda a fichero |
+| Registro de teclas y clics | descartado: en el original es de pago |
+
+**Orden acordado**
+
+- [ ] **P5b.1 Fase de espera con recuadro azul y barra de control.** Tras
+      elegir la zona no se graba todavía: aparece la barra con el tiempo,
+      los fotogramas por segundo y los botones de grabar, mover y cerrar.
+- [ ] **P5b.2 Grabando: el recuadro pasa a rojo**, la barra muestra el
+      tiempo corriendo y ofrece pausa y detener. El mismo comando que la
+      abrió la detiene.
+- [ ] **P5b.3 Fotogramas por segundo ajustables** y retardo antes de
+      empezar, los dos en la barra y recordados en el fichero de ajustes.
+- [ ] **P5b.4 Editor al terminar**: reproducir, línea de tiempo, velocidad,
+      y los tres botones de salida (guardar, guardado rápido, copiar).
+- [ ] **P5b.5 WEBP y MP4.** MP4 sale casi gratis con Media Foundation, que
+      ya usamos; WEBP necesita codificador propio y es el más caro.
+
 ## Fase P6 — Ventana de ajustes (la S3-D del plan maestro)
 
 Ahora es mucho más barata: la lista de comandos y sus atajos sale del

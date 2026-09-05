@@ -319,6 +319,31 @@ impl Drop for VentanaOverlay {
 /// No filtra por ventana: el teclado y MSG_DESPIERTA pueden llegar a
 /// cualquiera de los overlays. Las ventanas viven en el llamante; el
 /// parametro existe para atar tiempos de vida y dejar claro el contrato.
+/// Atiende los mensajes que haya pendientes y vuelve enseguida, sin
+/// esperar a que llegue ninguno.
+///
+/// Es lo que necesita un bucle que hace su propio trabajo —la grabacion en
+/// GIF, que captura a su ritmo— para no dejar la aplicacion muerta
+/// mientras dura: sin esto Windows la marca como «no responde», las
+/// ventanas propias no llegan a pintarse y el usuario cree que se colgo.
+/// `bucle_modal` no sirve aqui porque se queda esperando.
+pub fn bombear_pendientes() {
+    use windows::Win32::UI::WindowsAndMessaging::{PM_REMOVE, PeekMessageW};
+    let mut msg = MSG::default();
+    // SAFETY: PeekMessage y compania sobre la cola del hilo actual; el
+    // mensaje es una estructura local. Se acota el numero de mensajes por
+    // vuelta para que una tormenta de eventos no robe el turno sin fin.
+    unsafe {
+        for _ in 0..64 {
+            if !PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                break;
+            }
+            let _ = TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+    }
+}
+
 pub fn bucle_modal(
     ventanas: &[VentanaOverlay],
     mut callback: impl FnMut(HWND, EventoOverlay) -> crate::ventana::Continuar,
