@@ -60,6 +60,9 @@ pub enum Comando {
     /// Soltar todos los atajos globales un rato, y volver a tomarlos
     /// (P1.7).
     SilenciarAtajos,
+    /// Capturar despues de una cuenta atras, para poder dejar desplegado
+    /// un menu que se cerraria al perder el foco (P2.1).
+    CapturarConRetardo,
     /// Devolver a la pantalla el ultimo pin que se cerro.
     RestaurarUltimoPin,
     /// Capturar una region y copiar el texto que se lea en ella.
@@ -177,6 +180,13 @@ pub const CATALOGO: &[Descriptor] = &[
     // se lo quita a las demas aplicaciones mientras PixPin este abierto, y
     // en un navegador esa combinacion cambia de pestana. Se cambia en el
     // fichero de ajustes si estorba.
+    Descriptor {
+        comando: Comando::CapturarConRetardo,
+        nombre: "capturar-con-retardo",
+        clave_titulo: "comando-capturar-con-retardo",
+        atajo_por_defecto: None,
+        en_bandeja: true,
+    },
     Descriptor {
         comando: Comando::SilenciarAtajos,
         nombre: "silenciar-atajos",
@@ -424,6 +434,7 @@ mod pruebas {
         Comando::AlternarPines,
         Comando::AlternarPasoDeClics,
         Comando::SilenciarAtajos,
+        Comando::CapturarConRetardo,
         Comando::RestaurarUltimoPin,
         Comando::CerrarTodosLosPines,
         Comando::CopiarTexto,
