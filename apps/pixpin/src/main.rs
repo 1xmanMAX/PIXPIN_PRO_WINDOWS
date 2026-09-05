@@ -52,6 +52,7 @@
 mod caja_dibujo;
 mod capa;
 mod gif;
+mod grabador;
 mod overlay;
 mod pines;
 mod scroll;
@@ -518,7 +519,11 @@ fn arrancar(
                             let r = recursos_overlay
                                 .as_mut()
                                 .context("sin recursos para grabar")?;
-                            gif::ejecutar_grabacion(r, region)?
+                            gif::ejecutar_sesion(
+                                r,
+                                region,
+                                Some(comandos::Comando::GrabarGif.id()),
+                            )?
                         };
                         let Some(g) = grabado else {
                             tracing::info!("grabacion sin fotogramas aprovechables");
@@ -527,7 +532,7 @@ fn arrancar(
                         let bytes = pixpin_codec::codificar_gif(
                             &g.fotogramas,
                             pixpin_codec::OpcionesGif {
-                                centesimas_por_fotograma: gif::centesimas_por_fotograma(),
+                                centesimas_por_fotograma: g.centesimas_por_fotograma(),
                                 bucle: true,
                             },
                         )
