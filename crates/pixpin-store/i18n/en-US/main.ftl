@@ -86,3 +86,7 @@ editor-guardar = Save
 editor-guardado-rapido = Quick
 editor-copiar = Copy
 editor-descartar = Discard
+
+# Click-through pins (P1.4).
+comando-alternar-paso-de-clics = Let clicks pass through pins
+pin-dejar-pasar-clic = Let clicks pass through

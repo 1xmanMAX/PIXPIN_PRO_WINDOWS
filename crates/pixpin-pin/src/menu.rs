@@ -23,6 +23,8 @@ pub const CMD_ELIMINAR: u32 = 7;
 pub const CMD_REPRODUCIR: u32 = 8;
 /// Alternar el silencio de un video (D68).
 pub const CMD_SONIDO: u32 = 9;
+/// Dejar pasar los clics a lo que hay debajo (P1.4).
+pub const CMD_PASANTE: u32 = 10;
 pub const CMD_SIN_GRUPO: u32 = 100;
 pub const CMD_COLOR_BASE: u32 = 101;
 
@@ -45,6 +47,10 @@ pub struct TextosPin {
     pub reproducir: String,
     pub pausar: String,
     pub sonido: String,
+    /// El de dejar pasar el clic (P1.4). Solo hace falta el de activarlo:
+    /// un pin pasante ya no puede abrir su menu, asi que la vuelta es por
+    /// el comando global.
+    pub dejar_pasar_clic: String,
 }
 
 /// Una linea del menu, ya decidida. `Separador` no lleva texto.
@@ -64,6 +70,7 @@ pub fn entradas_del_menu(
     contenido: &Contenido,
     con_grupo: bool,
     reproduciendo: bool,
+    pasante: bool,
     t: &TextosPin,
 ) -> Vec<EntradaMenu> {
     let mut v = Vec::new();
@@ -115,6 +122,18 @@ pub fn entradas_del_menu(
         }
     }
 
+    // Â«Dejar pasar el clicÂ» solo se ofrece si NO lo esta ya: estando
+    // pasante, este menu ni siquiera se abre, porque el clic derecho pasa
+    // de largo. Ofrecer una entrada para desactivarlo seria prometer algo
+    // a lo que no se puede llegar.
+    if !pasante {
+        v.push(EntradaMenu::Separador);
+        v.push(EntradaMenu::Accion {
+            id: CMD_PASANTE,
+            etiqueta: t.dejar_pasar_clic.clone(),
+        });
+    }
+
     v.push(EntradaMenu::Separador);
     v.push(EntradaMenu::SubmenuGrupo);
     if con_grupo {
@@ -147,6 +166,7 @@ pub fn mostrar(
     contenido: &Contenido,
     con_grupo: bool,
     reproduciendo: bool,
+    pasante: bool,
     t: &TextosPin,
 ) -> Option<u32> {
     use windows::Win32::Foundation::POINT;
@@ -184,7 +204,7 @@ pub fn mostrar(
                     &HSTRING::from(nombre.as_str()),
                 )?;
             }
-            for entrada in entradas_del_menu(contenido, con_grupo, reproduciendo, t) {
+            for entrada in entradas_del_menu(contenido, con_grupo, reproduciendo, pasante, t) {
                 match entrada {
                     EntradaMenu::Separador => AppendMenuW(menu, MF_SEPARATOR, 0, None)?,
                     EntradaMenu::SubmenuGrupo => AppendMenuW(
@@ -261,6 +281,7 @@ mod pruebas {
             reproducir: "Reproducir".into(),
             pausar: "Pausar".into(),
             sonido: "Sonido".into(),
+            dejar_pasar_clic: "Dejar pasar el clic".into(),
         }
     }
 
@@ -275,7 +296,7 @@ mod pruebas {
 
     #[test]
     fn el_video_tiene_reproducir_y_sonido_arriba_y_no_guardar_como() {
-        let v = entradas_del_menu(&video(), false, true, &textos());
+        let v = entradas_del_menu(&video(), false, true, false, &textos());
         assert_eq!(
             v[0],
             EntradaMenu::Accion {
@@ -298,7 +319,7 @@ mod pruebas {
         assert!(!ids.contains(&CMD_GUARDAR_COMO));
         assert!(!ids.contains(&CMD_TAMANO_ORIGINAL));
 
-        let parado = entradas_del_menu(&video(), false, false, &textos());
+        let parado = entradas_del_menu(&video(), false, false, false, &textos());
         assert_eq!(
             parado[0],
             EntradaMenu::Accion {
@@ -318,7 +339,7 @@ mod pruebas {
                 pixeles: vec![0; 4],
             },
         };
-        let ids = ids(&entradas_del_menu(&d, false, false, &textos()));
+        let ids = ids(&entradas_del_menu(&d, false, false, false, &textos()));
         assert!(ids.contains(&CMD_ABRIR_UBICACION));
         assert!(!ids.contains(&CMD_REPRODUCIR));
         assert!(!ids.contains(&CMD_SONIDO));
@@ -353,7 +374,7 @@ mod pruebas {
 
     #[test]
     fn una_imagen_sin_grupo_no_ofrece_ocultar_ni_abrir_ubicacion() {
-        let v = entradas_del_menu(&imagen(), false, false, &textos());
+        let v = entradas_del_menu(&imagen(), false, false, false, &textos());
         let ids = ids(&v);
         assert!(ids.contains(&CMD_GUARDAR_COMO));
         assert!(ids.contains(&CMD_TAMANO_ORIGINAL));
@@ -372,7 +393,7 @@ mod pruebas {
         // La nota se estira por la esquina y se escala con la rueda; el
         // doble clic ("Tamaño original") la devuelve a como nacio.
         let nota = Contenido::Nota { texto: "x".into() };
-        let v = entradas_del_menu(&nota, false, false, &textos());
+        let v = entradas_del_menu(&nota, false, false, false, &textos());
         let ids = ids(&v);
         assert!(ids.contains(&CMD_GUARDAR_COMO));
         assert!(
@@ -383,7 +404,7 @@ mod pruebas {
 
     #[test]
     fn una_imagen_con_grupo_si_ofrece_ocultarlo() {
-        let v = entradas_del_menu(&imagen(), true, false, &textos());
+        let v = entradas_del_menu(&imagen(), true, false, false, &textos());
         assert!(ids(&v).contains(&CMD_OCULTAR_GRUPO));
     }
 
@@ -392,7 +413,7 @@ mod pruebas {
         // Caso negativo del tipo: «Tamaño original» sobre una ficha no
         // significa nada, y «Guardar como» duplicaria un fichero que ya
         // existe donde el usuario lo puso.
-        let v = entradas_del_menu(&archivo(), false, false, &textos());
+        let v = entradas_del_menu(&archivo(), false, false, false, &textos());
         let ids = ids(&v);
         assert!(ids.contains(&CMD_ABRIR_UBICACION));
         assert!(!ids.contains(&CMD_TAMANO_ORIGINAL));
@@ -400,9 +421,30 @@ mod pruebas {
     }
 
     #[test]
+    fn un_pin_pasante_no_ofrece_volver_a_dejarlo_pasar() {
+        // Estando pasante, este menu ni siquiera se abre: el clic derecho
+        // pasa de largo hacia lo que hay debajo. Ofrecer la entrada seria
+        // prometer algo a lo que no se puede llegar, asi que solo esta
+        // cuando sirve de algo. La vuelta es por el comando global.
+        let normal = ids(&entradas_del_menu(
+            &imagen(),
+            false,
+            false,
+            false,
+            &textos(),
+        ));
+        assert!(normal.contains(&CMD_PASANTE));
+        let pasante = ids(&entradas_del_menu(&imagen(), false, false, true, &textos()));
+        assert!(!pasante.contains(&CMD_PASANTE));
+        // Y lo demas sigue estando: no se pierde nada por el camino.
+        assert!(pasante.contains(&CMD_COPIAR));
+        assert!(pasante.contains(&CMD_CERRAR));
+    }
+
+    #[test]
     fn todos_los_menus_ofrecen_copiar_cerrar_y_eliminar() {
         for (c, grupo) in [(imagen(), false), (archivo(), true)] {
-            let ids = ids(&entradas_del_menu(&c, grupo, false, &textos()));
+            let ids = ids(&entradas_del_menu(&c, grupo, false, false, &textos()));
             for esperado in [CMD_COPIAR, CMD_CERRAR, CMD_ELIMINAR] {
                 assert!(ids.contains(&esperado), "falta la entrada {esperado}");
             }
@@ -411,7 +453,7 @@ mod pruebas {
 
     #[test]
     fn el_submenu_de_grupo_esta_siempre() {
-        let v = entradas_del_menu(&imagen(), false, false, &textos());
+        let v = entradas_del_menu(&imagen(), false, false, false, &textos());
         assert!(v.contains(&EntradaMenu::SubmenuGrupo));
     }
 }

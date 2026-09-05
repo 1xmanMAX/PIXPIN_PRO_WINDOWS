@@ -96,10 +96,10 @@ opcional y marca de si sale en la bandeja. Copiamos ese **diseño**.
 
 **Pasos**
 - [ ] Prueba: el catálogo cubre todos los `Comando`, sin nombres repetidos ni atajos por defecto repetidos.
-- [ ] Prueba: ida y vuelta por TOML; un nombre desconocido se ignora sin romper; `""` deja el comando sin atajo.
+- [x] Prueba: ida y vuelta por TOML; un nombre desconocido se ignora sin romper; `""` deja el comando sin atajo.
 - [ ] Prueba: migración — un TOML con la tabla vieja `[atajos]` sigue funcionando y produce los mismos enlaces.
-- [ ] Implementar `comandos.rs` hasta que pasen.
-- [ ] Cablear `main.rs`: registrar los atajos desde `Enlaces`, y generar el menú de bandeja desde `en_bandeja`.
+- [x] Implementar `comandos.rs` hasta que pasen.
+- [x] Cablear `main.rs`: registrar los atajos desde `Enlaces`, y generar el menú de bandeja desde `en_bandeja`.
 - [ ] Puerta completa y fusión.
 
 **Aceptación:** los atajos actuales siguen funcionando igual, el TOML viejo
@@ -172,7 +172,9 @@ Sin FFmpeg ni x264: un GIF es paleta de 256 colores más compresión LZW.
 
 - [x] **P5.1 Codificador GIF** en `pixpin-codec` (puro, con pruebas): cuantización por octree o mediana, LZW, fotogramas con retardo y bucle.
 - [x] **P5.2 Grabación de una región** con el bucle de captura que ya existe, tope de tiempo y de tamaño, y aviso de cuánto lleva.
-- [ ] **P5.3 Pausa y reanudación**, como el original.
+- [x] **P5.3 Pausa y reanudación.** Entró con la barra de grabar de
+      P5b.2: pausar cierra un tramo de reloj y seguir abre otro, así que el
+      tiempo en pausa no cuenta ni deja huecos.
 
 ## Fase P5b — La grabación como la especifica el original
 
@@ -207,7 +209,7 @@ El usuario pasó la especificación de la función en el original
       empezar, los dos en la barra y recordados en el fichero de ajustes.
 - [x] **P5b.4 Editor al terminar**: reproducir, línea de tiempo, velocidad,
       y los tres botones de salida (guardar, guardado rápido, copiar).
-- [ ] **P5b.5 WEBP y MP4.** MP4 sale casi gratis con Media Foundation, que
+- [~] **P5b.5 MP4 hecho, WEBP bloqueado.** MP4 sale casi gratis con Media Foundation, que
       ya usamos; WEBP necesita codificador propio y es el más caro.
 
 ## Fase P6 — Ventana de ajustes (la S3-D del plan maestro)

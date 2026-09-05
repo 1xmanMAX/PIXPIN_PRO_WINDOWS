@@ -211,6 +211,7 @@ impl Pines {
             giro: 0,
             volteo_h: false,
             volteo_v: false,
+            pasante: false,
         }
     }
 
@@ -226,6 +227,7 @@ impl Pines {
             giro: c.giro,
             volteo_h: c.volteo_h,
             volteo_v: c.volteo_v,
+            pasante: c.pasante,
         }
     }
 
@@ -293,6 +295,19 @@ impl Pines {
         // y retenirlo despues daria un parpadeo al arrancar.
         if let Some(g) = self.almacen.borrow().grupo_de(id) {
             pin.poner_color(Some(rgb_de(g.color)));
+        }
+        // Y con la vista que tuviera: girado, volteado, y dejando pasar
+        // el clic si asi se quedo. Sin esto, los tres campos se guardaban
+        // en el indice y no los leia nadie: un pin girado volvia derecho
+        // tras reiniciar, que es peor que no haberlo guardado, porque el
+        // fichero promete algo que no se cumple.
+        if let Some(g) = posicion_guardada(&self.almacen, id) {
+            if g.giro != 0 || g.volteo_h || g.volteo_v {
+                pin.poner_giro(g.giro, g.volteo_h, g.volteo_v);
+            }
+            if g.pasante {
+                pin.poner_pasante(true);
+            }
         }
         self.vivos.insert(id, pin);
         // Y con lo que tuviera dibujado encima. Sin esto el pin volvia
@@ -1267,6 +1282,39 @@ impl Pines {
         } else {
             (true, self.ocultar_todos())
         }
+    }
+
+    /// Que TODOS los pines dejen pasar el clic, o que vuelvan a
+    /// recogerlo. Devuelve si quedaron pasantes y cuantos cambiaron.
+    ///
+    /// Es la unica via de vuelta y por eso alterna en bloque: un pin
+    /// pasante no puede abrir su propio menu del clic derecho, porque el
+    /// clic pasa de largo. Si esto solo pudiera activarse, un descuido
+    /// dejaria pines intocables para siempre.
+    ///
+    /// Manda la mayoria: con unos cuantos pasantes y otros no, los pone
+    /// todos a lo contrario de lo que haya de mas. Asi el comando siempre
+    /// hace algo visible, en vez de dejar la pantalla igual.
+    pub fn alternar_paso_de_clics(&mut self) -> (bool, usize) {
+        let pasantes = self.vivos.values().filter(|p| p.es_pasante()).count();
+        let hacia = pasantes * 2 <= self.vivos.len();
+        let mut cambiados = 0;
+        for (id, pin) in &self.vivos {
+            if pin.es_pasante() == hacia {
+                continue;
+            }
+            pin.poner_pasante(hacia);
+            cambiados += 1;
+            // Se guarda uno a uno: el pin no avisa de esto por su cuenta,
+            // porque el cambio no viene de su ventana sino de aqui.
+            if let Some(mut g) = posicion_guardada(&self.almacen, *id) {
+                g.pasante = hacia;
+                if let Err(e) = self.almacen.borrow_mut().actualizar_pin(*id, Some(g)) {
+                    tracing::warn!(?e, id = *id, "no se pudo guardar el paso de clics");
+                }
+            }
+        }
+        (hacia, cambiados)
     }
 
     /// Devuelve el ultimo pin cerrado a donde estaba. `false` si no queda

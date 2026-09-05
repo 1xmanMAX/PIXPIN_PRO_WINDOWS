@@ -362,7 +362,8 @@ fn arrancar(
             _ if matches!(
                 comando,
                 Some(
-                    comandos::Comando::AlternarPines
+                    comandos::Comando::AlternarPasoDeClics
+                        | comandos::Comando::AlternarPines
                         | comandos::Comando::RestaurarUltimoPin
                         | comandos::Comando::CerrarTodosLosPines
                 )
@@ -373,6 +374,10 @@ fn arrancar(
                     Some(p) => match comando {
                         Some(comandos::Comando::CerrarTodosLosPines) => {
                             tracing::info!(cuantos = p.cerrar_todos(), "pines cerrados");
+                        }
+                        Some(comandos::Comando::AlternarPasoDeClics) => {
+                            let (pasantes, cuantos) = p.alternar_paso_de_clics();
+                            tracing::info!(pasantes, cuantos, "paso de clics de los pines");
                         }
                         _ => match pixpin_capture::enumerar_monitores() {
                             Err(e) => tracing::warn!(?e, "sin monitores"),
@@ -867,6 +872,7 @@ fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
         reproducir: textos.t("pin-reproducir"),
         pausar: textos.t("pin-pausar"),
         sonido: textos.t("pin-sonido"),
+        dejar_pasar_clic: textos.t("pin-dejar-pasar-clic"),
         ocultar_grupo: textos.t("pin-ocultar-grupo"),
         cerrar: textos.t("pin-cerrar"),
         eliminar: textos.t("pin-eliminar"),
