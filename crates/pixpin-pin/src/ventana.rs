@@ -469,6 +469,14 @@ struct PinInterno {
     vista_dy: f32,
     /// Desde donde se empezo a arrastrar con el boton central, para panear.
     paneo: Option<(i32, i32, f32, f32)>,
+    /// Arrastre con el boton derecho para hacer zoom (P3.3): la `y` de
+    /// pantalla del ultimo giro emitido, y si ya se paso del umbral.
+    ///
+    /// Se guarda la ultima `y` emitida y no la inicial para poder mandar
+    /// el giro a trozos segun se mueve la mano. Con la inicial habria que
+    /// recalcular el zoom absoluto en cada mensaje, y eso choca con la
+    /// animacion, que ya lleva su propio destino.
+    arrastre_derecho: Option<(i32, bool)>,
     /// El reproductor, solo en un pin de video (D63). Si no pudo crearse,
     /// `video_fallido` avisa al gestor en el primer tick (D72).
     video: Option<Reproductor>,
@@ -611,6 +619,7 @@ impl Pin {
             vista_dx: 0.0,
             vista_dy: 0.0,
             paneo: None,
+            arrastre_derecho: None,
             hwnd,
             video,
             video_fallido,
@@ -1091,6 +1100,27 @@ fn estirar_hasta(_hwnd: HWND, i: &PinInterno, rect: Rect) {
 /// El zoom del texto en por ciento, para persistirlo (100 fuera de las
 /// notas: los demas contenidos no tienen zoom de texto).
 /// Lo que se guarda de un pin en un momento dado, para un rect concreto.
+/// Donde esta el cursor, en coordenadas del escritorio.
+///
+/// Los mensajes de raton traen el punto relativo al cliente, pero el zoom
+/// anclado lo necesita en pantalla â es lo mismo que ya hace WM_MOUSEWHEEL,
+/// que por su cuenta viene ya en pantalla.
+fn cursor_de_pantalla() -> Punto {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+    let mut p = POINT::default();
+    // SAFETY: GetCursorPos escribe en una estructura local; si falla, se
+    // queda en (0,0), que solo significa un zoom anclado en la esquina.
+    unsafe {
+        let _ = GetCursorPos(&mut p);
+    }
+    Punto { x: p.x, y: p.y }
+}
+
+fn y_de_pantalla() -> i32 {
+    cursor_de_pantalla().y
+}
+
 /// Hace que la ventana deje pasar los clics, o que vuelva a recogerlos.
 ///
 /// Es una funcion libre y no un metodo de `Pin` porque el WndProc tiene
@@ -1907,6 +1937,48 @@ extern "system" fn procedimiento_pin(
             }
             LRESULT(0)
         }
+        // El boton derecho hace dos cosas segun lo que pase despues: si te
+        // mueves, hace zoom; si no, abre el menu al soltar. Por eso aqui
+        // solo se APUNTA, y quien decide es WM_RBUTTONUP.
+        WM_RBUTTONDOWN => {
+            if let Some(i) = interno_de(hwnd) {
+                // Ni sobre una nota que se esta escribiendo ni mientras se
+                // anota: ahi el boton derecho tiene otro dueno.
+                if !i.anotando {
+                    // SAFETY: captura sobre ventana propia; se suelta en
+                    // WM_RBUTTONUP, que siempre llega tras esto.
+                    unsafe { SetCapture(hwnd) };
+                    i.arrastre_derecho = Some((y_de_pantalla(), false));
+                }
+            }
+            LRESULT(0)
+        }
+        WM_MOUSEMOVE if interno_de(hwnd).is_some_and(|i| i.arrastre_derecho.is_some()) => {
+            if let Some(i) = interno_de(hwnd) {
+                if let Some((y_ultima, movido)) = i.arrastre_derecho {
+                    let y = y_de_pantalla();
+                    let dy = y - y_ultima;
+                    // Hasta pasar el umbral no se toca nada: el pulso de
+                    // la mano al pulsar no puede robarle el menu al clic.
+                    if !movido && dy.abs() < crate::zoom::UMBRAL_ARRASTRE {
+                        return LRESULT(0);
+                    }
+                    let delta = crate::zoom::pasos_de_arrastre(dy);
+                    i.arrastre_derecho = Some((y, true));
+                    if delta != 0 {
+                        // Se reusa el mismo camino que la rueda: el gestor
+                        // ya sabe animar el zoom anclado a un punto, y
+                        // duplicarlo aqui daria dos comportamientos que se
+                        // separarian con el tiempo.
+                        (i.al_cambiar)(CambioPin::RuedaGirada {
+                            delta,
+                            cursor: cursor_de_pantalla(),
+                        });
+                    }
+                }
+            }
+            LRESULT(0)
+        }
         WM_MOUSEWHEEL => {
             if let Some(i) = interno_de(hwnd) {
                 // La palabra alta del wparam trae el giro, con signo.
@@ -1978,6 +2050,18 @@ extern "system" fn procedimiento_pin(
         }
         WM_RBUTTONUP => {
             if let Some(i) = interno_de(hwnd) {
+                let arrastro = i.arrastre_derecho.map(|(_, m)| m).unwrap_or(false);
+                if i.arrastre_derecho.take().is_some() {
+                    // SAFETY: libera la captura tomada en WM_RBUTTONDOWN.
+                    unsafe {
+                        let _ = ReleaseCapture();
+                    }
+                }
+                // Si hubo zoom, el boton ya hizo su trabajo: abrir ademas
+                // el menu seria una sorpresa al final de cada gesto.
+                if arrastro {
+                    return LRESULT(0);
+                }
                 let Some(t) = i.textos.clone() else {
                     return LRESULT(0);
                 };
