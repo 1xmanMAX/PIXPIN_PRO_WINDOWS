@@ -28,7 +28,7 @@ pub const MARGEN: u32 = 12;
 /// la izquierda y el de la derecha se solapan y quedan botones que no se
 /// pueden pulsar. Lo vigila la prueba `los_mandos_caben_y_no_se_pisan`,
 /// que lo caza si alguien ensancha un rotulo sin mirar.
-pub const ANCHO_MINIMO: u32 = 460;
+pub const ANCHO_MINIMO: u32 = 520;
 
 /// Los mandos del editor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +41,8 @@ pub enum Mando {
     Siguiente,
     /// Cambia a la velocidad siguiente de la lista, dando la vuelta.
     Velocidad,
+    /// Cambia el formato con el que se va a guardar.
+    Formato,
     /// Preguntar donde guardar.
     Guardar,
     /// Guardar en la carpeta de capturas sin preguntar.
@@ -49,6 +51,43 @@ pub enum Mando {
     Copiar,
     /// Tirar lo grabado.
     Descartar,
+}
+
+/// En que formato se guarda la grabacion.
+///
+/// El GIF se pega en cualquier sitio y se ve solo, pero pesa; el MP4
+/// pesa una fraccion y lo entiende todo lo que reproduzca video, aunque
+/// no se anima en las vistas previas. No hay uno mejor, por eso se
+/// elige.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Formato {
+    Gif,
+    Mp4,
+}
+
+impl Formato {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Formato::Gif => "gif",
+            Formato::Mp4 => "mp4",
+        }
+    }
+
+    /// El rotulo del boton. Va en mayusculas y sin traducir: los nombres
+    /// de los formatos son los mismos en todos los idiomas.
+    pub fn rotulo(self) -> &'static str {
+        match self {
+            Formato::Gif => "GIF",
+            Formato::Mp4 => "MP4",
+        }
+    }
+
+    pub fn siguiente(self) -> Formato {
+        match self {
+            Formato::Gif => Formato::Mp4,
+            Formato::Mp4 => Formato::Gif,
+        }
+    }
 }
 
 /// Lo que el usuario decidio hacer con la grabacion.
@@ -207,6 +246,7 @@ pub fn mandos(ventana_ancho: u32, ventana_alto: u32) -> Vec<(Mando, RectF)> {
         (Mando::Reproducir, 34.0),
         (Mando::Siguiente, 26.0),
         (Mando::Velocidad, 44.0),
+        (Mando::Formato, 48.0),
     ] {
         poner(m, x, ancho, &mut fila);
         x += ancho + 4.0;
@@ -423,6 +463,18 @@ mod pruebas {
                 }
             }
         }
+    }
+
+    #[test]
+    fn los_formatos_dan_la_vuelta_y_traen_su_extension() {
+        let mut f = Formato::Gif;
+        assert_eq!(f.extension(), "gif");
+        f = f.siguiente();
+        assert_eq!(f, Formato::Mp4);
+        assert_eq!(f.extension(), "mp4");
+        // Dando la vuelta se llega al de partida: si no, el boton dejaria
+        // de ofrecer el formato que se acaba de descartar.
+        assert_eq!(f.siguiente(), Formato::Gif);
     }
 
     #[test]

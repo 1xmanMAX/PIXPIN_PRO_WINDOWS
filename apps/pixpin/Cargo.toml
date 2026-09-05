@@ -19,6 +19,7 @@ pixpin-geom = { version = "0.1.0", path = "../../crates/pixpin-geom" }
 pixpin-motor2d = { version = "0.1.0", path = "../../crates/pixpin-motor2d" }
 pixpin-nivel = { version = "0.1.0", path = "../../crates/pixpin-nivel" }
 pixpin-pin = { version = "0.1.0", path = "../../crates/pixpin-pin" }
+pixpin-record = { version = "0.1.0", path = "../../crates/pixpin-record" }
 pixpin-render = { version = "0.1.0", path = "../../crates/pixpin-render" }
 pixpin-shell = { version = "0.1.0", path = "../../crates/pixpin-shell" }
 pixpin-store = { version = "0.1.0", path = "../../crates/pixpin-store" }
