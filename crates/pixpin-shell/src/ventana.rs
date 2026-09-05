@@ -299,7 +299,7 @@ extern "system" fn procedimiento(
 /// el overlay se atenderia y lo volveria a abrir. En vez de eso se le
 /// entrega al overlay, que decide (la capa viva alterna el modo pasante,
 /// D50; el overlay de captura lo ignora).
-pub(crate) fn tomar_atajos_pendientes() -> Vec<u32> {
+pub fn tomar_atajos_pendientes() -> Vec<u32> {
     PENDIENTES.with(|p| {
         let mut cola = p.borrow_mut();
         let mut ids = Vec::new();

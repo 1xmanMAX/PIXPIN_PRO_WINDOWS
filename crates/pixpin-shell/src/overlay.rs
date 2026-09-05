@@ -106,6 +106,9 @@ thread_local! {
         const { RefCell::new(VecDeque::new()) };
     /// Cursor vigente por ventana; WM_SETCURSOR lo consulta.
     static CURSOR: RefCell<Vec<(HWND, FormaCursorWin)>> = const { RefCell::new(Vec::new()) };
+    /// Hueco por ventana, en coordenadas del escritorio virtual. Los clics
+    /// que caen dentro atraviesan la ventana y llegan a lo que hay debajo.
+    static HUECO: RefCell<Vec<(HWND, Rect)>> = const { RefCell::new(Vec::new()) };
 }
 
 static REGISTRO: Once = Once::new();
@@ -142,6 +145,29 @@ impl VentanaOverlay {
             .map_err(ErrorOverlay::Creacion)?
         };
         Ok(Self { hwnd, area })
+    }
+
+    /// Lleva la ventana a otro sitio y otro tamano sin rehacerla.
+    ///
+    /// El marco de la grabacion se mueve y se estira mientras el usuario
+    /// arrastra: recrear la ventana y su superficie en cada paso costaria
+    /// mas que el arrastre entero.
+    pub fn mover(&mut self, area: Rect) {
+        // SAFETY: SetWindowPos sobre la ventana propia, viva mientras
+        // exista este objeto. SWP_NOACTIVATE mantiene el foco donde este:
+        // el usuario sigue trabajando con la aplicacion que va a grabar.
+        unsafe {
+            let _ = SetWindowPos(
+                self.hwnd,
+                None,
+                area.x,
+                area.y,
+                area.ancho as i32,
+                area.alto as i32,
+                SWP_NOACTIVATE | SWP_NOZORDER,
+            );
+        }
+        self.area = area;
     }
 
     pub fn handle(&self) -> HWND {
@@ -221,6 +247,23 @@ impl VentanaOverlay {
     }
 
     /// Si ahora mismo los clics la atraviesan.
+    /// Deja pasar los clics que caigan dentro de `hueco`, en coordenadas
+    /// del escritorio virtual, y los atiende fuera de el.
+    ///
+    /// Es lo que hace falta para un marco: el borde se puede agarrar para
+    /// mover y redimensionar, pero por el centro se sigue trabajando con
+    /// la aplicacion de debajo. `poner_pasante` no sirve aqui porque es
+    /// todo o nada para la ventana entera.
+    pub fn poner_hueco(&self, hueco: Option<Rect>) {
+        HUECO.with(|h| {
+            let mut lista = h.borrow_mut();
+            lista.retain(|(w, _)| *w != self.hwnd);
+            if let Some(r) = hueco {
+                lista.push((self.hwnd, r));
+            }
+        });
+    }
+
     pub fn es_pasante(&self) -> bool {
         use windows::Win32::UI::WindowsAndMessaging::{
             GWL_EXSTYLE, GetWindowLongPtrW, WS_EX_TRANSPARENT,
@@ -305,6 +348,7 @@ impl VentanaOverlay {
 impl Drop for VentanaOverlay {
     fn drop(&mut self) {
         CURSOR.with(|c| c.borrow_mut().retain(|(h, _)| *h != self.hwnd));
+        HUECO.with(|h| h.borrow_mut().retain(|(w, _)| *w != self.hwnd));
         PENDIENTES_OVERLAY.with(|p| p.borrow_mut().retain(|(h, _)| *h != self.hwnd));
         // SAFETY: destruir una ventana propia desde su hilo es valido; si ya
         // fue destruida por el sistema, DestroyWindow falla y se ignora.
@@ -342,6 +386,16 @@ pub fn bombear_pendientes() {
             DispatchMessageW(&msg);
         }
     }
+}
+
+/// Se lleva los eventos que el WndProc haya encolado, para quien bombea a
+/// mano con `bombear_pendientes` en vez de usar `bucle_modal`.
+///
+/// La grabacion de GIF es ese caso: tiene su propio reloj y no puede
+/// cederle el hilo a `GetMessage`, que se duerme hasta que llega algo y
+/// perderia el ritmo de captura.
+pub fn tomar_eventos_pendientes() -> Vec<(HWND, EventoOverlay)> {
+    PENDIENTES_OVERLAY.with(|p| p.borrow_mut().drain(..).collect())
 }
 
 pub fn bucle_modal(
@@ -421,6 +475,27 @@ extern "system" fn procedimiento_overlay(
     };
 
     match mensaje {
+        // El hueco: dentro de el la ventana no existe para el raton, asi
+        // que el clic llega a la aplicacion de debajo. El lparam de este
+        // mensaje ya viene en coordenadas de pantalla, al reves que el
+        // resto de mensajes de raton.
+        WM_NCHITTEST => {
+            let p = Punto {
+                x: (lparam.0 & 0xFFFF) as i16 as i32,
+                y: ((lparam.0 >> 16) & 0xFFFF) as i16 as i32,
+            };
+            let dentro = HUECO.with(|h| {
+                h.borrow()
+                    .iter()
+                    .find(|(w, _)| *w == hwnd)
+                    .is_some_and(|(_, r)| r.contiene(p))
+            });
+            if dentro {
+                LRESULT(HTTRANSPARENT as isize)
+            } else {
+                LRESULT(HTCLIENT as isize)
+            }
+        }
         WM_MOUSEMOVE => {
             encolar(EventoOverlay::RatonMovido(punto(lparam)));
             LRESULT(0)
