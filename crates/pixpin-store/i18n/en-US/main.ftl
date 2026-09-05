@@ -90,3 +90,11 @@ editor-descartar = Discard
 # Click-through pins (P1.4).
 comando-alternar-paso-de-clics = Let clicks pass through pins
 pin-dejar-pasar-clic = Let clicks pass through
+
+# Muting the shortcuts for a while (P1.7).
+comando-silenciar-atajos = Mute the shortcuts
+bandeja-silenciada = PixPin Max — shortcuts muted
+aviso-atajos-silenciados = Shortcuts muted
+aviso-atajos-silenciados-detalle = Turn them back on from this same menu.
+aviso-atajos-activos = Shortcuts active
+aviso-atajos-activos-detalle = { $cuantos } shortcuts respond again.

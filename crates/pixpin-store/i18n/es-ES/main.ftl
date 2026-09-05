@@ -91,3 +91,11 @@ editor-descartar = Descartar
 # Pines que dejan pasar el clic (P1.4).
 comando-alternar-paso-de-clics = Que los pines dejen pasar el clic
 pin-dejar-pasar-clic = Dejar pasar el clic
+
+# Silenciar los atajos un rato (P1.7).
+comando-silenciar-atajos = Silenciar los atajos
+bandeja-silenciada = PixPin Max — atajos silenciados
+aviso-atajos-silenciados = Atajos silenciados
+aviso-atajos-silenciados-detalle = Vuelve a activarlos desde este mismo menú.
+aviso-atajos-activos = Atajos activos
+aviso-atajos-activos-detalle = { $cuantos } atajos vuelven a responder.

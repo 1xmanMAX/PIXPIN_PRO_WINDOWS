@@ -165,6 +165,13 @@ pub struct Ajustes {
     pub limite_scroll_px: u32,
     /// Lo que se recuerda de la grabacion (P5b).
     pub gif: Gif,
+    /// Programas delante de los cuales los atajos no actuan (P1.8).
+    ///
+    /// Se nombran por ejecutable, con o sin `.exe`, sin distinguir
+    /// mayusculas. Por defecto esta vacia: nadie ha pedido que PixPin
+    /// deje de responder, y una lista con algo dentro de fabrica seria
+    /// una sorpresa muy dificil de averiguar.
+    pub ignorar_programas: Vec<String>,
 }
 
 impl Default for Ajustes {
@@ -179,6 +186,7 @@ impl Default for Ajustes {
             arranque_con_windows: false,
             limite_scroll_px: 30_000,
             gif: Gif::default(),
+            ignorar_programas: Vec::new(),
         }
     }
 }
@@ -217,6 +225,37 @@ mod pruebas {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         Ubicacion::Instalado { raiz: dir }
+    }
+
+    #[test]
+    fn una_clave_suelta_tras_una_seccion_no_es_del_nivel_de_arriba() {
+        // Esto no prueba nuestro codigo, prueba TOML â y esta aqui porque
+        // ya me costo un fallo en el fichero del usuario: puse
+        // `ignorar_programas` DEBAJO de `[gif]`, y TOML lo leyo como
+        // `gif.ignorar_programas`. Serde ignora lo que no conoce, asi que
+        // el ajuste desaparecio sin una sola queja.
+        //
+        // Una clave de primer nivel tiene que ir ANTES de la primera
+        // seccion. Si algun dia se genera este fichero desde codigo, esta
+        // prueba dice por que el orden importa.
+        let mal = "[gif]
+por_segundo = 20
+ignorar_programas = ['x.exe']
+";
+        let a: Ajustes = toml::from_str(mal).expect("carga igual, y ese es el problema");
+        assert_eq!(a.gif.por_segundo, 20);
+        assert!(
+            a.ignorar_programas.is_empty(),
+            "la clave se perdio dentro de [gif], como se esperaba"
+        );
+        // Puesta donde toca, si llega.
+        let bien = "ignorar_programas = ['x.exe']
+[gif]
+por_segundo = 20
+";
+        let a: Ajustes = toml::from_str(bien).unwrap();
+        assert_eq!(a.ignorar_programas, vec!["x.exe".to_string()]);
+        assert_eq!(a.gif.por_segundo, 20);
     }
 
     #[test]
