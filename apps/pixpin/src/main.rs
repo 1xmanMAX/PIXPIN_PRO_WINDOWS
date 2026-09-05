@@ -555,7 +555,7 @@ fn arrancar(
                         // hacer con ello. Media grabacion sale mal a la
                         // primera, y guardarlas sin mirar llena la carpeta
                         // de ficheros que hay que borrar despues.
-                        let salida = {
+                        let (salida, formato) = {
                             let d = pixpin_capture::enumerar_monitores()?;
                             let m = d
                                 .monitores()
@@ -573,20 +573,24 @@ fn arrancar(
                             tracing::info!("grabacion descartada");
                             return Ok(None);
                         }
-                        let bytes = pixpin_codec::codificar_gif(
-                            &g.fotogramas,
-                            pixpin_codec::OpcionesGif {
-                                centesimas_por_fotograma: g.centesimas_por_fotograma(),
-                                bucle: true,
-                            },
-                        )
-                        .context("no se pudo codificar el GIF")?;
+                        // La ruta se decide ANTES de codificar: el MP4 se
+                        // escribe directamente a fichero, asi que no hay un
+                        // monton de bytes que ensenar antes de saber donde
+                        // van. Y si se cancela el dialogo, se ahorra la
+                        // codificacion entera.
                         let ruta = match salida {
                             reproductor::Salida::Guardar => {
                                 match pixpin_shell::guardar::pedir_ruta_guardado(
                                     hwnd,
-                                    "grabacion.gif",
-                                    pixpin_shell::guardar::Formatos::Animacion,
+                                    &format!("grabacion.{}", formato.extension()),
+                                    match formato {
+                                        reproductor::Formato::Gif => {
+                                            pixpin_shell::guardar::Formatos::Gif
+                                        }
+                                        reproductor::Formato::Mp4 => {
+                                            pixpin_shell::guardar::Formatos::Mp4
+                                        }
+                                    },
                                 ) {
                                     Some(r) => r,
                                     // Cancelar el dialogo cancela el guardado
@@ -596,10 +600,40 @@ fn arrancar(
                                     None => return Ok(None),
                                 }
                             }
-                            _ => ruta_captura_libre(&ubicacion)?.with_extension("gif"),
+                            _ => {
+                                ruta_captura_libre(&ubicacion)?.with_extension(formato.extension())
+                            }
                         };
-                        std::fs::write(&ruta, &bytes)
-                            .with_context(|| format!("no se pudo escribir {}", ruta.display()))?;
+                        let pesa = match formato {
+                            reproductor::Formato::Gif => {
+                                let bytes = pixpin_codec::codificar_gif(
+                                    &g.fotogramas,
+                                    pixpin_codec::OpcionesGif {
+                                        centesimas_por_fotograma: g.centesimas_por_fotograma(),
+                                        bucle: true,
+                                    },
+                                )
+                                .context("no se pudo codificar el GIF")?;
+                                std::fs::write(&ruta, &bytes).with_context(|| {
+                                    format!("no se pudo escribir {}", ruta.display())
+                                })?;
+                                bytes.len()
+                            }
+                            reproductor::Formato::Mp4 => {
+                                pixpin_record::codificar_mp4(
+                                    &g.fotogramas,
+                                    pixpin_record::OpcionesMp4 {
+                                        por_segundo: g.por_segundo,
+                                        bitrate: None,
+                                    },
+                                    &ruta,
+                                )
+                                .context("no se pudo codificar el MP4")?;
+                                std::fs::metadata(&ruta)
+                                    .map(|m| m.len() as usize)
+                                    .unwrap_or(0)
+                            }
+                        };
                         // Copiar deja el FICHERO en el portapapeles, no la
                         // imagen: el portapapeles de Windows solo guarda un
                         // fotograma, asi que pegar la imagen daria una foto
@@ -614,9 +648,10 @@ fn arrancar(
                         }
                         tracing::info!(
                             fotogramas = g.fotogramas.len(),
-                            kb = bytes.len() / 1024,
+                            kb = pesa / 1024,
                             fin = ?g.fin,
                             ?salida,
+                            ?formato,
                             "GIF guardado"
                         );
                         Ok(Some(ruta))

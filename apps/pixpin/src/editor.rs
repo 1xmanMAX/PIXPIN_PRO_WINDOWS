@@ -20,7 +20,8 @@ use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
 use crate::grabador::Grabacion;
 use crate::overlay::Recursos;
 use crate::reproductor::{
-    MANDOS_ALTO, MARGEN, Mando, Reproductor, Salida, linea_tiempo, mando_en, mandos, medida_ventana,
+    Formato, MANDOS_ALTO, MARGEN, Mando, Reproductor, Salida, linea_tiempo, mando_en, mandos,
+    medida_ventana,
 };
 
 const FONDO: Color = Color {
@@ -85,9 +86,9 @@ pub fn abrir(
     grabacion: &Grabacion,
     monitor: &pixpin_geom::Monitor,
     textos: &Catalogo,
-) -> Result<Salida> {
+) -> Result<(Salida, Formato)> {
     let Some(primero) = grabacion.fotogramas.first() else {
-        return Ok(Salida::Descartar);
+        return Ok((Salida::Descartar, Formato::Gif));
     };
     let escala_pantalla = monitor.escala_por_cien as f32 / 100.0;
     // Se mide en pixeles logicos y se lleva a fisicos al final: mezclarlos
@@ -112,7 +113,7 @@ pub fn abrir(
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(?e, "no se pudo abrir el editor de la grabacion");
-            return Ok(Salida::Descartar);
+            return Ok((Salida::Descartar, Formato::Gif));
         }
     };
     let motor = recursos.motor();
@@ -129,13 +130,16 @@ pub fn abrir(
 
     let mut reproductor = Reproductor::nuevo(grabacion.fotogramas.len(), grabacion.por_segundo);
     let mut resaltado: Option<Mando> = None;
+    // El GIF de partida: es lo que se pega en cualquier sitio y se ve
+    // solo, que es para lo que se graba casi siempre.
+    let mut formato = Formato::Gif;
     let mut arrastrando_tiempo = false;
     // El fotograma que hay subido a la tarjeta grafica, y cual es. Se sube
     // solo al cambiar: subir el mismo en cada vuelta serian megabytes por
     // segundo de trabajo tirado.
     let mut bitmap: Option<(usize, ID2D1Bitmap1)> = None;
     let mut ultimo = Instant::now();
-    let mut pintado: Option<(usize, bool, usize, Option<Mando>)> = None;
+    let mut pintado: Option<(usize, bool, usize, Option<Mando>, Formato)> = None;
 
     let salida = loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -167,6 +171,7 @@ pub fn abrir(
                             Mando::Anterior => reproductor.paso(false),
                             Mando::Siguiente => reproductor.paso(true),
                             Mando::Velocidad => reproductor.siguiente_velocidad(),
+                            Mando::Formato => formato = formato.siguiente(),
                             Mando::Guardar => decidido = Some(Salida::Guardar),
                             Mando::GuardadoRapido => decidido = Some(Salida::GuardadoRapido),
                             Mando::Copiar => decidido = Some(Salida::Copiar),
@@ -218,6 +223,7 @@ pub fn abrir(
             reproductor.reproduciendo,
             reproductor.indice_velocidad,
             resaltado,
+            formato,
         );
         if pintado != Some(estado) {
             pintado = Some(estado);
@@ -242,6 +248,7 @@ pub fn abrir(
                 bitmap.as_ref().map(|(_, b)| b),
                 &reproductor,
                 resaltado,
+                formato,
                 textos,
             );
         }
@@ -252,7 +259,7 @@ pub fn abrir(
 
     ventana.ocultar();
     pixpin_shell::overlay::bombear_pendientes();
-    Ok(salida)
+    Ok((salida, formato))
 }
 
 /// Pinta la ventana entera. Se le pasa todo lo que necesita en vez de
@@ -270,6 +277,7 @@ fn pintar(
     bitmap: Option<&ID2D1Bitmap1>,
     reproductor: &Reproductor,
     resaltado: Option<Mando>,
+    formato: Formato,
     textos: &Catalogo,
 ) {
     let Ok(destino) = superficie.empezar(motor) else {
@@ -373,7 +381,7 @@ fn pintar(
             if resaltado == Some(mando) {
                 p.rellenar_redondeado(caja, 5.0 * e, RESALTE);
             }
-            let etiqueta = rotulo(mando, reproductor, textos);
+            let etiqueta = rotulo(mando, reproductor, formato, textos);
             let color = if mando == Mando::Descartar {
                 TENUE
             } else {
@@ -412,7 +420,7 @@ fn pintar(
 }
 
 /// El rotulo de cada mando, ya traducido.
-fn rotulo(mando: Mando, reproductor: &Reproductor, textos: &Catalogo) -> String {
+fn rotulo(mando: Mando, reproductor: &Reproductor, formato: Formato, textos: &Catalogo) -> String {
     match mando {
         Mando::Reproducir => {
             // El boton dice lo que VA A HACER, no en que estado esta: es la
@@ -430,6 +438,7 @@ fn rotulo(mando: Mando, reproductor: &Reproductor, textos: &Catalogo) -> String 
             args.set("veces", format!("{}", reproductor.velocidad()));
             textos.t_args("editor-velocidad", &args)
         }
+        Mando::Formato => formato.rotulo().to_string(),
         Mando::Guardar => textos.t("editor-guardar"),
         Mando::GuardadoRapido => textos.t("editor-guardado-rapido"),
         Mando::Copiar => textos.t("editor-copiar"),

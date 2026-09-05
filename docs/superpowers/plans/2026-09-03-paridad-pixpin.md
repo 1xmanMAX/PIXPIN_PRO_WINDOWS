@@ -197,15 +197,15 @@ El usuario pasó la especificación de la función en el original
 
 **Orden acordado**
 
-- [ ] **P5b.1 Fase de espera con recuadro azul y barra de control.** Tras
+- [x] **P5b.1 Fase de espera con recuadro azul y barra de control.** Tras
       elegir la zona no se graba todavía: aparece la barra con el tiempo,
       los fotogramas por segundo y los botones de grabar, mover y cerrar.
-- [ ] **P5b.2 Grabando: el recuadro pasa a rojo**, la barra muestra el
+- [x] **P5b.2 Grabando: el recuadro pasa a rojo**, la barra muestra el
       tiempo corriendo y ofrece pausa y detener. El mismo comando que la
       abrió la detiene.
-- [ ] **P5b.3 Fotogramas por segundo ajustables** y retardo antes de
+- [x] **P5b.3 Fotogramas por segundo ajustables** y retardo antes de
       empezar, los dos en la barra y recordados en el fichero de ajustes.
-- [ ] **P5b.4 Editor al terminar**: reproducir, línea de tiempo, velocidad,
+- [x] **P5b.4 Editor al terminar**: reproducir, línea de tiempo, velocidad,
       y los tres botones de salida (guardar, guardado rápido, copiar).
 - [ ] **P5b.5 WEBP y MP4.** MP4 sale casi gratis con Media Foundation, que
       ya usamos; WEBP necesita codificador propio y es el más caro.
@@ -258,3 +258,29 @@ resto se apoya en ellos.
 **Regla:** primero se cierra P0.1 en secuencia, porque todas las fases
 siguientes añaden filas a ese catálogo. A partir de ahí, las piezas puras se
 pueden repartir; el cableado, no.
+
+### Estado de P5b, y en qué se aparta de la especificación
+
+Lo de P5b.1 a P5b.4 está hecho y fusionado. Tres desvíos, todos a propósito:
+
+1. **No hay botón de «mover el área».** El marco se arrastra por el borde
+   para mover y por las esquinas para redimensionar, y el centro deja pasar
+   los clics: `poner_hueco` contesta `HTTRANSPARENT` a `WM_NCHITTEST` dentro
+   de la zona, así que se sigue trabajando con la aplicación de debajo.
+   Un botón que activa un modo de arrastre sobra cuando el borde ya se
+   agarra.
+2. **Lo elegido NO va al fichero de ajustes**, va a `estado.toml`, que
+   escribe el programa. Guardar los ajustes serializa la estructura entera y
+   reescribe el fichero: la primera grabación se habría llevado por delante
+   todos los comentarios que el usuario tiene ahí explicando cada línea.
+3. **No se registran teclas ni clics.** En el original es función de pago y
+   es lo que menos aporta.
+
+**P5b.5 está a medias y bloqueado por una decisión que no es mía.** El MP4
+va con Media Foundation, que ya usamos, y el selector de formato está en el
+editor. El **WEBP animado no**: Windows trae descodificador de WebP pero no
+codificador, así que haría falta `libwebp`, que es C y hay que compilar. La
+licencia BSD pasa el filtro de `cargo-deny`, pero mete un compilador de C en
+un proyecto que hoy es Rust puro y se compila en cualquier sitio sin
+preparar nada. Escribir un codificador VP8 propio no es proporcionado para
+un tercer formato. Queda a decidir si compensa.

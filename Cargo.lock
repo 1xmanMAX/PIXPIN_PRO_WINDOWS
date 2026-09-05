@@ -350,6 +350,7 @@ dependencies = [
  "pixpin-nivel",
  "pixpin-ocr",
  "pixpin-pin",
+ "pixpin-record",
  "pixpin-render",
  "pixpin-shell",
  "pixpin-store",
@@ -445,6 +446,11 @@ version = "0.1.0"
 [[package]]
 name = "pixpin-record"
 version = "0.1.0"
+dependencies = [
+ "pixpin-codec",
+ "thiserror",
+ "windows",
+]
 
 [[package]]
 name = "pixpin-render"

@@ -25,10 +25,12 @@ use windows::core::{HSTRING, PCWSTR, w};
 pub enum Formatos {
     /// Una captura quieta.
     Imagen,
-    /// Una grabacion. Sin PNG ni JPEG: guardar una animacion en un
+    /// Una grabacion en GIF. Sin PNG ni JPEG: guardar una animacion en un
     /// formato que solo tiene un fotograma perderia todo menos el
     /// primero, sin avisar.
-    Animacion,
+    Gif,
+    /// Una grabacion en MP4.
+    Mp4,
 }
 
 pub fn pedir_ruta_guardado(
@@ -55,18 +57,29 @@ pub fn pedir_ruta_guardado(
                 pszSpec: w!("*.webp"),
             },
         ];
-        let de_animacion = [COMDLG_FILTERSPEC {
+        let de_gif = [COMDLG_FILTERSPEC {
             pszName: w!("GIF"),
             pszSpec: w!("*.gif"),
+        }];
+        // Solo el formato que ya se eligio en el editor. Ofrecer los dos
+        // aqui dejaria elegir uno y guardar el otro, con la extension
+        // mintiendo sobre lo que hay dentro.
+        let de_mp4 = [COMDLG_FILTERSPEC {
+            pszName: w!("MP4"),
+            pszSpec: w!("*.mp4"),
         }];
         match formatos {
             Formatos::Imagen => {
                 dialogo.SetFileTypes(&de_imagen).ok()?;
                 dialogo.SetDefaultExtension(w!("png")).ok()?;
             }
-            Formatos::Animacion => {
-                dialogo.SetFileTypes(&de_animacion).ok()?;
+            Formatos::Gif => {
+                dialogo.SetFileTypes(&de_gif).ok()?;
                 dialogo.SetDefaultExtension(w!("gif")).ok()?;
+            }
+            Formatos::Mp4 => {
+                dialogo.SetFileTypes(&de_mp4).ok()?;
+                dialogo.SetDefaultExtension(w!("mp4")).ok()?;
             }
         }
         let nombre = HSTRING::from(nombre_sugerido);
