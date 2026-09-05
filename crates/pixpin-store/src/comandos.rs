@@ -34,6 +34,10 @@ pub enum Comando {
     CapturarYCopiar,
     /// Captura larga con scroll.
     CapturarConScroll,
+    /// Capturar y entrar directo a anotar, sin pasar por la barra.
+    CapturarYAnotar,
+    /// Repetir la ultima region capturada, sin overlay ni preguntas.
+    CapturarUltimaRegion,
     /// Cuentagotas: copiar el color bajo el cursor.
     Cuentagotas,
     /// Recortar y dejarlo flotando como pin.
@@ -98,6 +102,20 @@ pub const CATALOGO: &[Descriptor] = &[
         nombre: "capturar-con-scroll",
         clave_titulo: "comando-capturar-con-scroll",
         atajo_por_defecto: Some("Ctrl+Alt+S"),
+        en_bandeja: false,
+    },
+    Descriptor {
+        comando: Comando::CapturarYAnotar,
+        nombre: "capturar-y-anotar",
+        clave_titulo: "comando-capturar-y-anotar",
+        atajo_por_defecto: None,
+        en_bandeja: true,
+    },
+    Descriptor {
+        comando: Comando::CapturarUltimaRegion,
+        nombre: "capturar-ultima-region",
+        clave_titulo: "comando-capturar-ultima-region",
+        atajo_por_defecto: None,
         en_bandeja: false,
     },
     Descriptor {
@@ -356,6 +374,8 @@ mod pruebas {
         Comando::CapturarRegion,
         Comando::CapturarYCopiar,
         Comando::CapturarConScroll,
+        Comando::CapturarYAnotar,
+        Comando::CapturarUltimaRegion,
         Comando::Cuentagotas,
         Comando::Pinear,
         Comando::PinearPortapapeles,

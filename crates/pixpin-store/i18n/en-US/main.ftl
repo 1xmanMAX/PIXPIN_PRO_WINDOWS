@@ -63,3 +63,5 @@ comando-restaurar-ultimo-pin = Reopen last closed pin
 comando-cerrar-todos-los-pines = Close all pins
 comando-ventana-encima = Keep the window under the pointer on top
 comando-copiar-texto = Copy text from an area
+comando-capturar-y-anotar = Capture and annotate
+comando-capturar-ultima-region = Repeat last capture
