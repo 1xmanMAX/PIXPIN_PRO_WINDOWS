@@ -10,6 +10,7 @@ pub mod almacen;
 pub mod comandos;
 pub mod estado;
 pub mod idioma;
+pub mod regiones;
 pub mod rutas;
 
 pub use ajustes::{

@@ -209,7 +209,14 @@ fn arrancar(
         // dispararse nunca, y sin aviso parece que el programa lo ignora.
         tracing::warn!(?a, ?b, "dos comandos comparten atajo; solo actuara uno");
     }
-    let peticiones = enlaces.registrables();
+    let mut peticiones = enlaces.registrables();
+    // Y las regiones guardadas (P2.3), con sus identificadores propios
+    // muy por encima de los de los comandos para que no se pisen.
+    let (de_regiones, avisos_regiones) = pixpin_store::regiones::registrables(&config.regiones);
+    for aviso in &avisos_regiones {
+        tracing::warn!(%aviso, "region guardada que no se puede usar");
+    }
+    peticiones.extend(de_regiones);
     // En un `Option` porque silenciar los atajos es soltar el guardia:
     // `UnregisterHotKey` es lo unico que devuelve de verdad la
     // combinacion al sistema, para que el programa de delante la reciba.
@@ -330,6 +337,13 @@ fn arrancar(
         // vias: las dos traen el identificador del comando.
         let comando = match evento {
             Evento::Atajo(id) | Evento::Menu(id) => comandos::Comando::desde_id(id),
+            _ => None,
+        };
+        // Una region guardada, si el identificador cae en su espacio.
+        let region_guardada = match evento {
+            Evento::Atajo(id) | Evento::Menu(id) => pixpin_store::regiones::desde_id(id)
+                .and_then(|i| config.regiones.get(i))
+                .filter(|r| r.es_util()),
             _ => None,
         };
         // La lista de programas a ignorar (P1.8). Solo frena los ATAJOS y
@@ -476,6 +490,43 @@ fn arrancar(
                             Ok(()) => tracing::info!(?region, "ultima region repetida y copiada"),
                             Err(e) => tracing::warn!(?e, "no se pudo repetir la region"),
                         }
+                    }
+                }
+                Continuar::Si
+            }
+            // Una region guardada captura y copia directamente, sin
+            // overlay: la zona ya esta decidida, y volver a preguntarla
+            // seria justo lo que esta funcion viene a ahorrar.
+            _ if region_guardada.is_some() => {
+                let r = region_guardada.expect("comprobado en la guarda");
+                let region = pixpin_geom::Rect {
+                    x: r.x,
+                    y: r.y,
+                    ancho: r.ancho,
+                    alto: r.alto,
+                };
+                let hecho = (match &mut recursos_overlay {
+                    Some(rec) => Ok(rec),
+                    nada => Recursos::nuevos().map(|rec| nada.insert(rec)),
+                })
+                .and_then(|rec| {
+                    let d = pixpin_capture::enumerar_monitores()?;
+                    let m = d
+                        .monitores()
+                        .iter()
+                        .find(|m| m.area.interseccion(region).is_some())
+                        .or_else(|| d.principal())
+                        .context("la region guardada no cae en ningun monitor")?
+                        .to_owned();
+                    let imagen = scroll::capturar(rec, &m, region)?;
+                    pixpin_codec::copiar_imagen(&imagen).context("no se pudo copiar")
+                });
+                match hecho {
+                    Ok(()) => {
+                        tracing::info!(nombre = %r.nombre, ?region, "region guardada copiada")
+                    }
+                    Err(e) => {
+                        tracing::warn!(?e, nombre = %r.nombre, "no se pudo capturar la region")
                     }
                 }
                 Continuar::Si
