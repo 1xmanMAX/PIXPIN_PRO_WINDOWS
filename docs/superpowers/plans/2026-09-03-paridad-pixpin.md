@@ -136,24 +136,24 @@ Todos son filas nuevas del registro de P0.1 más una acción pequeña.
 
 - [x] **P1.1 Restaurar el último pin cerrado.** El almacén ya conserva la entrada al cerrar (borrado lógico). Pila de cerrados en `Pines`; el comando reabre el último con su rect y su grupo. Prueba pura de la pila (tope, vaciado, no revive lo eliminado del almacén).
 - [x] **P1.2 Cerrar todos los pines** y **P1.3 ocultar y mostrar todos**, sobre lo que ya existe por grupos.
-- [ ] **P1.4 Paso de clics en un pin.** `WS_EX_TRANSPARENT | WS_EX_LAYERED` sobre la ventana del pin, igual que en la capa viva. Alterna por comando y por el menú del pin.
+- [x] **P1.4 Paso de clics en un pin.** `WS_EX_TRANSPARENT | WS_EX_LAYERED` sobre la ventana del pin, igual que en la capa viva. Alterna por comando y por el menú del pin.
 - [x] **P1.5 Poner encima la ventana bajo el ratón.** `WindowFromPoint` + `SetWindowPos(HWND_TOPMOST)`, con aviso de qué ventana se fijó. Vive en `pixpin-shell`.
 - [ ] **P1.6 Pinear lo seleccionado en el Explorador.** Por automatización de la Shell, sin tocar el portapapeles del usuario.
-- [ ] **P1.7 Silenciar los atajos un rato.** Estado en el bucle; los atajos globales se desregistran y se vuelven a registrar. Icono de bandeja distinto mientras dure.
-- [ ] **P1.8 Lista de programas a ignorar.** En el TOML; si la ventana en primer plano es de esa lista, los atajos no actúan.
+- [x] **P1.7 Silenciar los atajos un rato.** Estado en el bucle; los atajos globales se desregistran y se vuelven a registrar. Icono de bandeja distinto mientras dure.
+- [x] **P1.8 Lista de programas a ignorar.** En el TOML; si la ventana en primer plano es de esa lista, los atajos no actúan.
 
 ## Fase P2 — Capturas que faltan
 
-- [ ] **P2.1 Captura con retardo** (3 s por defecto, configurable), con cuenta atrás en la bandeja.
+- [x] **P2.1 Captura con retardo** (3 s por defecto, configurable), con cuenta atrás en la bandeja.
 - [x] **P2.2 Captura directa sin overlay** a la última región usada.
-- [ ] **P2.3 Regiones guardadas** con nombre en el TOML, y comando por región.
+- [x] **P2.3 Regiones guardadas** con nombre en el TOML, y comando por región.
 - [x] **P2.4 Capturar y entrar directo a anotar**, saltándose la barra.
 
 ## Fase P3 — Zoom y vista del pin (lo que eligió el usuario)
 
 - [x] **P3.1 Teclas de zoom**: 100 % exacto (escala clavada en 1.0 y filtro nítido), ajustar al monitor, rellenar.
 - [x] **P3.2 Rotar 90° a izquierda y derecha, voltear en horizontal y vertical.** El `Elemento` ya tiene `angulo`; para el pin es una transformada en el pintado y un campo persistido.
-- [ ] **P3.3 Arrastre vertical con el botón derecho = zoom.** Un clic derecho sin arrastrar sigue abriendo el menú.
+- [x] **P3.3 Arrastre vertical con el botón derecho = zoom.** Un clic derecho sin arrastrar sigue abriendo el menú.
 - [x] **P3.4 `Ctrl` + rueda: zoom con la ventana bloqueada** y desplazamiento del contenido dentro. Es lo que el usuario pidió para las notas.
 
 ## Fase P4 — Reconocimiento de texto, sin distribuir modelos
