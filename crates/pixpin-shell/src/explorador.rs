@@ -29,6 +29,7 @@ use windows::Win32::UI::Shell::{
     ShellWindows,
 };
 use windows::Win32::UI::WindowsAndMessaging::{GetClassNameW, GetForegroundWindow};
+use windows::core::Interface;
 
 /// Las clases de ventana de nivel superior que son el escritorio.
 ///
@@ -302,9 +303,11 @@ fn variante_entera(valor: i32) -> VARIANT {
     // SAFETY: escribir en la union es correcto porque en la misma respiracion
     // se marca vt = VT_I4, que es precisamente el miembro (lVal) que se
     // acaba de rellenar; a partir de ahi el valor se describe a si mismo.
+    // El `*` desenvuelve el ManuallyDrop del campo, y es inocuo aqui porque
+    // lo que hay dentro es un entero: no hay destructor que se salte.
     unsafe {
-        variante.Anonymous.Anonymous.vt = VT_I4;
-        variante.Anonymous.Anonymous.Anonymous.lVal = valor;
+        (*variante.Anonymous.Anonymous).vt = VT_I4;
+        (*variante.Anonymous.Anonymous).Anonymous.lVal = valor;
     }
     variante
 }
