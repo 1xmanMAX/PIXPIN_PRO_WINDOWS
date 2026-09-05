@@ -77,6 +77,32 @@ pub fn escalar_anclado(rect: Rect, factor: f32, ancla: Punto, minimo: u32, maxim
 /// antes, sin sensacion de continuidad.
 pub const VELOCIDAD: f32 = 72.0;
 
+/// Pixeles de arrastre vertical que valen lo mismo que un paso de rueda.
+///
+/// Ocho sale de probar: con menos, el pin da saltos y no se puede afinar;
+/// con mas, hay que recorrer media pantalla para doblar el tamano.
+pub const PIXELES_POR_PASO: i32 = 8;
+
+/// Cuanto hay que moverse antes de dar el arrastre por empezado (P3.3).
+///
+/// Sin esto, el pulso de la mano al pulsar el boton derecho contaria como
+/// arrastre y el menu del clic derecho no se abriria nunca. Cinco pixeles
+/// es mas que el temblor de cualquiera y menos que un gesto a proposito.
+pub const UMBRAL_ARRASTRE: i32 = 5;
+
+/// El giro de rueda equivalente a arrastrar `dy` pixeles en vertical.
+///
+/// Positivo = acercar. Arrastrar HACIA ARRIBA acerca, que es como
+/// funciona el zoom por arrastre en todas partes: la imagen sigue a la
+/// mano, como si tiraras de ella hacia ti. En pantalla, arriba es `y`
+/// menor, de ahi el signo cambiado.
+///
+/// Aparte y pura porque equivocarse de signo aqui se nota tarde y se
+/// arregla a ciegas: el zoom Â«funcionaÂ», solo que al reves.
+pub fn pasos_de_arrastre(dy: i32) -> i32 {
+    -dy * 120 / PIXELES_POR_PASO
+}
+
 /// Cota baja del paso de tiempo (1/240 s). Un equipo muy rapido —o un bucle
 /// que llame dos veces seguidas dentro del mismo fotograma— daria pasos de
 /// microsegundos: nada de trabajo util y, con el redondeo a pixeles, riesgo
@@ -200,6 +226,28 @@ impl ControlZoom {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn arrastrar_hacia_arriba_acerca() {
+        // El signo: en pantalla, arriba es `y` menor. Si esto se
+        // invirtiera, el zoom Â«funcionariaÂ» pero al reves, y eso se nota
+        // tarde y se arregla a ciegas.
+        assert!(pasos_de_arrastre(-PIXELES_POR_PASO) > 0, "hacia arriba");
+        assert!(pasos_de_arrastre(PIXELES_POR_PASO) < 0, "hacia abajo");
+    }
+
+    #[test]
+    fn un_paso_completo_vale_una_muesca_de_rueda() {
+        assert_eq!(pasos_de_arrastre(-PIXELES_POR_PASO), 120);
+        assert_eq!(pasos_de_arrastre(-PIXELES_POR_PASO * 3), 360);
+    }
+
+    #[test]
+    fn quieto_no_mueve_nada() {
+        // Caso negativo: sin movimiento no puede salir un giro, o el pin
+        // se pondria a crecer solo mientras el boton esta pulsado.
+        assert_eq!(pasos_de_arrastre(0), 0);
+    }
 
     const MINIMO: u32 = 48;
     const MAXIMO: u32 = 20_000;
