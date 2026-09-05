@@ -99,3 +99,7 @@ aviso-atajos-silenciados = Atajos silenciados
 aviso-atajos-silenciados-detalle = Vuelve a activarlos desde este mismo menú.
 aviso-atajos-activos = Atajos activos
 aviso-atajos-activos-detalle = { $cuantos } atajos vuelven a responder.
+
+# Captura con retardo (P2.1).
+comando-capturar-con-retardo = Capturar tras una cuenta atrás
+cuenta-atras-cancelar = Esc para parar

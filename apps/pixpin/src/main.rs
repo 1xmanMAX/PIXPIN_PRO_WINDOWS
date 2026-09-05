@@ -51,6 +51,7 @@
 
 mod caja_dibujo;
 mod capa;
+mod cuenta_atras;
 mod editor;
 mod gif;
 mod grabador;
@@ -383,6 +384,12 @@ fn arrancar(
             } => Some((ModoConfirmacion::Pinear, Some(punto))),
             _ => match comando {
                 Some(comandos::Comando::CapturarRegion) => Some((ModoConfirmacion::ConBarra, None)),
+                // El retardo abre la MISMA captura; lo unico distinto es
+                // que antes se cuenta. La cuenta corre mas abajo, ya con
+                // los recursos a mano.
+                Some(comandos::Comando::CapturarConRetardo) => {
+                    Some((ModoConfirmacion::ConBarra, None))
+                }
                 Some(comandos::Comando::Pinear) => Some((ModoConfirmacion::Pinear, None)),
                 Some(comandos::Comando::CapturarConScroll) => {
                     Some((ModoConfirmacion::Scroll, None))
@@ -505,6 +512,24 @@ fn arrancar(
             }
             _ if modo_overlay.is_some() => {
                 let (modo, inicio) = modo_overlay.expect("comprobado en la guarda");
+                // La cuenta atras va AQUI y no antes de decidir el modo:
+                // hace falta tener los recursos de dibujo montados para
+                // ensenar el cartel, y montarlos es lo primero que hace
+                // esta rama de todas formas.
+                if comando == Some(comandos::Comando::CapturarConRetardo) {
+                    let recursos = match &mut recursos_overlay {
+                        Some(r) => Ok(&*r),
+                        nada => Recursos::nuevos().map(|r| &*nada.insert(r)),
+                    };
+                    match recursos {
+                        Err(e) => tracing::warn!(?e, "sin recursos para la cuenta atras"),
+                        Ok(r) => {
+                            if !cuenta_atras::esperar(r, config.retardo_captura_s, &textos) {
+                                return Continuar::Si;
+                            }
+                        }
+                    }
+                }
                 let anotar_al_pinear = comando == Some(comandos::Comando::CapturarYAnotar);
                 tracing::info!(?modo, ?inicio, anotar_al_pinear, "abrir captura");
                 let etiquetas_barra = TextosBarra {
