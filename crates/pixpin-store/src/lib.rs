@@ -8,6 +8,7 @@
 pub mod ajustes;
 pub mod almacen;
 pub mod comandos;
+pub mod estado;
 pub mod idioma;
 pub mod rutas;
 

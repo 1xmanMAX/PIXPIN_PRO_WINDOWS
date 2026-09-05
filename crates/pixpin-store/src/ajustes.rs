@@ -118,6 +118,32 @@ impl Default for Atajos {
     }
 }
 
+/// Lo que se recuerda de una grabacion a la siguiente.
+///
+/// Ajustar el ritmo cada vez seria un impuesto: quien graba interfaces
+/// suele quedarse en el mismo numero durante meses. El retardo esta por
+/// lo mismo que en el original: da tiempo a poner el raton donde toca
+/// antes de que empiece a contar.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Gif {
+    /// Fotogramas por segundo. Se guarda el numero y no el indice de la
+    /// lista para que el fichero siga significando lo mismo si algun dia
+    /// se ofrecen otros ritmos.
+    pub por_segundo: u32,
+    /// Segundos de cortesia entre pulsar Â«GrabarÂ» y el primer fotograma.
+    pub retardo_s: u32,
+}
+
+impl Default for Gif {
+    fn default() -> Self {
+        Self {
+            por_segundo: 10,
+            retardo_s: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Ajustes {
@@ -137,6 +163,8 @@ pub struct Ajustes {
     /// Tope de altura de la captura con scroll. Sin el, una pagina infinita
     /// capturaria hasta agotar la memoria.
     pub limite_scroll_px: u32,
+    /// Lo que se recuerda de la grabacion (P5b).
+    pub gif: Gif,
 }
 
 impl Default for Ajustes {
@@ -150,6 +178,7 @@ impl Default for Ajustes {
             rendimiento: Rendimiento::default(),
             arranque_con_windows: false,
             limite_scroll_px: 30_000,
+            gif: Gif::default(),
         }
     }
 }
@@ -188,6 +217,38 @@ mod pruebas {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         Ubicacion::Instalado { raiz: dir }
+    }
+
+    #[test]
+    fn lo_que_se_elige_al_grabar_vuelve_igual() {
+        let u = temporal("gif");
+        let mut a = Ajustes::default();
+        assert_eq!(a.gif.por_segundo, 10);
+        assert_eq!(a.gif.retardo_s, 0);
+        a.gif.por_segundo = 25;
+        a.gif.retardo_s = 3;
+        guardar(&u, &a).unwrap();
+        assert_eq!(cargar(&u).unwrap().gif, a.gif);
+    }
+
+    #[test]
+    fn un_fichero_sin_la_seccion_de_grabar_sigue_valiendo() {
+        // Caso negativo del que se rompe al anadir un ajuste: el fichero
+        // de quien ya tenia la aplicacion no lleva la seccion nueva, y no
+        // puede dejar de cargar por eso. Lo que falta toma su valor por
+        // defecto y el resto se respeta.
+        let u = temporal("gif-viejo");
+        fs::write(
+            u.fichero_ajustes(),
+            "limite_scroll_px = 1234
+arranque_con_windows = true
+",
+        )
+        .unwrap();
+        let a = cargar(&u).unwrap();
+        assert_eq!(a.limite_scroll_px, 1234);
+        assert!(a.arranque_con_windows);
+        assert_eq!(a.gif, Gif::default());
     }
 
     #[test]

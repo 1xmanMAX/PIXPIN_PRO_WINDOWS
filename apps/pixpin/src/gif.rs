@@ -20,9 +20,8 @@ use pixpin_render::{Color, MotorRender, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 
 use crate::grabador::{
-    Asa, BARRA_ALTO, BARRA_ANCHO, Boton, Fase, Fin, GROSOR, Grabacion, MARGEN, RITMO_HUECO,
-    RITMO_POR_DEFECTO, RITMOS, aplicar_asa, asa_en, boton_en, botones, marco_de, reloj,
-    tope_segundos,
+    Asa, BARRA_ALTO, BARRA_ANCHO, Boton, Fase, Fin, GROSOR, Grabacion, MARGEN, RITMO_HUECO, RITMOS,
+    aplicar_asa, asa_en, boton_en, botones, indice_de_ritmo, marco_de, reloj, tope_segundos,
 };
 use crate::overlay::Recursos;
 
@@ -131,7 +130,9 @@ impl Marco {
         let d = (MARGEN - GROSOR) as f32 * e;
         let g = GROSOR as f32 * e;
         let color = match fase {
-            Fase::Esperando => AZUL,
+            // Azul hasta el primer fotograma, cuenta atras incluida: lo
+            // que dice Â«esto ya esta grabandoÂ» es el rojo.
+            Fase::Esperando | Fase::Contando => AZUL,
             Fase::Grabando => ROJO,
             // Pausada: el mismo rojo apagado, para que se distinga de un
             // marco que sigue contando.
@@ -328,7 +329,7 @@ impl Barra {
                 }
             }
             match fase {
-                Fase::Esperando => {
+                Fase::Esperando | Fase::Contando => {
                     // El ritmo, entre los dos botones que lo cambian.
                     let fila = botones(fase);
                     let menos = fila
@@ -336,8 +337,17 @@ impl Barra {
                         .find(|(b, _)| *b == Boton::MenosRitmo)
                         .map(|(_, r)| r.x + r.ancho)
                         .unwrap_or(0.0);
+                    // Mientras corre el retardo, el hueco del ritmo
+                    // ensena la cuenta atras: es lo unico que importa en
+                    // ese momento, y no hace falta ensanchar la barra
+                    // para meter un rotulo mas.
+                    let rotulo = if fase == Fase::Contando {
+                        format!("{segundo}...")
+                    } else {
+                        format!("{ritmo}/s")
+                    };
                     centrar(
-                        &format!("{ritmo}/s"),
+                        &rotulo,
                         RectF {
                             x: (menos + 6.0) * e,
                             y: 0.0,
@@ -374,6 +384,30 @@ impl Barra {
     }
 }
 
+/// Pasa de elegir a grabar, con el retardo de cortesia por medio.
+///
+/// Esta aqui y no repetida en los cuatro sitios que empiezan (el boton,
+/// el atajo, Intro y el propio final de la cuenta) porque olvidarse de
+/// poner `siguiente` en uno de ellos daria una rafaga de fotogramas al
+/// arrancar, y es el fallo que no se ve hasta abrir el fichero.
+fn empezar(
+    fase: &mut Fase,
+    desde: &mut Option<Instant>,
+    siguiente: &mut Instant,
+    arranca: &mut Option<Instant>,
+    retardo: Duration,
+) {
+    if retardo.is_zero() {
+        *fase = Fase::Grabando;
+        *desde = Some(Instant::now());
+        *siguiente = Instant::now();
+        *arranca = None;
+    } else {
+        *fase = Fase::Contando;
+        *arranca = Some(Instant::now() + retardo);
+    }
+}
+
 /// Estado del arrastre en curso sobre el marco.
 struct Arrastre {
     asa: Asa,
@@ -390,6 +424,8 @@ pub fn ejecutar_sesion(
     recursos: &mut Recursos,
     zona_inicial: Rect,
     id_atajo_gif: Option<u32>,
+    por_segundo_inicial: u32,
+    retardo: Duration,
 ) -> Result<Option<Grabacion>> {
     if zona_inicial.ancho == 0 || zona_inicial.alto == 0 {
         return Ok(None);
@@ -406,7 +442,9 @@ pub fn ejecutar_sesion(
 
     let mut zona = zona_inicial;
     let mut fase = Fase::Esperando;
-    let mut indice_ritmo = RITMO_POR_DEFECTO;
+    let mut indice_ritmo = indice_de_ritmo(por_segundo_inicial);
+    // Cuando termina la cuenta atras y empieza a contar de verdad.
+    let mut arranca: Option<Instant> = None;
     let mut fotogramas: Vec<ImagenRgba> = Vec::new();
     let mut arrastre: Option<Arrastre> = None;
 
@@ -426,6 +464,16 @@ pub fn ejecutar_sesion(
         let ritmo = RITMOS[indice_ritmo];
         let tope = tope_segundos(zona, ritmo);
         let transcurrido = acumulado + desde.map(|d| d.elapsed()).unwrap_or(Duration::ZERO);
+        // Se acabo el retardo: a grabar.
+        if let Some(cuando) = arranca {
+            if Instant::now() >= cuando {
+                arranca = None;
+                fase = Fase::Grabando;
+                desde = Some(Instant::now());
+                siguiente = Instant::now();
+                repintar = true;
+            }
+        }
 
         // El mismo atajo que abrio la sesion la para: es lo que hace el
         // original, y evita tener que buscar el boton con el raton.
@@ -434,10 +482,8 @@ pub fn ejecutar_sesion(
                 continue;
             }
             match fase {
-                Fase::Esperando => {
-                    fase = Fase::Grabando;
-                    desde = Some(Instant::now());
-                    siguiente = Instant::now();
+                Fase::Esperando | Fase::Contando => {
+                    empezar(&mut fase, &mut desde, &mut siguiente, &mut arranca, retardo);
                     repintar = true;
                 }
                 Fase::Grabando | Fase::Pausada => break 'sesion Fin::Usuario,
@@ -456,9 +502,15 @@ pub fn ejecutar_sesion(
                         Boton::Cerrar => break 'sesion Fin::Escape,
                         Boton::Parar => break 'sesion Fin::Usuario,
                         Boton::Grabar => {
-                            fase = Fase::Grabando;
-                            desde = Some(Instant::now());
-                            siguiente = Instant::now();
+                            // Volver a pulsar durante la cuenta atras se
+                            // salta lo que quede: quien ya esta listo no
+                            // tiene por que esperar.
+                            let espera = if fase == Fase::Contando {
+                                Duration::ZERO
+                            } else {
+                                retardo
+                            };
+                            empezar(&mut fase, &mut desde, &mut siguiente, &mut arranca, espera);
                         }
                         Boton::Pausar => {
                             if fase == Fase::Pausada {
@@ -492,7 +544,9 @@ pub fn ejecutar_sesion(
                 // El marco solo se agarra mientras se elige: durante la
                 // grabacion, cambiar el tamano daria fotogramas de medidas
                 // distintas y no habria GIF que armar con ellos.
-                EventoOverlay::BotonPulsado(punto) if en_marco && fase == Fase::Esperando => {
+                EventoOverlay::BotonPulsado(punto)
+                    if en_marco && matches!(fase, Fase::Esperando | Fase::Contando) =>
+                {
                     if let Some(asa) = asa_en(zona, punto) {
                         arrastre = Some(Arrastre {
                             asa,
@@ -516,7 +570,7 @@ pub fn ejecutar_sesion(
                             b.recolocar(zona);
                         }
                         repintar = true;
-                    } else if fase == Fase::Esperando {
+                    } else if matches!(fase, Fase::Esperando | Fase::Contando) {
                         if let Some(asa) = asa_en(zona, punto) {
                             if let Some(m) = &marco {
                                 m.ventana.poner_cursor(asa.cursor());
@@ -526,11 +580,11 @@ pub fn ejecutar_sesion(
                 }
                 EventoOverlay::BotonSoltado(_) => arrastre = None,
                 EventoOverlay::Cerrar => break 'sesion Fin::Escape,
-                EventoOverlay::Tecla { vk: 0x0D, .. } if fase == Fase::Esperando => {
+                EventoOverlay::Tecla { vk: 0x0D, .. }
+                    if matches!(fase, Fase::Esperando | Fase::Contando) =>
+                {
                     // Intro empieza, igual que el atajo.
-                    fase = Fase::Grabando;
-                    desde = Some(Instant::now());
-                    siguiente = Instant::now();
+                    empezar(&mut fase, &mut desde, &mut siguiente, &mut arranca, retardo);
                     repintar = true;
                 }
                 // Y una vez grabando, la misma tecla termina.
@@ -544,7 +598,8 @@ pub fn ejecutar_sesion(
         // ninguna ventana nuestra.
         if pixpin_shell::escape_pulsado() {
             break match fase {
-                Fase::Esperando => Fin::Escape,
+                // Antes del primer fotograma no hay nada que salvar.
+                Fase::Esperando | Fase::Contando => Fin::Escape,
                 _ => Fin::Usuario,
             };
         }
@@ -578,7 +633,12 @@ pub fn ejecutar_sesion(
             }
         }
 
-        let segundo = transcurrido.as_secs();
+        // Mientras dura el retardo el numero baja en vez de subir: lo que
+        // se quiere saber es cuanto falta, no cuanto llevas esperando.
+        let segundo = match arranca {
+            Some(cuando) => cuando.saturating_duration_since(Instant::now()).as_secs() + 1,
+            None => transcurrido.as_secs(),
+        };
         if segundo != segundo_pintado && fase != Fase::Esperando {
             segundo_pintado = segundo;
             repintar = true;
