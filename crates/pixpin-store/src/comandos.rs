@@ -117,7 +117,11 @@ pub const CATALOGO: &[Descriptor] = &[
         comando: Comando::GrabarGif,
         nombre: "grabar-gif",
         clave_titulo: "comando-grabar-gif",
-        atajo_por_defecto: None,
+        // El mismo que en el original, y hace juego con el Ctrl+2 de
+        // esconder los pines. Sin atajo, lo unico que abria la grabacion
+        // era el menu de la bandeja, que para algo que se usa a menudo
+        // es un viaje de mas.
+        atajo_por_defecto: Some("Ctrl+1"),
         en_bandeja: true,
     },
     Descriptor {
