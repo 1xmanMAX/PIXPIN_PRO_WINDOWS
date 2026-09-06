@@ -105,3 +105,25 @@ cuenta-atras-cancelar = Esc to stop
 
 # Pinning the Explorer selection (P1.6).
 comando-pinear-seleccion = Pin the Explorer selection
+
+# The settings window (P6).
+ajustes-pestana-atajos = Shortcuts
+ajustes-pestana-general = General
+ajustes-pestana-captura = Capture
+ajustes-idioma = Language
+ajustes-idioma-sistema = Same as Windows
+ajustes-arranque = Start with Windows
+ajustes-color = Color picker format
+ajustes-nivel = Performance
+ajustes-nivel-auto = Automatic
+ajustes-nivel-completo = Full
+ajustes-nivel-ligero = Light
+ajustes-retardo-captura = Countdown seconds before capturing
+ajustes-limite-scroll = Maximum height of a scrolling capture, in pixels
+ajustes-gif-ritmo = Frames per second when recording
+ajustes-gif-retardo = Grace seconds before recording
+ajustes-sin-atajo = No shortcut
+ajustes-pulsa-combinacion = Press the combination…
+ajustes-choca = duplicate
+ajustes-cerrar = Close
+ajustes-abrir-fichero = Open the settings file

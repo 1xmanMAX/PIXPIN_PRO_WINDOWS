@@ -524,7 +524,11 @@ extern "system" fn procedimiento_overlay(
             encolar(EventoOverlay::BotonSoltado(punto(lparam)));
             LRESULT(0)
         }
-        WM_KEYDOWN => {
+        // Las dos: con Alt mantenido, Windows manda WM_SYSKEYDOWN en vez de
+        // WM_KEYDOWN. Sin atender el segundo, la ventana de ajustes no
+        // podria grabar ningun atajo con Alt, que son la mitad de los que
+        // trae el programa de fabrica.
+        WM_KEYDOWN | WM_SYSKEYDOWN => {
             // SAFETY: GetKeyState es una consulta sin precondiciones.
             let shift = unsafe { GetKeyState(VK_SHIFT.0 as i32) } < 0;
             // SAFETY: igual que arriba.
@@ -536,7 +540,7 @@ extern "system" fn procedimiento_overlay(
             });
             LRESULT(0)
         }
-        WM_KEYUP => {
+        WM_KEYUP | WM_SYSKEYUP => {
             encolar(EventoOverlay::TeclaSoltada(wparam.0 as u32));
             LRESULT(0)
         }

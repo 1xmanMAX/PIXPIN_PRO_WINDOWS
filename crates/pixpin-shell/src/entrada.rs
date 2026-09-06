@@ -41,6 +41,27 @@ pub fn rueda_en(p: Punto, muescas: i32) {
     }
 }
 
+/// Que modificadores estan pulsados ahora mismo.
+///
+/// Para grabar un atajo en la ventana de ajustes: el evento de tecla trae
+/// Ctrl y Shift, pero no Alt ni Win, y sondearlos en el momento de la
+/// pulsacion es mas fiable que arrastrar cuatro banderas por el WndProc.
+pub fn modificadores_pulsados() -> crate::atajo::Modificadores {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+    };
+    // SAFETY: consultas puras del estado del teclado.
+    let pulsada = |vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY| unsafe {
+        (GetAsyncKeyState(vk.0 as i32) as u16 & 0x8000) != 0
+    };
+    crate::atajo::Modificadores {
+        ctrl: pulsada(VK_CONTROL),
+        alt: pulsada(VK_MENU),
+        shift: pulsada(VK_SHIFT),
+        win: pulsada(VK_LWIN) || pulsada(VK_RWIN),
+    }
+}
+
 /// Si Escape esta pulsado ahora mismo. Para el bucle de scroll, que no
 /// tiene ventana con foco a la que le llegue la tecla (D76).
 pub fn escape_pulsado() -> bool {
@@ -65,14 +86,11 @@ pub fn boton_del_raton_pulsado() -> bool {
 /// consulta el anotador antes de cada evento de puntero: mayusculas
 /// restringe angulos y proporciones, y Alt duplica al arrastrar.
 pub fn modificadores() -> (bool, bool) {
-    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_MENU, VK_SHIFT};
-    // SAFETY: consulta pura del estado del teclado.
-    unsafe {
-        (
-            (GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0,
-            (GetAsyncKeyState(VK_MENU.0 as i32) as u16 & 0x8000) != 0,
-        )
-    }
+    // Sale de `modificadores_pulsados` y no de su propio sondeo: eran dos
+    // copias de la misma consulta, y dos copias de una cosa asi acaban
+    // discrepando el dia que una se arregle y la otra no.
+    let m = modificadores_pulsados();
+    (m.shift, m.alt)
 }
 
 #[cfg(test)]

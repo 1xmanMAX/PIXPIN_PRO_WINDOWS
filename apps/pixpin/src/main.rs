@@ -59,6 +59,7 @@ mod overlay;
 mod pines;
 mod reproductor;
 mod scroll;
+mod ventana_ajustes;
 
 use anyhow::{Context, Result};
 use overlay::{AccionFinal, ModoConfirmacion, Recursos, TextosBarra, ejecutar_overlay};
@@ -142,7 +143,7 @@ fn arrancar(
     );
 
     // 4. Que nos han configurado.
-    let config = ajustes::cargar(&ubicacion).context("no se pudieron leer los ajustes")?;
+    let mut config = ajustes::cargar(&ubicacion).context("no se pudieron leer los ajustes")?;
 
     // 5. Reflejar en el registro de Windows lo que digan los ajustes.
     //
@@ -543,9 +544,41 @@ fn arrancar(
                 Continuar::Si
             }
             _ if comando == Some(comandos::Comando::AbrirAjustes) => {
-                // La ventana de ajustes llega en P6; hasta entonces, al
-                // menos queda dicho donde esta el fichero que se edita.
-                tracing::info!(fichero = ?ubicacion.fichero_ajustes(), "ajustes pedidos");
+                let recursos = match &mut recursos_overlay {
+                    Some(r) => Ok(&*r),
+                    nada => Recursos::nuevos().map(|r| &*nada.insert(r)),
+                };
+                let abierta =
+                    recursos.and_then(|r| ventana_ajustes::abrir(r, &config, &textos, &ubicacion));
+                match abierta {
+                    Err(e) => tracing::warn!(?e, "no se pudo abrir la ventana de ajustes"),
+                    Ok(None) => tracing::info!("ajustes cerrados sin cambios"),
+                    Ok(Some(nuevos)) => {
+                        // Los atajos se vuelven a registrar EN VIVO: es lo
+                        // que evita el «reinicia para aplicar», y lo que
+                        // hace que grabar un atajo en la ventana valga de
+                        // algo al salir de ella. Lo que no se puede aplicar
+                        // sin reiniciar (el idioma, el nivel de rendimiento)
+                        // queda guardado y entra en el siguiente arranque.
+                        config = nuevos;
+                        let (enlaces, _) = comandos::Enlaces::de_ajustes(&config);
+                        peticiones = enlaces.registrables();
+                        let (de_regiones, _) =
+                            pixpin_store::regiones::registrables(&config.regiones);
+                        peticiones.extend(de_regiones);
+                        // Soltar el guardia viejo ANTES de registrar el nuevo:
+                        // si no, las combinaciones que no cambiaron seguirian
+                        // tomadas y el registro nuevo fallaria en ellas.
+                        drop(registrados.take());
+                        let (guardia, fallidos) = atajos::registrar(ventana.handle(), &peticiones);
+                        registrados = Some(guardia);
+                        tracing::info!(
+                            pedidos = peticiones.len(),
+                            fallidos = fallidos.len(),
+                            "ajustes aplicados y atajos registrados de nuevo"
+                        );
+                    }
+                }
                 Continuar::Si
             }
             Evento::IconoPulsado => {
