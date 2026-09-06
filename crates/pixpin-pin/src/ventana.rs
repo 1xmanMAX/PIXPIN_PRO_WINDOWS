@@ -1661,16 +1661,36 @@ fn pintar(i: &PinInterno) {
                     tam,
                     &|t, tam, max, tramos| p.medir_parrafo(t, tam, max, tramos),
                 );
-                pintar_markdown(
-                    p,
-                    &bloques,
-                    &d,
-                    m + margen,
-                    m + margen,
-                    ancho_texto,
-                    tam,
-                    tinta,
-                    tinta_tenue,
+                // Recortado a la tarjeta. Una nota tiene un alto maximo, y
+                // el texto que no cabe se seguia pintando por debajo: salia
+                // por fuera del pin y quedaba flotando sobre el escritorio.
+                // Se ve con cualquier nota larga del movil, que son de
+                // miles de caracteres. Lo reporto el usuario.
+                //
+                // Recortar y no encoger la letra: encogerla dejaria una
+                // nota de cuatro mil caracteres ilegible. Cortada se lee lo
+                // que hay, y la tarjeta se estira por la esquina para ver
+                // el resto.
+                p.con_recorte(
+                    RectF {
+                        x: m,
+                        y: m,
+                        ancho: w,
+                        alto: h,
+                    },
+                    |p| {
+                        pintar_markdown(
+                            p,
+                            &bloques,
+                            &d,
+                            m + margen,
+                            m + margen,
+                            ancho_texto,
+                            tam,
+                            tinta,
+                            tinta_tenue,
+                        );
+                    },
                 );
             }
 
@@ -1881,9 +1901,23 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
     use pixpin_motor2d::Orden;
 
     // El origen del documento de anotacion es la esquina del CONTENIDO, no
-    // la de la ventana: asi las anotaciones acompañan al pin al moverlo sin
+    // la de la ventana: asi las anotaciones acompanan al pin al moverlo sin
     // recalcular ni un punto.
-    let mover = |q: &pixpin_motor2d::Punto2| (q.x + margen, q.y + margen);
+    //
+    // Y se ESCALAN con el pin. Las coordenadas del dibujo estan en pixeles
+    // de la imagen original, que casi nunca es el tamano al que se ve.
+    // Sin escalar, agrandar el pin dejaba el dibujo con las medidas de
+    // antes: se iba descolocando hacia un lado y acababa fuera de la
+    // ventana. Lo reporto el usuario abriendo un proyecto del movil.
+    let (nw, nh) = i.imagen_nativa;
+    let r = i.estado.rect();
+    let (fx, fy) = if nw > 0 && nh > 0 && r.ancho > 0 && r.alto > 0 {
+        (r.ancho as f32 / nw as f32, r.alto as f32 / nh as f32)
+    } else {
+        // Sin tamano nativo —una nota, un video— no hay nada que escalar.
+        (1.0, 1.0)
+    };
+    let mover = |q: &pixpin_motor2d::Punto2| (q.x * fx + margen, q.y * fy + margen);
     let color = |c: pixpin_motor2d::ColorRgba| Color {
         r: c.r,
         g: c.g,
@@ -1904,7 +1938,11 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
                 ..
             } => {
                 let v: Vec<(f32, f32)> = puntos.iter().map(mover).collect();
-                p.polilinea(&v, *grosor, color(*c));
+                // El grosor escala como los puntos, y por la media de las
+                // dos escalas: una linea no tiene ancho horizontal y
+                // vertical por separado. Sin esto, un trazo grueso en un
+                // pin reducido se veria igual de gordo y taparia el dibujo.
+                p.polilinea(&v, *grosor * (fx + fy) / 2.0, color(*c));
             }
             Orden::Texto {
                 texto,
@@ -1914,7 +1952,14 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
                 color: c,
                 ancho_max,
                 ..
-            } => p.texto_ajustado(texto, x + margen, y + margen, *tam, *ancho_max, color(*c)),
+            } => p.texto_ajustado(
+                texto,
+                x * fx + margen,
+                y * fy + margen,
+                *tam * (fx + fy) / 2.0,
+                *ancho_max * fx,
+                color(*c),
+            ),
             // El velo del foco (D51) cubre el CONTENIDO del pin, no la
             // ventana entera: la sombra queda fuera del oscurecido.
             Orden::Velo { hueco, color: c } => {

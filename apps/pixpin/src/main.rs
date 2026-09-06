@@ -376,6 +376,13 @@ fn arrancar(
             "ficheros en la linea de mandatos"
         );
         pixpin_shell::mensajero::enviar_ficheros(&del_arranque);
+        // Y un toque a la cola. `enviar_ficheros` usa SendMessage, que entra
+        // DIRECTO al procedimiento de ventana sin pasar por la cola: el
+        // evento queda apuntado, pero el bucle todavia no ha empezado y al
+        // empezar se duerme en GetMessage esperando algo que ya paso. Sin
+        // esto, el fichero solo se abria cuando el usuario tocaba cualquier
+        // otra cosa.
+        pixpin_shell::despertar(ventana.handle());
     }
 
     ventana.ejecutar(|evento| {
