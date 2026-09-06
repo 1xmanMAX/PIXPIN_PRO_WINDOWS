@@ -739,7 +739,7 @@ impl Pines {
         match cambio {
             CambioPin::CopiarPedido => self.copiar(id),
             CambioPin::TextoPedido => self.copiar_texto(id),
-            CambioPin::ReconocerPedido => self.reconocer_texto(id),
+            CambioPin::ReconocerPedido => self.reconocer_texto(id).map(|_| ()),
             CambioPin::PaginaPedida(salto) => self.cambiar_pagina(id, salto),
             CambioPin::ExtraerPaginaPedida => self.extraer_pagina(id),
             CambioPin::ExtraerTodasPedida => self.extraer_todas(id),
@@ -1261,24 +1261,24 @@ impl Pines {
     /// significa «se miro y no hay», y sin distinguirlo de «no se ha
     /// mirado» una imagen sin letras se reconoceria otra vez en cada
     /// pasada del raton.
-    fn reconocer_texto(&self, id: u64) -> Result<()> {
+    fn reconocer_texto(&self, id: u64) -> Result<Vec<pixpin_ocr::Linea>> {
         let Some(pin) = self.vivos.get(&id) else {
-            return Ok(());
+            return Ok(Vec::new());
         };
         let objeto = {
             let a = self.almacen.borrow();
             let Some(e) = a.entradas().iter().find(|e| e.id == id) else {
-                return Ok(());
+                return Ok(Vec::new());
             };
             if e.tipo != TipoEntrada::Imagen {
-                return Ok(());
+                return Ok(Vec::new());
             }
             a.ruta_objeto(e)
         };
         // Un fallo aqui no puede tumbar nada: el pin sigue siendo un pin
         // aunque no se le pueda leer el texto. Se anota y se guarda una
         // lista vacia para no volver a intentarlo en cada movimiento.
-        let renglones = match cargar(&objeto) {
+        let lineas = match cargar(&objeto) {
             Err(e) => {
                 tracing::warn!(?e, id, "no se pudo leer la imagen para reconocer");
                 Vec::new()
@@ -1291,34 +1291,33 @@ impl Pines {
                         Vec::new()
                     }
                     Ok(lineas) => {
-                        let cuantas = lineas.len();
-                        let renglones: Vec<_> = lineas
-                            .into_iter()
-                            .map(|l| pixpin_geom::seleccion_texto::Renglon {
-                                palabras: l
-                                    .palabras
-                                    .into_iter()
-                                    .map(|p| pixpin_geom::seleccion_texto::Palabra {
-                                        caja: p.caja,
-                                        texto: p.texto,
-                                    })
-                                    .collect(),
-                            })
-                            .filter(|r| !r.palabras.is_empty())
-                            .collect();
                         tracing::info!(
                             id,
-                            renglones = cuantas,
+                            renglones = lineas.len(),
                             ms = empezado.elapsed().as_millis() as u64,
                             "texto del pin reconocido"
                         );
-                        renglones
+                        lineas
                     }
                 }
             }
         };
+        let renglones: Vec<_> = lineas
+            .iter()
+            .map(|l| pixpin_geom::seleccion_texto::Renglon {
+                palabras: l
+                    .palabras
+                    .iter()
+                    .map(|p| pixpin_geom::seleccion_texto::Palabra {
+                        caja: p.caja,
+                        texto: p.texto.clone(),
+                    })
+                    .collect(),
+            })
+            .filter(|r| !r.palabras.is_empty())
+            .collect();
         pin.poner_texto_reconocido(renglones);
-        Ok(())
+        Ok(lineas)
     }
 
     /// La ruta del fichero de una entrada, si lo tiene.
@@ -1429,20 +1428,11 @@ impl Pines {
     /// daria peor texto que reconocer el original, que es lo que se
     /// guardo tal cual se capturo.
     fn copiar_texto(&self, id: u64) -> Result<()> {
-        let objeto = {
-            let a = self.almacen.borrow();
-            let e = a
-                .entradas()
-                .iter()
-                .find(|e| e.id == id)
-                .context("la entrada ya no esta en el almacen")?;
-            if e.tipo != TipoEntrada::Imagen {
-                anyhow::bail!("solo se lee texto de una imagen");
-            }
-            a.ruta_objeto(e)
-        };
-        let img = cargar(&objeto).context("no se pudo leer la imagen del almacen")?;
-        let texto = crate::texto_de_imagen(&img).context("no se pudo reconocer el texto")?;
+        // Se reconoce UNA vez y se usa dos: se copia el texto y ademas se
+        // le deja al pin para que se pueda marcar con el raton sin volver
+        // a esperar. Reconocer dos veces la misma imagen seria pagar el
+        // tiron dos veces por lo mismo.
+        let texto = crate::texto_de_lineas(self.reconocer_texto(id)?);
         if texto.trim().is_empty() {
             tracing::info!(id, "no se leyo texto en el pin");
             return Ok(());

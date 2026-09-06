@@ -1130,16 +1130,23 @@ fn preparar_pines<'a>(
 pub fn texto_de_imagen(imagen: &pixpin_codec::ImagenRgba) -> Result<String> {
     let lineas = pixpin_ocr::reconocer(imagen.ancho, imagen.alto, &imagen.pixeles)
         .context("no se pudo reconocer el texto")?;
-    Ok(pixpin_geom::parrafos::a_texto(
-        &pixpin_geom::parrafos::agrupar(
-            lineas
-                .into_iter()
-                .map(|l| pixpin_geom::parrafos::LineaTexto {
-                    caja: l.caja,
-                    texto: l.texto,
-                })
-                .collect(),
-        ),
+    Ok(texto_de_lineas(lineas))
+}
+
+/// Pone en orden de lectura unas lineas YA reconocidas.
+///
+/// Separado de la lectura para poder reusar un reconocimiento que ya se
+/// pago: reconocer la misma imagen dos veces son entre 170 y 670
+/// milisegundos de raton trabado por lo mismo.
+pub fn texto_de_lineas(lineas: Vec<pixpin_ocr::Linea>) -> String {
+    pixpin_geom::parrafos::a_texto(&pixpin_geom::parrafos::agrupar(
+        lineas
+            .into_iter()
+            .map(|l| pixpin_geom::parrafos::LineaTexto {
+                caja: l.caja,
+                texto: l.texto,
+            })
+            .collect(),
     ))
 }
 
