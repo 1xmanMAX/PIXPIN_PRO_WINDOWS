@@ -218,6 +218,9 @@ impl Pines {
             volteo_h: false,
             volteo_v: false,
             pasante: false,
+            gris: false,
+            invertido: false,
+            brillo: 0,
         }
     }
 
@@ -234,6 +237,9 @@ impl Pines {
             volteo_h: c.volteo_h,
             volteo_v: c.volteo_v,
             pasante: c.pasante,
+            gris: c.gris,
+            invertido: c.invertido,
+            brillo: c.brillo,
         }
     }
 
@@ -317,6 +323,9 @@ impl Pines {
             }
             if g.pasante {
                 pin.poner_pasante(true);
+            }
+            if g.gris || g.invertido || g.brillo != 0 {
+                pin.poner_filtros(g.gris, g.invertido, g.brillo);
             }
         }
         self.vivos.insert(id, pin);

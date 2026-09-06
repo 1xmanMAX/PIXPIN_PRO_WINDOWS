@@ -54,6 +54,10 @@ pub struct Colocacion {
     pub volteo_v: bool,
     /// Si deja pasar los clics a lo que hay debajo (P1.4).
     pub pasante: bool,
+    /// Los filtros de imagen, para que un pin en gris vuelva en gris.
+    pub gris: bool,
+    pub invertido: bool,
+    pub brillo: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -483,6 +487,9 @@ struct PinInterno {
     seleccion_texto: Vec<pixpin_geom::seleccion_texto::Sitio>,
     /// Donde empezo el arrastre de seleccion, mientras dura.
     ancla_texto: Option<pixpin_geom::seleccion_texto::Sitio>,
+    /// Gris, invertido y brillo. No tocan el original: se aplican al
+    /// rehacer el bitmap, igual que el giro se aplica al pintar.
+    filtros: pixpin_codec::filtros::Filtros,
     /// Zoom del CONTENIDO dentro de la ventana, que no cambia de tamano
     /// (Ctrl + rueda). 1.0 = el contenido cabe justo. Con mas, se ve un
     /// trozo mas grande y el resto se alcanza arrastrando con el boton
@@ -644,6 +651,7 @@ impl Pin {
             ocr_pedido: false,
             seleccion_texto: Vec::new(),
             ancla_texto: None,
+            filtros: pixpin_codec::filtros::Filtros::default(),
             vista_escala: 1.0,
             vista_dx: 0.0,
             vista_dy: 0.0,
@@ -1001,6 +1009,21 @@ impl Pin {
         }
     }
 
+    /// Pone los filtros al restaurar del almacen y rehace la imagen.
+    pub fn poner_filtros(&self, gris: bool, invertido: bool, brillo: i32) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.filtros = pixpin_codec::filtros::Filtros {
+                gris,
+                invertido,
+                brillo,
+            };
+            if !i.filtros.son_neutros() {
+                rehacer_bitmap(i);
+                pintar(i);
+            }
+        }
+    }
+
     pub fn poner_ocr(&self, hay: bool) {
         if let Some(i) = interno_de(self.hwnd) {
             i.con_ocr = hay;
@@ -1158,6 +1181,32 @@ fn estirar_hasta(_hwnd: HWND, i: &PinInterno, rect: Rect) {
 /// El zoom del texto en por ciento, para persistirlo (100 fuera de las
 /// notas: los demas contenidos no tienen zoom de texto).
 /// Lo que se guarda de un pin en un momento dado, para un rect concreto.
+/// Rehace el bitmap del pin desde la imagen ORIGINAL con los filtros
+/// puestos.
+///
+/// Siempre desde el original y nunca encima de lo ya filtrado: cada pasada
+/// redondea, y encadenandolas la imagen se degradaria hasta quedar
+/// irreconocible despues de unos cuantos toques al brillo.
+fn rehacer_bitmap(i: &mut PinInterno) {
+    let fuente = match &i.contenido {
+        Contenido::Imagen(img) => Some(img),
+        Contenido::Archivo { icono, .. } => icono.as_ref(),
+        Contenido::Documento { vista, .. } => Some(vista),
+        Contenido::Nota { .. } | Contenido::Video { .. } => None,
+    };
+    let Some(original) = fuente else { return };
+    let filtrada = pixpin_codec::filtros::aplicar(original, i.filtros);
+    match i
+        .motor
+        .bitmap_desde_pixeles(filtrada.ancho, filtrada.alto, &filtrada.pixeles)
+    {
+        Ok(b) => i.bitmap = Some(b),
+        // Si falla se deja el bitmap de antes: peor es quedarse sin imagen
+        // que ensenar por no haber podido aplicar un filtro.
+        Err(e) => tracing::warn!(?e, "no se pudo aplicar el filtro al pin"),
+    }
+}
+
 /// Copia el texto marcado, si lo hay. Devuelve si copio algo.
 ///
 /// Lo hace el pin y no el gestor porque el texto ya esta aqui: mandarlo a
@@ -1266,6 +1315,9 @@ fn colocacion_de(i: &PinInterno, rect: Rect) -> Colocacion {
         volteo_h: i.volteo_h,
         volteo_v: i.volteo_v,
         pasante: i.pasante,
+        gris: i.filtros.gris,
+        invertido: i.filtros.invertido,
+        brillo: i.filtros.brillo,
     }
 }
 
@@ -2404,6 +2456,48 @@ extern "system" fn procedimiento_pin(
                 aplicar(hwnd, EfectoPin::Redimensionar(nuevo));
                 if let Some(i) = interno_de(hwnd) {
                     (i.al_cambiar)(CambioPin::Redimensionado(colocacion_de(i, nuevo)));
+                }
+            }
+            LRESULT(0)
+        }
+        // Los filtros de imagen: 5 gris, 6 invertir, 7 y 8 el brillo, y 0
+        // devuelve la imagen a como era. Son los numeros del original.
+        //
+        // Ninguno toca lo guardado: se rehace el bitmap desde el original
+        // con los filtros puestos, asi que 0 restaura de verdad en vez de
+        // intentar deshacer, y subir y bajar el brillo diez veces devuelve
+        // la imagen exacta con la que se empezo.
+        WM_KEYDOWN
+            if matches!(wparam.0 as u32, 0x35 | 0x36 | 0x37 | 0x38 | 0x30)
+                && interno_de(hwnd).is_some_and(|i| !i.anotando && i.bitmap.is_some()) =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                let antes = i.filtros;
+                i.filtros = match wparam.0 as u32 {
+                    0x35 => pixpin_codec::filtros::Filtros {
+                        gris: !antes.gris,
+                        ..antes
+                    },
+                    0x36 => pixpin_codec::filtros::Filtros {
+                        invertido: !antes.invertido,
+                        ..antes
+                    },
+                    0x37 => antes.con_brillo(1),
+                    0x38 => antes.con_brillo(-1),
+                    // El 0 se lleva tambien el giro y los volteos: se llama
+                    // «restaurar el original», y dejar el pin del reves
+                    // despues de pedirlo seria no haberlo restaurado.
+                    _ => {
+                        i.giro = 0;
+                        i.volteo_h = false;
+                        i.volteo_v = false;
+                        pixpin_codec::filtros::Filtros::default()
+                    }
+                };
+                if i.filtros != antes || wparam.0 as u32 == 0x30 {
+                    rehacer_bitmap(i);
+                    pintar(i);
+                    (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, i.estado.rect())));
                 }
             }
             LRESULT(0)
