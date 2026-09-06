@@ -27,6 +27,8 @@
 //!
 //! Por eso se guardan las entradas crudas del ZIP y no solo lo interpretado.
 
+pub mod cuaderno;
+
 use std::collections::BTreeMap;
 use std::io::{Cursor, Read, Write};
 use std::path::Path;
