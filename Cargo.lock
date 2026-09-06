@@ -377,6 +377,7 @@ dependencies = [
  "pixpin-ocr",
  "pixpin-pdf",
  "pixpin-pin",
+ "pixpin-proyecto",
  "pixpin-record",
  "pixpin-render",
  "pixpin-shell",
