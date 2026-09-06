@@ -14,6 +14,7 @@ pub mod pin_geometria;
 pub mod punto;
 pub mod rect;
 pub mod seleccion;
+pub mod seleccion_texto;
 
 pub use ajuste::{Candidato, resolver_ajuste};
 pub use monitores::{DisposicionMonitores, Monitor};

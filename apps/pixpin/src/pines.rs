@@ -700,6 +700,7 @@ impl Pines {
         match cambio {
             CambioPin::CopiarPedido => self.copiar(id),
             CambioPin::TextoPedido => self.copiar_texto(id),
+            CambioPin::ReconocerPedido => self.reconocer_texto(id),
             CambioPin::GrupoPedido(indice) => {
                 let color = match indice {
                     None => None,
@@ -1211,6 +1212,73 @@ impl Pines {
     /// `Ctrl+C` sobre un pin: imagen como mapa de bits, nota como texto,
     /// archivo como su ruta (spec 4.2). Se lee del ALMACEN, no de la
     /// ventana: el almacen es la verdad (D21).
+    /// Lee el texto de la imagen del pin y se lo entrega para que se pueda
+    /// seleccionar con el raton (P4.4).
+    ///
+    /// Se guarda SIEMPRE, aunque no haya salido texto: una lista vacia
+    /// significa «se miro y no hay», y sin distinguirlo de «no se ha
+    /// mirado» una imagen sin letras se reconoceria otra vez en cada
+    /// pasada del raton.
+    fn reconocer_texto(&self, id: u64) -> Result<()> {
+        let Some(pin) = self.vivos.get(&id) else {
+            return Ok(());
+        };
+        let objeto = {
+            let a = self.almacen.borrow();
+            let Some(e) = a.entradas().iter().find(|e| e.id == id) else {
+                return Ok(());
+            };
+            if e.tipo != TipoEntrada::Imagen {
+                return Ok(());
+            }
+            a.ruta_objeto(e)
+        };
+        // Un fallo aqui no puede tumbar nada: el pin sigue siendo un pin
+        // aunque no se le pueda leer el texto. Se anota y se guarda una
+        // lista vacia para no volver a intentarlo en cada movimiento.
+        let renglones = match cargar(&objeto) {
+            Err(e) => {
+                tracing::warn!(?e, id, "no se pudo leer la imagen para reconocer");
+                Vec::new()
+            }
+            Ok(img) => {
+                let empezado = std::time::Instant::now();
+                match pixpin_ocr::reconocer(img.ancho, img.alto, &img.pixeles) {
+                    Err(e) => {
+                        tracing::warn!(?e, id, "no se pudo reconocer el texto del pin");
+                        Vec::new()
+                    }
+                    Ok(lineas) => {
+                        let cuantas = lineas.len();
+                        let renglones: Vec<_> = lineas
+                            .into_iter()
+                            .map(|l| pixpin_geom::seleccion_texto::Renglon {
+                                palabras: l
+                                    .palabras
+                                    .into_iter()
+                                    .map(|p| pixpin_geom::seleccion_texto::Palabra {
+                                        caja: p.caja,
+                                        texto: p.texto,
+                                    })
+                                    .collect(),
+                            })
+                            .filter(|r| !r.palabras.is_empty())
+                            .collect();
+                        tracing::info!(
+                            id,
+                            renglones = cuantas,
+                            ms = empezado.elapsed().as_millis() as u64,
+                            "texto del pin reconocido"
+                        );
+                        renglones
+                    }
+                }
+            }
+        };
+        pin.poner_texto_reconocido(renglones);
+        Ok(())
+    }
+
     /// Lee el texto de la imagen del pin y lo copia (P4.2).
     ///
     /// Se lee del ALMACEN y no de lo que se ve en pantalla: el pin puede
