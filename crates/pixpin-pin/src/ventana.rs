@@ -67,6 +67,10 @@ pub enum CambioPin {
     CopiarPedido,
     /// Menu: guardar el contenido en un fichero elegido por el usuario.
     GuardarComoPedido,
+    /// Menu: leer el texto de la imagen y copiarlo (P4.2). Lo resuelve el
+    /// gestor y no la ventana: el pin no conoce ni el motor de
+    /// reconocimiento ni el portapapeles.
+    TextoPedido,
     /// Doble clic sobre una ficha, o menu: abrir con la app predeterminada.
     AbrirPedido,
     /// Menu de una ficha: abrir el Explorador con el fichero seleccionado.
@@ -459,6 +463,10 @@ struct PinInterno {
     volteo_h: bool,
     volteo_v: bool,
     pasante: bool,
+    /// Si el equipo sabe reconocer texto. Se pregunta una vez al crear el
+    /// pin y no cada vez que se abre el menu: `TryCreateFromUserProfileLanguages`
+    /// monta un motor entero, y hacerlo con el menu a medio abrir se nota.
+    con_ocr: bool,
     /// Zoom del CONTENIDO dentro de la ventana, que no cambia de tamano
     /// (Ctrl + rueda). 1.0 = el contenido cabe justo. Con mas, se ve un
     /// trozo mas grande y el resto se alcanza arrastrando con el boton
@@ -615,6 +623,7 @@ impl Pin {
             volteo_h: false,
             volteo_v: false,
             pasante: false,
+            con_ocr: false,
             vista_escala: 1.0,
             vista_dx: 0.0,
             vista_dy: 0.0,
@@ -949,6 +958,19 @@ impl Pin {
 
     /// Entrega las etiquetas del menu, ya traducidas. Hasta que llegan, el
     /// clic derecho no abre nada: mejor mudo que en otro idioma.
+    /// Dice si el equipo sabe reconocer texto, para ofrecerlo o no en el
+    /// menu.
+    ///
+    /// Lo decide la aplicacion y no este crate: el motor de reconocimiento
+    /// vive en `pixpin-ocr`, que esta en la MISMA capa que este, y las
+    /// capas no se llaman de lado. Ademas se pregunta una vez y no cada
+    /// vez que se abre el menu, porque montar el motor se nota.
+    pub fn poner_ocr(&self, hay: bool) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.con_ocr = hay;
+        }
+    }
+
     pub fn poner_textos(&self, textos: crate::menu::TextosPin) {
         if let Some(i) = interno_de(self.hwnd) {
             i.textos = Some(textos);
@@ -2072,6 +2094,7 @@ extern "system" fn procedimiento_pin(
                     i.color_sombra.is_some(),
                     reproduciendo,
                     i.pasante,
+                    i.con_ocr,
                     &t,
                 ) {
                     None => {}
@@ -2107,6 +2130,7 @@ extern "system" fn procedimiento_pin(
                         let cambio = match cmd {
                             crate::menu::CMD_COPIAR => Some(CambioPin::CopiarPedido),
                             crate::menu::CMD_GUARDAR_COMO => Some(CambioPin::GuardarComoPedido),
+                            crate::menu::CMD_TEXTO => Some(CambioPin::TextoPedido),
                             crate::menu::CMD_ABRIR_UBICACION => {
                                 Some(CambioPin::AbrirUbicacionPedido)
                             }

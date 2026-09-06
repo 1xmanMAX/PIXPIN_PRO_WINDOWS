@@ -95,12 +95,12 @@ opcional y marca de si sale en la bandeja. Copiamos ese **diseño**.
 - El TOML gana `[comandos]` con `nombre = "Ctrl+Alt+X"`; `""` = sin atajo.
 
 **Pasos**
-- [ ] Prueba: el catálogo cubre todos los `Comando`, sin nombres repetidos ni atajos por defecto repetidos.
+- [x] Prueba: el catálogo cubre todos los `Comando`, sin nombres repetidos ni atajos por defecto repetidos.
 - [x] Prueba: ida y vuelta por TOML; un nombre desconocido se ignora sin romper; `""` deja el comando sin atajo.
-- [ ] Prueba: migración — un TOML con la tabla vieja `[atajos]` sigue funcionando y produce los mismos enlaces.
+- [x] Prueba: migración — un TOML con la tabla vieja `[atajos]` sigue funcionando y produce los mismos enlaces.
 - [x] Implementar `comandos.rs` hasta que pasen.
 - [x] Cablear `main.rs`: registrar los atajos desde `Enlaces`, y generar el menú de bandeja desde `en_bandeja`.
-- [ ] Puerta completa y fusión.
+- [x] Puerta completa y fusión.
 
 **Aceptación:** los atajos actuales siguen funcionando igual, el TOML viejo
 se sigue leyendo, y añadir un comando nuevo es añadir una fila.
@@ -138,7 +138,7 @@ Todos son filas nuevas del registro de P0.1 más una acción pequeña.
 - [x] **P1.2 Cerrar todos los pines** y **P1.3 ocultar y mostrar todos**, sobre lo que ya existe por grupos.
 - [x] **P1.4 Paso de clics en un pin.** `WS_EX_TRANSPARENT | WS_EX_LAYERED` sobre la ventana del pin, igual que en la capa viva. Alterna por comando y por el menú del pin.
 - [x] **P1.5 Poner encima la ventana bajo el ratón.** `WindowFromPoint` + `SetWindowPos(HWND_TOPMOST)`, con aviso de qué ventana se fijó. Vive en `pixpin-shell`.
-- [ ] **P1.6 Pinear lo seleccionado en el Explorador.** Por automatización de la Shell, sin tocar el portapapeles del usuario.
+- [x] **P1.6 Pinear lo seleccionado en el Explorador.** Por automatización de la Shell, sin tocar el portapapeles del usuario.
 - [x] **P1.7 Silenciar los atajos un rato.** Estado en el bucle; los atajos globales se desregistran y se vuelven a registrar. Icono de bandeja distinto mientras dure.
 - [x] **P1.8 Lista de programas a ignorar.** En el TOML; si la ventana en primer plano es de esa lista, los atajos no actúan.
 
@@ -217,9 +217,9 @@ El usuario pasó la especificación de la función en el original
 Ahora es mucho más barata: la lista de comandos y sus atajos sale del
 registro de P0.1, no de una lista escrita a mano.
 
-- [ ] **P6.1 Ventana con pestañas**: general, atajos, captura, pines, rendimiento.
-- [ ] **P6.2 Reasignar atajos** capturando la combinación, con detección de choques.
-- [ ] **P6.3 El resto de ajustes** que hoy solo están en el TOML.
+- [x] **P6.1 Ventana con pestañas**: general, atajos, captura, pines, rendimiento.
+- [x] **P6.2 Reasignar atajos** capturando la combinación, con detección de choques.
+- [~] **P6.3 El resto de ajustes** que hoy solo están en el TOML.
 
 ## Fase P7 — Integración con el sistema
 

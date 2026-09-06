@@ -128,3 +128,6 @@ ajustes-pulsa-combinacion = Pulsa la combinación…
 ajustes-choca = repetido
 ajustes-cerrar = Cerrar
 ajustes-abrir-fichero = Abrir el fichero de ajustes
+
+# Leer el texto de un pin (P4.2).
+pin-copiar-texto = Copiar el texto de la imagen
