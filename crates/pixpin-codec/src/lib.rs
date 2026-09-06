@@ -5,6 +5,7 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod cosido;
+pub mod filtros;
 pub mod gif;
 pub mod imagen;
 pub mod portapapeles;

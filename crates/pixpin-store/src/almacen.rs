@@ -50,6 +50,14 @@ pub struct PinGuardado {
     /// que estorbe. Ausente en indices viejos: se toca, como siempre.
     #[serde(default)]
     pub pasante: bool,
+    /// Los filtros de imagen: gris, invertido y pasos de brillo. Ausentes
+    /// en indices viejos: la imagen tal cual se capturo.
+    #[serde(default)]
+    pub gris: bool,
+    #[serde(default)]
+    pub invertido: bool,
+    #[serde(default)]
+    pub brillo: i32,
 }
 
 fn cien() -> u32 {
@@ -442,6 +450,9 @@ mod pruebas {
             volteo_h: false,
             volteo_v: false,
             pasante: false,
+            gris: false,
+            invertido: false,
+            brillo: 0,
         }
     }
 
