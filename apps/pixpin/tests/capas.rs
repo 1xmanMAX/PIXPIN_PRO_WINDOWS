@@ -14,7 +14,7 @@ fn capa(nombre: &str) -> Option<u8> {
         "pixpin-geom" | "pixpin-model" | "pixpin-nivel" => 0,
         "pixpin-shell" | "pixpin-render" | "pixpin-gpu" | "pixpin-codec" | "pixpin-motor2d" => 1,
         "pixpin-capture" | "pixpin-pin" | "pixpin-pdf" | "pixpin-ocr" | "pixpin-record"
-        | "pixpin-store" => 2,
+        | "pixpin-store" | "pixpin-proyecto" => 2,
         "pixpin-ui" | "pixpin-flow" | "pixpin-plugin" => 3,
         "pixpin" => 4,
         _ => return None,
@@ -48,12 +48,12 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_dieciocho_paquetes() {
+fn estan_los_diecinueve_paquetes() {
     let encontrados = manifiestos();
     assert_eq!(
         encontrados.len(),
-        18,
-        "se esperan 17 crates de libreria mas el ejecutable, encontrados: {:?}",
+        19,
+        "se esperan 18 crates de libreria mas el ejecutable, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }

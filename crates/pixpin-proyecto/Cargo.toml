@@ -1,0 +1,15 @@
+[package]
+name = "pixpin-proyecto"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+pixpin-motor2d = { version = "0.1.0", path = "../pixpin-motor2d" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+# Solo `deflate`: un `.pixpin` no lleva cifrado ni formatos raros, y cada
+# metodo de compresion de mas es codigo que hay que arrastrar sin usarlo.
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
