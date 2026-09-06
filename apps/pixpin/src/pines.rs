@@ -307,6 +307,18 @@ impl Pines {
         // reconocimiento cuesta, y hacerlo con el menu a medio abrir se
         // notaria.
         pin.poner_ocr(self.con_ocr);
+        // La ruta del fichero de origen, si lo hay. Es lo que se arrastra
+        // a otra aplicacion en una ficha o un documento: el contenido solo
+        // guarda lo que se PINTA (el icono, la vista previa), y sin esto
+        // arrastrar una ficha no haria nada.
+        pin.poner_ruta(
+            self.almacen
+                .borrow()
+                .entradas()
+                .iter()
+                .find(|e| e.id == id)
+                .and_then(|e| e.ruta.clone()),
+        );
         // Un pin restaurado nace ya con el color de su grupo: pintarlo negro
         // y retenirlo despues daria un parpadeo al arrancar.
         if let Some(g) = self.almacen.borrow().grupo_de(id) {

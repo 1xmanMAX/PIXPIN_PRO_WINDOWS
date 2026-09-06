@@ -61,7 +61,7 @@ pub enum BotonGesto {
 pub const ID_MENU_GRUPO_BASE: u32 = 200;
 
 /// Lo que le puede pasar a la aplicacion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Evento {
     /// Se pulso un atajo global. El numero es el identificador con el que se
     /// registro (ver `atajos.rs`).
@@ -83,6 +83,9 @@ pub enum Evento {
         boton: BotonGesto,
         punto: pixpin_geom::Punto,
     },
+    /// Otra copia del programa recibio ficheros («Abrir con», o arrastrar
+    /// sobre el icono) y nos los pasa, porque solo puede correr una.
+    AbrirFicheros(Vec<std::path::PathBuf>),
 }
 
 /// Que hacer despues de atender un evento.
@@ -237,10 +240,27 @@ extern "system" fn procedimiento(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    use windows::Win32::UI::WindowsAndMessaging::{WM_COMMAND, WM_DESTROY, WM_LBUTTONUP};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        WM_COMMAND, WM_COPYDATA, WM_DESTROY, WM_LBUTTONUP,
+    };
 
     let evento = match mensaje {
         WM_HOTKEY => Some(Evento::Atajo(wparam.0 as u32)),
+        // Ficheros que nos manda una segunda copia antes de irse.
+        WM_COPYDATA => {
+            // SAFETY: estamos DENTRO del procesamiento del mensaje, que es
+            // exactamente cuando Windows garantiza que la estructura sigue
+            // viva. La funcion copia lo que necesita y no guarda el puntero.
+            let rutas = unsafe { crate::mensajero::ficheros_de_copydata(lparam) };
+            if rutas.is_empty() {
+                None
+            } else {
+                // Se contesta 1 para que el otro proceso sepa que llegaron
+                // y no arranque una copia entera para nada.
+                PENDIENTES.with(|p| p.borrow_mut().push(Evento::AbrirFicheros(rutas)));
+                return LRESULT(1);
+            }
+        }
         WM_COMMAND => match (wparam.0 & 0xFFFF) as u32 {
             c if c >= ID_MENU_GRUPO_BASE => Some(Evento::MostrarGrupo(c - ID_MENU_GRUPO_BASE)),
             0 => None,

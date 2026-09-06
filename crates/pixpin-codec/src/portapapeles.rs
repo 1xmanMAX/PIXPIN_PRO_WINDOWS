@@ -260,7 +260,12 @@ pub fn copiar_ficheros(rutas: &[std::path::PathBuf]) -> Result<(), ErrorCodec> {
 /// ruta relativa, NUL dentro del nombre) diria mucho mas al llamante, pero el
 /// enum vive en `imagen.rs`. Vale la pena partirlo cuando alguien necesite
 /// distinguirlos.
-fn construir_hdrop(rutas: &[std::path::PathBuf]) -> Result<Vec<u8>, ErrorCodec> {
+///
+/// Es publica porque el arrastre saliente del pin ofrece esta misma carga
+/// dentro de un `STGMEDIUM` en vez de dejarla en el portapapeles: el formato
+/// es el mismo byte a byte, y rehacerlo alli seria rehacer tambien la trampa
+/// de `fWide`.
+pub fn construir_hdrop(rutas: &[std::path::PathBuf]) -> Result<Vec<u8>, ErrorCodec> {
     use std::os::windows::ffi::OsStrExt;
 
     // Publicar un HDROP sin ficheros vaciaria el portapapeles a cambio de

@@ -183,6 +183,12 @@ pub struct Ajustes {
     /// Es una tabla repetible (`[[regiones]]`) y por eso va DESPUES de
     /// las claves sueltas en el fichero, como cualquier seccion.
     pub regiones: Vec<crate::regiones::Region>,
+    /// Salir en «Abrir con» de Windows para imagenes y videos.
+    ///
+    /// Es lo UNICO que escribe en el registro estando en modo portable, y
+    /// por eso tiene interruptor: el modo portable promete no dejar rastro
+    /// en el equipo. Apagarlo borra lo escrito, no solo deja de escribir.
+    pub abrir_con: bool,
 }
 
 impl Default for Ajustes {
@@ -200,6 +206,7 @@ impl Default for Ajustes {
             ignorar_programas: Vec::new(),
             retardo_captura_s: 3,
             regiones: Vec::new(),
+            abrir_con: true,
         }
     }
 }

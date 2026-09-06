@@ -508,6 +508,14 @@ struct PinInterno {
     /// recalcular el zoom absoluto en cada mensaje, y eso choca con la
     /// animacion, que ya lleva su propio destino.
     arrastre_derecho: Option<(i32, bool)>,
+    /// El fichero al que apunta el pin, cuando apunta a uno. Es lo que se
+    /// lleva `Ctrl` + arrastrar hacia otra aplicacion.
+    ///
+    /// El video la trae dentro de su contenido, pero la ficha y el
+    /// documento no (`Contenido::Archivo` y `Contenido::Documento` solo
+    /// guardan lo que se pinta): para esos la pone el gestor con
+    /// `poner_ruta`, que es quien la conoce.
+    ruta_origen: Option<std::path::PathBuf>,
     /// El reproductor, solo en un pin de video (D63). Si no pudo crearse,
     /// `video_fallido` avisa al gestor en el primer tick (D72).
     video: Option<Reproductor>,
@@ -620,6 +628,13 @@ impl Pin {
             _ => (None, false),
         };
 
+        // El video ya sabe a que fichero apunta; la ficha y el documento no
+        // lo guardan, y su ruta llega despues por `poner_ruta`.
+        let ruta_origen = match &contenido {
+            Contenido::Video { ruta, .. } => Some(ruta.clone()),
+            _ => None,
+        };
+
         let interno = Box::new(PinInterno {
             estado,
             escala_por_cien,
@@ -658,6 +673,7 @@ impl Pin {
             paneo: None,
             arrastre_derecho: None,
             hwnd,
+            ruta_origen,
             video,
             video_fallido,
             ritmo_video_ms,
@@ -847,6 +863,19 @@ impl Pin {
         if let Some(i) = interno_de(self.hwnd) {
             i.zoom_texto = (zoom.max(1) as f32) / 100.0;
             pintar(i);
+        }
+    }
+
+    /// Dice a que fichero apunta el pin, para que `Ctrl` + arrastrar pueda
+    /// llevarlo a otra aplicacion.
+    ///
+    /// Solo hace falta en la ficha y en el documento: el video la trae en su
+    /// contenido y se toma al crear el pin. Sin ella, `Ctrl` + arrastrar
+    /// sobre una ficha no hace nada, que es preferible a soltar en el
+    /// destino un fichero que no es.
+    pub fn poner_ruta(&self, ruta: Option<std::path::PathBuf>) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.ruta_origen = ruta;
         }
     }
 
@@ -2062,6 +2091,30 @@ extern "system" fn procedimiento_pin(
 
     match mensaje {
         WM_LBUTTONDOWN => {
+            // `Ctrl` + arrastrar saca el contenido del pin hacia OTRA
+            // aplicacion (arrastrar y soltar saliente). Va lo PRIMERO, por
+            // delante de la seleccion de texto: con `Ctrl` pulsado el
+            // usuario quiere llevarse el contenido, no marcar palabras.
+            //
+            // La carga se monta y el prestamo de `PinInterno` se suelta
+            // ANTES de arrancar el arrastre. `DoDragDrop` es modal y bombea
+            // mensajes, asi que el WndProc vuelve a entrar mientras dura y
+            // pediria otra vez el mismo `&mut`.
+            let carga = interno_de(hwnd).and_then(|i| {
+                if tecla_pulsada(VK_CONTROL) && !i.anotando {
+                    crate::arrastre::carga_de(&i.contenido, i.ruta_origen.as_deref())
+                } else {
+                    None
+                }
+            });
+            if let Some(carga) = carga {
+                // Un fallo al montar los datos cancela el gesto y nada mas:
+                // el bucle de interfaz no se puede parar por esto.
+                if let Err(e) = crate::arrastre::arrastrar(carga) {
+                    tracing::warn!(?e, "no se pudo arrastrar el contenido del pin");
+                }
+                return LRESULT(0);
+            }
             // Sobre una palabra reconocida, el boton izquierdo SELECCIONA
             // texto en vez de mover el pin: es lo que lo hace parecerse a
             // un documento. Fuera del texto, mover, como siempre.
@@ -2102,7 +2155,11 @@ extern "system" fn procedimiento_pin(
                     (i.al_cambiar)(CambioPin::PunteroPulsado(punto_contenido(i, lparam)));
                 } else {
                     // Ctrl + arrastrar: zoom (arriba agranda, abajo encoge).
-                    // Lo pidio el usuario como alternativa a la rueda.
+                    // Desde que `Ctrl` + arrastrar saca el contenido hacia
+                    // fuera, aqui solo se llega cuando NO habia nada que
+                    // arrastrar: una ficha o un documento a los que nadie
+                    // les dijo su ruta. Se deja como red, no como gesto
+                    // anunciado: la rueda sigue siendo el zoom de siempre.
                     // SAFETY: consulta pura del estado del teclado.
                     let ctrl = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
                     let evento = if ctrl {
