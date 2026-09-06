@@ -7,6 +7,7 @@
 //! relajar la regla.
 #![forbid(unsafe_code)]
 
+pub mod ajustes;
 pub mod anotador;
 pub mod barra;
 pub mod caja_herramientas;

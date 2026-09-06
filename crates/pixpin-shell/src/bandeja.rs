@@ -196,7 +196,7 @@ impl Bandeja {
 
     /// Un aviso emergente junto al reloj.
     ///
-    /// Windows puede silenciarlos (en Â«Asistente de concentracionÂ» o en
+    /// Windows puede silenciarlos (en «Asistente de concentracion» o en
     /// los ajustes de notificaciones), asi que esto NO puede ser la unica
     /// forma de enterarse de algo. Vale para confirmar lo que el usuario
     /// acaba de pedir, no para pedirle nada.

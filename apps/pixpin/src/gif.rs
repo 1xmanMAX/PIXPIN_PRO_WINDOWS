@@ -132,7 +132,7 @@ impl Marco {
         let g = GROSOR as f32 * e;
         let color = match fase {
             // Azul hasta el primer fotograma, cuenta atras incluida: lo
-            // que dice Â«esto ya esta grabandoÂ» es el rojo.
+            // que dice «esto ya esta grabando» es el rojo.
             Fase::Esperando | Fase::Contando => AZUL,
             Fase::Grabando => ROJO,
             // Pausada: el mismo rojo apagado, para que se distinga de un

@@ -74,7 +74,47 @@ pub enum ErrorAtajo {
     TeclaDesconocida(String),
 }
 
+impl Tecla {
+    /// La tecla que corresponde a un codigo virtual de Windows, si es de
+    /// las que valen como final de un atajo.
+    ///
+    /// `None` para lo demas: los modificadores solos, las flechas, Intro,
+    /// Escape... Un atajo global con Intro de tecla final se comeria el
+    /// Intro de TODAS las aplicaciones, y eso no es un atajo, es un
+    /// secuestro. Lo que no esta aqui no se puede grabar desde la ventana
+    /// de ajustes, y es a proposito.
+    pub fn desde_vk(vk: u32) -> Option<Tecla> {
+        match vk {
+            0x41..=0x5A => Some(Tecla::Letra(vk as u8 as char)),
+            0x30..=0x39 => Some(Tecla::Digito((vk - 0x30) as u8)),
+            VK_F1..=0x87 => Some(Tecla::Funcion((vk - VK_F1 + 1) as u8)),
+            VK_SNAPSHOT => Some(Tecla::Imprimir),
+            VK_INSERT => Some(Tecla::Insertar),
+            _ => None,
+        }
+    }
+}
+
 impl Atajo {
+    /// El atajo que corresponde a una tecla pulsada con estos
+    /// modificadores, o `None` si no vale como atajo.
+    ///
+    /// Sin ningun modificador tampoco vale, y es la misma regla que
+    /// aplica `FromStr` al leer el fichero: un atajo global «A» a secas se
+    /// tragaria la A de todos los programas, y «F1» a secas la ayuda de
+    /// todos. Las dos vias tienen que decir lo mismo, o un atajo que se
+    /// puede grabar desde la ventana no se podria volver a leer del TOML.
+    pub fn desde_teclado(vk: u32, modificadores: Modificadores) -> Option<Atajo> {
+        let tecla = Tecla::desde_vk(vk)?;
+        if !modificadores.alguno() {
+            return None;
+        }
+        Some(Atajo {
+            modificadores,
+            tecla,
+        })
+    }
+
     /// Mascara de modificadores tal como la espera `RegisterHotKey`.
     pub fn modificadores_win32(&self) -> u32 {
         let m = self.modificadores;
@@ -221,6 +261,53 @@ impl<'de> Deserialize<'de> for Atajo {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn de_tecla_virtual_a_atajo_y_vuelta() {
+        // La conversion inversa tiene que cuadrar con la directa para
+        // TODAS las teclas que se pueden escribir: si no, un atajo grabado
+        // en la ventana se registraria con otra tecla distinta.
+        let todas = [
+            "Ctrl+A",
+            "Alt+Z",
+            "Ctrl+Alt+0",
+            "Shift+9",
+            "Ctrl+F1",
+            "Alt+F12",
+            "Shift+F24",
+            "Ctrl+Impr",
+            "Alt+Ins",
+        ];
+        for texto in todas {
+            let a: Atajo = texto.parse().unwrap();
+            let vuelta = Atajo::desde_teclado(a.tecla_win32(), a.modificadores).unwrap();
+            assert_eq!(vuelta, a, "{texto}");
+        }
+    }
+
+    #[test]
+    fn sin_modificador_no_es_atajo_y_es_la_misma_regla_que_al_leer() {
+        // Caso negativo: «A» a secas como atajo global se tragaria la A
+        // de todos los programas. Y tiene que coincidir con `FromStr`: lo
+        // que se graba desde la ventana debe poder leerse del fichero.
+        assert_eq!(Atajo::desde_teclado(0x41, Modificadores::default()), None);
+        assert!("A".parse::<Atajo>().is_err());
+        assert_eq!(Atajo::desde_teclado(VK_F1, Modificadores::default()), None);
+        assert!("F1".parse::<Atajo>().is_err());
+    }
+
+    #[test]
+    fn intro_escape_y_flechas_no_son_teclas_de_atajo() {
+        // Caso negativo: Intro como tecla final secuestraria el Intro de
+        // todas las aplicaciones. Lo mismo Escape y las flechas.
+        let ctrl = Modificadores {
+            ctrl: true,
+            ..Modificadores::default()
+        };
+        for vk in [0x0D, 0x1B, 0x25, 0x26, 0x27, 0x28, 0x20, 0x08, 0x09] {
+            assert_eq!(Atajo::desde_teclado(vk, ctrl), None, "vk {vk:#x}");
+        }
+    }
 
     #[test]
     fn parsea_la_combinacion_por_defecto() {

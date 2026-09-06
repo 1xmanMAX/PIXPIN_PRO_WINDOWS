@@ -98,7 +98,7 @@ pub const UMBRAL_ARRASTRE: i32 = 5;
 /// menor, de ahi el signo cambiado.
 ///
 /// Aparte y pura porque equivocarse de signo aqui se nota tarde y se
-/// arregla a ciegas: el zoom Â«funcionaÂ», solo que al reves.
+/// arregla a ciegas: el zoom «funciona», solo que al reves.
 pub fn pasos_de_arrastre(dy: i32) -> i32 {
     -dy * 120 / PIXELES_POR_PASO
 }
@@ -230,7 +230,7 @@ mod pruebas {
     #[test]
     fn arrastrar_hacia_arriba_acerca() {
         // El signo: en pantalla, arriba es `y` menor. Si esto se
-        // invirtiera, el zoom Â«funcionariaÂ» pero al reves, y eso se nota
+        // invirtiera, el zoom «funcionaria» pero al reves, y eso se nota
         // tarde y se arregla a ciegas.
         assert!(pasos_de_arrastre(-PIXELES_POR_PASO) > 0, "hacia arriba");
         assert!(pasos_de_arrastre(PIXELES_POR_PASO) < 0, "hacia abajo");
