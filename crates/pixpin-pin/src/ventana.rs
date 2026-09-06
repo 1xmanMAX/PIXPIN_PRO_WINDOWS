@@ -75,6 +75,12 @@ pub enum CambioPin {
     /// gestor y no la ventana: el pin no conoce ni el motor de
     /// reconocimiento ni el portapapeles.
     TextoPedido,
+    /// Cambiar de pagina en un PDF. El numero es relativo: +1 o -1.
+    PaginaPedida(i32),
+    /// Sacar la pagina que se ve como pin propio.
+    ExtraerPaginaPedida,
+    /// Sacar TODAS las paginas, una por pin.
+    ExtraerTodasPedida,
     /// El pin quiere que se lea su texto (P4.4). Lo pide la primera vez
     /// que el raton pasa por encima, no al nacer: reconocer cuesta
     /// milisegundos y hacerlo al crear cada pin daria un tiron justo
@@ -490,6 +496,12 @@ struct PinInterno {
     /// Gris, invertido y brillo. No tocan el original: se aplican al
     /// rehacer el bitmap, igual que el giro se aplica al pintar.
     filtros: pixpin_codec::filtros::Filtros,
+    /// Cuantas paginas tiene, si es un PDF. `None` es «no es un PDF, o
+    /// todavia no se ha mirado»: distinguirlo de `Some(0)` evita volver a
+    /// preguntarselo al sistema en cada apertura del menu.
+    pdf_paginas: Option<u32>,
+    /// La pagina que se ensena ahora, desde 0.
+    pdf_pagina: u32,
     /// Zoom del CONTENIDO dentro de la ventana, que no cambia de tamano
     /// (Ctrl + rueda). 1.0 = el contenido cabe justo. Con mas, se ve un
     /// trozo mas grande y el resto se alcanza arrastrando con el boton
@@ -667,6 +679,8 @@ impl Pin {
             seleccion_texto: Vec::new(),
             ancla_texto: None,
             filtros: pixpin_codec::filtros::Filtros::default(),
+            pdf_paginas: None,
+            pdf_pagina: 0,
             vista_escala: 1.0,
             vista_dx: 0.0,
             vista_dy: 0.0,
@@ -873,6 +887,43 @@ impl Pin {
     /// contenido y se toma al crear el pin. Sin ella, `Ctrl` + arrastrar
     /// sobre una ficha no hace nada, que es preferible a soltar en el
     /// destino un fichero que no es.
+    /// Cambia la pagina que se ensena de un PDF, con su imagen ya dibujada
+    /// por el gestor.
+    ///
+    /// La dibuja el gestor porque el lector de PDF vive en `pixpin-pdf`,
+    /// que esta en la MISMA capa que este crate y no se puede llamar de
+    /// lado. El pin solo ensena lo que le den.
+    pub fn poner_pagina(&self, pagina: u32, cuantas: u32, vista: pixpin_codec::ImagenRgba) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.pdf_paginas = Some(cuantas);
+            i.pdf_pagina = pagina;
+            if let Contenido::Documento { vista: v, .. } = &mut i.contenido {
+                *v = vista;
+            }
+            i.imagen_nativa = match &i.contenido {
+                Contenido::Documento { vista, .. } => (vista.ancho, vista.alto),
+                _ => i.imagen_nativa,
+            };
+            // El texto reconocido era el de la pagina ANTERIOR: dejarlo
+            // seria ofrecer seleccionar palabras que ya no estan ahi.
+            i.texto_ocr = None;
+            i.ocr_pedido = false;
+            i.seleccion_texto.clear();
+            rehacer_bitmap(i);
+            pintar(i);
+        }
+    }
+
+    /// Cuantas paginas tiene el PDF, si ya se sabe.
+    pub fn paginas(&self) -> Option<u32> {
+        interno_de(self.hwnd).and_then(|i| i.pdf_paginas)
+    }
+
+    /// La pagina que se ensena ahora.
+    pub fn pagina(&self) -> u32 {
+        interno_de(self.hwnd).map(|i| i.pdf_pagina).unwrap_or(0)
+    }
+
     pub fn poner_ruta(&self, ruta: Option<std::path::PathBuf>) {
         if let Some(i) = interno_de(self.hwnd) {
             i.ruta_origen = ruta;
@@ -1234,6 +1285,18 @@ fn rehacer_bitmap(i: &mut PinInterno) {
         // que ensenar por no haber podido aplicar un filtro.
         Err(e) => tracing::warn!(?e, "no se pudo aplicar el filtro al pin"),
     }
+}
+
+/// Si el pin viene de un fichero PDF.
+///
+/// Por la extension y no por el contenido: mirar dentro obligaria a abrir
+/// el fichero cada vez que se abre el menu, y la extension es lo que ya
+/// uso el gestor para decidir como ensenarlo.
+fn es_pdf(i: &PinInterno) -> bool {
+    i.ruta_origen
+        .as_ref()
+        .and_then(|r| r.extension())
+        .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
 }
 
 /// Copia el texto marcado, si lo hay. Devuelve si copio algo.
@@ -2377,15 +2440,22 @@ extern "system" fn procedimiento_pin(
                     return LRESULT(0);
                 };
                 let reproduciendo = i.video.as_ref().is_some_and(|v| v.reproduciendo());
-                match crate::menu::mostrar(
-                    hwnd,
-                    &i.contenido,
-                    i.color_sombra.is_some(),
+                // Cuantas paginas tiene se pregunta la PRIMERA vez que se
+                // abre el menu de un PDF, no al nacer el pin: abrir el
+                // documento cuesta, y la mayoria de los pines nunca ven su
+                // menu.
+                if i.pdf_paginas.is_none() && es_pdf(i) {
+                    (i.al_cambiar)(CambioPin::PaginaPedida(0));
+                }
+                let estado = crate::menu::EstadoMenu {
+                    con_grupo: i.color_sombra.is_some(),
                     reproduciendo,
-                    i.pasante,
-                    i.con_ocr,
-                    &t,
-                ) {
+                    pasante: i.pasante,
+                    con_ocr: i.con_ocr,
+                    paginas: i.pdf_paginas,
+                    pagina: i.pdf_pagina,
+                };
+                match crate::menu::mostrar(hwnd, &i.contenido, estado, &t) {
                     None => {}
                     // Las dos que puede resolver la propia ventana se
                     // resuelven aqui: pedirselas al gestor solo daria un
@@ -2420,6 +2490,10 @@ extern "system" fn procedimiento_pin(
                             crate::menu::CMD_COPIAR => Some(CambioPin::CopiarPedido),
                             crate::menu::CMD_GUARDAR_COMO => Some(CambioPin::GuardarComoPedido),
                             crate::menu::CMD_TEXTO => Some(CambioPin::TextoPedido),
+                            crate::menu::CMD_PAGINA_SIGUIENTE => Some(CambioPin::PaginaPedida(1)),
+                            crate::menu::CMD_PAGINA_ANTERIOR => Some(CambioPin::PaginaPedida(-1)),
+                            crate::menu::CMD_EXTRAER_PAGINA => Some(CambioPin::ExtraerPaginaPedida),
+                            crate::menu::CMD_EXTRAER_TODAS => Some(CambioPin::ExtraerTodasPedida),
                             crate::menu::CMD_ABRIR_UBICACION => {
                                 Some(CambioPin::AbrirUbicacionPedido)
                             }
