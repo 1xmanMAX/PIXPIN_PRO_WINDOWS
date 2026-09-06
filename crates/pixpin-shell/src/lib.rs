@@ -5,6 +5,7 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod abrir;
+pub mod abrir_con;
 pub mod arranque;
 pub mod atajo;
 pub mod atajos;
@@ -18,6 +19,7 @@ pub mod gestos;
 pub mod guardar;
 pub mod hechos;
 pub mod instancia;
+pub mod mensajero;
 pub mod overlay;
 pub mod primer_plano;
 pub mod uia;

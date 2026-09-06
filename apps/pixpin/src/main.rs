@@ -116,6 +116,15 @@ fn arrancar(
     let _instancia = match adquirir_instancia_unica() {
         Ok(i) => i,
         Err(pixpin_shell::instancia::ErrorInstanciaUnica::YaHayOtraInstancia) => {
+            // Si nos dieron ficheros («Abrir con», doble clic, arrastrar al
+            // icono), se los pasamos a la copia que ya corre antes de
+            // irnos. Sin esto, abrir una imagen con PixPin no haria NADA:
+            // esta copia se iria en silencio llevandose la ruta, y el
+            // usuario veria que su fichero no se abre.
+            let rutas = pixpin_shell::mensajero::rutas_de_los_argumentos();
+            if !rutas.is_empty() {
+                pixpin_shell::mensajero::enviar_ficheros(&rutas);
+            }
             // Todavia no se han leido los ajustes, asi que no hay catalogo con
             // el que traducir un dialogo. Salir en silencio es lo correcto.
             return Ok(());
@@ -151,6 +160,29 @@ fn arrancar(
     // usuario puede haber editado el TOML a mano, o haber copiado su fichero
     // de ajustes a otro equipo. Asi el estado real y el declarado no divergen.
     let ruta_exe = dir_exe.join("pixpinmax.exe");
+    // Salir en «Abrir con» para imagenes y videos. Se hace en cada
+    // arranque porque es idempotente y porque el ejecutable puede haberse
+    // movido: en modo portable la carpeta entera cambia de sitio, y una
+    // orden que apunta a donde ya no esta el .exe es peor que no salir en
+    // la lista.
+    //
+    // Solo se OFRECE, no se queda con las extensiones: eso ultimo es de lo
+    // que mas molesta de un programa, y ademas Windows lo deshace y avisa.
+    let inscripcion = if config.abrir_con {
+        pixpin_shell::abrir_con::inscribir(&ruta_exe)
+    } else {
+        // Apagarlo BORRA lo escrito, no solo deja de escribir: si no, el
+        // rastro se quedaria ahi para siempre y el interruptor no serviria
+        // de nada a quien va en modo portable.
+        pixpin_shell::abrir_con::desinscribir(&ruta_exe)
+    };
+    if let Err(e) = inscripcion {
+        tracing::warn!(
+            ?e,
+            activo = config.abrir_con,
+            "no se pudo tocar «Abrir con»"
+        );
+    }
     match arranque::establecer(
         config.arranque_con_windows,
         ubicacion.es_portable(),
@@ -327,6 +359,23 @@ fn arrancar(
         }
         Ok(_) => {}
         Err(e) => tracing::warn!(?e, "no se pudo abrir el almacen al arrancar"),
+    }
+
+    // 8c. Los ficheros de la linea de mandatos, si esta es la PRIMERA copia
+    // («Abrir con» sin PixPin corriendo).
+    //
+    // Se mandan por el mismo camino que usa una segunda copia: un
+    // WM_COPYDATA a nuestra propia ventana. Reusar la via en vez de
+    // duplicar el pineado aqui es lo que garantiza que abrir un fichero se
+    // comporte IGUAL este PixPin ya abierto o no; con dos caminos, uno de
+    // los dos se queda atras en cuanto se cambie algo.
+    let del_arranque = pixpin_shell::mensajero::rutas_de_los_argumentos();
+    if !del_arranque.is_empty() {
+        tracing::info!(
+            cuantos = del_arranque.len(),
+            "ficheros en la linea de mandatos"
+        );
+        pixpin_shell::mensajero::enviar_ficheros(&del_arranque);
     }
 
     ventana.ejecutar(|evento| {
@@ -578,6 +627,27 @@ fn arrancar(
                             "ajustes aplicados y atajos registrados de nuevo"
                         );
                     }
+                }
+                Continuar::Si
+            }
+            Evento::AbrirFicheros(rutas) => {
+                // Cada ruta cae en el pin que le toque por su extension:
+                // imagen, video o ficha de archivo. Eso ya lo decide el
+                // gestor, que es quien conoce los tipos.
+                let hecho = preparar_pines(
+                    &mut recursos_overlay,
+                    &mut pines,
+                    &ubicacion,
+                    &textos,
+                    hwnd,
+                    ritmo_video,
+                )
+                .and_then(|p| {
+                    pinear_portapapeles(p, pixpin_codec::ContenidoPortapapeles::Rutas(rutas))
+                });
+                match hecho {
+                    Ok(cuantos) => tracing::info!(cuantos, "ficheros abiertos como pines"),
+                    Err(e) => tracing::warn!(?e, "no se pudieron abrir los ficheros"),
                 }
                 Continuar::Si
             }

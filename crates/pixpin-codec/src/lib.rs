@@ -16,4 +16,6 @@ pub use cosido::{
 };
 pub use gif::{ErrorGif, OpcionesGif, codificar as codificar_gif};
 pub use imagen::{ErrorCodec, FormatoImagen, ImagenRgba, cargar, codificar_png, guardar};
-pub use portapapeles::{ContenidoPortapapeles, copiar_ficheros, copiar_imagen, copiar_texto, leer};
+pub use portapapeles::{
+    ContenidoPortapapeles, construir_hdrop, copiar_ficheros, copiar_imagen, copiar_texto, leer,
+};

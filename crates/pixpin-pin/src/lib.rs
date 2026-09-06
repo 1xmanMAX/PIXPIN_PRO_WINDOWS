@@ -7,6 +7,7 @@
 //! el callback CambioPin, y el dispositivo llega como &ID3D11Device.
 #![deny(clippy::undocumented_unsafe_blocks)]
 
+pub mod arrastre;
 pub mod contenido;
 pub mod estado;
 pub mod icono;
@@ -17,6 +18,7 @@ pub mod ventana;
 pub mod video;
 pub mod zoom;
 
+pub use arrastre::{Carga, ErrorArrastre, Resultado as ResultadoArrastre, arrastrar, carga_de};
 pub use contenido::{
     Contenido, DOCUMENTO_FRANJA_LOGICA, FICHA_ALTO_LOGICO, FICHA_ANCHO_LOGICO, Presentacion,
     presentacion_de, tamano_humano, tamano_natural,
