@@ -131,3 +131,11 @@ ajustes-abrir-fichero = Abrir el fichero de ajustes
 
 # Leer el texto de un pin (P4.2).
 pin-copiar-texto = Copiar el texto de la imagen
+
+# Paginas de un PDF pineado.
+pin-pagina-siguiente = Página siguiente
+pin-pagina-anterior = Página anterior
+pin-extraer-pagina = Extraer esta página como pin
+pin-extraer-todas = Extraer todas las páginas
+aviso-paginas-extraidas = Páginas extraídas
+aviso-paginas-extraidas-detalle = { $hechas } de { $total }. El resto se dejó fuera para no llenar la pantalla.

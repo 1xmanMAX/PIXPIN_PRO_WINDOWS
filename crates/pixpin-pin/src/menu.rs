@@ -27,6 +27,13 @@ pub const CMD_SONIDO: u32 = 9;
 pub const CMD_PASANTE: u32 = 10;
 /// Leer el texto del pin y copiarlo (P4.2).
 pub const CMD_TEXTO: u32 = 11;
+/// Pasar a la pagina siguiente y anterior de un PDF.
+pub const CMD_PAGINA_SIGUIENTE: u32 = 12;
+pub const CMD_PAGINA_ANTERIOR: u32 = 13;
+/// Sacar la pagina que se ve como pin propio.
+pub const CMD_EXTRAER_PAGINA: u32 = 14;
+/// Sacar TODAS las paginas, una por pin.
+pub const CMD_EXTRAER_TODAS: u32 = 15;
 pub const CMD_SIN_GRUPO: u32 = 100;
 pub const CMD_COLOR_BASE: u32 = 101;
 
@@ -53,6 +60,11 @@ pub struct TextosPin {
     /// un pin pasante ya no puede abrir su menu, asi que la vuelta es por
     /// el comando global.
     pub dejar_pasar_clic: String,
+    /// Los del PDF: pasar de pagina y sacarlas como pines propios.
+    pub pagina_siguiente: String,
+    pub pagina_anterior: String,
+    pub extraer_pagina: String,
+    pub extraer_todas: String,
     /// El de leer el texto de la imagen (P4.2).
     pub copiar_texto: String,
 }
@@ -69,15 +81,39 @@ pub enum EntradaMenu {
     SubmenuGrupo,
 }
 
+/// Lo que el menu necesita saber del pin, aparte de su contenido.
+///
+/// Agrupado en vez de seis parametros sueltos: con tantos booleanos
+/// seguidos, cambiar dos de sitio compila igual y el menu ensena otra
+/// cosa. Con nombres, el compilador no deja equivocarse.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EstadoMenu {
+    pub con_grupo: bool,
+    pub reproduciendo: bool,
+    pub pasante: bool,
+    /// El equipo sabe reconocer texto.
+    pub con_ocr: bool,
+    /// Cuantas paginas tiene, si es un PDF. `None` si no lo es o si
+    /// todavia no se ha mirado.
+    pub paginas: Option<u32>,
+    /// La pagina que se ve ahora, desde 0.
+    pub pagina: u32,
+}
+
 /// Que entradas tiene el menu de este pin. PURA y probada en CI.
 pub fn entradas_del_menu(
     contenido: &Contenido,
-    con_grupo: bool,
-    reproduciendo: bool,
-    pasante: bool,
-    con_ocr: bool,
+    estado: EstadoMenu,
     t: &TextosPin,
 ) -> Vec<EntradaMenu> {
+    let EstadoMenu {
+        con_grupo,
+        reproduciendo,
+        pasante,
+        con_ocr,
+        paginas,
+        pagina,
+    } = estado;
     let mut v = Vec::new();
 
     // El video lleva sus controles ARRIBA: son lo que se busca al abrir el
@@ -95,6 +131,38 @@ pub fn entradas_del_menu(
             id: CMD_SONIDO,
             etiqueta: t.sonido.clone(),
         });
+        v.push(EntradaMenu::Separador);
+    }
+
+    // Las paginas del PDF van ARRIBA, como las del video: es lo que se
+    // busca al abrir el menu de un documento de varias paginas.
+    if let Some(cuantas) = paginas.filter(|c| *c > 1) {
+        if pagina + 1 < cuantas {
+            v.push(EntradaMenu::Accion {
+                id: CMD_PAGINA_SIGUIENTE,
+                etiqueta: t.pagina_siguiente.clone(),
+            });
+        }
+        if pagina > 0 {
+            v.push(EntradaMenu::Accion {
+                id: CMD_PAGINA_ANTERIOR,
+                etiqueta: t.pagina_anterior.clone(),
+            });
+        }
+    }
+    // Extraer se ofrece aunque solo haya una pagina: sacarla como imagen
+    // propia para anotarla o copiarla es util igual.
+    if paginas.is_some() {
+        v.push(EntradaMenu::Accion {
+            id: CMD_EXTRAER_PAGINA,
+            etiqueta: t.extraer_pagina.clone(),
+        });
+        if paginas.is_some_and(|c| c > 1) {
+            v.push(EntradaMenu::Accion {
+                id: CMD_EXTRAER_TODAS,
+                etiqueta: t.extraer_todas.clone(),
+            });
+        }
         v.push(EntradaMenu::Separador);
     }
 
@@ -182,10 +250,7 @@ pub fn entradas_del_menu(
 pub fn mostrar(
     hwnd: windows::Win32::Foundation::HWND,
     contenido: &Contenido,
-    con_grupo: bool,
-    reproduciendo: bool,
-    pasante: bool,
-    con_ocr: bool,
+    estado: EstadoMenu,
     t: &TextosPin,
 ) -> Option<u32> {
     use windows::Win32::Foundation::POINT;
@@ -223,9 +288,7 @@ pub fn mostrar(
                     &HSTRING::from(nombre.as_str()),
                 )?;
             }
-            for entrada in
-                entradas_del_menu(contenido, con_grupo, reproduciendo, pasante, con_ocr, t)
-            {
+            for entrada in entradas_del_menu(contenido, estado, t) {
                 match entrada {
                     EntradaMenu::Separador => AppendMenuW(menu, MF_SEPARATOR, 0, None)?,
                     EntradaMenu::SubmenuGrupo => AppendMenuW(
@@ -304,6 +367,10 @@ mod pruebas {
             sonido: "Sonido".into(),
             dejar_pasar_clic: "Dejar pasar el clic".into(),
             copiar_texto: "Copiar el texto".into(),
+            pagina_siguiente: "Pagina siguiente".into(),
+            pagina_anterior: "Pagina anterior".into(),
+            extraer_pagina: "Extraer esta pagina".into(),
+            extraer_todas: "Extraer todas las paginas".into(),
         }
     }
 
@@ -318,7 +385,17 @@ mod pruebas {
 
     #[test]
     fn el_video_tiene_reproducir_y_sonido_arriba_y_no_guardar_como() {
-        let v = entradas_del_menu(&video(), false, true, false, true, &textos());
+        let v = entradas_del_menu(
+            &video(),
+            EstadoMenu {
+                con_grupo: false,
+                reproduciendo: true,
+                pasante: false,
+                con_ocr: true,
+                ..Default::default()
+            },
+            &textos(),
+        );
         assert_eq!(
             v[0],
             EntradaMenu::Accion {
@@ -341,7 +418,17 @@ mod pruebas {
         assert!(!ids.contains(&CMD_GUARDAR_COMO));
         assert!(!ids.contains(&CMD_TAMANO_ORIGINAL));
 
-        let parado = entradas_del_menu(&video(), false, false, false, true, &textos());
+        let parado = entradas_del_menu(
+            &video(),
+            EstadoMenu {
+                con_grupo: false,
+                reproduciendo: false,
+                pasante: false,
+                con_ocr: true,
+                ..Default::default()
+            },
+            &textos(),
+        );
         assert_eq!(
             parado[0],
             EntradaMenu::Accion {
@@ -361,7 +448,17 @@ mod pruebas {
                 pixeles: vec![0; 4],
             },
         };
-        let ids = ids(&entradas_del_menu(&d, false, false, false, true, &textos()));
+        let ids = ids(&entradas_del_menu(
+            &d,
+            EstadoMenu {
+                con_grupo: false,
+                reproduciendo: false,
+                pasante: false,
+                con_ocr: true,
+                ..Default::default()
+            },
+            &textos(),
+        ));
         assert!(ids.contains(&CMD_ABRIR_UBICACION));
         assert!(!ids.contains(&CMD_REPRODUCIR));
         assert!(!ids.contains(&CMD_SONIDO));
@@ -396,7 +493,17 @@ mod pruebas {
 
     #[test]
     fn una_imagen_sin_grupo_no_ofrece_ocultar_ni_abrir_ubicacion() {
-        let v = entradas_del_menu(&imagen(), false, false, false, true, &textos());
+        let v = entradas_del_menu(
+            &imagen(),
+            EstadoMenu {
+                con_grupo: false,
+                reproduciendo: false,
+                pasante: false,
+                con_ocr: true,
+                ..Default::default()
+            },
+            &textos(),
+        );
         let ids = ids(&v);
         assert!(ids.contains(&CMD_GUARDAR_COMO));
         assert!(ids.contains(&CMD_TAMANO_ORIGINAL));
@@ -415,7 +522,17 @@ mod pruebas {
         // La nota se estira por la esquina y se escala con la rueda; el
         // doble clic ("Tamaño original") la devuelve a como nacio.
         let nota = Contenido::Nota { texto: "x".into() };
-        let v = entradas_del_menu(&nota, false, false, false, true, &textos());
+        let v = entradas_del_menu(
+            &nota,
+            EstadoMenu {
+                con_grupo: false,
+                reproduciendo: false,
+                pasante: false,
+                con_ocr: true,
+                ..Default::default()
+            },
+            &textos(),
+        );
         let ids = ids(&v);
         assert!(ids.contains(&CMD_GUARDAR_COMO));
         assert!(
@@ -426,7 +543,17 @@ mod pruebas {
 
     #[test]
     fn una_imagen_con_grupo_si_ofrece_ocultarlo() {
-        let v = entradas_del_menu(&imagen(), true, false, false, true, &textos());
+        let v = entradas_del_menu(
+            &imagen(),
+            EstadoMenu {
+                con_grupo: true,
+                reproduciendo: false,
+                pasante: false,
+                con_ocr: true,
+                ..Default::default()
+            },
+            &textos(),
+        );
         assert!(ids(&v).contains(&CMD_OCULTAR_GRUPO));
     }
 
@@ -435,7 +562,17 @@ mod pruebas {
         // Caso negativo del tipo: «Tamaño original» sobre una ficha no
         // significa nada, y «Guardar como» duplicaria un fichero que ya
         // existe donde el usuario lo puso.
-        let v = entradas_del_menu(&archivo(), false, false, false, true, &textos());
+        let v = entradas_del_menu(
+            &archivo(),
+            EstadoMenu {
+                con_grupo: false,
+                reproduciendo: false,
+                pasante: false,
+                con_ocr: true,
+                ..Default::default()
+            },
+            &textos(),
+        );
         let ids = ids(&v);
         assert!(ids.contains(&CMD_ABRIR_UBICACION));
         assert!(!ids.contains(&CMD_TAMANO_ORIGINAL));
@@ -447,10 +584,13 @@ mod pruebas {
         // En una imagen si: es para lo que sirve.
         let con = ids(&entradas_del_menu(
             &imagen(),
-            false,
-            false,
-            false,
-            true,
+            EstadoMenu {
+                con_grupo: false,
+                reproduciendo: false,
+                pasante: false,
+                con_ocr: true,
+                ..Default::default()
+            },
             &textos(),
         ));
         assert!(con.contains(&CMD_TEXTO));
@@ -459,10 +599,13 @@ mod pruebas {
         // error en vez de una funcion, y el usuario no sabria por que.
         let sin = ids(&entradas_del_menu(
             &imagen(),
-            false,
-            false,
-            false,
-            false,
+            EstadoMenu {
+                con_grupo: false,
+                reproduciendo: false,
+                pasante: false,
+                con_ocr: false,
+                ..Default::default()
+            },
             &textos(),
         ));
         assert!(!sin.contains(&CMD_TEXTO));
@@ -473,10 +616,13 @@ mod pruebas {
         };
         let en_nota = ids(&entradas_del_menu(
             &nota,
-            false,
-            false,
-            false,
-            true,
+            EstadoMenu {
+                con_grupo: false,
+                reproduciendo: false,
+                pasante: false,
+                con_ocr: true,
+                ..Default::default()
+            },
             &textos(),
         ));
         assert!(!en_nota.contains(&CMD_TEXTO));
@@ -490,19 +636,25 @@ mod pruebas {
         // cuando sirve de algo. La vuelta es por el comando global.
         let normal = ids(&entradas_del_menu(
             &imagen(),
-            false,
-            false,
-            false,
-            true,
+            EstadoMenu {
+                con_grupo: false,
+                reproduciendo: false,
+                pasante: false,
+                con_ocr: true,
+                ..Default::default()
+            },
             &textos(),
         ));
         assert!(normal.contains(&CMD_PASANTE));
         let pasante = ids(&entradas_del_menu(
             &imagen(),
-            false,
-            false,
-            true,
-            true,
+            EstadoMenu {
+                con_grupo: false,
+                reproduciendo: false,
+                pasante: true,
+                con_ocr: true,
+                ..Default::default()
+            },
             &textos(),
         ));
         assert!(!pasante.contains(&CMD_PASANTE));
@@ -514,7 +666,17 @@ mod pruebas {
     #[test]
     fn todos_los_menus_ofrecen_copiar_cerrar_y_eliminar() {
         for (c, grupo) in [(imagen(), false), (archivo(), true)] {
-            let ids = ids(&entradas_del_menu(&c, grupo, false, false, true, &textos()));
+            let ids = ids(&entradas_del_menu(
+                &c,
+                EstadoMenu {
+                    con_grupo: grupo,
+                    reproduciendo: false,
+                    pasante: false,
+                    con_ocr: true,
+                    ..Default::default()
+                },
+                &textos(),
+            ));
             for esperado in [CMD_COPIAR, CMD_CERRAR, CMD_ELIMINAR] {
                 assert!(ids.contains(&esperado), "falta la entrada {esperado}");
             }
@@ -523,7 +685,17 @@ mod pruebas {
 
     #[test]
     fn el_submenu_de_grupo_esta_siempre() {
-        let v = entradas_del_menu(&imagen(), false, false, false, true, &textos());
+        let v = entradas_del_menu(
+            &imagen(),
+            EstadoMenu {
+                con_grupo: false,
+                reproduciendo: false,
+                pasante: false,
+                con_ocr: true,
+                ..Default::default()
+            },
+            &textos(),
+        );
         assert!(v.contains(&EntradaMenu::SubmenuGrupo));
     }
 }

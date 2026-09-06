@@ -130,3 +130,11 @@ ajustes-abrir-fichero = Open the settings file
 
 # Reading the text of a pin (P4.2).
 pin-copiar-texto = Copy the text in the image
+
+# Pages of a pinned PDF.
+pin-pagina-siguiente = Next page
+pin-pagina-anterior = Previous page
+pin-extraer-pagina = Extract this page as a pin
+pin-extraer-todas = Extract every page
+aviso-paginas-extraidas = Pages extracted
+aviso-paginas-extraidas-detalle = { $hechas } of { $total }. The rest were left out so the screen stays usable.

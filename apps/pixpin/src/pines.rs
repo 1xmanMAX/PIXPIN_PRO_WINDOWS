@@ -8,6 +8,20 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+/// Cuantas paginas se extraen como maximo de un solo golpe.
+///
+/// Veinte llenan la pantalla sin dejarla inservible. Un PDF de doscientas
+/// paginas daria doscientos pines y doscientas entradas en el almacen, y
+/// cerrarlos uno a uno seria peor que no haber extraido nada.
+const TOPE_PAGINAS: u32 = 20;
+
+/// Ancho al que se dibuja una pagina extraida, en pixeles.
+///
+/// Fijo y generoso: la pagina extraida es un documento para leer, no una
+/// miniatura. Dibujarla al tamano que tenia el pin de origen daria una
+/// imagen borrosa en cuanto se agrandara.
+const ANCHO_PAGINA_EXTRAIDA: u32 = 1600;
+
 use anyhow::{Context, Result};
 use pixpin_codec::{ImagenRgba, cargar, codificar_png};
 use pixpin_geom::{DisposicionMonitores, Monitor, Punto, Rect, recolocar_en_area};
@@ -108,6 +122,9 @@ pub struct Pines {
     /// entero para responder, y llamarlo por cada pin y cada menu se
     /// notaria.
     con_ocr: bool,
+    /// Lo ultimo que dio extraer todas las paginas, para que el bucle lo
+    /// avise. El gestor no tiene bandeja con la que hablar.
+    paginas_extraidas: Option<(u32, u32)>,
     /// Ya traducido: `pixpin-pin` no conoce el catalogo de idiomas.
     texto_no_encontrado: String,
     /// Etiquetas del menu del pin, tambien ya traducidas.
@@ -194,6 +211,7 @@ impl Pines {
             pedidos: Rc::new(RefCell::new(Vec::new())),
             tema_claro: pixpin_shell::entorno::tema_claro(),
             con_ocr: pixpin_ocr::disponible(),
+            paginas_extraidas: None,
             texto_no_encontrado,
             textos,
             texto_confirmar_eliminar,
@@ -722,6 +740,9 @@ impl Pines {
             CambioPin::CopiarPedido => self.copiar(id),
             CambioPin::TextoPedido => self.copiar_texto(id),
             CambioPin::ReconocerPedido => self.reconocer_texto(id),
+            CambioPin::PaginaPedida(salto) => self.cambiar_pagina(id, salto),
+            CambioPin::ExtraerPaginaPedida => self.extraer_pagina(id),
+            CambioPin::ExtraerTodasPedida => self.extraer_todas(id),
             CambioPin::GrupoPedido(indice) => {
                 let color = match indice {
                     None => None,
@@ -1300,6 +1321,107 @@ impl Pines {
         Ok(())
     }
 
+    /// La ruta del fichero de una entrada, si lo tiene.
+    fn ruta_de(&self, id: u64) -> Option<std::path::PathBuf> {
+        self.almacen
+            .borrow()
+            .entradas()
+            .iter()
+            .find(|e| e.id == id)
+            .and_then(|e| e.ruta.clone())
+    }
+
+    /// Cambia de pagina en un PDF pineado, o solo cuenta cuantas tiene.
+    ///
+    /// `salto` de cero significa «solo dime cuantas hay»: es lo que pide
+    /// el pin la primera vez que se abre su menu, para saber si ensenar
+    /// las entradas de pagina.
+    fn cambiar_pagina(&mut self, id: u64, salto: i32) -> Result<()> {
+        let Some(pin) = self.vivos.get(&id) else {
+            return Ok(());
+        };
+        let Some(ruta) = self.ruta_de(id) else {
+            return Ok(());
+        };
+        let documento = match pixpin_pdf::Documento::abrir(&ruta) {
+            Ok(d) => d,
+            Err(e) => {
+                // Un PDF cifrado o roto no puede tumbar el pin: se sigue
+                // ensenando su miniatura, que es lo que ya habia.
+                tracing::warn!(?e, id, "no se pudo abrir el PDF");
+                return Ok(());
+            }
+        };
+        let cuantas = documento.paginas();
+        // Sin dar la vuelta: pasada la ultima no se empieza por la
+        // primera. En un documento, el final es el final.
+        let destino =
+            (pin.pagina() as i64 + salto as i64).clamp(0, cuantas.saturating_sub(1) as i64) as u32;
+        // El ancho al que se dibuja: el que tiene el pin ahora, para que
+        // la pagina nueva se vea igual de nitida que la de antes sin
+        // gastar en pixeles que no se van a ver.
+        let ancho = pin.rect_contenido().ancho.max(1);
+        match documento.renderizar(destino, ancho) {
+            Ok(vista) => pin.poner_pagina(destino, cuantas, vista),
+            Err(e) => tracing::warn!(?e, id, pagina = destino, "no se pudo dibujar la pagina"),
+        }
+        Ok(())
+    }
+
+    /// Saca la pagina que se ve como pin de imagen propio.
+    fn extraer_pagina(&mut self, id: u64) -> Result<()> {
+        let Some(pin) = self.vivos.get(&id) else {
+            return Ok(());
+        };
+        let pagina = pin.pagina();
+        let ruta = self.ruta_de(id).context("el pin no viene de un fichero")?;
+        let d = pixpin_capture::enumerar_monitores()?;
+        let monitor = d.principal().context("sin monitor")?.to_owned();
+        let documento = pixpin_pdf::Documento::abrir(&ruta)?;
+        self.extraer_una(&documento, pagina, &monitor)
+    }
+
+    /// Saca TODAS las paginas, una por pin.
+    ///
+    /// Con tope: un PDF de doscientas paginas dejaria la pantalla
+    /// inservible y el almacen lleno. Se hacen las primeras y se dice
+    /// cuantas quedaron fuera, que es mejor que reventar el escritorio o
+    /// que recortar en silencio.
+    fn extraer_todas(&mut self, id: u64) -> Result<()> {
+        let ruta = self.ruta_de(id).context("el pin no viene de un fichero")?;
+        let d = pixpin_capture::enumerar_monitores()?;
+        let monitor = d.principal().context("sin monitor")?.to_owned();
+        let documento = pixpin_pdf::Documento::abrir(&ruta)?;
+        let total = documento.paginas();
+        let cuantas = total.min(TOPE_PAGINAS);
+        let mut hechas = 0;
+        for pagina in 0..cuantas {
+            // Una pagina que falle no puede parar las demas: se anota y se
+            // sigue, que es mejor que perder las veinte siguientes por una.
+            match self.extraer_una(&documento, pagina, &monitor) {
+                Ok(()) => hechas += 1,
+                Err(e) => tracing::warn!(?e, pagina, "no se pudo extraer la pagina"),
+            }
+        }
+        tracing::info!(hechas, total, "paginas extraidas como pines");
+        self.paginas_extraidas = Some((hechas, total));
+        Ok(())
+    }
+
+    /// Dibuja una pagina y la pinea como imagen.
+    fn extraer_una(
+        &mut self,
+        documento: &pixpin_pdf::Documento,
+        pagina: u32,
+        monitor: &Monitor,
+    ) -> Result<()> {
+        // A un ancho generoso y fijo, no al del pin de origen: la pagina
+        // extraida es un documento para leer, y sale de una miniatura si
+        // se dibuja al tamano de la que estaba en pantalla.
+        let imagen = documento.renderizar(pagina, ANCHO_PAGINA_EXTRAIDA)?;
+        self.pinear_imagen_centrada(&imagen, monitor)
+    }
+
     /// Lee el texto de la imagen del pin y lo copia (P4.2).
     ///
     /// Se lee del ALMACEN y no de lo que se ve en pantalla: el pin puede
@@ -1412,6 +1534,12 @@ impl Pines {
         } else {
             (true, self.ocultar_todos())
         }
+    }
+
+    /// Se lleva el resultado de la ultima extraccion de paginas, para que
+    /// el bucle lo avise por la bandeja. El gestor no tiene bandeja.
+    pub fn tomar_paginas_extraidas(&mut self) -> Option<(u32, u32)> {
+        self.paginas_extraidas.take()
     }
 
     /// Que TODOS los pines dejen pasar el clic, o que vuelvan a

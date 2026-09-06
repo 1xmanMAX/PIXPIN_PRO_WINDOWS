@@ -1063,6 +1063,21 @@ fn arrancar(
         // se saca de la lista. Barato: nada que hacer si no cerro ninguno.
         if let Some(p) = &mut pines {
             p.purgar();
+            // Extraer paginas puede haber dejado algunas fuera por el
+            // tope. Se avisa AQUI y no en el gestor porque la bandeja vive
+            // en este bucle, y callarselo dejaria al usuario contando
+            // pines para averiguar que falta la mitad.
+            if let Some((hechas, total)) = p.tomar_paginas_extraidas() {
+                if hechas < total {
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("hechas", hechas.to_string());
+                    args.set("total", total.to_string());
+                    let _ = bandeja.avisar(
+                        &textos.t("aviso-paginas-extraidas"),
+                        &textos.t_args("aviso-paginas-extraidas-detalle", &args),
+                    );
+                }
+            }
         }
         seguir
     });
@@ -1152,6 +1167,10 @@ fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
         sonido: textos.t("pin-sonido"),
         dejar_pasar_clic: textos.t("pin-dejar-pasar-clic"),
         copiar_texto: textos.t("pin-copiar-texto"),
+        pagina_siguiente: textos.t("pin-pagina-siguiente"),
+        pagina_anterior: textos.t("pin-pagina-anterior"),
+        extraer_pagina: textos.t("pin-extraer-pagina"),
+        extraer_todas: textos.t("pin-extraer-todas"),
         ocultar_grupo: textos.t("pin-ocultar-grupo"),
         cerrar: textos.t("pin-cerrar"),
         eliminar: textos.t("pin-eliminar"),

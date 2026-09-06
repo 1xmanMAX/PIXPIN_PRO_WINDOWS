@@ -6,3 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+pixpin-codec = { version = "0.1.0", path = "../pixpin-codec" }
+thiserror = "2.0"
+windows-future = "0.3"
+windows = { version = "0.62.2", features = ["Data_Pdf", "Storage", "Storage_Streams", "Graphics_Imaging", "Foundation", "Win32_Foundation", "Win32_System_Com"] }

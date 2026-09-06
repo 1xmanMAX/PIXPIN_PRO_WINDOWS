@@ -349,6 +349,7 @@ dependencies = [
  "pixpin-motor2d",
  "pixpin-nivel",
  "pixpin-ocr",
+ "pixpin-pdf",
  "pixpin-pin",
  "pixpin-record",
  "pixpin-render",
@@ -424,6 +425,12 @@ dependencies = [
 [[package]]
 name = "pixpin-pdf"
 version = "0.1.0"
+dependencies = [
+ "pixpin-codec",
+ "thiserror",
+ "windows",
+ "windows-future",
+]
 
 [[package]]
 name = "pixpin-pin"
