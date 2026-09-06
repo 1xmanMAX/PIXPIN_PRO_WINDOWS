@@ -44,6 +44,21 @@ impl From<windows::core::Error> for ErrorOcr {
 pub struct Linea {
     pub caja: Rect,
     pub texto: String,
+    /// Las palabras con su recuadro, en el orden que las dio el sistema.
+    ///
+    /// Es lo que hace posible seleccionar texto con el raton sobre un pin
+    /// (P4.4): el motor de Windows entrega palabras, no caracteres, asi
+    /// que la seleccion mas fina que se puede hacer BIEN es por palabra.
+    /// Adivinar donde cae cada letra midiendo el texto daria recuadros que
+    /// no cuadran con lo que se ve.
+    pub palabras: Vec<Palabra>,
+}
+
+/// Una palabra reconocida, con el recuadro que ocupa en la imagen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Palabra {
+    pub caja: Rect,
+    pub texto: String,
 }
 
 /// Si el equipo puede reconocer texto. Se pregunta antes de ofrecerlo, para
@@ -106,6 +121,7 @@ pub fn reconocer(ancho: u32, alto: u32, pixeles_rgba: &[u8]) -> Result<Vec<Linea
         // `OcrLine` no da su caja: la unica geometria esta en las palabras,
         // asi que la linea es la envolvente de las suyas.
         let mut caja: Option<Rect> = None;
+        let mut palabras = Vec::new();
         for palabra in linea.Words()? {
             let r = palabra.BoundingRect()?;
             let suya = Rect {
@@ -118,9 +134,17 @@ pub fn reconocer(ancho: u32, alto: u32, pixeles_rgba: &[u8]) -> Result<Vec<Linea
                 None => suya,
                 Some(a) => envolvente(a, suya),
             });
+            palabras.push(Palabra {
+                caja: suya,
+                texto: palabra.Text()?.to_string(),
+            });
         }
         if let Some(caja) = caja {
-            lineas.push(Linea { caja, texto });
+            lineas.push(Linea {
+                caja,
+                texto,
+                palabras,
+            });
         }
     }
     Ok(lineas)

@@ -71,6 +71,11 @@ pub enum CambioPin {
     /// gestor y no la ventana: el pin no conoce ni el motor de
     /// reconocimiento ni el portapapeles.
     TextoPedido,
+    /// El pin quiere que se lea su texto (P4.4). Lo pide la primera vez
+    /// que el raton pasa por encima, no al nacer: reconocer cuesta
+    /// milisegundos y hacerlo al crear cada pin daria un tiron justo
+    /// cuando el usuario acaba de capturar.
+    ReconocerPedido,
     /// Doble clic sobre una ficha, o menu: abrir con la app predeterminada.
     AbrirPedido,
     /// Menu de una ficha: abrir el Explorador con el fichero seleccionado.
@@ -467,6 +472,17 @@ struct PinInterno {
     /// pin y no cada vez que se abre el menu: `TryCreateFromUserProfileLanguages`
     /// monta un motor entero, y hacerlo con el menu a medio abrir se nota.
     con_ocr: bool,
+    /// El texto reconocido, en pixeles de la imagen NATIVA. `None` es
+    /// «todavia no se ha mirado»; un vector vacio es «se miro y no hay
+    /// texto», que son cosas distintas: sin distinguirlas se volveria a
+    /// reconocer una y otra vez una imagen sin letras.
+    texto_ocr: Option<Vec<pixpin_geom::seleccion_texto::Renglon>>,
+    /// Ya se pidio el reconocimiento y se espera respuesta.
+    ocr_pedido: bool,
+    /// Las palabras marcadas ahora mismo.
+    seleccion_texto: Vec<pixpin_geom::seleccion_texto::Sitio>,
+    /// Donde empezo el arrastre de seleccion, mientras dura.
+    ancla_texto: Option<pixpin_geom::seleccion_texto::Sitio>,
     /// Zoom del CONTENIDO dentro de la ventana, que no cambia de tamano
     /// (Ctrl + rueda). 1.0 = el contenido cabe justo. Con mas, se ve un
     /// trozo mas grande y el resto se alcanza arrastrando con el boton
@@ -624,6 +640,10 @@ impl Pin {
             volteo_v: false,
             pasante: false,
             con_ocr: false,
+            texto_ocr: None,
+            ocr_pedido: false,
+            seleccion_texto: Vec::new(),
+            ancla_texto: None,
             vista_escala: 1.0,
             vista_dx: 0.0,
             vista_dy: 0.0,
@@ -965,6 +985,22 @@ impl Pin {
     /// vive en `pixpin-ocr`, que esta en la MISMA capa que este, y las
     /// capas no se llaman de lado. Ademas se pregunta una vez y no cada
     /// vez que se abre el menu, porque montar el motor se nota.
+    /// Guarda el texto reconocido de la imagen (P4.4).
+    ///
+    /// Las cajas vienen en pixeles de la imagen NATIVA, no de lo que se ve:
+    /// asi el pin puede estar a cualquier tamano y la seleccion sigue
+    /// cuadrando sin volver a reconocer nada.
+    ///
+    /// Una lista vacia es una respuesta valida y se guarda igual: significa
+    /// «se miro y no hay texto», que no es lo mismo que «no se ha mirado».
+    /// Sin distinguirlo, una imagen sin letras se reconoceria una y otra
+    /// vez en cada pasada del raton.
+    pub fn poner_texto_reconocido(&self, renglones: Vec<pixpin_geom::seleccion_texto::Renglon>) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.texto_ocr = Some(renglones);
+        }
+    }
+
     pub fn poner_ocr(&self, hay: bool) {
         if let Some(i) = interno_de(self.hwnd) {
             i.con_ocr = hay;
@@ -1122,6 +1158,54 @@ fn estirar_hasta(_hwnd: HWND, i: &PinInterno, rect: Rect) {
 /// El zoom del texto en por ciento, para persistirlo (100 fuera de las
 /// notas: los demas contenidos no tienen zoom de texto).
 /// Lo que se guarda de un pin en un momento dado, para un rect concreto.
+/// Copia el texto marcado, si lo hay. Devuelve si copio algo.
+///
+/// Lo hace el pin y no el gestor porque el texto ya esta aqui: mandarlo a
+/// dar la vuelta por el gestor solo para llamar al portapapeles seria un
+/// rodeo, y `pixpin-codec` esta por debajo de este crate.
+fn copiar_seleccion(i: &PinInterno) -> bool {
+    let Some(renglones) = &i.texto_ocr else {
+        return false;
+    };
+    if i.seleccion_texto.is_empty() {
+        return false;
+    }
+    let texto = pixpin_geom::seleccion_texto::texto_de(renglones, &i.seleccion_texto);
+    if texto.trim().is_empty() {
+        return false;
+    }
+    match pixpin_codec::copiar_texto(&texto) {
+        Ok(()) => true,
+        Err(e) => {
+            tracing::warn!(?e, "no se pudo copiar el texto seleccionado");
+            false
+        }
+    }
+}
+
+/// Un punto del contenido llevado a pixeles de la imagen NATIVA.
+///
+/// Las cajas del texto reconocido estan en pixeles de la imagen original,
+/// y el pin casi nunca se ve a ese tamano. Sin esta conversion, la
+/// seleccion acertaria solo con el pin al 100 % exacto.
+fn a_pixeles_nativos(i: &PinInterno, p: Punto) -> Punto {
+    let (nw, nh) = i.imagen_nativa;
+    let r = i.estado.rect();
+    if r.ancho == 0 || r.alto == 0 || nw == 0 || nh == 0 {
+        return p;
+    }
+    Punto {
+        x: (p.x as f32 * nw as f32 / r.ancho as f32).round() as i32,
+        y: (p.y as f32 * nh as f32 / r.alto as f32).round() as i32,
+    }
+}
+
+/// Holgura vertical al buscar texto bajo el cursor, en pixeles nativos.
+///
+/// Acertar el recuadro exacto de una palabra obliga a afinar el raton, y
+/// para «hay texto aqui» basta con estar a su altura.
+const HOLGURA_TEXTO: i32 = 3;
+
 /// Donde esta el cursor, en coordenadas del escritorio.
 ///
 /// Los mensajes de raton traen el punto relativo al cliente, pero el zoom
@@ -1505,6 +1589,41 @@ fn pintar(i: &PinInterno) {
         if con_vista {
             p.desplazar(ox as f32 - m, oy as f32 - m);
             p.soltar_recorte();
+        }
+
+        // El texto marcado, entre la imagen y las anotaciones: es una
+        // seleccion sobre la imagen, asi que va encima de ella, pero lo
+        // que el usuario ha dibujado manda sobre todo.
+        if let Some(renglones) = &i.texto_ocr {
+            if !i.seleccion_texto.is_empty() {
+                let (nw, nh) = i.imagen_nativa;
+                let r = i.estado.rect();
+                if nw > 0 && nh > 0 {
+                    let fx = r.ancho as f32 / nw as f32;
+                    let fy = r.alto as f32 / nh as f32;
+                    for caja in
+                        pixpin_geom::seleccion_texto::recuadros_de(renglones, &i.seleccion_texto)
+                    {
+                        p.rellenar_redondeado(
+                            pixpin_render::RectF {
+                                x: m + caja.x as f32 * fx,
+                                y: m + caja.y as f32 * fy,
+                                ancho: caja.ancho as f32 * fx,
+                                alto: caja.alto as f32 * fy,
+                            },
+                            2.0,
+                            // Azul translucido, como cualquier seleccion de
+                            // texto: tiene que dejar leer lo que hay debajo.
+                            pixpin_render::Color {
+                                r: 0.16,
+                                g: 0.51,
+                                b: 0.96,
+                                a: 0.38,
+                            },
+                        );
+                    }
+                }
+            }
         }
 
         // Las anotaciones van ENCIMA de todo lo demas: son una capa, y el
@@ -1891,6 +2010,34 @@ extern "system" fn procedimiento_pin(
 
     match mensaje {
         WM_LBUTTONDOWN => {
+            // Sobre una palabra reconocida, el boton izquierdo SELECCIONA
+            // texto en vez de mover el pin: es lo que lo hace parecerse a
+            // un documento. Fuera del texto, mover, como siempre.
+            if let Some(i) = interno_de(hwnd) {
+                if !i.anotando {
+                    if let Some(renglones) = &i.texto_ocr {
+                        let nativo = a_pixeles_nativos(i, punto_contenido(i, lparam));
+                        if let Some(sitio) =
+                            pixpin_geom::seleccion_texto::sitio_en(renglones, nativo, HOLGURA_TEXTO)
+                        {
+                            // SAFETY: captura sobre ventana propia; se
+                            // suelta en WM_LBUTTONUP.
+                            unsafe { SetCapture(hwnd) };
+                            i.ancla_texto = Some(sitio);
+                            i.seleccion_texto = vec![sitio];
+                            pintar(i);
+                            return LRESULT(0);
+                        }
+                    }
+                    // Pulsar fuera del texto quita la seleccion: es lo que
+                    // hace cualquier documento y evita que se quede una
+                    // marca azul olvidada encima de la imagen.
+                    if !i.seleccion_texto.is_empty() {
+                        i.seleccion_texto.clear();
+                        pintar(i);
+                    }
+                }
+            }
             // SAFETY: captura para no perder el arrastre al salir del borde.
             unsafe { SetCapture(hwnd) };
             // Clic tambien enfoca: es lo que arma el Esc de D23.
@@ -2027,12 +2174,45 @@ extern "system" fn procedimiento_pin(
         }
         WM_MOUSEMOVE => {
             if let Some(i) = interno_de(hwnd) {
+                // La primera vez que el raton entra en un pin de imagen se
+                // pide leer su texto. Aqui y no al nacer: reconocer cuesta
+                // milisegundos y hacerlo al crear cada pin daria un tiron
+                // justo cuando el usuario acaba de capturar.
+                if i.con_ocr && i.texto_ocr.is_none() && !i.ocr_pedido && !i.anotando {
+                    i.ocr_pedido = true;
+                    (i.al_cambiar)(CambioPin::ReconocerPedido);
+                }
+                // Arrastrando una seleccion de texto: se amplia y se
+                // repinta, y el pin NO se mueve.
+                if let Some(ancla) = i.ancla_texto {
+                    if let Some(renglones) = &i.texto_ocr {
+                        let nativo = a_pixeles_nativos(i, punto_contenido(i, lparam));
+                        if let Some(hasta) =
+                            pixpin_geom::seleccion_texto::sitio_en(renglones, nativo, HOLGURA_TEXTO)
+                        {
+                            i.seleccion_texto =
+                                pixpin_geom::seleccion_texto::seleccion(renglones, ancla, hasta);
+                            pintar(i);
+                        }
+                    }
+                    return LRESULT(0);
+                }
                 if i.anotando {
                     (i.al_cambiar)(CambioPin::PunteroMovido(punto_contenido(i, lparam)));
                 } else {
                     let e = i.estado.procesar(EventoPin::RatonMovido(punto(lparam)));
                     aplicar(hwnd, e);
                 }
+            }
+            LRESULT(0)
+        }
+        WM_LBUTTONUP if interno_de(hwnd).is_some_and(|i| i.ancla_texto.is_some()) => {
+            if let Some(i) = interno_de(hwnd) {
+                i.ancla_texto = None;
+            }
+            // SAFETY: libera la captura tomada al empezar la seleccion.
+            unsafe {
+                let _ = ReleaseCapture();
             }
             LRESULT(0)
         }
@@ -2427,7 +2607,40 @@ extern "system" fn procedimiento_pin(
         }
         WM_KEYDOWN if wparam.0 as u32 == b'C' as u32 && tecla_pulsada(VK_CONTROL) => {
             if let Some(i) = interno_de(hwnd) {
+                // Con texto marcado, Ctrl+C copia ESO y no la imagen: es lo
+                // que espera cualquiera que acabe de seleccionar algo. Sin
+                // seleccion, la imagen, como siempre.
+                if copiar_seleccion(i) {
+                    return LRESULT(0);
+                }
                 (i.al_cambiar)(CambioPin::CopiarPedido);
+            }
+            LRESULT(0)
+        }
+        // Shift+C copia TODO el texto reconocido, como en el original.
+        WM_KEYDOWN
+            if wparam.0 as u32 == b'C' as u32
+                && tecla_pulsada(VK_SHIFT)
+                && !tecla_pulsada(VK_CONTROL) =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                if let Some(renglones) = &i.texto_ocr {
+                    let todo: Vec<_> = renglones
+                        .iter()
+                        .enumerate()
+                        .flat_map(|(r, renglon)| {
+                            (0..renglon.palabras.len()).map(move |p| {
+                                pixpin_geom::seleccion_texto::Sitio {
+                                    renglon: r,
+                                    palabra: p,
+                                }
+                            })
+                        })
+                        .collect();
+                    i.seleccion_texto = todo;
+                    copiar_seleccion(i);
+                    pintar(i);
+                }
             }
             LRESULT(0)
         }
@@ -2451,10 +2664,27 @@ extern "system" fn procedimiento_pin(
                         let _ = GetCursorPos(&mut p);
                     }
                     if i.estado.sobre_esquina(Punto { x: p.x, y: p.y }) {
-                        IDC_SIZENWSE
-                    } else {
-                        IDC_ARROW
+                        return IDC_SIZENWSE;
                     }
+                    // Barra de texto sobre lo que se puede seleccionar: es
+                    // lo unico que avisa de que ahi hay texto, porque el
+                    // texto reconocido no se ve.
+                    if let Some(renglones) = &i.texto_ocr {
+                        let (ox, oy) = origen_contenido(i.hwnd, i.estado.rect());
+                        let r = i.estado.rect();
+                        let dentro = Punto {
+                            x: p.x - r.x - ox,
+                            y: p.y - r.y - oy,
+                        };
+                        if pixpin_geom::seleccion_texto::hay_texto_en(
+                            renglones,
+                            a_pixeles_nativos(i, dentro),
+                            HOLGURA_TEXTO,
+                        ) {
+                            return IDC_IBEAM;
+                        }
+                    }
+                    IDC_ARROW
                 })
                 .unwrap_or(IDC_ARROW);
             // SAFETY: cursores del sistema, llamadas sin precondiciones.
