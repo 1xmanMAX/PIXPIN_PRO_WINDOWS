@@ -42,14 +42,14 @@ mientras el resto está a medias.
 
 Lo que hace que las dos mitades sean una.
 
-- [ ] **A.1 Leer el JSON de Excalidraw.** Traducir sus elementos a nuestro
+- [x] **A.1 Leer el JSON de Excalidraw.** Traducir sus elementos a nuestro
       `Elemento`. Los siete tipos que ya compartimos primero; lo que no se
       entienda se conserva tal cual para no perderlo al volver a guardar.
-- [ ] **A.2 Abrir un `.pixpin`.** Es un ZIP: `manifest.json`,
+- [x] **A.2 Abrir un `.pixpin`.** Es un ZIP: `manifest.json`,
       `proyecto.json`, `lienzos/`, `imagenes/`, `notas/`, `documento.pdf`.
-- [ ] **A.3 Guardar un `.pixpin`** que el móvil pueda volver a abrir. La
+- [x] **A.3 Guardar un `.pixpin`** que el móvil pueda volver a abrir. La
       prueba que importa: ida y vuelta sin pérdida.
-- [ ] **A.4 Leer el cuaderno.** Es JSON Lines, una línea por mensaje,
+- [x] **A.4 Leer el cuaderno.** Es JSON Lines, una línea por mensaje,
       legible sin convertir nada.
 
 **Lo que no se puede romper:** un elemento que Windows no entienda tiene que
