@@ -2346,14 +2346,6 @@ extern "system" fn procedimiento_pin(
         }
         WM_MOUSEMOVE => {
             if let Some(i) = interno_de(hwnd) {
-                // La primera vez que el raton entra en un pin de imagen se
-                // pide leer su texto. Aqui y no al nacer: reconocer cuesta
-                // milisegundos y hacerlo al crear cada pin daria un tiron
-                // justo cuando el usuario acaba de capturar.
-                if i.con_ocr && i.texto_ocr.is_none() && !i.ocr_pedido && !i.anotando {
-                    i.ocr_pedido = true;
-                    (i.al_cambiar)(CambioPin::ReconocerPedido);
-                }
                 // Arrastrando una seleccion de texto: se amplia y se
                 // repinta, y el pin NO se mueve.
                 if let Some(ancla) = i.ancla_texto {
@@ -2827,6 +2819,30 @@ extern "system" fn procedimiento_pin(
                     aplicar(hwnd, EfectoPin::Mover(pegado));
                 }
                 (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, i.estado.rect())));
+            }
+            LRESULT(0)
+        }
+        // T lee el texto de la imagen, y solo entonces se puede marcar con
+        // el raton.
+        //
+        // A peticion y NO al pasar el raton por encima, que es como estaba
+        // antes: reconocer bloquea el hilo de interfaz entre 170 y 670
+        // milisegundos medidos en el equipo del usuario, y como el raton
+        // entra en el pin justo despues de crearlo, el tiron caia siempre
+        // en el peor momento. La peor medida fue en una imagen SIN texto:
+        // dos tercios de segundo de raton trabado a cambio de nada.
+        WM_KEYDOWN
+            if wparam.0 as u32 == b'T' as u32
+                && !tecla_pulsada(VK_CONTROL)
+                && interno_de(hwnd).is_some_and(|i| i.con_ocr && !i.anotando) =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                // Solo una vez por imagen: si ya esta reconocido, volver a
+                // pulsar no puede costar otro tiron.
+                if i.texto_ocr.is_none() {
+                    i.ocr_pedido = true;
+                    (i.al_cambiar)(CambioPin::ReconocerPedido);
+                }
             }
             LRESULT(0)
         }
