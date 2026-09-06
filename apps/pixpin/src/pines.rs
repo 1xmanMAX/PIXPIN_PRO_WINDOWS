@@ -22,6 +22,39 @@ const TOPE_PAGINAS: u32 = 20;
 /// imagen borrosa en cuanto se agrandara.
 const ANCHO_PAGINA_EXTRAIDA: u32 = 1600;
 
+/// Lo mas pequeno que puede ser un lienzo en blanco importado.
+///
+/// Un dibujo de dos trazos daria un pin de treinta pixeles, imposible de
+/// agarrar. Y uno vacio daria uno de cero, que ni se ve.
+const LIENZO_MINIMO: u32 = 400;
+/// Margen alrededor del dibujo, para que no quede pegado al borde.
+const LIENZO_MARGEN: f32 = 24.0;
+
+/// Un lienzo blanco del tamano justo para lo que hay dibujado.
+///
+/// Se usa cuando la hoja del movil no venia sobre una pagina de PDF. El
+/// Android dibuja sobre el plano; sin fondo, la anotacion quedaria en el
+/// aire y no se veria donde empieza ni acaba la hoja.
+fn lienzo_en_blanco(elementos: &[pixpin_motor2d::Elemento]) -> ImagenRgba {
+    let mut derecha = 0.0_f32;
+    let mut abajo = 0.0_f32;
+    for e in elementos {
+        let (_, _, x2, y2) = e.caja();
+        derecha = derecha.max(x2);
+        abajo = abajo.max(y2);
+    }
+    // Desde el origen y no desde la esquina del dibujo: las coordenadas de
+    // los elementos son absolutas, y recortar por arriba a la izquierda los
+    // dejaria descolocados respecto al fondo.
+    let ancho = ((derecha + LIENZO_MARGEN) as u32).max(LIENZO_MINIMO);
+    let alto = ((abajo + LIENZO_MARGEN) as u32).max(LIENZO_MINIMO);
+    ImagenRgba {
+        ancho,
+        alto,
+        pixeles: vec![255; ancho as usize * alto as usize * 4],
+    }
+}
+
 use anyhow::{Context, Result};
 use pixpin_codec::{ImagenRgba, cargar, codificar_png};
 use pixpin_geom::{DisposicionMonitores, Monitor, Punto, Rect, recolocar_en_area};
@@ -564,7 +597,13 @@ impl Pines {
 
     /// Una imagen del portapapeles: no viene de ninguna region de pantalla,
     /// asi que nace centrada y, si no cabe, al 80 % del area de trabajo.
-    pub fn pinear_imagen_centrada(&mut self, imagen: &ImagenRgba, monitor: &Monitor) -> Result<()> {
+    /// Devuelve el id del pin: quien importa una hoja de un proyecto lo
+    /// necesita para colgarle despues su dibujo.
+    pub fn pinear_imagen_centrada(
+        &mut self,
+        imagen: &ImagenRgba,
+        monitor: &Monitor,
+    ) -> Result<u64> {
         let contenido = Contenido::Imagen(imagen.clone());
         let region = self.region_centrada(&contenido, monitor);
         let png = codificar_png(imagen).context("no se pudo codificar la imagen")?;
@@ -577,7 +616,8 @@ impl Pines {
                 Some(Pines::guardado_desde(region, monitor.escala_por_cien, 100)),
             )
             .context("no se pudo guardar en el almacen")?;
-        self.crear_ventana(id, contenido, region, monitor.escala_por_cien)
+        self.crear_ventana(id, contenido, region, monitor.escala_por_cien)?;
+        Ok(id)
     }
 
     /// Donde nace un pin que no viene de un recorte: centrado en el monitor
@@ -1320,6 +1360,121 @@ impl Pines {
         Ok(lineas)
     }
 
+    /// Abre un `.pixpin` del movil: una hoja, un pin.
+    ///
+    /// Se eligio esto y no una ventana de proyecto con su lista de hojas
+    /// porque reusa TODO lo que ya hay — los pines, las anotaciones, las
+    /// notas — en vez de estrenar una interfaz entera. Un proyecto abierto
+    /// se ve como lo que es: sus hojas encima de la mesa.
+    ///
+    /// Devuelve cuantas hojas salieron y cuantas quedaron fuera.
+    pub fn abrir_paquete(&mut self, ruta: &Path, monitor: &Monitor) -> Result<(usize, usize)> {
+        let paquete = pixpin_proyecto::Paquete::abrir(ruta)
+            .with_context(|| format!("no se pudo abrir {}", ruta.display()))?;
+        // El PDF a un temporal: el lector de PDF trabaja sobre disco, y el
+        // paquete lo tiene en memoria. Se escribe una vez para todas las
+        // hojas, no una por hoja.
+        let pdf = paquete.entrada("documento.pdf").and_then(|bytes| {
+            let destino = std::env::temp_dir()
+                .join("PixPin")
+                .join(format!("{}.pdf", paquete.proyecto.id));
+            std::fs::create_dir_all(destino.parent()?).ok()?;
+            std::fs::write(&destino, bytes).ok()?;
+            pixpin_pdf::Documento::abrir(&destino).ok()
+        });
+
+        let total = paquete.proyecto.hojas.len();
+        let mut hechas = 0;
+        for hoja in &paquete.proyecto.hojas {
+            // Una hoja que falle no puede llevarse las demas: se anota y
+            // se sigue, que es mejor que perder el proyecto entero por una.
+            match self.abrir_hoja(&paquete, hoja, pdf.as_ref(), monitor) {
+                Ok(true) => hechas += 1,
+                Ok(false) => {}
+                Err(e) => tracing::warn!(?e, hoja = %hoja.nombre, "hoja que no se pudo abrir"),
+            }
+        }
+        tracing::info!(
+            proyecto = %paquete.proyecto.nombre,
+            hechas,
+            total,
+            "proyecto abierto"
+        );
+        Ok((hechas, total))
+    }
+
+    /// Una hoja. Devuelve si salio algo en pantalla.
+    fn abrir_hoja(
+        &mut self,
+        paquete: &pixpin_proyecto::Paquete,
+        hoja: &pixpin_proyecto::Hoja,
+        pdf: Option<&pixpin_pdf::Documento>,
+        monitor: &Monitor,
+    ) -> Result<bool> {
+        // Una nota es una nota: el pin que ya tenemos le viene exacto.
+        if let Some(texto) = paquete.nota_de(hoja) {
+            if hoja.dibujo.is_none() {
+                self.pinear_nota(&texto, monitor)?;
+                return Ok(true);
+            }
+        }
+        // Un croquis del espacio todavia no se sabe dibujar aqui. Se avisa
+        // en vez de saltarselo en silencio: el usuario tiene que poder ver
+        // que esa hoja existe y que su contenido sigue dentro del fichero.
+        if hoja.dibujo.is_none() {
+            if let Some(croquis) = &hoja.croquis {
+                let aviso = format!(
+                    "{}
+
+Croquis del espacio ({croquis}).
+Todavia no se puede ver aqui; sigue dentro del proyecto.",
+                    hoja.nombre
+                );
+                self.pinear_nota(&aviso, monitor)?;
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+
+        let Some(lienzo) = paquete.lienzo_de(hoja) else {
+            return Ok(false);
+        };
+        let lienzo = lienzo?;
+        let elementos = lienzo.elementos();
+
+        // El fondo: la pagina del PDF sobre la que se dibujo, si la hay.
+        // Si no, un lienzo en blanco del tamano del dibujo — el Android
+        // dibuja sobre el plano, y sin el la anotacion queda en el aire.
+        let fondo = match (hoja.pagina, pdf) {
+            (Some(pagina), Some(doc)) => doc.renderizar(pagina, ANCHO_PAGINA_EXTRAIDA).ok(),
+            _ => None,
+        };
+        let imagen = match fondo {
+            Some(i) => i,
+            None => lienzo_en_blanco(&elementos),
+        };
+        let id = self.pinear_imagen_centrada(&imagen, monitor)?;
+
+        // Y el dibujo encima, por el mismo camino que una anotacion hecha
+        // aqui: se escribe su fichero y se recarga. Reusar la via en vez de
+        // meter los elementos a mano es lo que hace que una hoja importada
+        // se pueda seguir editando, deshacer incluido.
+        if !elementos.is_empty() {
+            if let Some(destino) = self.ruta_anotacion(id) {
+                let mut escena = pixpin_motor2d::Escena::nueva();
+                for e in elementos {
+                    escena.anadir(e);
+                }
+                if let Err(e) = pixpin_motor2d::guardar(&destino, &escena) {
+                    tracing::warn!(?e, id, "no se pudo guardar el dibujo de la hoja");
+                } else {
+                    self.recargar_anotaciones(id);
+                }
+            }
+        }
+        Ok(true)
+    }
+
     /// La ruta del fichero de una entrada, si lo tiene.
     fn ruta_de(&self, id: u64) -> Option<std::path::PathBuf> {
         self.almacen
@@ -1418,7 +1573,7 @@ impl Pines {
         // extraida es un documento para leer, y sale de una miniatura si
         // se dibuja al tamano de la que estaba en pantalla.
         let imagen = documento.renderizar(pagina, ANCHO_PAGINA_EXTRAIDA)?;
-        self.pinear_imagen_centrada(&imagen, monitor)
+        self.pinear_imagen_centrada(&imagen, monitor).map(|_| ())
     }
 
     /// Lee el texto de la imagen del pin y lo copia (P4.2).

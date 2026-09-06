@@ -29,7 +29,8 @@ use windows::core::{HSTRING, PCWSTR};
 /// y ofrecerse para algo que no se hace bien es peor que no ofrecerse.
 pub const EXTENSIONES: &[&str] = &[
     ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tif", ".tiff", ".mp4", ".mkv", ".avi",
-    ".mov", ".webm", ".wmv",
+    ".mov", ".webm", ".wmv", // Y el proyecto entero del movil.
+    ".pixpin",
 ];
 
 #[derive(Debug, thiserror::Error)]
@@ -208,7 +209,7 @@ mod pruebas {
         for malo in [".exe", ".zip", ".pdf", ".docx", ".txt"] {
             assert!(!EXTENSIONES.contains(&malo), "sobra {malo}");
         }
-        for bueno in [".png", ".mp4"] {
+        for bueno in [".png", ".mp4", ".pixpin"] {
             assert!(EXTENSIONES.contains(&bueno), "falta {bueno}");
         }
     }

@@ -634,6 +634,12 @@ fn arrancar(
                 // Cada ruta cae en el pin que le toque por su extension:
                 // imagen, video o ficha de archivo. Eso ya lo decide el
                 // gestor, que es quien conoce los tipos.
+                // Un `.pixpin` no es un fichero que pinear: es un proyecto
+                // entero, y cada hoja suya sale como su propio pin.
+                let (proyectos, sueltos): (Vec<_>, Vec<_>) = rutas.into_iter().partition(|r| {
+                    r.extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("pixpin"))
+                });
                 let hecho = preparar_pines(
                     &mut recursos_overlay,
                     &mut pines,
@@ -643,7 +649,24 @@ fn arrancar(
                     ritmo_video,
                 )
                 .and_then(|p| {
-                    pinear_portapapeles(p, pixpin_codec::ContenidoPortapapeles::Rutas(rutas))
+                    let d = pixpin_capture::enumerar_monitores()?;
+                    let m = d.principal().context("sin monitor")?.to_owned();
+                    let mut cuantos = 0;
+                    for proyecto in &proyectos {
+                        // Un proyecto que falle no puede llevarse los
+                        // demas ficheros que venian con el.
+                        match p.abrir_paquete(proyecto, &m) {
+                            Ok((hechas, _)) => cuantos += hechas,
+                            Err(e) => tracing::warn!(?e, ruta = %proyecto.display(), "proyecto que no se pudo abrir"),
+                        }
+                    }
+                    if !sueltos.is_empty() {
+                        cuantos += pinear_portapapeles(
+                            p,
+                            pixpin_codec::ContenidoPortapapeles::Rutas(sueltos),
+                        )?;
+                    }
+                    Ok(cuantos)
                 });
                 match hecho {
                     Ok(cuantos) => tracing::info!(cuantos, "ficheros abiertos como pines"),
@@ -970,7 +993,7 @@ fn arrancar(
                         .and_then(|p| {
                             let d = pixpin_capture::enumerar_monitores()?;
                             let m = d.principal().context("sin monitor")?.to_owned();
-                            p.pinear_imagen_centrada(&imagen, &m)
+                            p.pinear_imagen_centrada(&imagen, &m).map(|_| ())
                         });
                         match hecho {
                             Ok(()) => tracing::info!("anotacion de pantalla pineada"),
