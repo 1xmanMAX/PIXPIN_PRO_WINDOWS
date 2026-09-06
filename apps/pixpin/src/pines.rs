@@ -103,6 +103,11 @@ pub struct Pines {
     /// Se lee una vez al arrancar (D33): un pin nuevo nace con el tema del
     /// momento, y los ya abiertos no cambian de color a media sesion.
     tema_claro: bool,
+    /// Si el equipo sabe reconocer texto. Se pregunta UNA vez al montar el
+    /// gestor y se reparte a cada pin: `disponible()` construye un motor
+    /// entero para responder, y llamarlo por cada pin y cada menu se
+    /// notaria.
+    con_ocr: bool,
     /// Ya traducido: `pixpin-pin` no conoce el catalogo de idiomas.
     texto_no_encontrado: String,
     /// Etiquetas del menu del pin, tambien ya traducidas.
@@ -188,6 +193,7 @@ impl Pines {
             reabrir: Rc::new(RefCell::new(Vec::new())),
             pedidos: Rc::new(RefCell::new(Vec::new())),
             tema_claro: pixpin_shell::entorno::tema_claro(),
+            con_ocr: pixpin_ocr::disponible(),
             texto_no_encontrado,
             textos,
             texto_confirmar_eliminar,
@@ -291,6 +297,10 @@ impl Pines {
         )
         .context("no se pudo crear la ventana del pin")?;
         pin.poner_textos(self.textos.clone());
+        // Se pregunta una sola vez y se reparte: montar el motor de
+        // reconocimiento cuesta, y hacerlo con el menu a medio abrir se
+        // notaria.
+        pin.poner_ocr(self.con_ocr);
         // Un pin restaurado nace ya con el color de su grupo: pintarlo negro
         // y retenirlo despues daria un parpadeo al arrancar.
         if let Some(g) = self.almacen.borrow().grupo_de(id) {
@@ -689,6 +699,7 @@ impl Pines {
     fn atender(&mut self, id: u64, cambio: CambioPin) -> Result<()> {
         match cambio {
             CambioPin::CopiarPedido => self.copiar(id),
+            CambioPin::TextoPedido => self.copiar_texto(id),
             CambioPin::GrupoPedido(indice) => {
                 let color = match indice {
                     None => None,
@@ -1200,6 +1211,36 @@ impl Pines {
     /// `Ctrl+C` sobre un pin: imagen como mapa de bits, nota como texto,
     /// archivo como su ruta (spec 4.2). Se lee del ALMACEN, no de la
     /// ventana: el almacen es la verdad (D21).
+    /// Lee el texto de la imagen del pin y lo copia (P4.2).
+    ///
+    /// Se lee del ALMACEN y no de lo que se ve en pantalla: el pin puede
+    /// estar reducido, girado o con algo dibujado encima, y reconocer eso
+    /// daria peor texto que reconocer el original, que es lo que se
+    /// guardo tal cual se capturo.
+    fn copiar_texto(&self, id: u64) -> Result<()> {
+        let objeto = {
+            let a = self.almacen.borrow();
+            let e = a
+                .entradas()
+                .iter()
+                .find(|e| e.id == id)
+                .context("la entrada ya no esta en el almacen")?;
+            if e.tipo != TipoEntrada::Imagen {
+                anyhow::bail!("solo se lee texto de una imagen");
+            }
+            a.ruta_objeto(e)
+        };
+        let img = cargar(&objeto).context("no se pudo leer la imagen del almacen")?;
+        let texto = crate::texto_de_imagen(&img).context("no se pudo reconocer el texto")?;
+        if texto.trim().is_empty() {
+            tracing::info!(id, "no se leyo texto en el pin");
+            return Ok(());
+        }
+        pixpin_codec::copiar_texto(&texto).context("no se pudo copiar el texto")?;
+        tracing::info!(id, largo = texto.len(), "texto del pin copiado");
+        Ok(())
+    }
+
     fn copiar(&self, id: u64) -> Result<()> {
         let (tipo, objeto, ruta) = {
             let a = self.almacen.borrow();

@@ -1033,6 +1033,31 @@ fn preparar_pines<'a>(
     Ok(pines.as_mut().expect("recien comprobado o creado"))
 }
 
+/// Lee el texto de una imagen y lo devuelve ya puesto en orden.
+///
+/// Las lineas llegan del sistema SIN orden de lectura: agruparlas en
+/// parrafos y columnas es lo que hace que el texto pegado se parezca al
+/// que se veia, en vez de a una lista de renglones sueltos.
+///
+/// Esta a comun porque lo usan las dos vias que leen texto: una zona de la
+/// pantalla y un pin ya hecho. Dos copias de esto acabarian dando
+/// resultados distintos para la misma imagen.
+pub fn texto_de_imagen(imagen: &pixpin_codec::ImagenRgba) -> Result<String> {
+    let lineas = pixpin_ocr::reconocer(imagen.ancho, imagen.alto, &imagen.pixeles)
+        .context("no se pudo reconocer el texto")?;
+    Ok(pixpin_geom::parrafos::a_texto(
+        &pixpin_geom::parrafos::agrupar(
+            lineas
+                .into_iter()
+                .map(|l| pixpin_geom::parrafos::LineaTexto {
+                    caja: l.caja,
+                    texto: l.texto,
+                })
+                .collect(),
+        ),
+    ))
+}
+
 /// Las etiquetas del menu del pin, traducidas de una vez.
 fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
     pixpin_pin::TextosPin {
@@ -1056,6 +1081,7 @@ fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
         pausar: textos.t("pin-pausar"),
         sonido: textos.t("pin-sonido"),
         dejar_pasar_clic: textos.t("pin-dejar-pasar-clic"),
+        copiar_texto: textos.t("pin-copiar-texto"),
         ocultar_grupo: textos.t("pin-ocultar-grupo"),
         cerrar: textos.t("pin-cerrar"),
         eliminar: textos.t("pin-eliminar"),
@@ -1129,24 +1155,13 @@ fn ejecutar_accion(
         // orden de lectura: agruparlas en parrafos y columnas es lo que
         // hace que el texto pegado se parezca al que se veia.
         AccionFinal::Texto(imagen) => {
-            let lineas = pixpin_ocr::reconocer(imagen.ancho, imagen.alto, &imagen.pixeles)
-                .context("no se pudo reconocer el texto")?;
-            let cuantas = lineas.len();
-            let texto = pixpin_geom::parrafos::a_texto(&pixpin_geom::parrafos::agrupar(
-                lineas
-                    .into_iter()
-                    .map(|l| pixpin_geom::parrafos::LineaTexto {
-                        caja: l.caja,
-                        texto: l.texto,
-                    })
-                    .collect(),
-            ));
+            let texto = texto_de_imagen(&imagen)?;
             if texto.trim().is_empty() {
                 tracing::info!("no se leyo texto en la zona elegida");
                 return Ok(None);
             }
             pixpin_codec::copiar_texto(&texto).context("no se pudo copiar el texto")?;
-            tracing::info!(lineas = cuantas, largo = texto.len(), "texto copiado");
+            tracing::info!(largo = texto.len(), "texto copiado");
             Ok(None)
         }
         AccionFinal::Copiar(imagen) => {

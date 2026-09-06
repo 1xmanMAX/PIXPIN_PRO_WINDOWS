@@ -245,7 +245,10 @@ pub const CATALOGO: &[Descriptor] = &[
         comando: Comando::CopiarTexto,
         nombre: "copiar-texto",
         clave_titulo: "comando-copiar-texto",
-        atajo_por_defecto: None,
+        // Con atajo de fabrica: sin el, la unica via era el menu de la
+        // bandeja, y una funcion que se usa a menudo escondida ahi es una
+        // funcion que nadie encuentra. Ctrl+Alt+T de «texto».
+        atajo_por_defecto: Some("Ctrl+Alt+T"),
         en_bandeja: true,
     },
     Descriptor {
