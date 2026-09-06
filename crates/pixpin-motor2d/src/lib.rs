@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 
 pub mod azar;
+pub mod camara;
 pub mod elemento;
 pub mod escena;
 pub mod excalidraw;
@@ -27,6 +28,7 @@ pub mod trazo;
 pub mod vector;
 
 pub use azar::Azar;
+pub use camara::{Camara, cuantos_se_ven, recortar};
 pub use elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
 pub use escena::Escena;
 pub use formas::{elipse, linea, punta_flecha, rectangulo};
