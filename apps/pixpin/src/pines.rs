@@ -30,29 +30,56 @@ const LIENZO_MINIMO: u32 = 400;
 /// Margen alrededor del dibujo, para que no quede pegado al borde.
 const LIENZO_MARGEN: f32 = 24.0;
 
-/// Un lienzo blanco del tamano justo para lo que hay dibujado.
+/// Un lienzo blanco del tamano justo para lo que hay dibujado, y cuanto hay
+/// que mover el dibujo para que caiga dentro.
 ///
 /// Se usa cuando la hoja del movil no venia sobre una pagina de PDF. El
-/// Android dibuja sobre el plano; sin fondo, la anotacion quedaria en el
-/// aire y no se veria donde empieza ni acaba la hoja.
-fn lienzo_en_blanco(elementos: &[pixpin_motor2d::Elemento]) -> ImagenRgba {
-    let mut derecha = 0.0_f32;
-    let mut abajo = 0.0_f32;
+/// Android dibuja sobre el plano; sin fondo, la anotacion quedaria en el aire
+/// y no se veria donde empieza ni acaba la hoja.
+///
+/// # Por que se recorta por arriba a la izquierda
+///
+/// En un lienzo infinito, el (0,0) es un sitio cualquiera por el que se
+/// empezo a dibujar, y lo dibujado puede estar a mil pixeles de el. Medir
+/// desde el origen fabrica un lienzo enorme casi todo vacio: el dibujo real
+/// del usuario empieza en (165, 228) y acababa dando un pin de 1202 x 2172,
+/// mas alto que su pantalla. Al encogerlo para que quepa, el dibujo se veia
+/// diminuto y arrinconado — lo que se noto como que «no aparece completo».
+///
+/// Recortar exige mover el dibujo la misma cantidad, y por eso se devuelve el
+/// desplazamiento en vez de aplicarlo aqui: mover elementos no es cosa de una
+/// funcion que fabrica un fondo. **Solo vale sin fondo.** Sobre una pagina de
+/// PDF las coordenadas tienen que seguir cuadrando con la pagina, y ahi el
+/// desplazamiento seria justo el error que se esta arreglando.
+fn lienzo_en_blanco(elementos: &[pixpin_motor2d::Elemento]) -> (ImagenRgba, f32, f32) {
+    let mut izquierda = f32::MAX;
+    let mut arriba = f32::MAX;
+    let mut derecha = f32::MIN;
+    let mut abajo = f32::MIN;
     for e in elementos {
-        let (_, _, x2, y2) = e.caja();
+        let (x1, y1, x2, y2) = e.caja();
+        izquierda = izquierda.min(x1);
+        arriba = arriba.min(y1);
         derecha = derecha.max(x2);
         abajo = abajo.max(y2);
     }
-    // Desde el origen y no desde la esquina del dibujo: las coordenadas de
-    // los elementos son absolutas, y recortar por arriba a la izquierda los
-    // dejaria descolocados respecto al fondo.
-    let ancho = ((derecha + LIENZO_MARGEN) as u32).max(LIENZO_MINIMO);
-    let alto = ((abajo + LIENZO_MARGEN) as u32).max(LIENZO_MINIMO);
-    ImagenRgba {
-        ancho,
-        alto,
-        pixeles: vec![255; ancho as usize * alto as usize * 4],
+    // Sin nada dibujado no hay esquina de la que partir: se deja el origen y
+    // sale el lienzo minimo, que es lo que se quiere de una hoja en blanco.
+    if izquierda > derecha {
+        (izquierda, arriba, derecha, abajo) = (0.0, 0.0, 0.0, 0.0);
     }
+    let (dx, dy) = (LIENZO_MARGEN - izquierda, LIENZO_MARGEN - arriba);
+    let ancho = ((derecha - izquierda + 2.0 * LIENZO_MARGEN) as u32).max(LIENZO_MINIMO);
+    let alto = ((abajo - arriba + 2.0 * LIENZO_MARGEN) as u32).max(LIENZO_MINIMO);
+    (
+        ImagenRgba {
+            ancho,
+            alto,
+            pixeles: vec![255; ancho as usize * alto as usize * 4],
+        },
+        dx,
+        dy,
+    )
 }
 
 use anyhow::{Context, Result};
@@ -1449,8 +1476,11 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
             (Some(pagina), Some(doc)) => doc.renderizar(pagina, ANCHO_PAGINA_EXTRAIDA).ok(),
             _ => None,
         };
-        let imagen = match fondo {
-            Some(i) => i,
+        // Sobre una pagina de PDF el dibujo ya esta en las coordenadas de la
+        // pagina y no se toca. Sin fondo, el lienzo se recorta a lo dibujado
+        // y hay que mover el dibujo lo mismo que se recorto.
+        let (imagen, dx, dy) = match fondo {
+            Some(i) => (i, 0.0, 0.0),
             None => lienzo_en_blanco(&elementos),
         };
         let id = self.pinear_imagen_centrada(&imagen, monitor)?;
@@ -1462,7 +1492,8 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
         if !elementos.is_empty() {
             if let Some(destino) = self.ruta_anotacion(id) {
                 let mut escena = pixpin_motor2d::Escena::nueva();
-                for e in elementos {
+                for mut e in elementos {
+                    e.mover(dx, dy);
                     escena.anadir(e);
                 }
                 if let Err(e) = pixpin_motor2d::guardar(&destino, &escena) {
@@ -1759,4 +1790,97 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
 /// Del punto entero del pin al punto en coma flotante del motor.
 fn a_punto2(p: pixpin_geom::Punto) -> pixpin_motor2d::Punto2 {
     pixpin_motor2d::Punto2::nuevo(p.x as f32, p.y as f32)
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use pixpin_motor2d::{ColorRgba, Elemento, EstiloTrazo, Figura, Punto2};
+
+    fn trazo(x1: f32, y1: f32, x2: f32, y2: f32) -> Elemento {
+        Elemento {
+            id: 0,
+            figura: Figura::Linea {
+                puntos: vec![Punto2::nuevo(x1, y1), Punto2::nuevo(x2, y2)],
+            },
+            x: x1,
+            y: y1,
+            ancho: x2 - x1,
+            alto: y2 - y1,
+            angulo: 0.0,
+            trazo: ColorRgba {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            },
+            relleno: None,
+            grosor: 0.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 0.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 1,
+            borrado: false,
+        }
+    }
+
+    #[test]
+    fn el_lienzo_se_recorta_a_lo_dibujado_y_no_al_origen() {
+        // El caso del usuario: su dibujo empieza en (165, 228) y acaba en
+        // (1178, 2148). Midiendo desde el origen salia un pin de 1202 x 2172
+        // —mas alto que su pantalla—, casi todo en blanco, y al encogerlo
+        // para que cupiera el dibujo se veia diminuto y arrinconado.
+        let (imagen, dx, dy) = lienzo_en_blanco(&[trazo(165.0, 228.0, 1178.0, 2148.0)]);
+        let m = LIENZO_MARGEN as u32;
+        assert_eq!(
+            imagen.ancho,
+            1013 + 2 * m,
+            "sobra lienzo en blanco a un lado"
+        );
+        assert_eq!(imagen.alto, 1920 + 2 * m, "sobra lienzo en blanco arriba");
+        // Y el desplazamiento tiene que dejar el dibujo justo tras el margen.
+        assert!((165.0 + dx - LIENZO_MARGEN).abs() < 0.01, "dx {dx}");
+        assert!((228.0 + dy - LIENZO_MARGEN).abs() < 0.01, "dy {dy}");
+    }
+
+    #[test]
+    fn lo_dibujado_cabe_entero_dentro_del_lienzo_recortado() {
+        // Lo que de verdad importa: despues de mover, ni un punto se sale.
+        // Si esto falla, al usuario se le pierde parte del dibujo.
+        let mut e = trazo(165.0, 228.0, 1178.0, 2148.0);
+        let (imagen, dx, dy) = lienzo_en_blanco(std::slice::from_ref(&e));
+        e.mover(dx, dy);
+        let (x1, y1, x2, y2) = e.caja();
+        assert!(x1 >= 0.0 && y1 >= 0.0, "se sale por arriba: {x1} {y1}");
+        assert!(
+            x2 <= imagen.ancho as f32 && y2 <= imagen.alto as f32,
+            "se sale por abajo: {x2} {y2} en {}x{}",
+            imagen.ancho,
+            imagen.alto
+        );
+    }
+
+    #[test]
+    fn una_hoja_en_blanco_da_el_lienzo_minimo_sin_moverse() {
+        // Caso negativo: sin nada dibujado no hay esquina de la que partir, y
+        // un lienzo de cero no se veria.
+        let (imagen, dx, dy) = lienzo_en_blanco(&[]);
+        assert_eq!(imagen.ancho, LIENZO_MINIMO);
+        assert_eq!(imagen.alto, LIENZO_MINIMO);
+        assert!((dx - LIENZO_MARGEN).abs() < 0.01 && (dy - LIENZO_MARGEN).abs() < 0.01);
+    }
+
+    #[test]
+    fn un_dibujo_en_coordenadas_negativas_tambien_entra() {
+        // En un lienzo infinito el (0,0) es un sitio cualquiera, y se dibuja
+        // igual a su izquierda. Midiendo desde el origen esto daba un lienzo
+        // minimo con el dibujo entero fuera: invisible.
+        let mut e = trazo(-900.0, -700.0, -400.0, -200.0);
+        let (imagen, dx, dy) = lienzo_en_blanco(std::slice::from_ref(&e));
+        e.mover(dx, dy);
+        let (x1, y1, x2, y2) = e.caja();
+        assert!(x1 >= 0.0 && y1 >= 0.0, "quedo fuera: {x1} {y1}");
+        assert!(x2 <= imagen.ancho as f32 && y2 <= imagen.alto as f32);
+    }
 }
