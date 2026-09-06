@@ -18,6 +18,7 @@
 pub mod azar;
 pub mod elemento;
 pub mod escena;
+pub mod excalidraw;
 pub mod formas;
 pub mod formato;
 pub mod impacto;
