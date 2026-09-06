@@ -298,6 +298,113 @@ pub fn ordenes_de_escena(escena: &Escena) -> Vec<Orden> {
     escena.visibles().flat_map(ordenes).collect()
 }
 
+/// Holgura que se acepta perder al simplificar, en pixeles de pantalla.
+///
+/// Medio pixel es la mitad de lo que el ojo puede distinguir, asi que lo que
+/// se quita por debajo de eso no se puede notar por definicion.
+pub const HOLGURA_DETALLE: f32 = 0.5;
+
+/// Por debajo de este tamano en pantalla, un trazo se dibuja como una linea y
+/// no como tinta.
+///
+/// # Por que existe este umbral, y por que no se adelgaza la tinta
+///
+/// La primera idea fue quitarle puntos al trazo cuando se ve pequeno. Medido
+/// sobre un dibujo con la forma del real, **sale peor**: al 50 % con holgura
+/// de un pixel, adelgazar daba 20.564 puntos de salida contra los 18.236 de
+/// no hacer nada.
+///
+/// La causa esta en que la tinta de un lapiz no es una linea con grosor, es
+/// un contorno relleno con un arco de trece pasos en cada esquina cerrada y
+/// una tapa redonda en cada punta. Al quitar puntos, los angulos entre los
+/// que quedan se cierran mas, salen mas arcos, y el contorno engorda. Por
+/// debajo del 78 % no bajaba nunca: ahi ya solo quedaban las tapas.
+///
+/// Asi que la economia no es adelgazar la tinta, es **no dibujar tinta cuando
+/// no se ve**. Un trazo que en pantalla mide cuarenta pixeles no ensena ni su
+/// afilado ni sus tapas; una linea de su grosor medio es identica al ojo y
+/// cuesta una fraccion. Y ahi si conviene adelgazar, porque una polilinea
+/// saca un punto por cada punto que entra.
+pub const TINTA_MINIMA_PX: f32 = 48.0;
+
+/// Las ordenes de un elemento visto a este aumento.
+///
+/// Hace dos cosas, y solo a las figuras que tienen puntos:
+///
+/// - Un trazo de tinta —lapiz o resaltador— que en pantalla queda por debajo
+///   de `TINTA_MINIMA_PX` pasa a dibujarse como linea, adelgazada.
+/// - Una linea o una flecha se adelgazan siempre, porque su salida es punto
+///   por punto y ahi quitar puntos si quita trabajo.
+///
+/// Un `zoom` de cero o menos devuelve el dibujo entero: es la forma de pedir
+/// «sin simplificar», que es lo que quiere quien exporta a un fichero.
+///
+/// Se trabaja sobre una **copia**: los puntos guardados del elemento no se
+/// tocan nunca. Ver `aligerar` para por que eso no es negociable.
+pub fn ordenes_a_distancia(e: &Elemento, zoom: f32) -> Vec<Orden> {
+    if zoom <= 0.0 || e.borrado {
+        return ordenes(e);
+    }
+    let tolerancia = HOLGURA_DETALLE / zoom;
+    let flacos = |puntos: &[Punto2]| crate::aligerar::aligerar(puntos, tolerancia);
+
+    // Cuanto ocupa en pantalla, por su lado mayor.
+    let (x0, y0, x1, y1) = e.caja();
+    let en_pantalla = (x1 - x0).max(y1 - y0) * zoom;
+
+    match &e.figura {
+        Figura::Lapiz { puntos, .. } | Figura::Resaltador { puntos }
+            if en_pantalla < TINTA_MINIMA_PX =>
+        {
+            let puntos = flacos(puntos);
+            if puntos.len() < 2 {
+                return Vec::new();
+            }
+            vec![Orden::Polilinea {
+                puntos,
+                color: con_opacidad(e.trazo, e.opacidad),
+                grosor: e.grosor.max(1.0),
+                estilo: EstiloTrazo::Solido,
+            }]
+        }
+        Figura::Linea { puntos } => ordenes(&Elemento {
+            figura: Figura::Linea {
+                puntos: flacos(puntos),
+            },
+            ..e.clone()
+        }),
+        Figura::Flecha {
+            puntos,
+            punta_inicio,
+            punta_fin,
+        } => ordenes(&Elemento {
+            figura: Figura::Flecha {
+                puntos: flacos(puntos),
+                punta_inicio: *punta_inicio,
+                punta_fin: *punta_fin,
+            },
+            ..e.clone()
+        }),
+        _ => ordenes(e),
+    }
+}
+
+/// Las ordenes de lo que se ve, y solo de lo que se ve.
+///
+/// Es la via que usa un lienzo infinito, y hace las dos economias que lo
+/// sostienen: no mira siquiera los elementos que caen fuera de la pantalla, y
+/// de los que entran no dibuja el detalle que a ese aumento no se distingue.
+pub fn ordenes_de_escena_vista(
+    escena: &Escena,
+    camara: &crate::camara::Camara,
+    ancho_px: f32,
+    alto_px: f32,
+) -> Vec<Orden> {
+    crate::camara::recortar(escena, camara.ventana(ancho_px, alto_px))
+        .flat_map(|e| ordenes_a_distancia(e, camara.zoom))
+        .collect()
+}
+
 /// Holgura del marco de seleccion alrededor de la caja del elemento, en
 /// pixeles logicos: pegado al borde no se distingue del propio trazo.
 pub const HOLGURA_SELECCION: f32 = 4.0;

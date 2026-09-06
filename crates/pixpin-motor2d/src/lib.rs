@@ -15,6 +15,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod aligerar;
 pub mod azar;
 pub mod camara;
 pub mod elemento;
@@ -27,6 +28,7 @@ pub mod pintado;
 pub mod trazo;
 pub mod vector;
 
+pub use aligerar::aligerar;
 pub use azar::Azar;
 pub use camara::{Camara, cuantos_se_ven, recortar};
 pub use elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
@@ -34,6 +36,9 @@ pub use escena::Escena;
 pub use formas::{elipse, linea, punta_flecha, rectangulo};
 pub use formato::{EXTENSION, ErrorFormato, cargar, guardar};
 pub use impacto::{TOLERANCIA, elemento_en, toca};
-pub use pintado::{Orden, marco_de_seleccion, ordenes, ordenes_de_escena};
+pub use pintado::{
+    Orden, marco_de_seleccion, ordenes, ordenes_a_distancia, ordenes_de_escena,
+    ordenes_de_escena_vista,
+};
 pub use trazo::{Ajustes, PuntoTrazo, contorno, linea_central, poligono};
 pub use vector::{Punto2, distancia_a_segmento};
