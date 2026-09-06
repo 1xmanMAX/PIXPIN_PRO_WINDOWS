@@ -106,3 +106,25 @@ cuenta-atras-cancelar = Esc para parar
 
 # Pinear lo seleccionado en el Explorador (P1.6).
 comando-pinear-seleccion = Pinear lo seleccionado en el Explorador
+
+# La ventana de ajustes (P6).
+ajustes-pestana-atajos = Atajos
+ajustes-pestana-general = General
+ajustes-pestana-captura = Captura
+ajustes-idioma = Idioma
+ajustes-idioma-sistema = El de Windows
+ajustes-arranque = Arrancar con Windows
+ajustes-color = Formato del color del cuentagotas
+ajustes-nivel = Rendimiento
+ajustes-nivel-auto = Automático
+ajustes-nivel-completo = Completo
+ajustes-nivel-ligero = Ligero
+ajustes-retardo-captura = Segundos de cuenta atrás antes de capturar
+ajustes-limite-scroll = Alto máximo de la captura con scroll, en píxeles
+ajustes-gif-ritmo = Fotogramas por segundo al grabar
+ajustes-gif-retardo = Segundos de cortesía antes de grabar
+ajustes-sin-atajo = Sin atajo
+ajustes-pulsa-combinacion = Pulsa la combinación…
+ajustes-choca = repetido
+ajustes-cerrar = Cerrar
+ajustes-abrir-fichero = Abrir el fichero de ajustes

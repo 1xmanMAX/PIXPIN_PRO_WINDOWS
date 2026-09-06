@@ -36,7 +36,9 @@ pub use encima::{Fijada, alternar_ventana_bajo_el_cursor};
 pub use entorno::{
     appdata, directorio_del_ejecutable, locale_del_sistema, posicion_del_cursor, tema_claro,
 };
-pub use entrada::{boton_del_raton_pulsado, escape_pulsado, modificadores, rueda_en};
+pub use entrada::{
+    boton_del_raton_pulsado, escape_pulsado, modificadores, modificadores_pulsados, rueda_en,
+};
 pub use explorador::seleccion_del_explorador;
 pub use gestos::{GanchoRaton, gesto_en_curso};
 pub use instancia::{ErrorInstanciaUnica, InstanciaUnica, adquirir_instancia_unica};
