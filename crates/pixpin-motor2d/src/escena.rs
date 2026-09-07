@@ -59,6 +59,12 @@ enum Cambio {
         id: u64,
         antes: Box<Elemento>,
     },
+    /// El orden completo de los ids **antes** del cambio.
+    ///
+    /// Reordenar no toca ningun elemento, asi que no se puede expresar con
+    /// `Editado`: lo que cambia es la lista, no su contenido. Y el orden de
+    /// la lista ES el orden de pintado, asi que perderlo se ve.
+    Reordenado(Vec<u64>),
 }
 
 /// Todo lo que hizo un gesto. Un arrastre que mueve cuarenta elementos es
@@ -74,6 +80,7 @@ impl Cambio {
         match self {
             Cambio::Anadido(_) | Cambio::Borrado(_) => size_of::<Cambio>(),
             Cambio::Editado { antes, .. } => size_of::<Cambio>() + antes.bytes(),
+            Cambio::Reordenado(orden) => size_of::<Cambio>() + orden.len() * size_of::<u64>(),
         }
     }
 }
@@ -284,6 +291,26 @@ impl Escena {
         }
     }
 
+    /// Guarda el orden actual de los ids para poder volver a el.
+    ///
+    /// Apuntarlo dos veces dentro del mismo paso guarda **solo la primera**:
+    /// igual que `apuntar_edicion`.
+    pub fn apuntar_reordenamiento(&mut self) {
+        let Some(paso) = &self.en_curso else { return };
+        let ya_esta = paso
+            .cambios
+            .iter()
+            .any(|c| matches!(c, Cambio::Reordenado(_)));
+        if ya_esta {
+            return;
+        }
+        let orden: Vec<u64> = self.elementos.iter().map(|e| e.id).collect();
+        let cambio = Cambio::Reordenado(orden);
+        if let Some(paso) = &mut self.en_curso {
+            paso.cambios.push(cambio);
+        }
+    }
+
     /// Cierra el gesto. Un paso sin cambios no entra en el historial: hacer
     /// clic sin arrastrar no debe consumir un `Ctrl+Z`.
     pub fn cerrar_paso(&mut self) {
@@ -375,6 +402,19 @@ impl Escena {
                             antes: Box::new(ahora),
                         });
                     }
+                }
+                Cambio::Reordenado(orden_anterior) => {
+                    // Guarda el orden actual y restaura el anterior.
+                    let orden_actual: Vec<u64> = self.elementos.iter().map(|e| e.id).collect();
+                    // Reordena segun la lista guardada, ignorando ids que ya no existen.
+                    let mut nuevos_elementos = Vec::new();
+                    for id in orden_anterior {
+                        if let Some(e) = self.elementos.iter().find(|e| e.id == *id) {
+                            nuevos_elementos.push(e.clone());
+                        }
+                    }
+                    self.elementos = nuevos_elementos;
+                    inverso.cambios.push(Cambio::Reordenado(orden_actual));
                 }
             }
         }

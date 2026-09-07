@@ -88,12 +88,18 @@ pub fn hermanos_de(escena: &Escena, id: u64) -> Vec<u64> {
 
 /// Sube lo elegido al frente, conservando su orden relativo.
 pub fn al_frente(escena: &mut Escena, sel: &Seleccion) {
+    escena.abrir_paso();
+    escena.apuntar_reordenamiento();
     reordenar(escena, sel, true);
+    escena.cerrar_paso();
 }
 
 /// Baja lo elegido al fondo, conservando su orden relativo.
 pub fn al_fondo(escena: &mut Escena, sel: &Seleccion) {
+    escena.abrir_paso();
+    escena.apuntar_reordenamiento();
     reordenar(escena, sel, false);
+    escena.cerrar_paso();
 }
 
 fn reordenar(escena: &mut Escena, sel: &Seleccion, al_frente: bool) {
@@ -387,5 +393,80 @@ mod pruebas {
 
         repartir(&mut escena, &sel, Reparto::Horizontal);
         assert_eq!(escena.buscar(b).unwrap().x, antes, "no hay nada en medio");
+    }
+
+    #[test]
+    fn al_frente_seguido_de_deshacer_devuelve_el_orden_exacto_de_partida() {
+        let (mut escena, a, _, _) = con_tres();
+        let orden_partida: Vec<u64> = escena.elementos.iter().map(|e| e.id).collect();
+
+        let mut sel = Seleccion::nueva();
+        sel.poner(a);
+        al_frente(&mut escena, &sel);
+
+        assert!(escena.deshacer());
+        let orden_vuelta: Vec<u64> = escena.elementos.iter().map(|e| e.id).collect();
+        assert_eq!(
+            orden_vuelta, orden_partida,
+            "la lista de ids completa vuelve a su orden original"
+        );
+    }
+
+    #[test]
+    fn al_fondo_seguido_de_deshacer_devuelve_el_orden_exacto_de_partida() {
+        let (mut escena, _, _, c) = con_tres();
+        let orden_partida: Vec<u64> = escena.elementos.iter().map(|e| e.id).collect();
+
+        let mut sel = Seleccion::nueva();
+        sel.poner(c);
+        al_fondo(&mut escena, &sel);
+
+        assert!(escena.deshacer());
+        let orden_vuelta: Vec<u64> = escena.elementos.iter().map(|e| e.id).collect();
+        assert_eq!(
+            orden_vuelta, orden_partida,
+            "la lista de ids completa vuelve a su orden original"
+        );
+    }
+
+    #[test]
+    fn subir_dos_elementos_al_frente_y_deshacer_los_vuelve_a_su_sitio_en_orden() {
+        let (mut escena, a, b, _) = con_tres();
+        let orden_partida: Vec<u64> = escena.elementos.iter().map(|e| e.id).collect();
+
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b]);
+        al_frente(&mut escena, &sel);
+
+        // Despues de subir: [c, a, b]. Al deshacer vuelven a su sitio y orden relativo.
+        assert!(escena.deshacer());
+        let orden_vuelta: Vec<u64> = escena.elementos.iter().map(|e| e.id).collect();
+        assert_eq!(
+            orden_vuelta, orden_partida,
+            "los dos elementos vuelven a su sitio en su orden relativo original"
+        );
+    }
+
+    #[test]
+    fn deshacer_y_rehacer_un_reordenamiento_treinta_veces_deja_la_lista_identica() {
+        let (mut escena, a, _, _) = con_tres();
+
+        let mut sel = Seleccion::nueva();
+        sel.poner(a);
+        al_frente(&mut escena, &sel);
+        let orden_despues_al_frente: Vec<u64> = escena.elementos.iter().map(|e| e.id).collect();
+
+        // Deshacer y rehacer treinta veces, alternados. Cada ciclo deberia restaurar
+        // el estado exacto: deshacer vuelve al original, rehacer vuelve al modificado.
+        for _ in 0..30 {
+            assert!(escena.deshacer());
+            assert!(escena.rehacer());
+        }
+
+        let orden_final: Vec<u64> = escena.elementos.iter().map(|e| e.id).collect();
+        assert_eq!(
+            orden_final, orden_despues_al_frente,
+            "tras treinta ciclos de deshacer y rehacer, la lista es identica a despues de al_frente"
+        );
     }
 }
