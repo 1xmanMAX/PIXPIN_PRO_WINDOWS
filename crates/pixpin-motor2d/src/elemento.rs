@@ -8,6 +8,8 @@
 //! le dice al dibujante que su geometria cacheada ya no vale. Sin ella habria
 //! que comparar el elemento entero en cada fotograma.
 
+use std::mem::size_of;
+
 use serde::{Deserialize, Serialize};
 
 use crate::vector::Punto2;
@@ -203,6 +205,23 @@ impl Elemento {
     /// Si el interior cuenta para el hit-test y para el dibujo.
     pub fn tiene_relleno(&self) -> bool {
         self.relleno.is_some_and(|c| c.a > 0.0)
+    }
+
+    /// Lo que ocupa de verdad, contando lo que hay al otro lado de los
+    /// punteros. `size_of` solo cuenta la cabecera, y un trazo de 492
+    /// puntos son cuatro kilobytes que no apareceran en el techo.
+    pub fn bytes(&self) -> usize {
+        let dentro = match &self.figura {
+            Figura::Lapiz { puntos, presiones } => {
+                puntos.len() * size_of::<Punto2>() + presiones.len() * size_of::<f32>()
+            }
+            Figura::Resaltador { puntos }
+            | Figura::Linea { puntos }
+            | Figura::Flecha { puntos, .. } => puntos.len() * size_of::<Punto2>(),
+            Figura::Texto { texto, familia, .. } => texto.len() + familia.len(),
+            _ => 0,
+        };
+        size_of::<Elemento>() + dentro
     }
 }
 

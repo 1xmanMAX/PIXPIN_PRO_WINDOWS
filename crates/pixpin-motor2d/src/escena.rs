@@ -9,6 +9,8 @@
 //! coste de guardar un elemento borrado (unas decenas de bytes) es mucho menor
 //! que el de perder un trazo.
 
+use std::mem::size_of;
+
 use serde::{Deserialize, Serialize};
 
 use crate::elemento::Elemento;
@@ -30,22 +32,60 @@ pub struct Escena {
     /// abrir un dibujo de ayer un trazo que no se ve hacer confunde mas de
     /// lo que ayuda.
     #[serde(skip)]
-    historia: Vec<Cambio>,
+    historia: Vec<Paso>,
     #[serde(skip)]
-    rehacer: Vec<Cambio>,
+    rehacer: Vec<Paso>,
+    /// El paso que se esta construyendo, entre `abrir_paso` y `cerrar_paso`.
+    #[serde(skip)]
+    en_curso: Option<Paso>,
+    /// Lo que ocupan `historia` y `rehacer`, para no tener que recorrerlos.
+    #[serde(skip)]
+    bytes_historial: usize,
 }
 
-/// Un paso deshacible. Cada uno sabe invertirse.
-#[derive(Debug, Clone, Copy, PartialEq)]
+/// Un cambio suelto. Cada uno sabe invertirse.
+#[derive(Debug, Clone, PartialEq)]
 enum Cambio {
     Anadido(u64),
     Borrado(u64),
-    /// Un arrastre entero, no cada pixel: el desplazamiento total.
-    Movido {
+    /// El elemento entero **antes** del cambio.
+    ///
+    /// Guardar el estado anterior y no la operacion inversa es D24, y no es
+    /// preferencia de estilo: en coma flotante `(a * 1.5) / 1.5` no siempre
+    /// devuelve `a`. Con la operacion inversa, treinta ciclos de deshacer y
+    /// rehacer deforman el dibujo poco a poco — un fallo que aparece en
+    /// casa del usuario y no en las pruebas.
+    Editado {
         id: u64,
-        dx: f32,
-        dy: f32,
+        antes: Box<Elemento>,
     },
+}
+
+/// Todo lo que hizo un gesto. Un arrastre que mueve cuarenta elementos es
+/// **un** paso de deshacer, no cuarenta.
+#[derive(Debug, Clone, PartialEq, Default)]
+struct Paso {
+    cambios: Vec<Cambio>,
+}
+
+impl Cambio {
+    /// Lo que ocupa de cara al techo del historial.
+    fn bytes(&self) -> usize {
+        match self {
+            Cambio::Anadido(_) | Cambio::Borrado(_) => size_of::<Cambio>(),
+            Cambio::Editado { antes, .. } => size_of::<Cambio>() + antes.bytes(),
+        }
+    }
+}
+
+/// Techo del historial (D25). Ocho megas son quinientos arrastres de un
+/// trazo de 492 puntos —mas de lo que nadie deshace de una sentada— y una
+/// fraccion asumible de los ~1,5 GB que Windows 10 deja libres en la
+/// maquina suelo de 4 GB.
+const TECHO_HISTORIAL: usize = 8 * 1024 * 1024;
+
+fn bytes_de(paso: &Paso) -> usize {
+    paso.cambios.iter().map(Cambio::bytes).sum()
 }
 
 fn version_uno() -> u32 {
@@ -64,6 +104,8 @@ impl Default for Escena {
             elementos: Vec::new(),
             historia: Vec::new(),
             rehacer: Vec::new(),
+            en_curso: None,
+            bytes_historial: 0,
         }
     }
 }
@@ -79,15 +121,29 @@ impl Escena {
         self.siguiente_id = id + 1;
         e.id = id;
         self.elementos.push(e);
-        self.apuntar(Cambio::Anadido(id));
+        self.apuntar_anadido(id);
         id
     }
 
-    /// Apunta un paso deshacible. Hacer algo nuevo corta la rama de rehacer,
-    /// como en cualquier editor.
-    fn apuntar(&mut self, c: Cambio) {
-        self.historia.push(c);
-        self.rehacer.clear();
+    /// Mete un cambio suelto en el paso en curso, o le crea uno propio si no
+    /// hay ninguno abierto. Hacer algo nuevo fuera de un paso corta la rama
+    /// de rehacer, como en cualquier editor.
+    fn empujar_cambio(&mut self, cambio: Cambio) {
+        match &mut self.en_curso {
+            Some(paso) => paso.cambios.push(cambio),
+            None => {
+                let paso = Paso {
+                    cambios: vec![cambio],
+                };
+                self.bytes_historial += bytes_de(&paso);
+                self.historia.push(paso);
+                self.rehacer.clear();
+            }
+        }
+    }
+
+    fn apuntar_anadido(&mut self, id: u64) {
+        self.empujar_cambio(Cambio::Anadido(id));
     }
 
     /// Desplaza un elemento SIN apuntarlo: es cada pixel de un arrastre en
@@ -106,17 +162,28 @@ impl Escena {
 
     /// Cierra un arrastre: apunta el desplazamiento total como UN paso. Un
     /// arrastre que acaba donde empezo no deja rastro en el historial.
+    ///
+    /// El elemento ya esta en su posicion final cuando se llama: el "antes"
+    /// se reconstruye desplazandolo al reves, que para una traslacion (una
+    /// suma) es exacto, a diferencia de una escala (D24).
     pub fn apuntar_movimiento(&mut self, id: u64, dx: f32, dy: f32) {
-        if dx != 0.0 || dy != 0.0 {
-            self.apuntar(Cambio::Movido { id, dx, dy });
+        if dx == 0.0 && dy == 0.0 {
+            return;
         }
+        let Some(e) = self.buscar(id) else { return };
+        let mut antes = e.clone();
+        antes.mover(-dx, -dy);
+        self.empujar_cambio(Cambio::Editado {
+            id,
+            antes: Box::new(antes),
+        });
     }
 
     /// Borrado a peticion del usuario (el borrador, la tecla Suprimir): se
     /// apunta para poder deshacerlo.
     pub fn borrar_apuntando(&mut self, id: u64) -> bool {
         if self.borrar(id) {
-            self.apuntar(Cambio::Borrado(id));
+            self.empujar_cambio(Cambio::Borrado(id));
             true
         } else {
             false
@@ -163,53 +230,143 @@ impl Escena {
         }
     }
 
-    /// Deshace el ultimo paso de esta sesion: un trazo anadido, un borrado o
-    /// un arrastre. Devuelve el id afectado.
-    pub fn deshacer(&mut self) -> Option<u64> {
-        let c = self.historia.pop()?;
-        let id = self.invertir(c);
-        self.rehacer.push(c);
-        Some(id)
+    /// Empieza un gesto. Todo lo que pase hasta `cerrar_paso` sera un solo
+    /// paso de deshacer.
+    ///
+    /// Abrir dos veces sin cerrar no es error: el segundo abrir no hace
+    /// nada. La ventana puede recibir un `WM_LBUTTONDOWN` sin su
+    /// `WM_LBUTTONUP` si el usuario suelta fuera, y perder el gesto entero
+    /// por eso seria peor que ignorarlo.
+    pub fn abrir_paso(&mut self) {
+        if self.en_curso.is_none() {
+            self.en_curso = Some(Paso::default());
+        }
     }
 
-    /// Rehace el ultimo paso deshecho.
-    pub fn rehacer(&mut self) -> Option<u64> {
-        let c = self.rehacer.pop()?;
-        // Rehacer es invertir la inversion; con el paso ya invertido en la
-        // pila, volver a invertirlo lo devuelve a su sitio.
-        let id = match c {
-            Cambio::Anadido(id) => {
-                self.restaurar(id);
-                id
-            }
-            Cambio::Borrado(id) => {
-                self.borrar(id);
-                id
-            }
-            Cambio::Movido { id, dx, dy } => {
-                self.mover(id, dx, dy);
-                id
-            }
+    /// Guarda el estado actual de un elemento para poder volver a el.
+    ///
+    /// Apuntarlo dos veces dentro del mismo paso guarda **solo la primera**:
+    /// mover el raton produce cien avisos por gesto, y cien instantaneas de
+    /// un trazo largo se comerian el techo en un solo arrastre.
+    pub fn apuntar_edicion(&mut self, id: u64) {
+        let Some(paso) = &self.en_curso else { return };
+        let ya_esta = paso
+            .cambios
+            .iter()
+            .any(|c| matches!(c, Cambio::Editado { id: i, .. } if *i == id));
+        if ya_esta {
+            return;
+        }
+        let Some(e) = self.buscar(id) else { return };
+        let cambio = Cambio::Editado {
+            id,
+            antes: Box::new(e.clone()),
         };
-        self.historia.push(c);
-        Some(id)
+        if let Some(paso) = &mut self.en_curso {
+            paso.cambios.push(cambio);
+        }
     }
 
-    fn invertir(&mut self, c: Cambio) -> u64 {
-        match c {
-            Cambio::Anadido(id) => {
-                self.borrar(id);
-                id
-            }
-            Cambio::Borrado(id) => {
-                self.restaurar(id);
-                id
-            }
-            Cambio::Movido { id, dx, dy } => {
-                self.mover(id, -dx, -dy);
-                id
+    /// Cierra el gesto. Un paso sin cambios no entra en el historial: hacer
+    /// clic sin arrastrar no debe consumir un `Ctrl+Z`.
+    pub fn cerrar_paso(&mut self) {
+        let Some(paso) = self.en_curso.take() else {
+            return;
+        };
+        if paso.cambios.is_empty() {
+            return;
+        }
+        self.bytes_historial += bytes_de(&paso);
+        self.historia.push(paso);
+        for p in self.rehacer.drain(..) {
+            self.bytes_historial -= bytes_de(&p);
+        }
+        self.podar();
+    }
+
+    /// Deshace el gesto en curso sin apuntarlo. Es lo que hace `Escape` a
+    /// mitad de un arrastre, y sale gratis porque el paso ya guarda el
+    /// estado anterior de lo que se estaba tocando.
+    pub fn cancelar_paso(&mut self) {
+        let Some(paso) = self.en_curso.take() else {
+            return;
+        };
+        self.aplicar_inverso(&paso);
+    }
+
+    /// Deshace el ultimo gesto. Devuelve si habia algo que deshacer.
+    pub fn deshacer(&mut self) -> bool {
+        let Some(paso) = self.historia.pop() else {
+            return false;
+        };
+        self.bytes_historial -= bytes_de(&paso);
+        let inverso = self.aplicar_inverso(&paso);
+        self.bytes_historial += bytes_de(&inverso);
+        self.rehacer.push(inverso);
+        true
+    }
+
+    /// Rehace el ultimo gesto deshecho.
+    pub fn rehacer(&mut self) -> bool {
+        let Some(paso) = self.rehacer.pop() else {
+            return false;
+        };
+        self.bytes_historial -= bytes_de(&paso);
+        let inverso = self.aplicar_inverso(&paso);
+        self.bytes_historial += bytes_de(&inverso);
+        self.historia.push(inverso);
+        true
+    }
+
+    /// Aplica el paso al reves y devuelve el paso que lo desharia.
+    ///
+    /// Que devuelva su propio inverso es lo que hace que deshacer y rehacer
+    /// sean la misma funcion. Con dos funciones distintas, acabarian
+    /// discrepando en cuanto se anadiera una variante a `Cambio`.
+    fn aplicar_inverso(&mut self, paso: &Paso) -> Paso {
+        let mut inverso = Paso::default();
+        // Al reves: si un gesto borro y luego anadio, deshacerlo tiene que
+        // quitar lo anadido antes de restaurar lo borrado.
+        for c in paso.cambios.iter().rev() {
+            match c {
+                Cambio::Anadido(id) => {
+                    self.borrar(*id);
+                    inverso.cambios.push(Cambio::Borrado(*id));
+                }
+                Cambio::Borrado(id) => {
+                    self.restaurar(*id);
+                    inverso.cambios.push(Cambio::Anadido(*id));
+                }
+                Cambio::Editado { id, antes } => {
+                    if let Some(i) = self.elementos.iter().position(|e| e.id == *id) {
+                        let ahora = self.elementos[i].clone();
+                        self.elementos[i] = (**antes).clone();
+                        inverso.cambios.push(Cambio::Editado {
+                            id: *id,
+                            antes: Box::new(ahora),
+                        });
+                    }
+                }
             }
         }
+        inverso
+    }
+
+    /// Tira los pasos mas antiguos hasta caber en el techo (D25).
+    ///
+    /// El techo va en memoria y no en numero de pasos porque quinientos
+    /// pasos son ocho kilobytes o doscientos megas segun lo que se haya
+    /// tocado, y en un equipo de 4 GB eso no se puede prometer.
+    fn podar(&mut self) {
+        while self.bytes_historial > TECHO_HISTORIAL && self.historia.len() > 1 {
+            let viejo = self.historia.remove(0);
+            self.bytes_historial -= bytes_de(&viejo);
+        }
+    }
+
+    /// Lo que ocupa el historial ahora mismo.
+    pub fn bytes_de_historial(&self) -> usize {
+        self.bytes_historial
     }
 
     /// Si hay algo que deshacer en esta sesion.
@@ -256,6 +413,27 @@ mod pruebas {
     use super::*;
     use crate::elemento::{ColorRgba, EstiloTrazo, Figura};
 
+    fn base() -> Elemento {
+        Elemento {
+            id: 0,
+            figura: Figura::Rectangulo,
+            x: 0.0,
+            y: 0.0,
+            ancho: 100.0,
+            alto: 50.0,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: None,
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+        }
+    }
+
     fn rect(x: f32) -> Elemento {
         Elemento {
             id: 0,
@@ -292,7 +470,7 @@ mod pruebas {
             (40.0, 10.0)
         );
 
-        assert_eq!(e.deshacer(), Some(id));
+        assert!(e.deshacer());
         assert_eq!(
             (e.buscar(id).unwrap().x, e.buscar(id).unwrap().y),
             (10.0, 0.0),
@@ -300,7 +478,7 @@ mod pruebas {
         );
         assert!(!e.buscar(id).unwrap().borrado, "deshacer mover no borra");
 
-        assert_eq!(e.rehacer(), Some(id));
+        assert!(e.rehacer());
         assert_eq!(
             (e.buscar(id).unwrap().x, e.buscar(id).unwrap().y),
             (40.0, 10.0)
@@ -308,7 +486,7 @@ mod pruebas {
 
         // Y el siguiente deshacer se lleva el alta, que es el paso anterior.
         e.deshacer();
-        assert_eq!(e.deshacer(), Some(id));
+        assert!(e.deshacer());
         assert!(e.buscar(id).unwrap().borrado);
     }
 
@@ -329,7 +507,7 @@ mod pruebas {
         let uno = e.anadir(rect(0.0));
         e.deshacer();
         e.anadir(rect(100.0));
-        assert_eq!(e.rehacer(), None, "el rehacer viejo ya no vale");
+        assert!(!e.rehacer(), "el rehacer viejo ya no vale");
         assert!(
             e.buscar(uno).unwrap().borrado,
             "y lo deshecho sigue deshecho"
@@ -376,17 +554,19 @@ mod pruebas {
         e.anadir(rect(0.0));
         let segundo = e.anadir(rect(100.0));
 
-        assert_eq!(e.deshacer(), Some(segundo), "deshace el ultimo");
+        assert!(e.deshacer(), "deshace el ultimo");
         assert_eq!(e.cuantos_visibles(), 1);
-        assert_eq!(e.rehacer(), Some(segundo));
+        assert!(e.buscar(segundo).unwrap().borrado);
+        assert!(e.rehacer());
         assert_eq!(e.cuantos_visibles(), 2);
+        assert!(!e.buscar(segundo).unwrap().borrado);
     }
 
     #[test]
     fn deshacer_sobre_una_escena_vacia_no_entra_en_panico() {
         let mut e = Escena::nueva();
-        assert_eq!(e.deshacer(), None);
-        assert_eq!(e.rehacer(), None);
+        assert!(!e.deshacer());
+        assert!(!e.rehacer());
     }
 
     #[test]
@@ -396,8 +576,10 @@ mod pruebas {
         let mut e = Escena::nueva();
         let uno = e.anadir(rect(0.0));
         let dos = e.anadir(rect(100.0));
-        assert_eq!(e.deshacer(), Some(dos));
-        assert_eq!(e.deshacer(), Some(uno));
+        assert!(e.deshacer());
+        assert!(e.buscar(dos).unwrap().borrado);
+        assert!(e.deshacer());
+        assert!(e.buscar(uno).unwrap().borrado);
         assert_eq!(e.cuantos_visibles(), 0);
     }
 
@@ -448,5 +630,132 @@ mod pruebas {
         assert!(e.borrar(uno));
         assert!(!e.borrar(uno), "ya estaba borrado");
         assert!(!e.borrar(999), "no existe");
+    }
+
+    #[test]
+    fn un_paso_agrupa_todos_los_cambios_del_gesto() {
+        let mut escena = Escena::nueva();
+        let a = escena.anadir(base());
+        let b = escena.anadir(base());
+        let c = escena.anadir(base());
+
+        escena.abrir_paso();
+        for id in [a, b, c] {
+            escena.apuntar_edicion(id);
+            escena.buscar_mut(id).unwrap().mover(10.0, 0.0);
+        }
+        escena.cerrar_paso();
+
+        assert!(escena.deshacer(), "tiene que haber algo que deshacer");
+        assert_eq!(escena.buscar(a).unwrap().x, 0.0, "el primero vuelve");
+        assert_eq!(escena.buscar(c).unwrap().x, 0.0, "y el tercero tambien");
+        assert!(escena.deshacer(), "queda deshacer el haber anadido");
+    }
+
+    #[test]
+    fn treinta_ciclos_de_deshacer_y_rehacer_no_deforman_el_dibujo() {
+        // El motivo de D24. Con la operacion inversa en vez del estado
+        // anterior, escalar por 1,5 y dividir por 1,5 acumularia error en coma
+        // flotante hasta que el dibujo se nota torcido.
+        let mut escena = Escena::nueva();
+        let id = escena.anadir(base());
+        let partida = escena.buscar(id).unwrap().clone();
+
+        for _ in 0..30 {
+            escena.abrir_paso();
+            escena.apuntar_edicion(id);
+            let e = escena.buscar_mut(id).unwrap();
+            e.ancho *= 1.5;
+            e.alto *= 1.5;
+            e.angulo += 0.37;
+            e.tocar();
+            escena.cerrar_paso();
+
+            assert!(escena.deshacer());
+        }
+
+        assert_eq!(
+            escena.buscar(id).unwrap(),
+            &partida,
+            "identico bit a bit, no aproximado"
+        );
+    }
+
+    #[test]
+    fn cancelar_un_paso_deja_todo_como_estaba_y_no_ensucia_el_historial() {
+        let mut escena = Escena::nueva();
+        let id = escena.anadir(base());
+
+        escena.abrir_paso();
+        escena.apuntar_edicion(id);
+        escena.buscar_mut(id).unwrap().mover(500.0, 500.0);
+        escena.cancelar_paso();
+
+        assert_eq!(escena.buscar(id).unwrap().x, 0.0, "vuelve a su sitio");
+        assert!(escena.deshacer(), "queda el paso de haberlo anadido");
+        assert!(
+            !escena.deshacer(),
+            "y nada mas: el arrastre cancelado no cuenta"
+        );
+    }
+
+    #[test]
+    fn un_gesto_sin_cambios_no_consume_un_ctrl_zeta() {
+        let mut escena = Escena::nueva();
+        escena.anadir(base());
+        escena.abrir_paso();
+        escena.cerrar_paso();
+
+        assert!(escena.deshacer(), "el anadido");
+        assert!(!escena.deshacer(), "el clic sin arrastrar no dejo paso");
+    }
+
+    #[test]
+    fn apuntar_dos_veces_el_mismo_elemento_guarda_solo_el_estado_original() {
+        // Mover el raton produce cien avisos por gesto. Si cada uno guardara
+        // una instantanea, arrastrar un trazo largo se comeria el techo de
+        // memoria en un solo arrastre.
+        let mut escena = Escena::nueva();
+        let id = escena.anadir(base());
+
+        escena.abrir_paso();
+        for _ in 0..100 {
+            escena.apuntar_edicion(id);
+            escena.buscar_mut(id).unwrap().mover(1.0, 0.0);
+        }
+        escena.cerrar_paso();
+
+        assert!(escena.deshacer());
+        assert_eq!(escena.buscar(id).unwrap().x, 0.0, "vuelve al origen entero");
+    }
+
+    #[test]
+    fn el_historial_no_pasa_de_ocho_megas() {
+        // D25: el techo va en memoria, no en numero de pasos.
+        let mut escena = Escena::nueva();
+        let puntos: Vec<Punto2> = (0..492)
+            .map(|i| Punto2::nuevo(i as f32, (i * 2) as f32))
+            .collect();
+        let id = escena.anadir(Elemento {
+            figura: Figura::Lapiz {
+                puntos,
+                presiones: Vec::new(),
+            },
+            ..base()
+        });
+
+        for _ in 0..500 {
+            escena.abrir_paso();
+            escena.apuntar_edicion(id);
+            escena.buscar_mut(id).unwrap().mover(1.0, 0.0);
+            escena.cerrar_paso();
+        }
+
+        assert!(
+            escena.bytes_de_historial() <= 8 * 1024 * 1024,
+            "el historial ocupa {} bytes",
+            escena.bytes_de_historial()
+        );
+        assert!(escena.deshacer(), "y aun asi se deshace lo reciente");
     }
 }
