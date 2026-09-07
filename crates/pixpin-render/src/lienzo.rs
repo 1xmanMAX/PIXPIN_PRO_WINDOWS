@@ -348,29 +348,34 @@ impl Pintor<'_> {
         }
     }
 
-    pub fn trazar_discontinuo(&self, r: RectF, grosor: f32, color: Color) {
-        let estilo: Option<ID2D1StrokeStyle> = {
-            let propiedades = D2D1_STROKE_STYLE_PROPERTIES1 {
-                startCap: D2D1_CAP_STYLE_FLAT,
-                endCap: D2D1_CAP_STYLE_FLAT,
-                dashCap: D2D1_CAP_STYLE_FLAT,
-                lineJoin: D2D1_LINE_JOIN_MITER,
-                miterLimit: 10.0,
-                dashStyle: D2D1_DASH_STYLE_DASH,
-                dashOffset: 0.0,
-                ..Default::default()
-            };
-            // SAFETY: la factoria vive en el motor; crear un estilo de trazo
-            // no tiene precondiciones. El cast es el upcast StrokeStyle1 ->
-            // StrokeStyle, que DrawRectangle espera.
-            unsafe {
-                self.motor
-                    .fabrica()
-                    .CreateStrokeStyle(&propiedades, None)
-                    .ok()
-                    .and_then(|e| e.cast::<ID2D1StrokeStyle>().ok())
-            }
+    /// El estilo de trazo discontinuo, compartido por `trazar_discontinuo` y
+    /// `polilinea_discontinua`: son la misma raya, sobre un rectangulo o
+    /// sobre una geometria cualquiera.
+    fn estilo_discontinuo(&self) -> Option<ID2D1StrokeStyle> {
+        let propiedades = D2D1_STROKE_STYLE_PROPERTIES1 {
+            startCap: D2D1_CAP_STYLE_FLAT,
+            endCap: D2D1_CAP_STYLE_FLAT,
+            dashCap: D2D1_CAP_STYLE_FLAT,
+            lineJoin: D2D1_LINE_JOIN_MITER,
+            miterLimit: 10.0,
+            dashStyle: D2D1_DASH_STYLE_DASH,
+            dashOffset: 0.0,
+            ..Default::default()
         };
+        // SAFETY: la factoria vive en el motor; crear un estilo de trazo no
+        // tiene precondiciones. El cast es el upcast StrokeStyle1 ->
+        // StrokeStyle, que DrawRectangle/DrawGeometry esperan.
+        unsafe {
+            self.motor
+                .fabrica()
+                .CreateStrokeStyle(&propiedades, None)
+                .ok()
+                .and_then(|e| e.cast::<ID2D1StrokeStyle>().ok())
+        }
+    }
+
+    pub fn trazar_discontinuo(&self, r: RectF, grosor: f32, color: Color) {
+        let estilo = self.estilo_discontinuo();
         if let Some(p) = self.pincel(color) {
             // SAFETY: dentro del fotograma; objetos vivos. StrokeStyle1
             // hereda de StrokeStyle, que es lo que DrawRectangle espera.
@@ -589,6 +594,72 @@ impl Pintor<'_> {
                     .DrawGeometry(&geometria, &p, grosor, None)
             };
         }
+    }
+
+    /// Como `polilinea`, pero a rayas. Es a `polilinea` lo que
+    /// `trazar_discontinuo` es a `trazar`: la misma raya sobre una
+    /// geometria cualquiera en vez de sobre un rectangulo.
+    pub fn polilinea_discontinua(&self, vertices: &[(f32, f32)], grosor: f32, color: Color) {
+        if vertices.len() < 2 {
+            return;
+        }
+        let Some(geometria) = self.geometria(vertices, false) else {
+            return;
+        };
+        let estilo = self.estilo_discontinuo();
+        if let Some(p) = self.pincel(color) {
+            // SAFETY: igual que en `polilinea`; StrokeStyle1 hereda de
+            // StrokeStyle, que es lo que DrawGeometry espera.
+            unsafe {
+                self.motor
+                    .contexto()
+                    .DrawGeometry(&geometria, &p, grosor, estilo.as_ref())
+            };
+        }
+    }
+
+    /// El marco de lo seleccionado: un rectangulo a rayas alrededor de
+    /// `caja`, con una holgura para no pegarse al propio dibujo.
+    ///
+    /// `caja` y `escala` van en las mismas unidades que usa el resto del
+    /// lienzo con `poner_vista` puesto: mundo, con `escala` = unidades de
+    /// mundo por pixel de pantalla (`1.0 / zoom`). Es lo que hace que el
+    /// marco se vea igual de fino a cualquier aumento.
+    pub fn marco(&self, caja: (f32, f32, f32, f32), escala: f32) {
+        let (x0, y0, x1, y1) = caja;
+        let escala = escala.max(0.01);
+        let h = 4.0 * escala;
+        self.trazar_discontinuo(
+            RectF {
+                x: x0 - h,
+                y: y0 - h,
+                ancho: (x1 - x0) + 2.0 * h,
+                alto: (y1 - y0) + 2.0 * h,
+            },
+            (1.5 * escala).max(1.0),
+            Color::ACENTO,
+        );
+    }
+
+    /// La marquesina: el rectangulo de arrastre con el que se elige por
+    /// zona, relleno translucido y borde a rayas para distinguirlo de un
+    /// elemento de verdad.
+    pub fn marquesina(&self, caja: (f32, f32, f32, f32), escala: f32) {
+        let (x0, y0, x1, y1) = caja;
+        let r = RectF {
+            x: x0.min(x1),
+            y: y0.min(y1),
+            ancho: (x1 - x0).abs(),
+            alto: (y1 - y0).abs(),
+        };
+        self.rellenar(
+            r,
+            Color {
+                a: 0.12,
+                ..Color::ACENTO
+            },
+        );
+        self.trazar_discontinuo(r, (1.5 * escala.max(0.01)).max(1.0), Color::ACENTO);
     }
 
     /// Construye una geometria a partir de los vertices. `cerrada` decide si
