@@ -24,9 +24,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-#[cfg(test)]
 use crate::elemento::Elemento;
 use crate::escena::Escena;
+use crate::impacto::esquinas_giradas;
 
 /// Lado de la celda, en unidades del mundo.
 ///
@@ -34,6 +34,33 @@ use crate::escena::Escena;
 /// celdas mucho mas pequenas, cada elemento se apunta en decenas de ellas;
 /// con celdas mucho mas grandes, cada consulta devuelve medio dibujo.
 pub const CELDA: f32 = 256.0;
+
+/// La caja con la que se indexa un elemento: la envolvente de sus esquinas
+/// YA giradas, no `e.caja()` a secas.
+///
+/// `e.caja()` es la caja sin girar. Un cuadrado de 100 girado 45 grados mide
+/// 141 en diagonal, asi que indexar con la caja sin girar deja fuera de la
+/// celda un trozo real del elemento: si ese trozo cae en el borde de una
+/// consulta, el elemento desaparece de la pantalla sin ningun error visible,
+/// que es justo lo que promete no pasar el comentario de `candidatos()`.
+///
+/// Con `angulo == 0.0` la guarda evita el trabajo de girar cuatro puntos por
+/// nada: devuelve exactamente `e.caja()`, asi que no cambia nada de lo que
+/// ya funcionaba sin giro.
+fn caja_indexable(e: &Elemento) -> (f32, f32, f32, f32) {
+    if e.angulo == 0.0 {
+        return e.caja();
+    }
+    let esquinas = esquinas_giradas(e);
+    let xs = esquinas.iter().map(|p| p.x);
+    let ys = esquinas.iter().map(|p| p.y);
+    (
+        xs.clone().fold(f32::MAX, f32::min),
+        ys.clone().fold(f32::MAX, f32::min),
+        xs.fold(f32::MIN, f32::max),
+        ys.fold(f32::MIN, f32::max),
+    )
+}
 
 #[derive(Debug, Clone)]
 pub struct Rejilla {
@@ -90,7 +117,7 @@ impl Rejilla {
             }
             self.quitar(e.id);
             if !e.borrado {
-                self.meter(e.id, e.caja());
+                self.meter(e.id, caja_indexable(e));
             }
             self.versiones.insert(e.id, e.version);
         }
@@ -351,5 +378,37 @@ mod pruebas {
         rejilla.sincronizar(&escena);
 
         assert_eq!(rejilla.candidatos((0.0, 0.0, 300.0, 300.0)).len(), 1);
+    }
+
+    #[test]
+    fn un_elemento_girado_no_se_pierde_cerca_del_borde_de_la_consulta() {
+        // Cuadrado de 100x100 centrado en el origen, girado 45 grados: su
+        // caja SIN girar es (-50,-50,50,50), pero girada la diagonal llega a
+        // ±70.71. Con celdas de 64, la caja sin girar solo ocupa las celdas
+        // (-1,-1)..(0,0); una consulta en (65,0,70,5) cae en la celda (1,0),
+        // que la indexacion vieja jamas apuntaba. Es el hueco exacto que
+        // describe el comentario de `candidatos()`: el elemento
+        // desaparecia de la pantalla sin ningun error.
+        let mut escena = Escena::nueva();
+        let mut cuadrado = rect(1, -50.0, -50.0, 100.0, 100.0);
+        cuadrado.angulo = std::f32::consts::FRAC_PI_4;
+        let id = escena.anadir(cuadrado);
+
+        let mut rejilla = Rejilla::con_celda(64.0);
+        rejilla.sincronizar(&escena);
+
+        assert_eq!(
+            rejilla.candidatos((65.0, 0.0, 70.0, 5.0)),
+            vec![id],
+            "el cuadrado girado deberia aparecer cerca de su diagonal"
+        );
+    }
+
+    #[test]
+    fn con_angulo_cero_la_caja_indexable_es_la_de_siempre() {
+        // La guarda de `caja_indexable`: sin giro, no puede cambiar nada de
+        // lo que ya funcionaba.
+        let e = rect(1, 10.0, 20.0, 30.0, 40.0);
+        assert_eq!(super::caja_indexable(&e), e.caja());
     }
 }
