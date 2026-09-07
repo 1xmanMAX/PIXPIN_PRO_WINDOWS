@@ -37,7 +37,6 @@ use pixpin_motor2d::escena::Escena;
 use pixpin_motor2d::gesto::{EventoGesto, FormaCursor, Gesto, Region, direccion_del_tirador};
 use pixpin_motor2d::indice::Rejilla;
 use pixpin_motor2d::pintado::Orden;
-use pixpin_motor2d::tiradores::Tiradores;
 use pixpin_motor2d::vector::Punto2;
 use pixpin_motor2d::{ColorRgba, EstiloTrazo};
 use pixpin_render::{CapaEstatica, Color, Estampa, MotorRender, RectF, Superficie};
@@ -324,10 +323,20 @@ fn pintar(
 
         // Encima de todo: el marco de la seleccion, sus tiradores y la
         // marquesina si la hay.
+        //
+        // `Gesto::tiradores` es la MISMA llamada que usa el gesto para
+        // decidir que agarra el clic (`cursor_en`, `pulsar`): pintar con
+        // una copia propia del angulo es como se desincronizaron una vez
+        // -tiradores rectos que se picaban girados-, asi que aqui no hay
+        // una segunda formula, solo la unica fuente de verdad.
         if let Some(caja) = gesto.seleccion.caja(escena) {
-            p.marco(caja, escala);
-            for orden in Tiradores::de_caja(caja, 0.0, escala).ordenes(escala) {
-                dibujar_orden(p, &orden, vista);
+            let tiradores = gesto.tiradores(escena, escala);
+            let angulo = tiradores.as_ref().map_or(0.0, |t| t.angulo);
+            p.marco(caja, angulo, escala);
+            if let Some(tiradores) = tiradores {
+                for orden in tiradores.ordenes(escala) {
+                    dibujar_orden(p, &orden, vista);
+                }
             }
         }
         if let Some(m) = gesto.marquesina() {
@@ -418,7 +427,79 @@ mod pruebas {
     use super::*;
     use pixpin_geom::Tirador;
     use pixpin_motor2d::camara::Camara;
+    use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+    use pixpin_motor2d::escena::Escena;
+    use pixpin_motor2d::gesto::{EventoGesto, Gesto};
     use std::f32::consts::{FRAC_PI_2, PI};
+
+    /// El fallo real: los tiradores se pintaban con el angulo fijo en cero
+    /// (`Tiradores::de_caja(caja, 0.0, escala)`) mientras `gesto.rs` los
+    /// agarraba con el angulo de verdad del elemento. El usuario veia el
+    /// marco recto y pinchaba donde veia el tirador, pero la zona que
+    /// respondia estaba girada: no agarraba nada.
+    ///
+    /// El arreglo hace que pintar llame a `Gesto::tiradores` -la MISMA
+    /// funcion que ya usaba `pulsar` para decidir que agarra el clic- en
+    /// vez de recalcular el angulo por su cuenta. Esta prueba comprueba
+    /// justo eso: el sitio que `Gesto::tiradores` dice que hay que PINTAR
+    /// es el mismo que agarra un pulsar ahi.
+    #[test]
+    fn el_tirador_pintado_de_un_elemento_girado_es_el_que_agarra_el_clic() {
+        let mut escena = Escena::nueva();
+        let id = escena.anadir(Elemento {
+            id: 0,
+            figura: Figura::Rectangulo,
+            x: 0.0,
+            y: 0.0,
+            ancho: 100.0,
+            alto: 50.0,
+            angulo: FRAC_PI_2,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: None,
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+        });
+
+        let mut gesto = Gesto::nuevo();
+        gesto.seleccion.poner(id);
+
+        let escala = 1.0;
+        let pintados = gesto
+            .tiradores(&escena, escala)
+            .expect("hay un elemento elegido: tiene que haber tiradores");
+        assert_ne!(
+            pintados.angulo, 0.0,
+            "con un solo elemento el marco pintado lleva su angulo real"
+        );
+
+        // El sitio exacto de un tirador, tal y como se pinta.
+        let (cual, punto) = pintados.tamano[0];
+
+        let respuesta = gesto.evento(
+            EventoGesto::Pulsar {
+                p: punto,
+                shift: false,
+                alt: false,
+            },
+            &mut escena,
+            escala,
+        );
+
+        assert_eq!(
+            respuesta.cursor,
+            FormaCursor::Escalar {
+                tirador: cual,
+                angulo: pintados.angulo,
+            },
+            "pulsar justo donde se pinto el tirador tiene que agarrarlo"
+        );
+    }
 
     #[test]
     fn el_cursor_de_escalar_elige_la_flecha_por_su_direccion() {

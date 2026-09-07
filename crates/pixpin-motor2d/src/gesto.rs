@@ -233,7 +233,14 @@ impl Gesto {
     }
 
     /// Los tiradores de la seleccion, si hay algo elegido.
-    fn tiradores(&self, escena: &Escena, escala: f32) -> Option<Tiradores> {
+    ///
+    /// Publico a proposito: es la unica fuente de verdad sobre donde caen
+    /// los tiradores. `cursor_en` y `pulsar` ya lo usaban para decidir que
+    /// agarra el clic; quien los PINTA tiene que llamar a este mismo
+    /// metodo y no recalcular el angulo por su cuenta, que es justo lo que
+    /// paso una vez: los tiradores se pintaban rectos mientras el clic
+    /// respondia girado.
+    pub fn tiradores(&self, escena: &Escena, escala: f32) -> Option<Tiradores> {
         let caja = self.seleccion.caja(escena)?;
         // Con un solo elemento, el marco lleva su angulo. Con varios, la
         // caja es paralela a los ejes y cada uno conserva el suyo.

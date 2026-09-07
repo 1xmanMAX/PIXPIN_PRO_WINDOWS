@@ -619,26 +619,64 @@ impl Pintor<'_> {
     }
 
     /// El marco de lo seleccionado: un rectangulo a rayas alrededor de
-    /// `caja`, con una holgura para no pegarse al propio dibujo.
+    /// `caja`, con una holgura para no pegarse al propio dibujo, girado
+    /// `angulo` alrededor del centro de `caja` — el mismo centro que usan
+    /// `impacto::toca` y `pintado::ordenes` en `pixpin-motor2d`, para que el
+    /// contorno quede pegado a la figura y no recto mientras los tiradores
+    /// giran con ella.
     ///
     /// `caja` y `escala` van en las mismas unidades que usa el resto del
     /// lienzo con `poner_vista` puesto: mundo, con `escala` = unidades de
     /// mundo por pixel de pantalla (`1.0 / zoom`). Es lo que hace que el
     /// marco se vea igual de fino a cualquier aumento.
-    pub fn marco(&self, caja: (f32, f32, f32, f32), escala: f32) {
+    pub fn marco(&self, caja: (f32, f32, f32, f32), angulo: f32, escala: f32) {
         let (x0, y0, x1, y1) = caja;
         let escala = escala.max(0.01);
         let h = 4.0 * escala;
-        self.trazar_discontinuo(
-            RectF {
-                x: x0 - h,
-                y: y0 - h,
-                ancho: (x1 - x0) + 2.0 * h,
-                alto: (y1 - y0) + 2.0 * h,
-            },
-            (1.5 * escala).max(1.0),
-            Color::ACENTO,
-        );
+        let grosor = (1.5 * escala).max(1.0);
+
+        // Sin giro, el rectangulo de siempre: mas barato y sin arrastrar
+        // error de coma flotante en las cuatro esquinas.
+        if angulo == 0.0 {
+            self.trazar_discontinuo(
+                RectF {
+                    x: x0 - h,
+                    y: y0 - h,
+                    ancho: (x1 - x0) + 2.0 * h,
+                    alto: (y1 - y0) + 2.0 * h,
+                },
+                grosor,
+                Color::ACENTO,
+            );
+            return;
+        }
+
+        // Girado: las cuatro esquinas de la caja con holgura, rotadas
+        // alrededor de su propio centro. Misma formula que
+        // `Punto2::girar` en pixpin-motor2d, repetida aqui a proposito —
+        // este crate no depende de ese, y la geometria es una linea.
+        let cx = (x0 + x1) / 2.0;
+        let cy = (y0 + y1) / 2.0;
+        let (s, c) = angulo.sin_cos();
+        let girar = |x: f32, y: f32| -> (f32, f32) {
+            let dx = x - cx;
+            let dy = y - cy;
+            (cx + dx * c - dy * s, cy + dx * s + dy * c)
+        };
+        let esquinas = [
+            girar(x0 - h, y0 - h),
+            girar(x1 + h, y0 - h),
+            girar(x1 + h, y1 + h),
+            girar(x0 - h, y1 + h),
+        ];
+        let cerrado = [
+            esquinas[0],
+            esquinas[1],
+            esquinas[2],
+            esquinas[3],
+            esquinas[0],
+        ];
+        self.polilinea_discontinua(&cerrado, grosor, Color::ACENTO);
     }
 
     /// La marquesina: el rectangulo de arrastre con el que se elige por
