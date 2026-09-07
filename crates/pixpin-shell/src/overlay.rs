@@ -20,7 +20,7 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 // En windows 0.62, AttachThreadInput vive en System::Threading.
 use windows::Win32::System::Threading::AttachThreadInput;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_CONTROL, VK_SHIFT,
+    GetKeyState, ReleaseCapture, SetCapture, SetFocus, VK_CONTROL, VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
@@ -58,6 +58,9 @@ pub enum EventoOverlay {
         shift: bool,
         /// Ctrl mantenido: para `Ctrl+A` (seleccionar todo) y `Ctrl+Z`.
         ctrl: bool,
+        /// Alt mantenido: en el editor, escalar desde el centro en vez de
+        /// desde el ancla.
+        alt: bool,
     },
     Pintar,
     CambioDpi,
@@ -91,6 +94,14 @@ pub enum FormaCursorWin {
     Texto,
     /// La flecha normal (seleccionar / deshacer).
     Flecha,
+    /// Girar lo seleccionado.
+    ///
+    /// Windows no trae cursor de giro: los ocho `IDC_*` estandar son
+    /// flechas, cruz, barra de texto y poco mas. Se usa `IDC_HAND` porque
+    /// al menos se distingue de los de redimension y no miente sobre lo
+    /// que va a pasar. Un cursor de giro de verdad necesitaria un recurso
+    /// propio, y eso no entra en esta entrega.
+    Giro,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -533,10 +544,13 @@ extern "system" fn procedimiento_overlay(
             let shift = unsafe { GetKeyState(VK_SHIFT.0 as i32) } < 0;
             // SAFETY: igual que arriba.
             let ctrl = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
+            // SAFETY: igual que arriba.
+            let alt = unsafe { GetKeyState(VK_MENU.0 as i32) } < 0;
             encolar(EventoOverlay::Tecla {
                 vk: wparam.0 as u32,
                 shift,
                 ctrl,
+                alt,
             });
             LRESULT(0)
         }
@@ -592,6 +606,7 @@ extern "system" fn procedimiento_overlay(
                 FormaCursorWin::RedimNoSe => IDC_SIZENWSE,
                 FormaCursorWin::Texto => IDC_IBEAM,
                 FormaCursorWin::Flecha => IDC_ARROW,
+                FormaCursorWin::Giro => IDC_HAND,
             };
             // SAFETY: LoadCursorW de un cursor del sistema y SetCursor son
             // llamadas sin precondiciones sobre recursos compartidos.
@@ -736,5 +751,39 @@ mod pruebas {
             crate::ventana::Continuar::No
         });
         assert_eq!(despertares, 1);
+    }
+
+    #[test]
+    fn la_tecla_lleva_alt_ademas_de_shift_y_ctrl() {
+        // Alt escala desde el centro. Sin este campo, el editor no puede
+        // distinguir un arrastre normal de uno desde el centro.
+        let t = EventoOverlay::Tecla {
+            vk: 65,
+            shift: true,
+            ctrl: false,
+            alt: true,
+        };
+        let EventoOverlay::Tecla { alt, .. } = t else {
+            panic!()
+        };
+        assert!(alt);
+    }
+
+    #[test]
+    fn hay_cursor_de_giro() {
+        // Que exista la variante. Cual dibuja Windows se comprueba a mano: el
+        // mapeo a IDC_* necesita una sesion de escritorio.
+        let formas = [
+            FormaCursorWin::Cruz,
+            FormaCursorWin::Mover,
+            FormaCursorWin::RedimNS,
+            FormaCursorWin::RedimEO,
+            FormaCursorWin::RedimNeSo,
+            FormaCursorWin::RedimNoSe,
+            FormaCursorWin::Texto,
+            FormaCursorWin::Flecha,
+            FormaCursorWin::Giro,
+        ];
+        assert_eq!(formas.len(), 9);
     }
 }

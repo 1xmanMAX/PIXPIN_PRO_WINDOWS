@@ -621,7 +621,9 @@ fn procesar_evento(
             }
             seguir
         }
-        EventoOverlay::Tecla { vk, shift, ctrl } => {
+        EventoOverlay::Tecla {
+            vk, shift, ctrl, ..
+        } => {
             // Ctrl+A: la pantalla entera bajo el cursor, lista para
             // confirmar. Mismo camino que el boton del panel.
             if ctrl && vk == u32::from(b'A') && !matches!(modo, ModoConfirmacion::Cuentagotas) {
