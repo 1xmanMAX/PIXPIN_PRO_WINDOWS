@@ -72,6 +72,33 @@ fn con_opacidad(c: ColorRgba, opacidad: f32) -> ColorRgba {
     }
 }
 
+/// Gira todos los puntos de una orden alrededor de `centro`.
+///
+/// Se gira **el resultado** y no se le pasa el angulo a cada generador de
+/// geometria. Dos razones, y la segunda es la que manda:
+///
+/// 1. Es un solo sitio en vez de diez.
+/// 2. La semilla tiene que seguir mandando sobre el aspecto (D38). Si el
+///    angulo entrara en los generadores de rugosidad, girar un rectangulo lo
+///    redibujaria con otro garabato y el dibujo temblaria al girarlo.
+fn girar_orden(o: &mut Orden, centro: Punto2, angulo: f32) {
+    let gira = |p: &mut Punto2| *p = p.girar(centro, angulo);
+    match o {
+        Orden::Poligono { puntos, .. }
+        | Orden::Polilinea { puntos, .. }
+        | Orden::Relleno { puntos, .. }
+        | Orden::Velo { hueco: puntos, .. } => puntos.iter_mut().for_each(gira),
+        Orden::Texto { x, y, .. } | Orden::Imagen { x, y, .. } => {
+            // El texto y la imagen giran por su esquina; quien pinta aplica
+            // el resto con su propia transformacion.
+            let mut p = Punto2::nuevo(*x, *y);
+            gira(&mut p);
+            *x = p.x;
+            *y = p.y;
+        }
+    }
+}
+
 /// Las ordenes de dibujo de un elemento, en orden de pintado.
 pub fn ordenes(e: &Elemento) -> Vec<Orden> {
     if e.borrado {
@@ -290,6 +317,15 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
         }),
     }
 
+    // El angulo se aplica aqui, una vez, sobre la geometria ya generada.
+    if e.angulo != 0.0 {
+        let (x0, y0, x1, y1) = e.caja();
+        let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        for o in salida.iter_mut() {
+            girar_orden(o, centro, e.angulo);
+        }
+    }
+
     salida
 }
 
@@ -356,9 +392,18 @@ pub fn ordenes_a_distancia(e: &Elemento, zoom: f32) -> Vec<Orden> {
         Figura::Lapiz { puntos, .. } | Figura::Resaltador { puntos }
             if en_pantalla < TINTA_MINIMA_PX =>
         {
-            let puntos = flacos(puntos);
+            let mut puntos = flacos(puntos);
             if puntos.len() < 2 {
                 return Vec::new();
+            }
+            // Los puntos crudos estan en marco local, igual que en `ordenes`:
+            // esta rama no delega en ella, asi que gira aqui su propio
+            // resultado.
+            if e.angulo != 0.0 {
+                let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+                for p in puntos.iter_mut() {
+                    *p = p.girar(centro, e.angulo);
+                }
             }
             vec![Orden::Polilinea {
                 puntos,
@@ -675,5 +720,142 @@ mod pruebas {
             panic!("velo esperado");
         };
         assert!((color.a - 0.6).abs() < 1e-6);
+    }
+
+    /// Todos los puntos de una lista de ordenes, para poder compararlas.
+    fn puntos_de(ordenes: &[Orden]) -> Vec<Punto2> {
+        ordenes
+            .iter()
+            .flat_map(|o| match o {
+                Orden::Poligono { puntos, .. }
+                | Orden::Polilinea { puntos, .. }
+                | Orden::Relleno { puntos, .. }
+                | Orden::Velo { hueco: puntos, .. } => puntos.clone(),
+                Orden::Texto { x, y, .. } => vec![Punto2::nuevo(*x, *y)],
+                Orden::Imagen { x, y, .. } => vec![Punto2::nuevo(*x, *y)],
+            })
+            .collect()
+    }
+
+    #[test]
+    fn un_elemento_girado_se_dibuja_girado() {
+        // El fallo que motiva esta tarea: hasta ahora `angulo` no llegaba al
+        // dibujo, asi que un plano girado en el movil se abria sin girar.
+        let recto = base();
+        let mut girado = base();
+        girado.angulo = std::f32::consts::FRAC_PI_2;
+
+        let a = puntos_de(&ordenes(&recto));
+        let b = puntos_de(&ordenes(&girado));
+
+        assert_eq!(a.len(), b.len(), "la misma geometria, en otro sitio");
+        assert!(
+            a.iter().zip(&b).any(|(p, q)| p.distancia(*q) > 1.0),
+            "girar un cuarto de vuelta tiene que mover algo"
+        );
+    }
+
+    #[test]
+    fn girar_no_cambia_el_garabato_solo_lo_orienta() {
+        // D38: la semilla manda sobre el aspecto. Si el angulo entrara en los
+        // generadores de rugosidad, girar un rectangulo lo redibujaria distinto
+        // y el dibujo "temblaria" al girarlo.
+        let recto = base();
+        let mut girado = base();
+        girado.angulo = 0.7;
+
+        let (x0, y0, x1, y1) = recto.caja();
+        let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+
+        let a = puntos_de(&ordenes(&recto));
+        let b = puntos_de(&ordenes(&girado));
+
+        for (p, q) in a.iter().zip(&b) {
+            let esperado = p.girar(centro, 0.7);
+            assert!(
+                esperado.distancia(*q) < 1e-3,
+                "cada punto es el mismo, girado: esperaba {esperado:?}, es {q:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn un_elemento_sin_girar_produce_exactamente_lo_de_antes() {
+        // La red de seguridad: con angulo cero, ni un punto se mueve. Todo lo
+        // que ya funcionaba tiene que seguir dando byte a byte lo mismo.
+        let e = base();
+        assert_eq!(e.angulo, 0.0, "la base no esta girada");
+        let dos_veces = ordenes(&e);
+        assert_eq!(ordenes(&e), dos_veces, "y sigue siendo reproducible");
+    }
+
+    #[test]
+    fn el_trazo_a_mano_tambien_se_gira() {
+        // Es el caso que junta esta tarea con la 4: los puntos van en marco
+        // local y es el dibujo quien los orienta.
+        let mut e = Elemento {
+            figura: Figura::Lapiz {
+                puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
+                presiones: Vec::new(),
+            },
+            ..base()
+        };
+        let recto = puntos_de(&ordenes(&e));
+
+        e.angulo = std::f32::consts::FRAC_PI_2;
+        let girado = puntos_de(&ordenes(&e));
+
+        assert_eq!(recto.len(), girado.len());
+        assert!(
+            recto
+                .iter()
+                .zip(&girado)
+                .any(|(p, q)| p.distancia(*q) > 1.0),
+            "un trazo girado no se dibuja igual que uno recto"
+        );
+    }
+
+    #[test]
+    fn el_trazo_simplificado_a_linea_tambien_se_gira() {
+        // `ordenes_a_distancia` no siempre delega en `ordenes`: la rama que
+        // convierte tinta pequena en linea construye su propia orden a partir
+        // de los puntos crudos, y esos tambien estan en marco local.
+        let mut e = Elemento {
+            figura: Figura::Lapiz {
+                puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(10.0, 0.0)],
+                presiones: Vec::new(),
+            },
+            ..base()
+        };
+        let recto = puntos_de(&ordenes_a_distancia(&e, 1.0));
+
+        e.angulo = std::f32::consts::FRAC_PI_2;
+        let girado = puntos_de(&ordenes_a_distancia(&e, 1.0));
+
+        assert_eq!(recto.len(), girado.len());
+        assert!(
+            recto
+                .iter()
+                .zip(&girado)
+                .any(|(p, q)| p.distancia(*q) > 1.0),
+            "un trazo simplificado y girado no se dibuja igual que uno recto"
+        );
+    }
+
+    #[test]
+    fn el_dibujo_y_el_picado_coinciden_en_un_elemento_girado() {
+        // La prueba que cierra el agujero: donde se ve es donde se toca.
+        // Antes de esta tarea, `impacto` des-giraba y `pintado` no giraba, asi
+        // que el elemento se veia en un sitio y se tocaba en otro.
+        let mut e = base();
+        e.angulo = std::f32::consts::FRAC_PI_2;
+        e.relleno = Some(ColorRgba::opaco(1.0, 0.0, 0.0));
+
+        for p in puntos_de(&ordenes(&e)) {
+            assert!(
+                crate::impacto::toca(&e, p),
+                "se dibuja en {p:?} pero ahi no se toca"
+            );
+        }
     }
 }
