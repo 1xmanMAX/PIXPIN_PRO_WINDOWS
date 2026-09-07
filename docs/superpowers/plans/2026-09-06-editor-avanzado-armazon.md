@@ -72,7 +72,7 @@ Valen para **todas** las tareas.
 | `apps/pixpin/src/ventana_editor.rs` | **Nuevo.** La ventana | 11 |
 | `pixpin-motor2d/src/organizar.rs` | **Nuevo.** Orden, grupos, alinear | 12 |
 | `pixpin-ui/src/propiedades.rs` | **Nuevo.** Qué se ajusta de qué | 13 |
-| `pixpin-render/src/lienzo.rs` | + capa estática cacheada | 14 |
+| `pixpin-render/src/capa_estatica.rs` | **Nuevo.** Capa estática cacheada | 14 |
 | `pixpin-motor2d/tests/asignaciones.rs` | **Nuevo.** El asignador que cuenta | 15 |
 
 **Hito:** al acabar la tarea 11 hay un editor que se abre, dibuja, selecciona,
@@ -618,7 +618,9 @@ mod pruebas {
             semilla: 1,
             version: 0,
             borrado: false,
-            grupos: Vec::new(),
+            // OJO: sin `grupos`. Ese campo llega en la tarea 3, que va
+            // despues de esta. Su paso 5 lo anade aqui y en el resto de
+            // construcciones literales de una vez.
         }
     }
 
@@ -4277,13 +4279,18 @@ mod pruebas {
         // El motor trabaja en el mundo; la ventana recibe pixeles. Si esta
         // traduccion se olvidara, dibujar con el lienzo desplazado pintaria
         // en otro sitio.
+        //
+        // El metodo es `a_mundo`, que convierte un PUNTO. Cuidado con
+        // `en_mundo`, que existe y hace otra cosa: convierte una LONGITUD
+        // en pixeles a longitud del mundo. Confundirlos compila y da un
+        // resultado silenciosamente equivocado.
         let camara = Camara { x: 100.0, y: 50.0, zoom: 2.0 };
         let ev = EventoOverlay::BotonPulsado(Punto { x: 20, y: 10 });
 
         let Some(EventoGesto::Pulsar { p, .. }) = a_evento(&ev, &camara) else {
             panic!("un boton pulsado es un Pulsar");
         };
-        assert_eq!(p, camara.en_mundo(Punto2::nuevo(20.0, 10.0)));
+        assert_eq!(p, camara.a_mundo(Punto2::nuevo(20.0, 10.0)));
     }
 
     #[test]
@@ -4377,8 +4384,10 @@ pub fn forma_de(cursor: FormaCursor) -> FormaCursorWin {
 /// Del evento de la ventana al del motor. `None` es «esto no le toca al
 /// motor»: pintar, el DPI, el despertar de otro hilo.
 pub fn a_evento(ev: &EventoOverlay, camara: &Camara) -> Option<EventoGesto> {
+    // `a_mundo` convierte un punto. NO uses `en_mundo`, que existe y
+    // convierte una longitud: compila igual y da otra cosa.
     let al_mundo = |p: &pixpin_geom::Punto| {
-        camara.en_mundo(Punto2::nuevo(p.x as f32, p.y as f32))
+        camara.a_mundo(Punto2::nuevo(p.x as f32, p.y as f32))
     };
     match ev {
         EventoOverlay::BotonPulsado(p) => Some(EventoGesto::Pulsar {
@@ -4475,11 +4484,14 @@ fn pintar(
 ) {
     // La rejilla dice que PUEDE verse; la camara filtra lo que de verdad se
     // ve. Sin la rejilla, esto recorreria los ocho mil elementos.
-    let vista = camara.caja_visible();
+    //
+    // `Camara::ventana(ancho_px, alto_px)` devuelve la caja del mundo que se
+    // ve. Ya existe y es lo que usa `camara::recortar`.
+    let vista = camara.ventana(ancho_px, alto_px);
     let candidatos = rejilla.candidatos(vista);
 
     let mut pintor = motor.empezar();
-    pintor.transformar(camara.matriz());
+    pintor.transformar(camara);
     for id in candidatos {
         let Some(e) = escena.buscar(id) else { continue };
         if e.borrado {
