@@ -17,6 +17,7 @@
 
 pub mod aligerar;
 pub mod azar;
+pub mod cache;
 pub mod camara;
 pub mod elemento;
 pub mod escena;
