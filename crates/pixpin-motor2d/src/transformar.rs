@@ -448,10 +448,22 @@ mod pruebas {
         // con puntos. Si solo se cambiara ancho/alto, el trazo no escalaria
         // y el marco de seleccion se despegaria del dibujo.
         //
-        // Con grosor de verdad (no 0.0), la caja lleva un margen que no
-        // escala con el trazo: por eso lo que se comprueba no es la formula
-        // ingenua `ancho * sx`, sino que `x/y/ancho/alto` salgan de la caja
-        // de los puntos ya movidos.
+        // Los numeros de abajo salen a mano de la formula del encabezado de
+        // este fichero, NO de volver a leer `e.caja()`: comparar la caja
+        // final consigo misma es circular, solo falla si alguien vuelve a
+        // la formula vieja `ancho * sx`.
+        //
+        // Con grosor 4.0, la caja de partida lleva un margen de 2.0 por
+        // lado: (-2,-2,102,52), es decir ancho=104, alto=54. El tirador
+        // SuresteEsquina ancla la esquina opuesta (noroeste), (-2,-2).
+        //   sx = (200 - (-2)) / 104 = 202/104
+        //   sy = (100 - (-2)) /  54 = 102/54
+        // Sin giro, cada punto q sale de ancla + (q - ancla) * (sx, sy):
+        //   (0,0)     -> (-2 + 2*sx,   -2 + 2*sy)   = (49/26, 16/9)
+        //   (50,25)   -> (-2 + 52*sx,  -2 + 27*sy)  = (99, 49)
+        //   (100,50)  -> (-2 + 102*sx, -2 + 52*sy)  = (5099/26, 866/9)
+        // La caja final vuelve a sumar el margen de 2.0 a los extremos de
+        // esos puntos.
         let mut e = Elemento {
             figura: Figura::Lapiz {
                 puntos: vec![
@@ -463,10 +475,6 @@ mod pruebas {
             },
             grosor: 4.0,
             ..rect()
-        };
-        let puntos_antes = match &e.figura {
-            Figura::Lapiz { puntos, .. } => puntos.clone(),
-            _ => unreachable!(),
         };
 
         escalar(
@@ -480,23 +488,35 @@ mod pruebas {
         let Figura::Lapiz { puntos, .. } = &e.figura else {
             panic!("sigue siendo un lapiz");
         };
-        assert_ne!(puntos, &puntos_antes, "los puntos se movieron");
+        assert_eq!(puntos.len(), 3, "sigue teniendo sus tres puntos");
+        cerca(puntos[0], Punto2::nuevo(49.0 / 26.0, 16.0 / 9.0), "primero");
+        cerca(puntos[1], Punto2::nuevo(99.0, 49.0), "segundo");
+        cerca(
+            puntos[2],
+            Punto2::nuevo(5099.0 / 26.0, 866.0 / 9.0),
+            "tercero",
+        );
 
-        let (x0, y0, x1, y1) = e.caja();
         assert!(
-            (e.ancho - (x1 - x0)).abs() < 1e-3,
-            "ancho coincide con la caja: {} vs {}",
-            e.ancho,
-            x1 - x0
+            (e.ancho - 198.230_77).abs() < 1e-2,
+            "ancho: esperaba 198.23, es {}",
+            e.ancho
         );
         assert!(
-            (e.alto - (y1 - y0)).abs() < 1e-3,
-            "alto coincide con la caja: {} vs {}",
-            e.alto,
-            y1 - y0
+            (e.alto - 98.444_44).abs() < 1e-2,
+            "alto: esperaba 98.44, es {}",
+            e.alto
         );
-        assert!((e.x - x0).abs() < 1e-3, "x coincide con la caja");
-        assert!((e.y - y0).abs() < 1e-3, "y coincide con la caja");
+        assert!(
+            (e.x - (-0.115_38)).abs() < 1e-2,
+            "x: esperaba -0.12, es {}",
+            e.x
+        );
+        assert!(
+            (e.y - (-0.222_22)).abs() < 1e-2,
+            "y: esperaba -0.22, es {}",
+            e.y
+        );
     }
 
     #[test]
