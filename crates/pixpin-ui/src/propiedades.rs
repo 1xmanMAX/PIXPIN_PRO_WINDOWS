@@ -182,6 +182,16 @@ mod pruebas {
     }
 
     #[test]
+    fn con_un_solo_elemento_comunes_da_lo_mismo_que_de_figura() {
+        // El caso del 90 % del tiempo: elegir una sola cosa. Hoy funciona
+        // por coincidencia porque las listas de `de_figura` estan escritas
+        // en el mismo orden que declara el enum; si alguien reordena una,
+        // esta prueba lo nota.
+        let rect = elem(Figura::Rectangulo);
+        assert_eq!(comunes(&[&rect]), de_figura(&rect.figura));
+    }
+
+    #[test]
     fn sin_nada_elegido_no_hay_panel() {
         assert!(comunes(&[]).is_empty());
     }
