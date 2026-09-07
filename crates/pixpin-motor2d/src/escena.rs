@@ -128,6 +128,13 @@ impl Escena {
     /// Mete un cambio suelto en el paso en curso, o le crea uno propio si no
     /// hay ninguno abierto. Hacer algo nuevo fuera de un paso corta la rama
     /// de rehacer, como en cualquier editor.
+    ///
+    /// Este es el camino que usan `anadir`, `borrar_apuntando` y
+    /// `apuntar_movimiento` cuando se llaman sin `abrir_paso` alrededor —
+    /// que es como los usa la app de verdad al arrastrar (ve
+    /// `apps/pixpin/src/capa.rs` y `pines.rs`). Tiene que podar igual que
+    /// `cerrar_paso`: si no, el techo de D25 solo se cumple mientras se
+    /// dibuje a traves de `abrir_paso`/`cerrar_paso`.
     fn empujar_cambio(&mut self, cambio: Cambio) {
         match &mut self.en_curso {
             Some(paso) => paso.cambios.push(cambio),
@@ -137,8 +144,18 @@ impl Escena {
                 };
                 self.bytes_historial += bytes_de(&paso);
                 self.historia.push(paso);
-                self.rehacer.clear();
+                self.limpiar_rehacer();
+                self.podar();
             }
+        }
+    }
+
+    /// Vacia la rama de rehacer y descuenta lo que ocupaba. `Vec::clear` sin
+    /// esto dejaria `bytes_historial` contando bytes de pasos que ya no
+    /// existen, y el techo de D25 se aplicaria sobre un numero mentiroso.
+    fn limpiar_rehacer(&mut self) {
+        for p in self.rehacer.drain(..) {
+            self.bytes_historial -= bytes_de(&p);
         }
     }
 
@@ -278,9 +295,7 @@ impl Escena {
         }
         self.bytes_historial += bytes_de(&paso);
         self.historia.push(paso);
-        for p in self.rehacer.drain(..) {
-            self.bytes_historial -= bytes_de(&p);
-        }
+        self.limpiar_rehacer();
         self.podar();
     }
 
@@ -296,25 +311,39 @@ impl Escena {
 
     /// Deshace el ultimo gesto. Devuelve si habia algo que deshacer.
     pub fn deshacer(&mut self) -> bool {
-        let Some(paso) = self.historia.pop() else {
-            return false;
-        };
-        self.bytes_historial -= bytes_de(&paso);
-        let inverso = self.aplicar_inverso(&paso);
-        self.bytes_historial += bytes_de(&inverso);
-        self.rehacer.push(inverso);
-        true
+        self.viajar_por_historial(true)
     }
 
     /// Rehace el ultimo gesto deshecho.
     pub fn rehacer(&mut self) -> bool {
-        let Some(paso) = self.rehacer.pop() else {
+        self.viajar_por_historial(false)
+    }
+
+    /// Cuerpo comun de `deshacer` y `rehacer`: solo cambia cual pila es el
+    /// origen y cual el destino. Es el mismo argumento que ya lleva el
+    /// comentario de `aplicar_inverso`: dos funciones separadas que hacen lo
+    /// mismo acaban discrepando en cuanto se anada una variante a `Cambio`.
+    fn viajar_por_historial(&mut self, deshaciendo: bool) -> bool {
+        let origen = if deshaciendo {
+            &mut self.historia
+        } else {
+            &mut self.rehacer
+        };
+        let Some(paso) = origen.pop() else {
             return false;
         };
         self.bytes_historial -= bytes_de(&paso);
         let inverso = self.aplicar_inverso(&paso);
         self.bytes_historial += bytes_de(&inverso);
-        self.historia.push(inverso);
+        let destino = if deshaciendo {
+            &mut self.rehacer
+        } else {
+            &mut self.historia
+        };
+        destino.push(inverso);
+        // Podar aqui tambien: sin esto, un usuario que solo deshace (nunca
+        // cierra un paso nuevo) podria crecer el historial sin techo.
+        self.podar();
         true
     }
 
@@ -653,10 +682,16 @@ mod pruebas {
     }
 
     #[test]
-    fn treinta_ciclos_de_deshacer_y_rehacer_no_deforman_el_dibujo() {
+    fn muchos_ciclos_de_deshacer_y_rehacer_alternados_no_deforman_el_dibujo() {
         // El motivo de D24. Con la operacion inversa en vez del estado
         // anterior, escalar por 1,5 y dividir por 1,5 acumularia error en coma
         // flotante hasta que el dibujo se nota torcido.
+        //
+        // Deshacer y volver a deshacer en cada vuelta (sin rehacer nunca) es
+        // trivialmente verde: cada vuelta parte del mismo estado y no hay
+        // forma de que se acumule nada. Esta version atraviesa las dos pilas
+        // repetidas veces por cada paso —deshacer, rehacer, deshacer— antes
+        // de pasar al siguiente, y solo compara contra `partida` al final.
         let mut escena = Escena::nueva();
         let id = escena.anadir(base());
         let partida = escena.buscar(id).unwrap().clone();
@@ -670,7 +705,14 @@ mod pruebas {
             e.angulo += 0.37;
             e.tocar();
             escena.cerrar_paso();
+        }
 
+        // Un paso deshecho tres veces y rehecho dos por cada uno de los
+        // treinta cambios: net, se deshace exactamente uno por vuelta, sin
+        // tocar nunca el paso de "anadir" que queda debajo.
+        for _ in 0..30 {
+            assert!(escena.deshacer());
+            assert!(escena.rehacer());
             assert!(escena.deshacer());
         }
 
@@ -749,6 +791,38 @@ mod pruebas {
             escena.apuntar_edicion(id);
             escena.buscar_mut(id).unwrap().mover(1.0, 0.0);
             escena.cerrar_paso();
+        }
+
+        assert!(
+            escena.bytes_de_historial() <= 8 * 1024 * 1024,
+            "el historial ocupa {} bytes",
+            escena.bytes_de_historial()
+        );
+        assert!(escena.deshacer(), "y aun asi se deshace lo reciente");
+    }
+
+    #[test]
+    fn el_historial_no_pasa_de_ocho_megas_fuera_de_un_paso() {
+        // Misma prueba que la de arriba, pero por el camino que usa la app
+        // de verdad al arrastrar: apuntar_movimiento() sin abrir_paso ni
+        // cerrar_paso alrededor (ve apps/pixpin/src/capa.rs:332 y
+        // pines.rs:1060). empujar_cambio() tiene que podar tambien cuando
+        // se crea su propio paso, no solo cuando lo cierra cerrar_paso.
+        let mut escena = Escena::nueva();
+        let puntos: Vec<Punto2> = (0..492)
+            .map(|i| Punto2::nuevo(i as f32, (i * 2) as f32))
+            .collect();
+        let id = escena.anadir(Elemento {
+            figura: Figura::Lapiz {
+                puntos,
+                presiones: Vec::new(),
+            },
+            ..base()
+        });
+
+        for _ in 0..500 {
+            escena.mover(id, 1.0, 0.0);
+            escena.apuntar_movimiento(id, 1.0, 0.0);
         }
 
         assert!(
