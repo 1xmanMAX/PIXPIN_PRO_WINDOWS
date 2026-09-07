@@ -378,6 +378,14 @@ impl Gesto {
             .filter_map(|id| escena.buscar(*id))
             .any(|e| crate::impacto::toca(e, p));
         if sobre_lo_elegido && !shift {
+            // La instantanea de cada elemento se toma aqui, al pulsar, y no
+            // en el primer `mover`: eso deja el camino caliente del
+            // arrastre —los avisos del raton que siguen— en cero
+            // asignaciones. `apuntar_edicion` ya evita duplicarla si el
+            // gesto la vuelve a pedir.
+            for &id in self.seleccion.ids() {
+                escena.apuntar_edicion(id);
+            }
             self.estado = Estado::Moviendo { anterior: p };
             return Respuesta {
                 region: Region::Nada,
