@@ -1762,6 +1762,262 @@ quien cruzo el raton al otro lado."
 
 ---
 
+## Tarea 4b: Que el ángulo se dibuje
+
+**Esta tarea no estaba en el plan original.** Salió de revisar la tarea 4, al
+comprobar una premisa: **nada en la ruta de dibujo aplica `e.angulo`.**
+`pintado.rs` no lo menciona ni una vez; tampoco `pixpin-render`, ni `capa.rs`,
+ni `pines.rs`, ni el anotador. El único que lo consume es `impacto::toca`, que
+sí des-gira el punto del cursor.
+
+Consecuencia, hoy, antes de tocar nada: **un elemento girado en el móvil se
+abre en Windows dibujado sin girar, pero su picado se comporta como si
+estuviera girado.** Se ve en un sitio y se toca en otro.
+
+Es un fallo anterior a este plan. Entra aquí porque este plan lo destapa y lo
+necesita: la tarea 4 construye `girar`, y sin esto girar no produce nada
+visible.
+
+**Ficheros:**
+- Modificar: `crates/pixpin-motor2d/src/pintado.rs` — aplicar `angulo` en
+  `ordenes` y `ordenes_a_distancia`
+- Prueba: en `pintado.rs`, `mod pruebas`
+
+**Interfaces:**
+- Consume: `Elemento`, `Punto2`, `Orden`.
+- Produce: ningún nombre nuevo. Cambia el **contenido** de las órdenes que ya
+  devuelve `ordenes()`.
+
+### La decisión: girar las órdenes, no cada generador
+
+`ordenes()` genera la geometría de cada figura llamando a `formas::rectangulo`,
+`trazo::contorno` y compañía, ninguno de los cuales sabe de ángulos. La
+tentación es pasarles el ángulo a los diez.
+
+**No.** Se genera la geometría como hasta ahora y **se gira el resultado**, que
+es un solo sitio y una sola vuelta por punto. Es además lo que hace que la
+semilla siga produciendo el mismo garabato: si el ángulo entrara en los
+generadores, girar un rectángulo cambiaría su rugosidad, y eso contradice D38.
+
+- [ ] **Paso 1: Escribe las pruebas que fallan**
+
+En `mod pruebas` de `pintado.rs`:
+
+```rust
+/// Todos los puntos de una lista de ordenes, para poder compararlas.
+fn puntos_de(ordenes: &[Orden]) -> Vec<Punto2> {
+    ordenes
+        .iter()
+        .flat_map(|o| match o {
+            Orden::Poligono { puntos, .. }
+            | Orden::Polilinea { puntos, .. }
+            | Orden::Relleno { puntos, .. }
+            | Orden::Velo { hueco: puntos, .. } => puntos.clone(),
+            Orden::Texto { x, y, .. } => vec![Punto2::nuevo(*x, *y)],
+            Orden::Imagen { x, y, .. } => vec![Punto2::nuevo(*x, *y)],
+        })
+        .collect()
+}
+
+#[test]
+fn un_elemento_girado_se_dibuja_girado() {
+    // El fallo que motiva esta tarea: hasta ahora `angulo` no llegaba al
+    // dibujo, asi que un plano girado en el movil se abria sin girar.
+    let recto = base();
+    let mut girado = base();
+    girado.angulo = std::f32::consts::FRAC_PI_2;
+
+    let a = puntos_de(&ordenes(&recto));
+    let b = puntos_de(&ordenes(&girado));
+
+    assert_eq!(a.len(), b.len(), "la misma geometria, en otro sitio");
+    assert!(
+        a.iter().zip(&b).any(|(p, q)| p.distancia(*q) > 1.0),
+        "girar un cuarto de vuelta tiene que mover algo"
+    );
+}
+
+#[test]
+fn girar_no_cambia_el_garabato_solo_lo_orienta() {
+    // D38: la semilla manda sobre el aspecto. Si el angulo entrara en los
+    // generadores de rugosidad, girar un rectangulo lo redibujaria distinto
+    // y el dibujo "temblaria" al girarlo.
+    let recto = base();
+    let mut girado = base();
+    girado.angulo = 0.7;
+
+    let (x0, y0, x1, y1) = recto.caja();
+    let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+
+    let a = puntos_de(&ordenes(&recto));
+    let b = puntos_de(&ordenes(&girado));
+
+    for (p, q) in a.iter().zip(&b) {
+        let esperado = p.girar(centro, 0.7);
+        assert!(
+            esperado.distancia(*q) < 1e-3,
+            "cada punto es el mismo, girado: esperaba {esperado:?}, es {q:?}"
+        );
+    }
+}
+
+#[test]
+fn un_elemento_sin_girar_produce_exactamente_lo_de_antes() {
+    // La red de seguridad: con angulo cero, ni un punto se mueve. Todo lo
+    // que ya funcionaba tiene que seguir dando byte a byte lo mismo.
+    let e = base();
+    assert_eq!(e.angulo, 0.0, "la base no esta girada");
+    let dos_veces = ordenes(&e);
+    assert_eq!(ordenes(&e), dos_veces, "y sigue siendo reproducible");
+}
+
+#[test]
+fn el_trazo_a_mano_tambien_se_gira() {
+    // Es el caso que junta esta tarea con la 4: los puntos van en marco
+    // local y es el dibujo quien los orienta.
+    let mut e = Elemento {
+        figura: Figura::Lapiz {
+            puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
+            presiones: Vec::new(),
+        },
+        ..base()
+    };
+    let recto = puntos_de(&ordenes(&e));
+
+    e.angulo = std::f32::consts::FRAC_PI_2;
+    let girado = puntos_de(&ordenes(&e));
+
+    assert_eq!(recto.len(), girado.len());
+    assert!(
+        recto.iter().zip(&girado).any(|(p, q)| p.distancia(*q) > 1.0),
+        "un trazo girado no se dibuja igual que uno recto"
+    );
+}
+
+#[test]
+fn el_dibujo_y_el_picado_coinciden_en_un_elemento_girado() {
+    // La prueba que cierra el agujero: donde se ve es donde se toca.
+    // Antes de esta tarea, `impacto` des-giraba y `pintado` no giraba, asi
+    // que el elemento se veia en un sitio y se tocaba en otro.
+    let mut e = base();
+    e.angulo = std::f32::consts::FRAC_PI_2;
+    e.relleno = Some(ColorRgba::opaco(1.0, 0.0, 0.0));
+
+    for p in puntos_de(&ordenes(&e)) {
+        assert!(
+            crate::impacto::toca(&e, p),
+            "se dibuja en {p:?} pero ahi no se toca"
+        );
+    }
+}
+```
+
+- [ ] **Paso 2: Comprueba que fallan**
+
+```
+cargo test -p pixpin-motor2d pintado -- --test-threads=1
+```
+
+Esperado: fallan `un_elemento_girado_se_dibuja_girado`,
+`girar_no_cambia_el_garabato_solo_lo_orienta`, `el_trazo_a_mano_tambien_se_gira`
+y `el_dibujo_y_el_picado_coinciden_en_un_elemento_girado`. La quinta pasa ya.
+
+- [ ] **Paso 3: Gira las órdenes**
+
+En `pintado.rs`, un ayudante privado y una llamada al final de `ordenes`:
+
+```rust
+/// Gira todos los puntos de una orden alrededor de `centro`.
+///
+/// Se gira **el resultado** y no se le pasa el angulo a cada generador de
+/// geometria. Dos razones, y la segunda es la que manda:
+///
+/// 1. Es un solo sitio en vez de diez.
+/// 2. La semilla tiene que seguir mandando sobre el aspecto (D38). Si el
+///    angulo entrara en los generadores de rugosidad, girar un rectangulo lo
+///    redibujaria con otro garabato y el dibujo temblaria al girarlo.
+fn girar_orden(o: &mut Orden, centro: Punto2, angulo: f32) {
+    let gira = |p: &mut Punto2| *p = p.girar(centro, angulo);
+    match o {
+        Orden::Poligono { puntos, .. }
+        | Orden::Polilinea { puntos, .. }
+        | Orden::Relleno { puntos, .. }
+        | Orden::Velo { hueco: puntos, .. } => puntos.iter_mut().for_each(gira),
+        Orden::Texto { x, y, .. } | Orden::Imagen { x, y, .. } => {
+            // El texto y la imagen giran por su esquina; quien pinta aplica
+            // el resto con su propia transformacion.
+            let mut p = Punto2::nuevo(*x, *y);
+            gira(&mut p);
+            *x = p.x;
+            *y = p.y;
+        }
+    }
+}
+```
+
+Y al final de `ordenes(e)`, justo antes de devolver:
+
+```rust
+    // El angulo se aplica aqui, una vez, sobre la geometria ya generada.
+    if e.angulo != 0.0 {
+        let (x0, y0, x1, y1) = e.caja();
+        let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        for o in fuera.iter_mut() {
+            girar_orden(o, centro, e.angulo);
+        }
+    }
+```
+
+Ajusta el nombre `fuera` al que use de verdad la función para acumular sus
+órdenes.
+
+**Haz lo mismo en `ordenes_a_distancia`**, o —mejor— comprueba si esa función
+delega en `ordenes`: si lo hace, no hay nada que tocar y el ángulo ya viaja.
+
+**El `if e.angulo != 0.0` no es una optimización prematura:** garantiza que
+todo lo que hoy funciona produce exactamente los mismos puntos, sin ni siquiera
+pasar por un `sin_cos`. Es lo que hace que esta tarea no pueda romper nada de
+lo anterior.
+
+- [ ] **Paso 4: Cierra**
+
+```
+cargo test --workspace -- --test-threads=1
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+Vigila que **ninguna prueba anterior de `pintado.rs` se ponga roja**. Si alguna
+lo hace, es que usaba un elemento girado dando por hecho que el giro no se
+aplicaba — párate y avisa antes de tocarla.
+
+- [ ] **Paso 5: Commit**
+
+```bash
+git add crates/pixpin-motor2d/src/pintado.rs
+git commit -m "El angulo por fin se dibuja
+
+Nada en la ruta de dibujo aplicaba e.angulo: ni pintado.rs, ni
+pixpin-render, ni la capa, ni el pin. El unico que lo consumia era
+impacto::toca, que si des-gira el punto del cursor.
+
+O sea que un elemento girado en el movil se abria en Windows dibujado
+sin girar, pero su picado se comportaba como si estuviera girado. Se veia
+en un sitio y se tocaba en otro. Es un fallo anterior a este plan, que
+salio al comprobar una premisa de la revision de la tarea 4.
+
+Se gira el RESULTADO y no se le pasa el angulo a cada generador de
+geometria. Un solo sitio en vez de diez, y sobre todo: la semilla sigue
+mandando sobre el aspecto (D38). Si el angulo entrara en los generadores
+de rugosidad, girar un rectangulo lo redibujaria con otro garabato y el
+dibujo temblaria al girarlo.
+
+Con angulo cero no se toca ni un punto: todo lo que ya funcionaba produce
+exactamente la misma geometria."
+```
+
+---
+
 ## Tarea 5: Dónde caen los tiradores
 
 Ocho de tamaño más uno de giro. **Viven en el mundo pero miden en pantalla**:
