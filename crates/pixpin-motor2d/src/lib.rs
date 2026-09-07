@@ -27,6 +27,7 @@ pub mod formato;
 pub mod gesto;
 pub mod impacto;
 pub mod indice;
+pub mod medida;
 pub mod organizar;
 pub mod pintado;
 pub mod seleccion;
@@ -43,6 +44,7 @@ pub use escena::Escena;
 pub use formas::{elipse, linea, punta_flecha, rectangulo};
 pub use formato::{EXTENSION, ErrorFormato, cargar, guardar};
 pub use impacto::{TOLERANCIA, dentro_de, elemento_en, elementos_en, esquinas_giradas, toca};
+pub use medida::{Escala, longitud_de, medida_de, texto_de_cota, texto_de_medida};
 pub use organizar::{
     Alineacion, Reparto, agrupar, al_fondo, al_frente, alinear, desagrupar, hermanos_de, repartir,
 };
