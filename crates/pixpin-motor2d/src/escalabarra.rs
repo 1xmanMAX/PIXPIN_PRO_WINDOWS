@@ -58,7 +58,8 @@ pub fn paso_redondo(valor: f32) -> f32 {
 ///
 /// `None` cuando no se puede: sin escala valida la barra no podria decir
 /// cuanto mide cada cuadro, y una barra que no lo dice es un adorno que
-/// engana.
+/// engana. Tambien cuando el ancho pedido es tan pequeno que ni con un
+/// cuadro cabe.
 pub fn repartir(ancho_px: f32, escala: &Escala, cuadros_deseados: u32) -> Option<Barra> {
     if !escala.valida() || !ancho_px.is_finite() || ancho_px <= f32::EPSILON {
         return None;
@@ -71,8 +72,23 @@ pub fn repartir(ancho_px: f32, escala: &Escala, cuadros_deseados: u32) -> Option
     }
     // Los que quepan enteros, y al menos uno: una barra sin cuadros no es
     // una barra.
-    let cuadros = ((total_mundo / paso).floor() as u32).max(1);
-    let ancho_usado_px = (cuadros as f32 * paso) / escala.unidades_por_pixel;
+    let mut cuadros = ((total_mundo / paso).floor() as u32).max(1);
+    let mut ancho_usado_px = (cuadros as f32 * paso) / escala.unidades_por_pixel;
+
+    // Postcondicion: el ancho usado nunca se pasa del pedido. Con
+    // unidades_por_pixel diminuto y cuadros_deseados enorme, total_mundo / deseados
+    // se va a cero por perdida de precision en f32, paso_redondo cae en su rama
+    // de valor absurdo, y el .max(1) fuerza un cuadro. Eso puede hacer ancho_usado_px
+    // orders of magnitude por encima del ancho pedido. Reducimos cuadros hasta que
+    // quepa; si ni con uno cabe, devolvemos None.
+    while ancho_usado_px > ancho_px + 1e-3 && cuadros > 1 {
+        cuadros -= 1;
+        ancho_usado_px = (cuadros as f32 * paso) / escala.unidades_por_pixel;
+    }
+    if ancho_usado_px > ancho_px + 1e-3 {
+        return None;
+    }
+
     Some(Barra {
         paso,
         cuadros,
@@ -182,5 +198,65 @@ mod pruebas {
     fn pedir_cero_cuadros_no_divide_por_cero() {
         let b = repartir(400.0, &metros(0.01), 0);
         assert!(b.is_none() || b.unwrap().cuadros >= 1);
+    }
+
+    #[test]
+    fn caso_reproducido_upp_diminuto_cuadros_enormes() {
+        // Caso concreto que el revisor logro reproducir, no imaginado.
+        // Con unidades_por_pixel diminuto (1e-30) y cuadros_deseados enorme (u32::MAX),
+        // total_mundo / deseados se va a cero por perdida de precision en f32.
+        // paso_redondo(0.0) devuelve 1.0 (valor absurdo), y el .max(1) fuerza
+        // un cuadro, haciendo que ancho_usado_px pueda salir muchos ordenes de
+        // magnitud por encima. Debe devolver None porque ni con un cuadro cabe.
+        let escala = Escala {
+            unidades_por_pixel: 1e-30,
+            unidad: "m".to_string(),
+            decimales: 2,
+        };
+        let b = repartir(2e-7, &escala, u32::MAX);
+        // O es None, o respeta el ancho
+        match b {
+            None => (),
+            Some(barra) => {
+                assert!(
+                    barra.ancho_usado_px <= 2e-7 + 1e-3,
+                    "caso reproducido: ancho_usado_px {} se paso de 2e-7",
+                    barra.ancho_usado_px
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn el_floor_cero_fuerza_un_cuadro_y_sigue_dentro() {
+        // El .max(1) de cuadros solo actua cuando floor(total_mundo / paso) < 1,
+        // i.e., cuando el ancho en unidades de mundo es menor que el paso elegido.
+        // Esto y el invariante de ancho_usado_px pueden chocar: necesitamos un
+        // cuadro pero ocuparia mas que el ancho pedido. Comprobamos que las dos
+        // exigencias se satisfacen a la vez.
+        let escala = Escala {
+            unidades_por_pixel: 10.0, // 1 pixel = 10 unidades de mundo
+            unidad: "m".to_string(),
+            decimales: 2,
+        };
+        // 1.5 px * 10 m/px = 15 m de mundo.
+        // paso_redondo(15 / 1) = 10 m.
+        // floor(15 / 10) = 1, pero si hubiese sido 0.5 m de mundo,
+        // floor(0.5 / 10) = 0, y .max(1) fuerza 1 cuadro.
+        // Ancho pedido: 0.05 px que vale 0.5 m de mundo < 10 m de un cuadro.
+        let b = repartir(0.05, &escala, 1);
+        // Puede ser None (no cabe ni con un cuadro) o tener exactamente 1 cuadro
+        // que se mantiene dentro del ancho.
+        match b {
+            None => (),
+            Some(barra) => {
+                assert_eq!(barra.cuadros, 1, "force un cuadro");
+                assert!(
+                    barra.ancho_usado_px <= 0.05 + 1e-3,
+                    "pero respeta el ancho pedido: {} > 0.05",
+                    barra.ancho_usado_px
+                );
+            }
+        }
     }
 }
