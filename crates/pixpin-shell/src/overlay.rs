@@ -542,9 +542,9 @@ extern "system" fn procedimiento_overlay(
         WM_KEYDOWN | WM_SYSKEYDOWN => {
             // SAFETY: GetKeyState es una consulta sin precondiciones.
             let shift = unsafe { GetKeyState(VK_SHIFT.0 as i32) } < 0;
-            // SAFETY: igual que arriba.
+            // SAFETY: GetKeyState es una consulta sin precondiciones.
             let ctrl = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
-            // SAFETY: igual que arriba.
+            // SAFETY: GetKeyState es una consulta sin precondiciones.
             let alt = unsafe { GetKeyState(VK_MENU.0 as i32) } < 0;
             encolar(EventoOverlay::Tecla {
                 vk: wparam.0 as u32,
