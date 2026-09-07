@@ -1249,6 +1249,19 @@ mod pruebas {
         cerca(esquina_no(&e), ancla, "la esquina anclada");
     }
 
+    /// El punto del mundo al que hay que arrastrar para hacer, en un
+    /// elemento girado `angulo`, **el mismo gesto** que `local` haría en uno
+    /// sin girar.
+    ///
+    /// Sin esto, las pruebas de abajo arrastrarian al mismo punto del mundo
+    /// para todos los angulos, que no es el mismo gesto: a 90 grados ese
+    /// punto cae al otro lado del ancla y lo que sale es un volteo, no un
+    /// escalado. Y tras un volteo la esquina que se queda quieta ya no es la
+    /// noroeste, asi que la comprobacion dejaria de tener sentido.
+    fn arrastre_equivalente(local: Punto2, centro: Punto2, angulo: f32) -> Punto2 {
+        local.girar(centro, angulo)
+    }
+
     #[test]
     fn con_el_elemento_girado_la_esquina_anclada_sigue_sin_moverse() {
         // ESTA es la prueba que justifica la tarea entera. La forma
@@ -1258,11 +1271,15 @@ mod pruebas {
         for angulo in [0.0, 0.5236, FRAC_PI_2, PI, 2.6] {
             let mut e = rect();
             e.angulo = angulo;
+            let centro = Punto2::nuevo(50.0, 25.0);
             let ancla = esquina_no(&e);
+            let destino = arrastre_equivalente(Punto2::nuevo(180.0, 90.0), centro, angulo);
 
-            escalar(&mut e, Tirador::SuresteEsquina, Punto2::nuevo(180.0, 90.0), false, false);
+            escalar(&mut e, Tirador::SuresteEsquina, destino, false, false);
 
             cerca(esquina_no(&e), ancla, &format!("a {angulo} radianes"));
+            assert!((e.ancho - 180.0).abs() < 1e-2, "ancho a {angulo}: {}", e.ancho);
+            assert!((e.alto - 90.0).abs() < 1e-2, "alto a {angulo}: {}", e.alto);
         }
     }
 
@@ -1271,15 +1288,36 @@ mod pruebas {
         for angulo in [0.0, 0.5236, FRAC_PI_2, PI] {
             let mut e = rect();
             e.angulo = angulo;
-            let (x0, y0, x1, y1) = e.caja();
-            let c = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
-            let se_original = Punto2::nuevo(x1, y1).girar(c, angulo);
+            let centro = Punto2::nuevo(50.0, 25.0);
+            let se_original = arrastre_equivalente(Punto2::nuevo(100.0, 50.0), centro, angulo);
+            let lejos = arrastre_equivalente(Punto2::nuevo(300.0, 150.0), centro, angulo);
 
-            escalar(&mut e, Tirador::SuresteEsquina, Punto2::nuevo(300.0, 300.0), false, false);
+            escalar(&mut e, Tirador::SuresteEsquina, lejos, false, false);
             escalar(&mut e, Tirador::SuresteEsquina, se_original, false, false);
 
             assert!((e.ancho - 100.0).abs() < 1e-2, "ancho a {angulo}: {}", e.ancho);
             assert!((e.alto - 50.0).abs() < 1e-2, "alto a {angulo}: {}", e.alto);
+        }
+    }
+
+    #[test]
+    fn cruzar_el_ancla_con_el_elemento_girado_voltea_sin_degenerar() {
+        // El caso que las dos pruebas de arriba evitan a proposito, aqui
+        // comprobado de frente: arrastrar al otro lado del ancla en un
+        // elemento girado voltea. Lo que se exige es que el resultado siga
+        // siendo un elemento valido —sin cero, sin NaN— y no que la esquina
+        // noroeste siga quieta, porque tras un volteo esa ya no es el ancla.
+        for angulo in [0.0, FRAC_PI_2, 2.6] {
+            let mut e = rect();
+            e.angulo = angulo;
+            let centro = Punto2::nuevo(50.0, 25.0);
+            let detras = arrastre_equivalente(Punto2::nuevo(-120.0, 90.0), centro, angulo);
+
+            escalar(&mut e, Tirador::SuresteEsquina, detras, false, false);
+
+            assert!(e.ancho >= MINIMO, "no se aplasta a {angulo}: {}", e.ancho);
+            assert!(e.alto >= MINIMO, "ni de alto a {angulo}: {}", e.alto);
+            assert!(e.x.is_finite() && e.y.is_finite(), "sin NaN a {angulo}");
         }
     }
 
@@ -1411,8 +1449,11 @@ mod pruebas {
 
     #[test]
     fn los_saltos_de_giro_son_de_quince_grados() {
-        assert!((a_saltos(0.20) - 0.0).abs() < 1e-6, "0,20 rad baja a 0");
-        assert!((a_saltos(0.30) - SALTO_GIRO).abs() < 1e-6, "0,30 rad sube a 15");
+        // La media division son 7,5 grados = 0,1309 rad: por debajo se baja
+        // al salto anterior y por encima se sube al siguiente.
+        assert!((a_saltos(0.10) - 0.0).abs() < 1e-6, "0,10 rad (5,7 grados) baja a 0");
+        assert!((a_saltos(0.20) - SALTO_GIRO).abs() < 1e-6, "0,20 rad (11,5) ya sube a 15");
+        assert!((a_saltos(0.30) - SALTO_GIRO).abs() < 1e-6, "0,30 rad (17,2) tambien");
         assert!((a_saltos(-0.30) + SALTO_GIRO).abs() < 1e-6, "y en negativo");
     }
 
