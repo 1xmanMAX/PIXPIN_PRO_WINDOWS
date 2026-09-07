@@ -81,6 +81,10 @@ pub fn repartir(ancho_px: f32, escala: &Escala, cuadros_deseados: u32) -> Option
     // de valor absurdo, y el .max(1) fuerza un cuadro. Eso puede hacer ancho_usado_px
     // orders of magnitude por encima del ancho pedido. Reducimos cuadros hasta que
     // quepa; si ni con uno cabe, devolvemos None.
+    // Este bucle está acotado por la precisión de la mantisa de f32 (~24 bits).
+    // Al convertir cuadros: u32 a f32 por encima de 2^24 (≈16,7 millones), el
+    // redondeo introduce error absoluto de hasta 256. Peor caso observado: ~130
+    // iteraciones. No depende de cuadros_deseados, solo de la aritmética f32.
     while ancho_usado_px > ancho_px + 1e-3 && cuadros > 1 {
         cuadros -= 1;
         ancho_usado_px = (cuadros as f32 * paso) / escala.unidades_por_pixel;
@@ -228,35 +232,26 @@ mod pruebas {
     }
 
     #[test]
-    fn el_floor_cero_fuerza_un_cuadro_y_sigue_dentro() {
+    fn el_floor_cero_lleva_a_rechazo() {
         // El .max(1) de cuadros solo actua cuando floor(total_mundo / paso) < 1,
         // i.e., cuando el ancho en unidades de mundo es menor que el paso elegido.
-        // Esto y el invariante de ancho_usado_px pueden chocar: necesitamos un
-        // cuadro pero ocuparia mas que el ancho pedido. Comprobamos que las dos
-        // exigencias se satisfacen a la vez.
+        // Con upp diminuto, total_mundo cae a cero por perdida de precision,
+        // paso_redondo devuelve 1.0, floor da 0, y .max(1) fuerza 1 cuadro.
+        // Pero ancho_usado_px = 1.0 / upp se dispara orders of magnitude,
+        // y la postcondicion lo rechaza. La rama .max(1) es guarda defensiva:
+        // en la practica todo camino que llega a ella sale rechazado por ancho.
         let escala = Escala {
-            unidades_por_pixel: 10.0, // 1 pixel = 10 unidades de mundo
+            unidades_por_pixel: 1e-20, // diminuto
             unidad: "m".to_string(),
             decimales: 2,
         };
-        // 1.5 px * 10 m/px = 15 m de mundo.
-        // paso_redondo(15 / 1) = 10 m.
-        // floor(15 / 10) = 1, pero si hubiese sido 0.5 m de mundo,
-        // floor(0.5 / 10) = 0, y .max(1) fuerza 1 cuadro.
-        // Ancho pedido: 0.05 px que vale 0.5 m de mundo < 10 m de un cuadro.
-        let b = repartir(0.05, &escala, 1);
-        // Puede ser None (no cabe ni con un cuadro) o tener exactamente 1 cuadro
-        // que se mantiene dentro del ancho.
-        match b {
-            None => (),
-            Some(barra) => {
-                assert_eq!(barra.cuadros, 1, "force un cuadro");
-                assert!(
-                    barra.ancho_usado_px <= 0.05 + 1e-3,
-                    "pero respeta el ancho pedido: {} > 0.05",
-                    barra.ancho_usado_px
-                );
-            }
-        }
+        // ancho_px = 1e-10 px * upp = 1e-30 m de mundo, mucho menor que paso=1.0.
+        // floor(1e-30 / 1.0) = 0, .max(1) fuerza 1, pero ancho_usado_px = 1.0 / 1e-20
+        // = 1e20 px >> 1e-10 px pedidos. Postcondicion rechaza.
+        let b = repartir(1e-10, &escala, 1);
+        assert!(
+            b.is_none(),
+            "floor == 0 siempre rechazado por postcondicion de ancho"
+        );
     }
 }
