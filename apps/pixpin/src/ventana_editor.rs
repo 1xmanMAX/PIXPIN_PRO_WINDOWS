@@ -40,7 +40,7 @@ use pixpin_motor2d::pintado::Orden;
 use pixpin_motor2d::tiradores::Tiradores;
 use pixpin_motor2d::vector::Punto2;
 use pixpin_motor2d::{ColorRgba, EstiloTrazo};
-use pixpin_render::{Color, MotorRender, RectF, Superficie};
+use pixpin_render::{CapaEstatica, Color, Estampa, MotorRender, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, FormaCursorWin, VentanaOverlay};
 
 /// De la forma que pide el motor a la que entiende Windows.
@@ -139,7 +139,7 @@ fn con_modificadores(g: EventoGesto) -> EventoGesto {
 pub fn abrir(escena: Escena) -> Result<Escena> {
     let dispositivo =
         pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para el editor")?;
-    let motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
+    let mut motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
 
     let disposicion =
         pixpin_capture::enumerar_monitores().context("sin monitores para el editor")?;
@@ -165,6 +165,7 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
     let camara = Camara::nueva();
     let mut cache = Cache::nueva();
     let mut rejilla = Rejilla::nueva();
+    let mut capa = CapaEstatica::nueva();
     let (ancho_px, alto_px) = (area.ancho as f32, area.alto as f32);
 
     'bucle: loop {
@@ -176,6 +177,7 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
             // 1. Traducir y, si le toca al motor, pasarselo.
             if let Some(g) = a_evento(&ev, &camara) {
                 let g = con_modificadores(g);
+                let en_reposo_antes = gesto.en_reposo();
                 let r = gesto.evento(g, &mut escena, 1.0 / camara.zoom);
                 ventana.poner_cursor(forma_de(r.cursor));
                 // `VentanaOverlay::invalidar` no toma una region: invalida
@@ -187,18 +189,58 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
                     Region::Nada => {}
                     Region::Caja(..) | Region::Todo => ventana.invalidar(),
                 }
+                // La capa estatica solo vive durante un gesto de mover,
+                // escalar o girar algo seleccionado: en `gesto.rs`, entrar
+                // en `Dibujando` o `Marquesina` limpia la seleccion antes,
+                // asi que "seleccion no vacia y no en reposo" identifica
+                // exactamente esos tres estados sin que este fichero tenga
+                // que conocer el `Estado` privado del motor.
+                let activo_ahora = !gesto.en_reposo() && !gesto.seleccion.esta_vacia();
+                if activo_ahora && en_reposo_antes {
+                    rejilla.sincronizar(&escena);
+                    let vista = camara.ventana(ancho_px, alto_px);
+                    let candidatos = rejilla.candidatos(vista);
+                    let excluidos = gesto.seleccion.ids().to_vec();
+                    let estampa = Estampa {
+                        camara: (camara.x, camara.y, camara.zoom),
+                        tamano: (ancho_px as u32, alto_px as u32),
+                        excluidos: excluidos.clone(),
+                    };
+                    let _ = capa.preparar(&mut motor, estampa, |p| {
+                        p.limpiar(Color::BLANCO);
+                        let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
+                        p.poner_vista((0.0, 0.0), camara.zoom, (origen.x, origen.y));
+                        for id in candidatos {
+                            if excluidos.contains(&id) {
+                                continue;
+                            }
+                            let Some(e) = escena.buscar(id) else {
+                                continue;
+                            };
+                            if e.borrado {
+                                continue;
+                            }
+                            for orden in cache.ordenes(e, camara.zoom) {
+                                dibujar_orden(p, orden, vista);
+                            }
+                        }
+                    });
+                } else if !activo_ahora && capa.lista() {
+                    capa.soltar();
+                }
             }
             // 2. Pintar solo cuando lo pide la ventana.
             if matches!(ev, EventoOverlay::Pintar) {
                 rejilla.sincronizar(&escena);
                 pintar(
-                    &motor,
+                    &mut motor,
                     &superficie,
                     &escena,
                     &camara,
                     &gesto,
                     &mut cache,
                     &rejilla,
+                    &capa,
                     ancho_px,
                     alto_px,
                 );
@@ -221,13 +263,14 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
 /// la seleccion, sus tiradores y la marquesina si la hay.
 #[allow(clippy::too_many_arguments)]
 fn pintar(
-    motor: &MotorRender,
+    motor: &mut MotorRender,
     superficie: &Superficie,
     escena: &Escena,
     camara: &Camara,
     gesto: &Gesto,
     cache: &mut Cache,
     rejilla: &Rejilla,
+    capa: &CapaEstatica,
     ancho_px: f32,
     alto_px: f32,
 ) {
@@ -240,15 +283,34 @@ fn pintar(
     let candidatos = rejilla.candidatos(vista);
     let escala = 1.0 / camara.zoom;
 
+    // Si hay una capa estatica valida para este fotograma, `volcar` ya
+    // copio en `destino` todo lo que no se mueve: aqui solo hace falta
+    // pintar encima lo excluido (lo seleccionado, que es lo que se arrastra)
+    // y el marco. Si no vale, se pinta todo como siempre, y `volcar` no
+    // habra tocado `destino`.
+    let ahora = Estampa {
+        camara: (camara.x, camara.y, camara.zoom),
+        tamano: (ancho_px as u32, alto_px as u32),
+        excluidos: gesto.seleccion.ids().to_vec(),
+    };
+    let capa_vale = capa.volcar(motor, &destino, &ahora);
+
     let _ = motor.dibujar(&destino, |p| {
-        p.limpiar(Color::BLANCO);
         // El mundo se dibuja en sus propias coordenadas; la matriz activa es
         // lo unico que cambia al encuadrar o acercar (camara.rs lo explica:
         // "la geometria se calcula UNA VEZ en coordenadas del mundo").
         let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
+        if !capa_vale {
+            p.limpiar(Color::BLANCO);
+        }
         p.poner_vista((0.0, 0.0), camara.zoom, (origen.x, origen.y));
 
         for id in candidatos {
+            // Con la capa valida, lo que no esta seleccionado ya esta
+            // copiado en `destino`: repintarlo aqui seria pagar dos veces.
+            if capa_vale && !gesto.seleccion.contiene(id) {
+                continue;
+            }
             let Some(e) = escena.buscar(id) else {
                 continue;
             };
