@@ -74,7 +74,7 @@ struct Entrada {
 /// es del orden de megas, no decenas. Si la medicion dice otra cosa, el
 /// arreglo es tirar las entradas de los elementos que llevan N fotogramas
 /// sin pintarse. No hacerlo antes de medirlo.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct Cache {
     mapa: HashMap<u64, Entrada>,
     aciertos: u64,
