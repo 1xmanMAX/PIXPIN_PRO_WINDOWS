@@ -24,6 +24,7 @@ pub mod excalidraw;
 pub mod formas;
 pub mod formato;
 pub mod impacto;
+pub mod indice;
 pub mod pintado;
 pub mod seleccion;
 pub mod tiradores;
