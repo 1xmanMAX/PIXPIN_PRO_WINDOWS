@@ -33,6 +33,7 @@ use pixpin_geom::Tirador;
 use crate::elemento::{Elemento, Figura};
 use crate::escena::Escena;
 use crate::impacto::{dentro_de, elemento_en};
+use crate::medida::Escala;
 use crate::seleccion::Seleccion;
 use crate::tiradores::{Agarre, Tiradores};
 use crate::transformar::{self, a_saltos, angulo_hacia};
@@ -64,6 +65,13 @@ pub enum Herramienta {
     /// Amplia alrededor del cursor. No deja rastro: es una vista (D52).
     Lupa,
     Borrador,
+    /// Acota: deja una raya que dice cuanto mide.
+    Cota,
+    /// Calibra: se arrastra sobre algo de medida conocida y al soltar
+    /// pregunta cuanto mide de verdad. La raya no se guarda.
+    Escalar,
+    /// La reglita a cuadros que sobrevive a la fotocopia.
+    EscalaGrafica,
 }
 
 impl Herramienta {
@@ -78,7 +86,7 @@ impl Herramienta {
     pub fn deja_rastro(self) -> bool {
         !matches!(
             self,
-            Herramienta::Mano | Herramienta::Lupa | Herramienta::Borrador
+            Herramienta::Mano | Herramienta::Lupa | Herramienta::Borrador | Herramienta::Escalar
         )
     }
 }
@@ -123,16 +131,42 @@ pub enum FormaCursor {
 pub struct Respuesta {
     pub region: Region,
     pub cursor: FormaCursor,
+    pub pide: Option<Peticion>,
+}
+
+/// Algo que la maquina necesita y solo la ventana puede conseguir.
+///
+/// La maquina dice «hay que preguntar esto»; quien pregunta y como es asunto
+/// del que pinta (D40). Mismo corte que `Region` y `FormaCursor`: aqui no se
+/// sabe lo que es una ventana.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Peticion {
+    /// Cuanto mide de verdad el trazo que se acaba de arrastrar.
+    Calibrar { largo_px: f32 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Estado {
     Reposo,
-    Dibujando { id: u64 },
-    Moviendo { anterior: Punto2 },
-    Escalando { tirador: Tirador },
-    Girando { anterior: f32 },
-    Marquesina { origen: Punto2, hasta: Punto2 },
+    Dibujando {
+        id: u64,
+    },
+    Moviendo {
+        anterior: Punto2,
+    },
+    Escalando {
+        tirador: Tirador,
+    },
+    Girando {
+        anterior: f32,
+    },
+    Marquesina {
+        origen: Punto2,
+        hasta: Punto2,
+    },
+    /// Arrastrando la raya de `Escalar`. No hay id: no deja rastro, y sus
+    /// puntos van en `trazo` en vez de en un elemento de la escena.
+    Calibrando,
 }
 
 pub struct Gesto {
@@ -188,6 +222,7 @@ impl Gesto {
                 Respuesta {
                     region: Region::Todo,
                     cursor: FormaCursor::Flecha,
+                    pide: None,
                 }
             }
             EventoGesto::Suprimir => {
@@ -204,6 +239,7 @@ impl Gesto {
                 Respuesta {
                     region: Region::Todo,
                     cursor: FormaCursor::Flecha,
+                    pide: None,
                 }
             }
             EventoGesto::Deshacer => {
@@ -212,6 +248,7 @@ impl Gesto {
                 Respuesta {
                     region: Region::Todo,
                     cursor: FormaCursor::Flecha,
+                    pide: None,
                 }
             }
             EventoGesto::Rehacer => {
@@ -219,6 +256,7 @@ impl Gesto {
                 Respuesta {
                     region: Region::Todo,
                     cursor: FormaCursor::Flecha,
+                    pide: None,
                 }
             }
             EventoGesto::SeleccionarTodo => {
@@ -227,9 +265,32 @@ impl Gesto {
                 Respuesta {
                     region: Region::Todo,
                     cursor: FormaCursor::Flecha,
+                    pide: None,
                 }
             }
         }
+    }
+
+    /// Pone la escala del lienzo a partir de una medida real.
+    ///
+    /// Devuelve si pudo: una calibracion imposible no toca la escena (D36).
+    /// Va en un paso de deshacer porque calibrar mal y no poder volver atras
+    /// seria tener que rehacer el lienzo entero.
+    pub fn calibrar(
+        &mut self,
+        escena: &mut Escena,
+        largo_px: f32,
+        valor: f32,
+        unidad: &str,
+    ) -> bool {
+        let Some(nueva) = Escala::calibrando(largo_px, valor, unidad, 2) else {
+            return false;
+        };
+        escena.abrir_paso();
+        escena.apuntar_escala();
+        escena.escala = Some(nueva);
+        escena.cerrar_paso();
+        true
     }
 
     /// Los tiradores de la seleccion, si hay algo elegido.
@@ -280,6 +341,10 @@ impl Gesto {
             },
             Herramienta::Elipse => Figura::Elipse,
             Herramienta::Foco => Figura::Foco { elipse: false },
+            Herramienta::Cota => Figura::Cota {
+                puntos: reservados(),
+            },
+            Herramienta::EscalaGrafica => Figura::EscalaGrafica,
             // Rectangulo y todo lo demas que deje rastro.
             _ => Figura::Rectangulo,
         };
@@ -347,6 +412,7 @@ impl Gesto {
             return Respuesta {
                 region: Region::Nada,
                 cursor: self.cursor_en(p, escena, escala),
+                pide: None,
             };
         }
         escena.abrir_paso();
@@ -362,6 +428,7 @@ impl Gesto {
                             tirador: t,
                             angulo: ts.angulo,
                         },
+                        pide: None,
                     };
                 }
                 Some(Agarre::Giro) => {
@@ -371,6 +438,7 @@ impl Gesto {
                     return Respuesta {
                         region: Region::Nada,
                         cursor: FormaCursor::Giro,
+                        pide: None,
                     };
                 }
                 None => {}
@@ -397,6 +465,7 @@ impl Gesto {
             return Respuesta {
                 region: Region::Nada,
                 cursor: FormaCursor::Mover,
+                pide: None,
             };
         }
 
@@ -411,6 +480,7 @@ impl Gesto {
             return Respuesta {
                 region: Region::Todo,
                 cursor: FormaCursor::Mover,
+                pide: None,
             };
         }
 
@@ -426,6 +496,20 @@ impl Gesto {
             return Respuesta {
                 region: Region::Todo,
                 cursor: FormaCursor::Flecha,
+                pide: None,
+            };
+        }
+        // Escalar no deja rastro: su raya no es un elemento de la escena,
+        // solo puntos en `trazo`. Al soltar se convierte en una peticion,
+        // no en un `Cambio::Anadido`.
+        if self.herramienta == Herramienta::Escalar {
+            self.trazo.clear();
+            self.trazo.push(p);
+            self.estado = Estado::Calibrando;
+            return Respuesta {
+                region: Region::Nada,
+                cursor: FormaCursor::Cruz,
+                pide: None,
             };
         }
         // El texto no entra en esta entrega (ver arriba): con la herramienta
@@ -441,11 +525,13 @@ impl Gesto {
             return Respuesta {
                 region: Region::Todo,
                 cursor: FormaCursor::Cruz,
+                pide: None,
             };
         }
         Respuesta {
             region: Region::Nada,
             cursor: FormaCursor::Cruz,
+            pide: None,
         }
     }
 
@@ -461,6 +547,7 @@ impl Gesto {
             Estado::Reposo => Respuesta {
                 region: Region::Nada,
                 cursor: self.cursor_en(p, escena, escala),
+                pide: None,
             },
 
             Estado::Dibujando { id } => {
@@ -483,8 +570,21 @@ impl Gesto {
                                 *ultimo = p;
                             }
                         }
+                        Figura::Cota { puntos } => {
+                            // Como la Linea: el segundo punto sigue al
+                            // cursor. Pero `nuevo_elemento` la arranca con
+                            // un solo punto (`reservados()`), asi que el
+                            // primer aviso anade el segundo en vez de
+                            // sustituirlo.
+                            if puntos.len() < 2 {
+                                puntos.push(p);
+                            } else if let Some(ultimo) = puntos.last_mut() {
+                                *ultimo = p;
+                            }
+                        }
                         _ => {
-                            // Las figuras de caja crecen desde donde se pulso.
+                            // Las figuras de caja crecen desde donde se
+                            // pulso. La escala grafica cae aqui tambien.
                             let o = *self.trazo.first().unwrap_or(&p);
                             e.x = o.x.min(p.x);
                             e.y = o.y.min(p.y);
@@ -503,6 +603,7 @@ impl Gesto {
                         anterior.y.max(p.y) + m,
                     ),
                     cursor: FormaCursor::Cruz,
+                    pide: None,
                 }
             }
 
@@ -520,6 +621,7 @@ impl Gesto {
                 Respuesta {
                     region: Region::Todo,
                     cursor: FormaCursor::Mover,
+                    pide: None,
                 }
             }
 
@@ -534,6 +636,7 @@ impl Gesto {
                 Respuesta {
                     region: Region::Todo,
                     cursor: FormaCursor::Escalar { tirador, angulo },
+                    pide: None,
                 }
             }
 
@@ -542,6 +645,7 @@ impl Gesto {
                     return Respuesta {
                         region: Region::Nada,
                         cursor: FormaCursor::Giro,
+                        pide: None,
                     };
                 };
                 let ahora = angulo_hacia(centro, p);
@@ -557,6 +661,7 @@ impl Gesto {
                 Respuesta {
                     region: Region::Todo,
                     cursor: FormaCursor::Giro,
+                    pide: None,
                 }
             }
 
@@ -565,6 +670,22 @@ impl Gesto {
                 Respuesta {
                     region: Region::Todo,
                     cursor: FormaCursor::Flecha,
+                    pide: None,
+                }
+            }
+
+            Estado::Calibrando => {
+                // Mismo buffer que `Dibujando`, ya reservado: mover el raton
+                // calibrando tampoco asigna memoria.
+                if self.trazo.len() < PUNTOS_RESERVADOS {
+                    self.trazo.push(p);
+                } else if let Some(ultimo) = self.trazo.last_mut() {
+                    *ultimo = p;
+                }
+                Respuesta {
+                    region: Region::Nada,
+                    cursor: FormaCursor::Cruz,
+                    pide: None,
                 }
             }
         }
@@ -576,6 +697,16 @@ impl Gesto {
             let cogidos = dentro_de(&escena.elementos, caja);
             self.seleccion.poner_todos(cogidos);
         }
+        // Escalar no deja rastro: al soltar, la distancia entre el primer y
+        // el ultimo punto se convierte en una peticion. Menos de dos
+        // pixeles es un clic, no una medida, y no se pide nada.
+        let pide = if let Estado::Calibrando = self.estado {
+            let origen = *self.trazo.first().unwrap_or(&p);
+            let largo_px = origen.distancia(p);
+            (largo_px >= 2.0).then_some(Peticion::Calibrar { largo_px })
+        } else {
+            None
+        };
         // Un paso sin cambios no entra en el historial, asi que hacer clic
         // sin arrastrar no consume un Ctrl+Z. De eso se encarga cerrar_paso.
         escena.cerrar_paso();
@@ -583,6 +714,7 @@ impl Gesto {
         Respuesta {
             region: Region::Todo,
             cursor: FormaCursor::Flecha,
+            pide,
         }
     }
 }
@@ -1031,5 +1163,168 @@ mod pruebas {
 
         let girada = direccion_del_tirador(Tirador::SuresteEsquina, FRAC_PI_2);
         assert!((girada - 5.0 * PI / 4.0).abs() < 1e-3, "girada: {girada}");
+    }
+
+    #[test]
+    fn escalar_pide_la_medida_al_soltar() {
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Escalar;
+
+        g.evento(pulsar(Punto2::nuevo(0.0, 0.0)), &mut escena, 1.0);
+        g.evento(mover(Punto2::nuevo(100.0, 0.0)), &mut escena, 1.0);
+        let r = g.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(100.0, 0.0),
+            },
+            &mut escena,
+            1.0,
+        );
+
+        let Some(Peticion::Calibrar { largo_px }) = r.pide else {
+            panic!("al soltar tiene que pedir la medida, dio {:?}", r.pide);
+        };
+        assert!((largo_px - 100.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn la_raya_de_calibrar_no_se_queda_en_el_dibujo() {
+        // Era un metro, no un dibujo. Si se quedara, cada calibrado dejaria
+        // basura en el lienzo.
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Escalar;
+
+        g.evento(pulsar(Punto2::nuevo(0.0, 0.0)), &mut escena, 1.0);
+        g.evento(mover(Punto2::nuevo(100.0, 0.0)), &mut escena, 1.0);
+        g.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(100.0, 0.0),
+            },
+            &mut escena,
+            1.0,
+        );
+
+        assert_eq!(escena.cuantos_visibles(), 0, "la raya se fue");
+    }
+
+    #[test]
+    fn calibrar_pone_la_escala_en_la_escena() {
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        assert!(g.calibrar(&mut escena, 100.0, 3.0, "m"));
+        let e = escena.escala.as_ref().expect("hay escala");
+        assert!((e.unidades_por_pixel - 0.03).abs() < 1e-6);
+        assert_eq!(e.unidad, "m");
+    }
+
+    #[test]
+    fn calibrar_con_una_medida_imposible_no_toca_la_escena() {
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        assert!(
+            !g.calibrar(&mut escena, 100.0, 0.0, "m"),
+            "devuelve que no pudo"
+        );
+        assert!(escena.escala.is_none(), "y no deja nada a medias");
+    }
+
+    #[test]
+    fn recalibrar_sustituye_la_escala_anterior() {
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.calibrar(&mut escena, 100.0, 3.0, "m");
+        g.calibrar(&mut escena, 100.0, 6.0, "m");
+        assert!((escena.escala.unwrap().unidades_por_pixel - 0.06).abs() < 1e-6);
+    }
+
+    #[test]
+    fn calibrar_se_puede_deshacer() {
+        // Calibrar mal y no poder volver atras seria tener que rehacer el
+        // lienzo entero.
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.calibrar(&mut escena, 100.0, 3.0, "m");
+        assert!(escena.escala.is_some());
+        assert!(escena.deshacer());
+        assert!(escena.escala.is_none(), "vuelve a estar sin calibrar");
+    }
+
+    #[test]
+    fn la_cota_deja_una_cota_y_un_paso_de_deshacer() {
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Cota;
+
+        arrastrar(
+            &mut g,
+            &mut escena,
+            Punto2::nuevo(0.0, 0.0),
+            Punto2::nuevo(100.0, 0.0),
+        );
+
+        assert_eq!(escena.cuantos_visibles(), 1);
+        assert!(matches!(
+            escena.visibles().next().unwrap().figura,
+            Figura::Cota { .. }
+        ));
+        assert!(escena.deshacer());
+        assert_eq!(escena.cuantos_visibles(), 0);
+    }
+
+    #[test]
+    fn la_cota_funciona_sin_haber_calibrado() {
+        // D35: sin escala mide en pixeles. La herramienta no se bloquea.
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Cota;
+        assert!(escena.escala.is_none());
+
+        arrastrar(
+            &mut g,
+            &mut escena,
+            Punto2::nuevo(0.0, 0.0),
+            Punto2::nuevo(100.0, 0.0),
+        );
+        assert_eq!(escena.cuantos_visibles(), 1, "deja la cota igual");
+    }
+
+    #[test]
+    fn la_escala_grafica_deja_una_barra() {
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::EscalaGrafica;
+
+        arrastrar(
+            &mut g,
+            &mut escena,
+            Punto2::nuevo(0.0, 0.0),
+            Punto2::nuevo(400.0, 24.0),
+        );
+
+        assert_eq!(escena.cuantos_visibles(), 1);
+        assert!(matches!(
+            escena.visibles().next().unwrap().figura,
+            Figura::EscalaGrafica
+        ));
+    }
+
+    #[test]
+    fn las_herramientas_de_medir_dejan_rastro_menos_escalar() {
+        assert!(Herramienta::Cota.deja_rastro());
+        assert!(Herramienta::EscalaGrafica.deja_rastro());
+        assert!(
+            !Herramienta::Escalar.deja_rastro(),
+            "la raya de calibrar no se guarda"
+        );
+    }
+
+    #[test]
+    fn los_gestos_que_no_piden_nada_no_piden_nada() {
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Lapiz;
+        let r = g.evento(pulsar(Punto2::nuevo(0.0, 0.0)), &mut escena, 1.0);
+        assert!(r.pide.is_none());
     }
 }

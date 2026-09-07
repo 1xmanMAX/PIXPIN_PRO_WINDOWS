@@ -69,6 +69,11 @@ enum Cambio {
     /// `Editado`: lo que cambia es la lista, no su contenido. Y el orden de
     /// la lista ES el orden de pintado, asi que perderlo se ve.
     Reordenado(Vec<u64>),
+    /// La escala **antes** del cambio.
+    ///
+    /// Calibrar no toca ningun elemento, asi que no se puede expresar con
+    /// `Editado`: lo que cambia es la escena.
+    Escala(Option<Escala>),
 }
 
 /// Todo lo que hizo un gesto. Un arrastre que mueve cuarenta elementos es
@@ -85,6 +90,9 @@ impl Cambio {
             Cambio::Anadido(_) | Cambio::Borrado(_) => size_of::<Cambio>(),
             Cambio::Editado { antes, .. } => size_of::<Cambio>() + antes.bytes(),
             Cambio::Reordenado(orden) => size_of::<Cambio>() + orden.len() * size_of::<u64>(),
+            Cambio::Escala(escala) => {
+                size_of::<Cambio>() + escala.as_ref().map_or(0, |e| e.unidad.len())
+            }
         }
     }
 }
@@ -316,6 +324,22 @@ impl Escena {
         }
     }
 
+    /// Guarda la escala actual para poder volver a ella.
+    ///
+    /// Apuntarlo dos veces dentro del mismo paso guarda **solo la primera**:
+    /// igual que `apuntar_edicion` y `apuntar_reordenamiento`.
+    pub fn apuntar_escala(&mut self) {
+        let Some(paso) = &self.en_curso else { return };
+        let ya_esta = paso.cambios.iter().any(|c| matches!(c, Cambio::Escala(_)));
+        if ya_esta {
+            return;
+        }
+        let cambio = Cambio::Escala(self.escala.clone());
+        if let Some(paso) = &mut self.en_curso {
+            paso.cambios.push(cambio);
+        }
+    }
+
     /// Cierra el gesto. Un paso sin cambios no entra en el historial: hacer
     /// clic sin arrastrar no debe consumir un `Ctrl+Z`.
     pub fn cerrar_paso(&mut self) {
@@ -330,8 +354,8 @@ impl Escena {
         // historial, `Ctrl+Z` no deshaceria nada visible. Se filtra aqui,
         // antes de mirar si el paso quedo vacio.
         //
-        // `Anadido`, `Borrado` y `Reordenado` no se filtran: esos solo se
-        // empujan cuando la accion ocurrio de verdad.
+        // `Anadido`, `Borrado`, `Reordenado` y `Escala` no se filtran: esos
+        // solo se empujan cuando la accion ocurrio de verdad.
         paso.cambios.retain(|c| match c {
             Cambio::Editado { id, antes } => self.buscar(*id) != Some(antes.as_ref()),
             _ => true,
@@ -434,6 +458,11 @@ impl Escena {
                     }
                     self.elementos = nuevos_elementos;
                     inverso.cambios.push(Cambio::Reordenado(orden_actual));
+                }
+                Cambio::Escala(anterior) => {
+                    let actual = self.escala.clone();
+                    self.escala = anterior.clone();
+                    inverso.cambios.push(Cambio::Escala(actual));
                 }
             }
         }

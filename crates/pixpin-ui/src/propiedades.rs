@@ -57,7 +57,7 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
 pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad] {
     match h {
         // No dejan rastro: no hay nada que ajustar.
-        Herramienta::Mano | Herramienta::Lupa | Herramienta::Borrador => &[],
+        Herramienta::Mano | Herramienta::Lupa | Herramienta::Borrador | Herramienta::Escalar => &[],
         Herramienta::Lapiz | Herramienta::Resaltador => &[ColorTrazo, Grosor, Opacidad],
         Herramienta::Linea => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
         Herramienta::Flecha => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad, PuntaFlecha],
@@ -66,6 +66,9 @@ pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad] {
         }
         Herramienta::Texto => &[ColorTrazo, Opacidad, Fuente, TamanoTexto],
         Herramienta::Foco => &[Opacidad],
+        // Mismas propiedades que su Figura correspondiente, arriba.
+        Herramienta::Cota => &[ColorTrazo, Grosor, Estilo, Opacidad],
+        Herramienta::EscalaGrafica => &[ColorTrazo, Opacidad],
     }
 }
 
