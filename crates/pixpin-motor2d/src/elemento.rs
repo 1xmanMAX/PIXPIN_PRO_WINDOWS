@@ -83,6 +83,27 @@ pub enum Figura {
     Imagen {
         id_objeto: u64,
     },
+    /// Una cota: el segmento acotado y nada mas.
+    ///
+    /// **No guarda su texto** (D34): ni el numero, ni la unidad, ni el
+    /// angulo. El rotulo se deriva al pintar, cada vez. Una cota que
+    /// guardara su texto podria decir una cosa y medir otra, y en un plano
+    /// eso es peor que no tener cotas.
+    ///
+    /// Es figura propia y no una `Linea` con una bandera (D38): el movil usa
+    /// el tipo `pixpin-measure`, y con una bandera se romperia la
+    /// compatibilidad que esta tarea viene a asegurar.
+    Cota {
+        puntos: Vec<Punto2>,
+    },
+    /// La reglita a cuadros. Usa `x`/`y`/`ancho`/`alto` como el rectangulo;
+    /// cuantos cuadros pone y cuanto mide cada uno sale de la escala de la
+    /// escena al pintar.
+    ///
+    /// Es un **elemento del dibujo y no un adorno del editor** (D37): se
+    /// guarda, se mueve, se estira y sale en la exportacion. Es lo que
+    /// permite medir sobre la imagen que recibe otro.
+    EscalaGrafica,
 }
 
 fn verdadero() -> bool {
@@ -159,7 +180,8 @@ impl Elemento {
             Figura::Lapiz { puntos, .. }
             | Figura::Resaltador { puntos }
             | Figura::Linea { puntos }
-            | Figura::Flecha { puntos, .. } => {
+            | Figura::Flecha { puntos, .. }
+            | Figura::Cota { puntos } => {
                 if puntos.is_empty() {
                     return (self.x, self.y, self.x, self.y);
                 }
@@ -184,7 +206,8 @@ impl Elemento {
             Figura::Lapiz { puntos, .. }
             | Figura::Resaltador { puntos }
             | Figura::Linea { puntos }
-            | Figura::Flecha { puntos, .. } => {
+            | Figura::Flecha { puntos, .. }
+            | Figura::Cota { puntos } => {
                 for p in puntos.iter_mut() {
                     p.x += dx;
                     p.y += dy;
@@ -206,7 +229,8 @@ impl Elemento {
             Figura::Lapiz { puntos, .. }
             | Figura::Resaltador { puntos }
             | Figura::Linea { puntos }
-            | Figura::Flecha { puntos, .. } => Some(puntos),
+            | Figura::Flecha { puntos, .. }
+            | Figura::Cota { puntos } => Some(puntos),
             _ => None,
         }
     }
@@ -226,7 +250,8 @@ impl Elemento {
             }
             Figura::Resaltador { puntos }
             | Figura::Linea { puntos }
-            | Figura::Flecha { puntos, .. } => puntos.len() * size_of::<Punto2>(),
+            | Figura::Flecha { puntos, .. }
+            | Figura::Cota { puntos } => puntos.len() * size_of::<Punto2>(),
             Figura::Texto { texto, familia, .. } => texto.len() + familia.len(),
             _ => 0,
         };

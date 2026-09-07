@@ -45,6 +45,11 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
         // El foco oscurece lo de alrededor: su color es el del velo.
         Figura::Foco { .. } => &[Opacidad],
         Figura::Imagen { .. } => &[Opacidad],
+        // Una cota es una raya de medir: ni relleno ni rugosidad.
+        Figura::Cota { .. } => &[ColorTrazo, Grosor, Estilo, Opacidad],
+        // Cuantos cuadros y cuanto mide cada uno lo decide la escala, no el
+        // usuario: ofrecerlo seria ofrecer mentir.
+        Figura::EscalaGrafica => &[ColorTrazo, Opacidad],
     }
 }
 

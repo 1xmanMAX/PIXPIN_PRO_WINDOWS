@@ -43,9 +43,12 @@ pub fn toca(e: &Elemento, p: Punto2) -> bool {
         Figura::Lapiz { puntos, .. }
         | Figura::Resaltador { puntos }
         | Figura::Linea { puntos }
-        | Figura::Flecha { puntos, .. } => cerca_de_la_polilinea(puntos, p, margen),
+        | Figura::Flecha { puntos, .. }
+        | Figura::Cota { puntos } => cerca_de_la_polilinea(puntos, p, margen),
 
-        Figura::Rectangulo => {
+        // La barra va con las de caja, como el rectangulo (D37): nunca
+        // lleva relleno, asi que se toca por su borde.
+        Figura::Rectangulo | Figura::EscalaGrafica => {
             if e.tiene_relleno() {
                 dentro_de_la_caja(p, e, margen)
             } else {

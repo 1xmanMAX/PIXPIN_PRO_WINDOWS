@@ -31,6 +31,7 @@
 use serde_json::{Map, Value};
 
 use crate::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+use crate::medida::Escala;
 use crate::vector::Punto2;
 
 #[derive(Debug, thiserror::Error)]
@@ -65,6 +66,10 @@ pub struct Lienzo {
     /// Todo lo demas del fichero — `type`, `version`, `appState`, `files` —
     /// tal cual venia. Se devuelve sin tocar al escribir.
     pub resto: Map<String, Value>,
+    /// Que mide un pixel de este lienzo (D31). Vive al nivel del lienzo, no
+    /// en `resto`, porque `leer`/`escribir` la traducen a su propio tipo en
+    /// vez de dejarla como JSON crudo.
+    pub escala: Option<Escala>,
 }
 
 impl Lienzo {
@@ -110,9 +115,11 @@ pub fn leer(json: &str) -> Result<Lienzo, ErrorExcalidraw> {
             None => Entrada::Ajeno(Box::new(v)),
         })
         .collect();
+    let escala = mapa.get("escala").and_then(escala_desde);
     Ok(Lienzo {
         entradas,
         resto: mapa,
+        escala,
     })
 }
 
@@ -132,7 +139,45 @@ pub fn escribir(lienzo: &Lienzo) -> String {
     // aunque el que entro no lo hiciera.
     mapa.entry("type")
         .or_insert_with(|| Value::String("excalidraw".into()));
+    // Se escribe siempre, tambien cuando es None: si solo se escribiera
+    // cuando hay escala, la del original sobreviviria y el movil seguiria
+    // midiendo con una escala que aqui se borro.
+    match &lienzo.escala {
+        Some(e) => mapa.insert("escala".into(), escala_hacia(e)),
+        None => mapa.insert("escala".into(), Value::Null),
+    };
     serde_json::to_string_pretty(&Value::Object(mapa)).unwrap_or_default()
+}
+
+/// La escala del JSON del movil, o `None` si no la hay o no vale.
+///
+/// Una escala imposible se ignora en vez de adoptarse (D36): mas vale no
+/// medir que medir mal.
+fn escala_desde(v: &Value) -> Option<Escala> {
+    let upp = v.get("unidadesPorPixel")?.as_f64()? as f32;
+    if !upp.is_finite() || upp <= 0.0 {
+        return None;
+    }
+    Some(Escala {
+        unidades_por_pixel: upp,
+        unidad: v
+            .get("unidad")
+            .and_then(Value::as_str)
+            .unwrap_or("m")
+            .to_string(),
+        decimales: v.get("decimales").and_then(Value::as_u64).unwrap_or(2) as u8,
+    })
+}
+
+fn escala_hacia(e: &Escala) -> Value {
+    let mut m = Map::new();
+    m.insert(
+        "unidadesPorPixel".into(),
+        Value::from(e.unidades_por_pixel as f64),
+    );
+    m.insert("unidad".into(), Value::String(e.unidad.clone()));
+    m.insert("decimales".into(), Value::from(e.decimales));
+    Value::Object(m)
 }
 
 // --- Traduccion de un elemento ---
@@ -219,10 +264,14 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
             tam: num_o(v, "fontSize", 20.0),
             familia: "Segoe UI".into(),
         },
+        "pixpin-measure" => Figura::Cota {
+            puntos: puntos_desde(v, x, y),
+        },
+        "pixpin-scalebar" => Figura::EscalaGrafica,
         // El resto son suyos y no sabemos dibujarlos: `pixpin-mosaic`,
-        // `pixpin-measure`, `pixpin-solid`, `pixpin-gantt`... y tambien
-        // `diamond` e `image`, que son de Excalidraw pero todavia no
-        // tenemos. Se conservan como ajenos.
+        // `pixpin-solid`, `pixpin-gantt`... y tambien `diamond` e `image`,
+        // que son de Excalidraw pero todavia no tenemos. Se conservan como
+        // ajenos.
         _ => return None,
     };
     Some(Elemento {
@@ -339,6 +388,13 @@ fn elemento_hacia(e: &Elemento, original: &Value) -> Value {
             mapa.insert("text".into(), Value::String(texto.clone()));
             mapa.insert("fontSize".into(), Value::from(*tam as f64));
         }
+        Figura::Cota { puntos } => {
+            mapa.insert("type".into(), Value::String("pixpin-measure".to_string()));
+            mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y));
+        }
+        Figura::EscalaGrafica => {
+            mapa.insert("type".into(), Value::String("pixpin-scalebar".to_string()));
+        }
         Figura::Rectangulo | Figura::Elipse | Figura::Foco { .. } | Figura::Imagen { .. } => {}
     }
     Value::Object(mapa)
@@ -416,8 +472,16 @@ pub fn color_hacia(c: ColorRgba) -> String {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    use crate::medida::Escala;
 
-    /// Un lienzo con un rectangulo nuestro y una cota suya, en ese orden.
+    /// Un lienzo con un rectangulo nuestro y un cronograma suyo, en ese orden.
+    ///
+    /// El tipo ajeno de muestra tiene que ser uno que no vayamos a
+    /// implementar nunca: `pixpin-measure` sirvio para esto hasta que la
+    /// tarea 3 le enseno a `elemento_desde` a entenderlo, y estas mismas
+    /// pruebas se pusieron rojas por casualidad, no por ningun fallo. El
+    /// cronograma no esta en ninguna fase del plan, asi que es el candidato
+    /// con menos riesgo de que vuelva a pasar.
     fn lienzo_mixto() -> &'static str {
         r##"{
           "type": "excalidraw",
@@ -428,8 +492,8 @@ mod pruebas {
              "strokeColor":"#1e1e1e","backgroundColor":"transparent","strokeWidth":2,
              "strokeStyle":"solid","roughness":1,"opacity":100,"seed":12345,
              "groupIds":["g1"],"boundElements":[{"id":"b1","type":"arrow"}]},
-            {"id":"c1","type":"pixpin-measure","x":0,"y":0,"width":80,"height":10,
-             "medida":4.5,"unidad":"m"}
+            {"id":"c1","type":"pixpin-gantt","x":0,"y":0,"width":80,"height":10,
+             "tareas":[],"periodos":[]}
           ],
           "appState": {"viewBackgroundColor": "#ffffff"},
           "files": {}
@@ -459,11 +523,11 @@ mod pruebas {
         assert_eq!(l.cuantos_ajenos(), 1);
         let salida = escribir(&l);
         assert!(
-            salida.contains("pixpin-measure"),
-            "se perdio la cota:\n{salida}"
+            salida.contains("pixpin-gantt"),
+            "se perdio el cronograma:\n{salida}"
         );
-        assert!(salida.contains("\"medida\""), "se perdieron sus campos");
-        assert!(salida.contains("\"unidad\""));
+        assert!(salida.contains("\"tareas\""), "se perdieron sus campos");
+        assert!(salida.contains("\"periodos\""));
     }
 
     #[test]
@@ -476,8 +540,8 @@ mod pruebas {
         assert!(matches!(l.entradas[1], Entrada::Ajeno(_)));
         let salida = escribir(&l);
         let pos_rect = salida.find("rectangle").unwrap();
-        let pos_cota = salida.find("pixpin-measure").unwrap();
-        assert!(pos_rect < pos_cota, "el orden cambio");
+        let pos_cronograma = salida.find("pixpin-gantt").unwrap();
+        assert!(pos_rect < pos_cronograma, "el orden cambio");
     }
 
     #[test]
@@ -699,15 +763,148 @@ mod pruebas {
     fn un_elemento_ajeno_sigue_viajando_intacto_con_sus_grupos() {
         // La garantia que no se puede romper: lo que Windows no entiende
         // sobrevive al viaje. Anadir un campo al lado no puede estropearlo.
+        //
+        // El tipo de muestra tiene que ser uno que no vayamos a implementar:
+        // `pixpin-measure` sirvio hasta que la tarea 3 le enseno a
+        // `elemento_desde` a entenderlo. El cronograma no esta en ninguna
+        // fase del plan, asi que es el candidato con menos riesgo de que
+        // esto vuelva a pasar con la proxima herramienta.
         let json = r#"{"type":"excalidraw","elements":[
-            {"type":"pixpin-measure","x":0,"y":0,"groupIds":["g9"],"unidad":"m"}
+            {"type":"pixpin-gantt","x":0,"y":0,"groupIds":["g9"],"tareas":[]}
         ]}"#;
         let lienzo = leer(json).unwrap();
         assert_eq!(lienzo.cuantos_ajenos(), 1);
 
         let vuelta = escribir(&lienzo);
-        assert!(vuelta.contains("pixpin-measure"), "el tipo ajeno sigue");
+        assert!(vuelta.contains("pixpin-gantt"), "el tipo ajeno sigue");
         assert!(vuelta.contains("\"g9\""), "y su grupo tambien");
-        assert!(vuelta.contains("\"unidad\""), "y sus campos propios");
+        assert!(vuelta.contains("\"tareas\""), "y sus campos propios");
+    }
+
+    #[test]
+    fn una_cota_del_movil_se_lee_como_cota() {
+        let json = r##"{"type":"excalidraw","elements":[
+            {"type":"pixpin-measure","x":0,"y":0,"width":100,"height":0,
+             "strokeColor":"#000000","seed":1,
+             "points":[[0,0],[100,0]]}
+        ]}"##;
+        let l = leer(json).unwrap();
+        assert_eq!(l.cuantos_ajenos(), 0, "ya la entendemos");
+        assert!(matches!(l.elementos()[0].figura, Figura::Cota { .. }));
+    }
+
+    #[test]
+    fn una_barra_de_escala_del_movil_se_lee_como_barra() {
+        let json = r##"{"type":"excalidraw","elements":[
+            {"type":"pixpin-scalebar","x":10,"y":20,"width":400,"height":24,
+             "strokeColor":"#000000","seed":1}
+        ]}"##;
+        let l = leer(json).unwrap();
+        assert_eq!(l.cuantos_ajenos(), 0);
+        assert!(matches!(l.elementos()[0].figura, Figura::EscalaGrafica));
+    }
+
+    #[test]
+    fn la_escala_del_lienzo_se_lee_y_se_devuelve() {
+        let json = r##"{"type":"excalidraw","elements":[],
+            "escala":{"unidadesPorPixel":0.03,"unidad":"m","decimales":2}}"##;
+        let l = leer(json).unwrap();
+        let e = l.escala.as_ref().expect("hay escala");
+        assert!((e.unidades_por_pixel - 0.03).abs() < 1e-6);
+        assert_eq!(e.unidad, "m");
+        assert_eq!(e.decimales, 2);
+
+        let vuelta = leer(&escribir(&l)).unwrap();
+        assert_eq!(vuelta.escala, l.escala, "sobrevive la ida y la vuelta");
+    }
+
+    #[test]
+    fn un_lienzo_sin_escala_se_lee_igual() {
+        // Compatibilidad hacia atras: los ficheros que ya hay no la llevan.
+        let json = r##"{"type":"excalidraw","elements":[]}"##;
+        assert!(leer(json).unwrap().escala.is_none());
+    }
+
+    #[test]
+    fn una_escala_imposible_del_movil_se_ignora() {
+        // D36: mas vale no medir que medir mal. Si el movil escribiera una
+        // escala rota, no se adopta.
+        let json = r##"{"type":"excalidraw","elements":[],
+            "escala":{"unidadesPorPixel":0,"unidad":"m","decimales":2}}"##;
+        assert!(leer(json).unwrap().escala.is_none());
+    }
+
+    #[test]
+    fn calibrar_en_windows_se_ve_en_el_movil() {
+        let json = r##"{"type":"excalidraw","elements":[]}"##;
+        let mut l = leer(json).unwrap();
+        l.escala = Escala::calibrando(100.0, 3.0, "m", 2);
+
+        let vuelta = escribir(&l);
+        assert!(vuelta.contains("\"escala\""), "el JSON la lleva: {vuelta}");
+        let otra = leer(&vuelta).unwrap();
+        assert!((otra.escala.unwrap().unidades_por_pixel - 0.03).abs() < 1e-6);
+    }
+
+    #[test]
+    fn quitar_la_escala_en_windows_la_quita_tambien_alla() {
+        // Si solo se escribiera cuando existe, la del original sobreviviria y
+        // el movil seguiria midiendo con una escala que aqui se borro.
+        let json = r##"{"type":"excalidraw","elements":[],
+            "escala":{"unidadesPorPixel":0.03,"unidad":"m","decimales":2}}"##;
+        let mut l = leer(json).unwrap();
+        l.escala = None;
+        assert!(leer(&escribir(&l)).unwrap().escala.is_none());
+    }
+
+    #[test]
+    fn una_cota_hecha_en_windows_vuelve_como_pixpin_measure() {
+        let json = r##"{"type":"excalidraw","elements":[]}"##;
+        let mut l = leer(json).unwrap();
+        l.entradas.push(Entrada::Nuestro {
+            elemento: Elemento {
+                id: 1,
+                figura: Figura::Cota {
+                    puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
+                },
+                x: 0.0,
+                y: 0.0,
+                ancho: 100.0,
+                alto: 0.0,
+                angulo: 0.0,
+                trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+                relleno: None,
+                grosor: 2.0,
+                estilo: EstiloTrazo::Solido,
+                rugosidad: 1.0,
+                opacidad: 1.0,
+                semilla: 1,
+                version: 0,
+                borrado: false,
+                grupos: Vec::new(),
+            },
+            original: Box::new(Value::Object(Map::new())),
+        });
+
+        let vuelta = escribir(&l);
+        assert!(vuelta.contains("pixpin-measure"), "con el tipo del movil");
+        assert!(matches!(
+            leer(&vuelta).unwrap().elementos()[0].figura,
+            Figura::Cota { .. }
+        ));
+    }
+
+    #[test]
+    fn los_elementos_ajenos_siguen_viajando_intactos() {
+        // La garantia que no se puede romper: lo que Windows no entiende
+        // sobrevive. Anadir dos tipos nuevos no puede estropearlo.
+        let json = r##"{"type":"excalidraw","elements":[
+            {"type":"pixpin-gantt","x":0,"y":0,"tareas":[],"periodos":[]}
+        ]}"##;
+        let l = leer(json).unwrap();
+        assert_eq!(l.cuantos_ajenos(), 1);
+        let vuelta = escribir(&l);
+        assert!(vuelta.contains("pixpin-gantt"));
+        assert!(vuelta.contains("periodos"));
     }
 }

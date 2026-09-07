@@ -315,6 +315,11 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             alto: e.alto,
             opacidad: e.opacidad,
         }),
+
+        // La cota y la barra de escala se pintan en `ordenes_medibles`
+        // (tarea 4): su rotulo depende de la escala, que puede cambiar sin
+        // que cambie el elemento, y esta funcion es la que la cache guarda.
+        Figura::Cota { .. } | Figura::EscalaGrafica => {}
     }
 
     // El angulo se aplica aqui, una vez, sobre la geometria ya generada.

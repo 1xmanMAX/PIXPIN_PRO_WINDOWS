@@ -14,6 +14,7 @@ use std::mem::size_of;
 use serde::{Deserialize, Serialize};
 
 use crate::elemento::Elemento;
+use crate::medida::Escala;
 use crate::vector::Punto2;
 
 /// Lo que se guarda en el fichero: version, contador y elementos. La
@@ -27,6 +28,9 @@ pub struct Escena {
     pub siguiente_id: u64,
     #[serde(default)]
     pub elementos: Vec<Elemento>,
+    /// Que mide un pixel de este lienzo (D31). `None` mientras no se calibre.
+    #[serde(default)]
+    pub escala: Option<Escala>,
     /// Lo que se ha hecho en ESTA sesion, para deshacerlo. No se guarda: el
     /// historial es estado de la interfaz, no del documento, y deshacer al
     /// abrir un dibujo de ayer un trazo que no se ve hacer confunde mas de
@@ -109,6 +113,7 @@ impl Default for Escena {
             version: 1,
             siguiente_id: 1,
             elementos: Vec::new(),
+            escala: None,
             historia: Vec::new(),
             rehacer: Vec::new(),
             en_curso: None,
