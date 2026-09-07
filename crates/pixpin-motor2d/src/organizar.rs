@@ -1,0 +1,391 @@
+//! Orden de pintado, grupos, alinear y repartir. Puerto de `Organize.kt`.
+//!
+//! # Los grupos son una lista y no un identificador
+//!
+//! `Elemento::grupos` es un `Vec<String>` porque un elemento puede estar en
+//! varios grupos anidados, como en Excalidraw: el ultimo de la lista es el
+//! mas interno. Desagrupar deshace **solo el mas interno**, que es lo que
+//! espera quien agrupo dos veces.
+//!
+//! # Todo lo de aqui es un solo paso de deshacer
+//!
+//! Alinear cinco elementos es un `Ctrl+Z`, no cinco. Cada funcion publica
+//! abre y cierra su paso.
+
+use crate::escena::Escena;
+use crate::seleccion::Seleccion;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Alineacion {
+    Izquierda,
+    CentroHorizontal,
+    Derecha,
+    Arriba,
+    CentroVertical,
+    Abajo,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reparto {
+    Horizontal,
+    Vertical,
+}
+
+/// Mete lo elegido en un grupo nuevo. `None` si no hay al menos dos: un
+/// grupo de uno no es un grupo, y ademas viajaria al movil como basura.
+pub fn agrupar(escena: &mut Escena, sel: &Seleccion) -> Option<String> {
+    if sel.cuantos() < 2 {
+        return None;
+    }
+    // El nombre sale del contador de la escena, que ya garantiza que no se
+    // repite dentro del documento. Con prefijo para no confundirlo con un
+    // id de elemento al mirar el JSON a ojo.
+    let grupo = format!("g{}", escena.siguiente_id);
+    escena.siguiente_id += 1;
+
+    escena.abrir_paso();
+    for id in sel.ids() {
+        escena.apuntar_edicion(*id);
+        if let Some(e) = escena.buscar_mut(*id) {
+            e.grupos.push(grupo.clone());
+            e.tocar();
+        }
+    }
+    escena.cerrar_paso();
+    Some(grupo)
+}
+
+/// Deshace el grupo mas interno de lo elegido.
+pub fn desagrupar(escena: &mut Escena, sel: &Seleccion) {
+    escena.abrir_paso();
+    for id in sel.ids() {
+        escena.apuntar_edicion(*id);
+        if let Some(e) = escena.buscar_mut(*id) {
+            e.grupos.pop();
+            e.tocar();
+        }
+    }
+    escena.cerrar_paso();
+}
+
+/// Todos los que comparten el grupo mas interno de este. Si no tiene
+/// grupo, solo el.
+///
+/// Es lo que convierte «pinche un elemento» en «cogi el grupo entero».
+pub fn hermanos_de(escena: &Escena, id: u64) -> Vec<u64> {
+    let Some(e) = escena.buscar(id) else {
+        return Vec::new();
+    };
+    let Some(grupo) = e.grupos.last() else {
+        return vec![id];
+    };
+    escena
+        .visibles()
+        .filter(|o| o.grupos.last() == Some(grupo))
+        .map(|o| o.id)
+        .collect()
+}
+
+/// Sube lo elegido al frente, conservando su orden relativo.
+pub fn al_frente(escena: &mut Escena, sel: &Seleccion) {
+    reordenar(escena, sel, true);
+}
+
+/// Baja lo elegido al fondo, conservando su orden relativo.
+pub fn al_fondo(escena: &mut Escena, sel: &Seleccion) {
+    reordenar(escena, sel, false);
+}
+
+fn reordenar(escena: &mut Escena, sel: &Seleccion, al_frente: bool) {
+    // Particionar conserva el orden dentro de cada mitad, que es justo lo
+    // que hace falta: subir dos elementos no debe intercambiarlos.
+    let (movidos, quietos): (Vec<_>, Vec<_>) =
+        escena.elementos.drain(..).partition(|e| sel.contiene(e.id));
+    escena.elementos = if al_frente {
+        quietos.into_iter().chain(movidos).collect()
+    } else {
+        movidos.into_iter().chain(quietos).collect()
+    };
+}
+
+/// Alinea lo elegido contra el borde o el centro del conjunto.
+pub fn alinear(escena: &mut Escena, sel: &Seleccion, como: Alineacion) {
+    let Some((cx0, cy0, cx1, cy1)) = sel.caja(escena) else {
+        return;
+    };
+    escena.abrir_paso();
+    for id in sel.ids().to_vec() {
+        let Some(e) = escena.buscar(id) else { continue };
+        let (x0, y0, x1, y1) = e.caja();
+        let (dx, dy) = match como {
+            Alineacion::Izquierda => (cx0 - x0, 0.0),
+            Alineacion::Derecha => (cx1 - x1, 0.0),
+            Alineacion::CentroHorizontal => ((cx0 + cx1) / 2.0 - (x0 + x1) / 2.0, 0.0),
+            Alineacion::Arriba => (0.0, cy0 - y0),
+            Alineacion::Abajo => (0.0, cy1 - y1),
+            Alineacion::CentroVertical => (0.0, (cy0 + cy1) / 2.0 - (y0 + y1) / 2.0),
+        };
+        if dx == 0.0 && dy == 0.0 {
+            continue;
+        }
+        escena.apuntar_edicion(id);
+        if let Some(e) = escena.buscar_mut(id) {
+            e.mover(dx, dy);
+        }
+    }
+    escena.cerrar_paso();
+}
+
+/// Deja huecos iguales entre los centros, sin mover los dos extremos.
+///
+/// No mover los extremos es lo que hace que repartir no cambie el sitio del
+/// conjunto: se coloca lo de en medio, que es lo que se pide.
+pub fn repartir(escena: &mut Escena, sel: &Seleccion, como: Reparto) {
+    if sel.cuantos() < 3 {
+        return;
+    }
+    let centro_de = |escena: &Escena, id: u64| -> Option<f32> {
+        let (x0, y0, x1, y1) = escena.buscar(id)?.caja();
+        Some(match como {
+            Reparto::Horizontal => (x0 + x1) / 2.0,
+            Reparto::Vertical => (y0 + y1) / 2.0,
+        })
+    };
+
+    let mut orden: Vec<(u64, f32)> = sel
+        .ids()
+        .iter()
+        .filter_map(|id| centro_de(escena, *id).map(|c| (*id, c)))
+        .collect();
+    orden.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    let (primero, ultimo) = (orden[0].1, orden[orden.len() - 1].1);
+    let hueco = (ultimo - primero) / (orden.len() - 1) as f32;
+
+    escena.abrir_paso();
+    for (i, (id, actual)) in orden.iter().enumerate().skip(1).take(orden.len() - 2) {
+        let quiero = primero + hueco * i as f32;
+        let d = quiero - actual;
+        if d == 0.0 {
+            continue;
+        }
+        escena.apuntar_edicion(*id);
+        if let Some(e) = escena.buscar_mut(*id) {
+            match como {
+                Reparto::Horizontal => e.mover(d, 0.0),
+                Reparto::Vertical => e.mover(0.0, d),
+            }
+        }
+    }
+    escena.cerrar_paso();
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use crate::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+
+    fn rect(x: f32, y: f32, ancho: f32, alto: f32) -> Elemento {
+        Elemento {
+            id: 0,
+            figura: Figura::Rectangulo,
+            x,
+            y,
+            ancho,
+            alto,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: None,
+            grosor: 0.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+        }
+    }
+
+    fn con_tres() -> (Escena, u64, u64, u64) {
+        let mut e = Escena::nueva();
+        let a = e.anadir(rect(0.0, 0.0, 10.0, 10.0));
+        let b = e.anadir(rect(50.0, 30.0, 20.0, 20.0));
+        let c = e.anadir(rect(100.0, 60.0, 10.0, 40.0));
+        (e, a, b, c)
+    }
+
+    #[test]
+    fn agrupar_pone_el_mismo_grupo_a_todos_y_desagrupar_lo_quita() {
+        let (mut escena, a, b, _) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b]);
+
+        let grupo = agrupar(&mut escena, &sel).unwrap();
+        assert!(escena.buscar(a).unwrap().grupos.contains(&grupo));
+        assert!(escena.buscar(b).unwrap().grupos.contains(&grupo));
+
+        desagrupar(&mut escena, &sel);
+        assert!(escena.buscar(a).unwrap().grupos.is_empty());
+    }
+
+    #[test]
+    fn agrupar_uno_solo_no_crea_grupo() {
+        // Un grupo de uno no es un grupo: seria basura en el fichero que
+        // ademas viaja al movil.
+        let (mut escena, a, _, _) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner(a);
+        assert!(agrupar(&mut escena, &sel).is_none());
+        assert!(escena.buscar(a).unwrap().grupos.is_empty());
+    }
+
+    #[test]
+    fn desagrupar_solo_quita_el_grupo_de_dentro_y_respeta_los_de_fuera() {
+        // Un elemento puede estar en varios grupos anidados, como en
+        // Excalidraw. Desagrupar deshace el mas interno, no todos.
+        let (mut escena, a, b, _) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b]);
+        let fuera = agrupar(&mut escena, &sel).unwrap();
+        let dentro = agrupar(&mut escena, &sel).unwrap();
+
+        desagrupar(&mut escena, &sel);
+        let g = &escena.buscar(a).unwrap().grupos;
+        assert!(g.contains(&fuera), "el de fuera sigue");
+        assert!(!g.contains(&dentro), "el de dentro se fue");
+    }
+
+    #[test]
+    fn tocar_uno_de_un_grupo_los_trae_a_todos() {
+        let (mut escena, a, b, c) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b]);
+        agrupar(&mut escena, &sel);
+
+        let hermanos = hermanos_de(&escena, a);
+        assert!(hermanos.contains(&a) && hermanos.contains(&b));
+        assert!(!hermanos.contains(&c));
+    }
+
+    #[test]
+    fn un_elemento_sin_grupo_es_hermano_de_si_mismo_y_de_nadie_mas() {
+        let (escena, a, _, _) = con_tres();
+        assert_eq!(hermanos_de(&escena, a), vec![a]);
+    }
+
+    #[test]
+    fn al_frente_y_al_fondo_cambian_el_orden_de_pintado() {
+        // El orden de la lista ES el orden de pintado: el ultimo va encima.
+        let (mut escena, a, _, _) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner(a);
+
+        al_frente(&mut escena, &sel);
+        assert_eq!(escena.elementos.last().unwrap().id, a);
+
+        al_fondo(&mut escena, &sel);
+        assert_eq!(escena.elementos.first().unwrap().id, a);
+    }
+
+    #[test]
+    fn al_frente_conserva_el_orden_relativo_de_lo_que_sube() {
+        let (mut escena, a, b, _) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b]);
+        al_frente(&mut escena, &sel);
+
+        let ids: Vec<u64> = escena.elementos.iter().map(|e| e.id).collect();
+        let ia = ids.iter().position(|x| *x == a).unwrap();
+        let ib = ids.iter().position(|x| *x == b).unwrap();
+        assert!(ia < ib, "a estaba antes que b y lo sigue estando");
+    }
+
+    #[test]
+    fn alinear_a_la_izquierda_los_lleva_al_borde_del_mas_a_la_izquierda() {
+        let (mut escena, a, b, c) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b, c]);
+
+        alinear(&mut escena, &sel, Alineacion::Izquierda);
+        for id in [a, b, c] {
+            assert_eq!(escena.buscar(id).unwrap().caja().0, 0.0);
+        }
+    }
+
+    #[test]
+    fn alinear_al_centro_usa_el_centro_del_conjunto() {
+        let (mut escena, a, b, c) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b, c]);
+        let centro = sel.centro(&escena).unwrap();
+
+        alinear(&mut escena, &sel, Alineacion::CentroVertical);
+        for id in [a, b, c] {
+            let (_, y0, _, y1) = escena.buscar(id).unwrap().caja();
+            assert!(((y0 + y1) / 2.0 - centro.y).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn repartir_deja_los_huecos_iguales() {
+        let (mut escena, a, b, c) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b, c]);
+
+        repartir(&mut escena, &sel, Reparto::Horizontal);
+
+        let mut centros: Vec<f32> = [a, b, c]
+            .iter()
+            .map(|id| {
+                let (x0, _, x1, _) = escena.buscar(*id).unwrap().caja();
+                (x0 + x1) / 2.0
+            })
+            .collect();
+        centros.sort_by(|p, q| p.partial_cmp(q).unwrap());
+        let h1 = centros[1] - centros[0];
+        let h2 = centros[2] - centros[1];
+        assert!((h1 - h2).abs() < 1e-3, "huecos {h1} y {h2}");
+    }
+
+    #[test]
+    fn repartir_no_mueve_los_dos_de_los_extremos() {
+        // Repartir coloca lo de en medio; mover los extremos cambiaria el
+        // sitio del conjunto, que no es lo que nadie espera.
+        let (mut escena, a, b, c) = con_tres();
+        let (x_a, x_c) = (
+            escena.buscar(a).unwrap().caja().0,
+            escena.buscar(c).unwrap().caja().0,
+        );
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b, c]);
+
+        repartir(&mut escena, &sel, Reparto::Horizontal);
+
+        assert_eq!(escena.buscar(a).unwrap().caja().0, x_a);
+        assert_eq!(escena.buscar(c).unwrap().caja().0, x_c);
+    }
+
+    #[test]
+    fn alinear_y_repartir_dejan_un_solo_paso_de_deshacer() {
+        let (mut escena, a, b, c) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b, c]);
+        let antes = escena.buscar(b).unwrap().x;
+
+        alinear(&mut escena, &sel, Alineacion::Izquierda);
+        assert!(escena.deshacer());
+        assert_eq!(escena.buscar(b).unwrap().x, antes, "los tres de una vez");
+    }
+
+    #[test]
+    fn con_menos_de_tres_repartir_no_hace_nada() {
+        let (mut escena, a, b, _) = con_tres();
+        let antes = escena.buscar(b).unwrap().x;
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b]);
+
+        repartir(&mut escena, &sel, Reparto::Horizontal);
+        assert_eq!(escena.buscar(b).unwrap().x, antes, "no hay nada en medio");
+    }
+}
