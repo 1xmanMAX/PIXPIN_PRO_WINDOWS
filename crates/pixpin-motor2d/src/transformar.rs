@@ -155,11 +155,18 @@ pub fn escalar(
     // empieza deshaciendo el giro- los des-gira una vez de mas: con
     // `ang == 0` no se nota (deshacer un giro nulo no hace nada), pero con
     // `ang != 0` manda el trazo a otro sitio.
+    // Este `match` lleva comodin: una figura nueva con puntos no rompe la
+    // compilacion al añadirse, asi que hay que acordarse de venir aqui.
+    // `Figura::Cota` cayo en el `_` hasta que se noto: la caja se
+    // recalculaba de sus puntos (que no se habian movido) y pisaba
+    // cualquier cambio de x/y/ancho/alto, asi que escalar una cota no hacia
+    // absolutamente nada.
     match &mut e.figura {
         Figura::Lapiz { puntos, .. }
         | Figura::Resaltador { puntos }
         | Figura::Linea { puntos }
-        | Figura::Flecha { puntos, .. } => {
+        | Figura::Flecha { puntos, .. }
+        | Figura::Cota { puntos } => {
             // A(u): el escalado puro en marco local, respecto al ancla
             // -tambien local-. Sin ningun giro de por medio: `u` ya esta en
             // el marco en el que vive el ancla.
@@ -251,11 +258,17 @@ pub fn girar(e: &mut Elemento, centro: Punto2, delta: f32) {
     let nuevo = propio.girar(centro, delta);
     let t = nuevo.restar(propio);
 
+    // Mismo aviso que en `escalar_elemento`: este `match` lleva comodin, asi
+    // que una figura nueva con puntos compila igual sin pasar por aqui.
+    // Con centro propio la traslacion es cero y el fallo no se nota; en una
+    // seleccion multiple (centro ajeno) los puntos se quedarian quietos
+    // mientras x/y orbitan.
     match &mut e.figura {
         Figura::Lapiz { puntos, .. }
         | Figura::Resaltador { puntos }
         | Figura::Linea { puntos }
-        | Figura::Flecha { puntos, .. } => {
+        | Figura::Flecha { puntos, .. }
+        | Figura::Cota { puntos } => {
             for q in puntos.iter_mut() {
                 *q = q.sumar(t);
             }
@@ -559,6 +572,96 @@ mod pruebas {
     }
 
     #[test]
+    fn escalar_una_cota_mueve_sus_puntos() {
+        // Critico 1 del re-revisor: la Cota caia en el comodin `_` de este
+        // match, que recalcula x/y/ancho/alto como figura de caja SIN tocar
+        // los puntos; y el `if e.puntos().is_some()` de mas abajo volvia a
+        // pisar eso con la caja de esos mismos puntos, sin mover. Neto:
+        // escalar una cota no hacia absolutamente nada. Misma cuenta que
+        // `escalar_un_trazo_mueve_sus_puntos`, con `Figura::Cota`.
+        let mut e = Elemento {
+            figura: Figura::Cota {
+                puntos: vec![
+                    Punto2::nuevo(0.0, 0.0),
+                    Punto2::nuevo(50.0, 25.0),
+                    Punto2::nuevo(100.0, 50.0),
+                ],
+            },
+            grosor: 4.0,
+            ..rect()
+        };
+
+        escalar(
+            &mut e,
+            Tirador::SuresteEsquina,
+            Punto2::nuevo(200.0, 100.0),
+            false,
+            false,
+        );
+
+        let Figura::Cota { puntos } = &e.figura else {
+            panic!("sigue siendo una cota");
+        };
+        assert_eq!(puntos.len(), 3, "sigue teniendo sus tres puntos");
+        cerca(puntos[0], Punto2::nuevo(49.0 / 26.0, 16.0 / 9.0), "primero");
+        cerca(puntos[1], Punto2::nuevo(99.0, 49.0), "segundo");
+        cerca(
+            puntos[2],
+            Punto2::nuevo(5099.0 / 26.0, 866.0 / 9.0),
+            "tercero",
+        );
+
+        assert!(
+            (e.ancho - 198.230_77).abs() < 1e-2,
+            "ancho: esperaba 198.23, es {}",
+            e.ancho
+        );
+        assert!(
+            (e.alto - 98.444_44).abs() < 1e-2,
+            "alto: esperaba 98.44, es {}",
+            e.alto
+        );
+    }
+
+    #[test]
+    fn escalar_una_cota_girada_deja_quieto_el_ancla_en_el_mundo() {
+        // Mismo hueco que `escalar_un_trazo_girado_deja_quieto_el_ancla_en_el_mundo`,
+        // con una figura Y angulo distinto de cero a la vez, pero con Cota.
+        for angulo in [FRAC_PI_6, FRAC_PI_2] {
+            let mut e = Elemento {
+                figura: Figura::Cota {
+                    puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 50.0)],
+                },
+                grosor: 0.0,
+                angulo,
+                ..rect()
+            };
+            let centro = Punto2::nuevo(50.0, 25.0);
+            let ancla = esquina_no(&e);
+            let destino = arrastre_equivalente(Punto2::nuevo(180.0, 90.0), centro, angulo);
+
+            escalar(&mut e, Tirador::SuresteEsquina, destino, false, false);
+
+            cerca(
+                esquina_no(&e),
+                ancla,
+                &format!("el ancla de la cota a {angulo}"),
+            );
+
+            let (x0, y0, x1, y1) = e.caja();
+            let c = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+            let Figura::Cota { puntos } = &e.figura else {
+                panic!()
+            };
+            cerca(
+                puntos[1].girar(c, e.angulo),
+                destino,
+                &format!("el extremo arrastrado queda bajo el cursor a {angulo}"),
+            );
+        }
+    }
+
+    #[test]
     fn escalar_anisotropo_un_trazo_girado_no_lo_manda_a_otro_sitio() {
         // El contraejemplo del critico 2, tal cual: tratar los puntos
         // -que estan en marco LOCAL- como si ya fueran del mundo manda el
@@ -691,6 +794,51 @@ mod pruebas {
             nuevo,
             centro.girar(ajeno, FRAC_PI_2),
             "orbito el centro comun",
+        );
+    }
+
+    #[test]
+    fn girar_una_cota_alrededor_de_un_centro_ajeno_traslada_sus_puntos() {
+        // Critico 2 del re-revisor: la Cota caia en el `_ => {}` de este
+        // match. Con centro propio la traslacion es cero y no se nota, pero
+        // con centro ajeno (una seleccion de varios) los puntos se
+        // quedarian quietos mientras x/y orbitan: desincronizado en cuanto
+        // exista el pintado.
+        let mut e = Elemento {
+            figura: Figura::Cota {
+                puntos: vec![Punto2::nuevo(10.0, 0.0), Punto2::nuevo(20.0, 0.0)],
+            },
+            grosor: 0.0,
+            ..rect()
+        };
+        let ajeno = Punto2::nuevo(0.0, 0.0);
+        let x_antes = e.x;
+        let y_antes = e.y;
+
+        girar(&mut e, ajeno, FRAC_PI_2);
+
+        assert!((e.angulo - FRAC_PI_2).abs() < 1e-6);
+        let (x0, y0, x1, y1) = e.caja();
+        let c = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        let Figura::Cota { puntos } = &e.figura else {
+            panic!()
+        };
+        // Con angulo inicial 0, girar alrededor de un centro ajeno es lo
+        // mismo que girar los puntos originales alrededor de ese centro: es
+        // la comprobacion independiente de la formula.
+        cerca(
+            puntos[0].girar(c, e.angulo),
+            Punto2::nuevo(10.0, 0.0).girar(ajeno, FRAC_PI_2),
+            "el primer punto, geometria efectiva",
+        );
+        cerca(
+            puntos[1].girar(c, e.angulo),
+            Punto2::nuevo(20.0, 0.0).girar(ajeno, FRAC_PI_2),
+            "el segundo punto, geometria efectiva",
+        );
+        assert!(
+            (e.x - x_antes).abs() > 1e-3 || (e.y - y_antes).abs() > 1e-3,
+            "x/y tienen que orbitar, no solo el angulo"
         );
     }
 

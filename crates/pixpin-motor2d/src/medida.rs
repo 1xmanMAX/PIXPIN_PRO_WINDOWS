@@ -182,12 +182,18 @@ fn extremos(e: &Elemento) -> Option<(Punto2, Punto2)> {
 }
 
 /// Deja el elemento con exactamente esos dos puntos, y su caja al dia.
+///
+/// Este `match` lleva comodin: una figura nueva con puntos no rompe la
+/// compilacion al añadirse, asi que hay que acordarse de venir aqui. Es lo
+/// que dejo a la `Cota` sin arrastrar (el fallo que este comentario evita
+/// repetir): caia en el `_ => return` y `con_longitud` no hacia nada.
 fn poner_extremos(e: &mut Elemento, a: Punto2, b: Punto2) {
     match &mut e.figura {
         Figura::Lapiz { puntos, .. }
         | Figura::Resaltador { puntos }
         | Figura::Linea { puntos }
-        | Figura::Flecha { puntos, .. } => {
+        | Figura::Flecha { puntos, .. }
+        | Figura::Cota { puntos } => {
             puntos.clear();
             puntos.push(a);
             puntos.push(b);
@@ -377,6 +383,33 @@ mod pruebas {
         con_longitud(&mut c, 10.0);
         assert!((angulo_de(&c) - antes).abs() < 1e-3, "misma direccion");
         assert!((longitud_de(&c) - 10.0).abs() < 1e-3, "otro largo");
+    }
+
+    #[test]
+    fn con_longitud_sobre_una_cota_cambia_su_longitud() {
+        // Critico 3 del re-revisor: `poner_extremos` salia por
+        // `_ => return` antes de tocar nada para una `Figura::Cota`, asi
+        // que `con_longitud` sobre una cota de verdad no hacia
+        // absolutamente nada. El fixture `cota()` de arriba construye una
+        // `Figura::Linea`, asi que ninguna prueba existente lo cazaba.
+        let mut c = Elemento {
+            figura: Figura::Cota {
+                puntos: vec![Punto2::nuevo(10.0, 20.0), Punto2::nuevo(110.0, 20.0)],
+            },
+            ..cota(Punto2::nuevo(10.0, 20.0), Punto2::nuevo(110.0, 20.0))
+        };
+        con_longitud(&mut c, 50.0);
+
+        let Figura::Cota { puntos } = &c.figura else {
+            panic!("sigue siendo una cota")
+        };
+        assert_eq!(
+            puntos[0],
+            Punto2::nuevo(10.0, 20.0),
+            "el origen no se mueve"
+        );
+        assert!((puntos[1].x - 60.0).abs() < 1e-3, "el otro extremo si");
+        assert!((longitud_de(&c) - 50.0).abs() < 1e-3);
     }
 
     #[test]
