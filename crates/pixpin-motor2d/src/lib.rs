@@ -38,7 +38,7 @@ pub use elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
 pub use escena::Escena;
 pub use formas::{elipse, linea, punta_flecha, rectangulo};
 pub use formato::{EXTENSION, ErrorFormato, cargar, guardar};
-pub use impacto::{TOLERANCIA, elemento_en, toca};
+pub use impacto::{TOLERANCIA, dentro_de, elemento_en, elementos_en, esquinas_giradas, toca};
 pub use pintado::{
     Orden, marco_de_seleccion, ordenes, ordenes_a_distancia, ordenes_de_escena,
     ordenes_de_escena_vista,
