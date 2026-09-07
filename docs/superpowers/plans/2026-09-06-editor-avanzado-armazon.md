@@ -3056,7 +3056,8 @@ un ratón y un teclado.
 
   pub enum Region { Nada, Caja(f32, f32, f32, f32), Todo }
 
-  pub enum FormaCursor { Flecha, Cruz, Mover, Texto, Giro, Escalar(f32) }
+  pub enum FormaCursor { Flecha, Cruz, Mover, Texto, Giro,
+                         Escalar { tirador: Tirador, angulo: f32 } }
 
   pub struct Respuesta { pub region: Region, pub cursor: FormaCursor }
 
@@ -3388,13 +3389,26 @@ mod pruebas {
         let se = ts.tamano.iter().find(|(c, _)| *c == Tirador::SuresteEsquina).unwrap().1;
         let r = g.evento(mover(se), &mut escena, 1.0);
 
-        let FormaCursor::Escalar(angulo) = r.cursor else {
+        let FormaCursor::Escalar { tirador, angulo } = r.cursor else {
             panic!("sobre un tirador toca cursor de escalar, es {:?}", r.cursor);
         };
+        assert_eq!(tirador, Tirador::SuresteEsquina, "cual, para saber la direccion");
         assert!(
             (angulo - FRAC_PI_4).abs() < 1e-3,
-            "el cursor lleva el angulo del elemento: {angulo}"
+            "y el angulo del elemento, para girarla: {angulo}"
         );
+    }
+
+    #[test]
+    fn la_direccion_de_un_tirador_gira_con_el_elemento() {
+        // Sin girar, la esquina sureste apunta a 135 grados (abajo y a la
+        // derecha). Girado un cuarto de vuelta, apunta a 225.
+        use std::f32::consts::{FRAC_PI_2, PI};
+        let recta = direccion_del_tirador(Tirador::SuresteEsquina, 0.0);
+        assert!((recta - 3.0 * PI / 4.0).abs() < 1e-3, "sin girar: {recta}");
+
+        let girada = direccion_del_tirador(Tirador::SuresteEsquina, FRAC_PI_2);
+        assert!((girada - 5.0 * PI / 4.0).abs() < 1e-3, "girada: {girada}");
     }
 }
 ```
@@ -3649,13 +3663,43 @@ En el mismo `impl Gesto`:
         }
     }
 
+Y esta, **fuera del `impl Gesto`**, al nivel del módulo, porque la ventana la
+llama sin tener un `Gesto` a mano:
+
+```rust
+/// Hacia donde apunta un tirador, en un elemento girado `angulo`.
+///
+/// Cero es hacia arriba y crece en el sentido de las agujas, igual que
+/// `transformar::angulo_hacia`. La ventana usa esto para elegir entre las
+/// cuatro flechas que trae Windows.
+pub fn direccion_del_tirador(t: Tirador, angulo: f32) -> f32 {
+        use std::f32::consts::PI;
+        let base = match t {
+            Tirador::NorteBorde => 0.0,
+            Tirador::NoresteEsquina => PI / 4.0,
+            Tirador::EsteBorde => PI / 2.0,
+            Tirador::SuresteEsquina => 3.0 * PI / 4.0,
+            Tirador::SurBorde => PI,
+            Tirador::SuroesteEsquina => 5.0 * PI / 4.0,
+            Tirador::OesteBorde => 3.0 * PI / 2.0,
+        Tirador::NoroesteEsquina => 7.0 * PI / 4.0,
+    };
+    base + angulo
+}
+```
+
+Y de vuelta dentro del `impl Gesto`:
+
+```rust
     /// Que cursor toca en este punto, estando en reposo.
     fn cursor_en(&self, p: Punto2, escena: &Escena, escala: f32) -> FormaCursor {
         if let Some(ts) = self.tiradores(escena, escala) {
             match ts.en(p, escala) {
-                // El angulo va aqui para que en una figura a 45 grados la
-                // flecha apunte a donde de verdad va a crecer.
-                Some(Agarre::Tamano(_)) => return FormaCursor::Escalar(ts.angulo),
+                // Van los dos: cual, para saber a que lado apunta; y el
+                // angulo, para girar esa direccion con el elemento.
+                Some(Agarre::Tamano(t)) => {
+                    return FormaCursor::Escalar { tirador: t, angulo: ts.angulo };
+                }
                 Some(Agarre::Giro) => return FormaCursor::Giro,
                 None => {}
             }
@@ -3698,7 +3742,7 @@ En el mismo `impl Gesto`:
                     self.estado = Estado::Escalando { tirador: t };
                     return Respuesta {
                         region: Region::Nada,
-                        cursor: FormaCursor::Escalar(ts.angulo),
+                        cursor: FormaCursor::Escalar { tirador: t, angulo: ts.angulo },
                     };
                 }
                 Some(Agarre::Giro) => {
@@ -3832,7 +3876,10 @@ En el mismo `impl Gesto`:
                     }
                 }
                 let angulo = self.tiradores(escena, escala).map_or(0.0, |t| t.angulo);
-                Respuesta { region: Region::Todo, cursor: FormaCursor::Escalar(angulo) }
+                Respuesta {
+                    region: Region::Todo,
+                    cursor: FormaCursor::Escalar { tirador, angulo },
+                }
             }
 
             Estado::Girando { anterior } => {
@@ -3917,4 +3964,544 @@ El orden de decision al pulsar es la parte delicada. Un tirador manda
 sobre lo que haya debajo, o un tirador encima de un trazo seria
 inalcanzable. Y lo ya seleccionado manda sobre lo de encima, o mover un
 grupo se convertiria en seleccionar por accidente lo que estaba encima."
+```
+
+---
+
+## Tarea 10: `Alt` y el cursor de giro en la ventana
+
+Dos huecos pequeños en `pixpin-shell`. `EventoOverlay::Tecla` trae `shift` y
+`ctrl` pero no `alt`, y `Alt` es lo que escala desde el centro. Y no hay
+cursor de giro.
+
+**Ficheros:**
+- Modificar: `crates/pixpin-shell/src/overlay.rs` — `EventoOverlay::Tecla`
+  (línea 52), `FormaCursorWin` (línea 83), la lectura de teclas (línea 532) y
+  el mapeo a `IDC_*` (línea 586)
+- Modificar: quien construya o case `EventoOverlay::Tecla` —
+  `apps/pixpin/src/capa.rs`, `apps/pixpin/src/overlay.rs`,
+  `crates/pixpin-ui/src/anotador.rs`
+- Prueba: en `overlay.rs`, `mod pruebas`
+
+**Interfaces:**
+- Produce:
+  ```rust
+  pub enum EventoOverlay {
+      Tecla { vk: u32, shift: bool, ctrl: bool, alt: bool },  // + alt
+      // ...el resto igual
+  }
+  pub enum FormaCursorWin { /* ...los ocho de hoy... */, Giro }
+  ```
+
+- [ ] **Paso 1: Escribe la prueba que falla**
+
+`GetKeyState` necesita una sesión de escritorio, así que lo que se prueba aquí
+es la parte pura: que el enum lleva el campo y que el mapeo de cursores es
+total. En `mod pruebas` de `overlay.rs`:
+
+```rust
+#[test]
+fn la_tecla_lleva_alt_ademas_de_shift_y_ctrl() {
+    // Alt escala desde el centro. Sin este campo, el editor no puede
+    // distinguir un arrastre normal de uno desde el centro.
+    let t = EventoOverlay::Tecla { vk: 65, shift: true, ctrl: false, alt: true };
+    let EventoOverlay::Tecla { alt, .. } = t else { panic!() };
+    assert!(alt);
+}
+
+#[test]
+fn hay_cursor_de_giro() {
+    // Que exista la variante. Cual dibuja Windows se comprueba a mano: el
+    // mapeo a IDC_* necesita una sesion de escritorio.
+    let formas = [
+        FormaCursorWin::Cruz,
+        FormaCursorWin::Mover,
+        FormaCursorWin::RedimNS,
+        FormaCursorWin::RedimEO,
+        FormaCursorWin::RedimNeSo,
+        FormaCursorWin::RedimNoSe,
+        FormaCursorWin::Texto,
+        FormaCursorWin::Flecha,
+        FormaCursorWin::Giro,
+    ];
+    assert_eq!(formas.len(), 9);
+}
+```
+
+- [ ] **Paso 2: Añade el campo y la variante**
+
+En `EventoOverlay::Tecla` (línea 52):
+
+```rust
+    Tecla {
+        vk: u32,
+        shift: bool,
+        /// Ctrl mantenido: para `Ctrl+A` (seleccionar todo) y `Ctrl+Z`.
+        ctrl: bool,
+        /// Alt mantenido: en el editor, escalar desde el centro en vez de
+        /// desde el ancla.
+        alt: bool,
+    },
+```
+
+En `FormaCursorWin` (línea 83):
+
+```rust
+    /// Girar lo seleccionado.
+    ///
+    /// Windows no trae cursor de giro: los ocho `IDC_*` estandar son
+    /// flechas, cruz, barra de texto y poco mas. Se usa `IDC_HAND` porque
+    /// al menos se distingue de los de redimension y no miente sobre lo
+    /// que va a pasar. Un cursor de giro de verdad necesitaria un recurso
+    /// propio, y eso no entra en esta entrega.
+    Giro,
+```
+
+En la lectura de teclas (línea 532), junto a `shift` y `ctrl`:
+
+```rust
+            // SAFETY: GetKeyState es una consulta sin precondiciones.
+            let alt = unsafe { GetKeyState(VK_MENU.0 as i32) } < 0;
+```
+
+Añade `VK_MENU` al `use` de la línea 23. En Win32, `VK_MENU` **es** la tecla
+Alt; el nombre viene de que Alt abre los menús.
+
+En el mapeo a `IDC_*` (línea 586):
+
+```rust
+                FormaCursorWin::Giro => IDC_HAND,
+```
+
+Añade `IDC_HAND` al `use` correspondiente.
+
+- [ ] **Paso 3: Arregla a quien casaba el evento**
+
+```
+cargo build --workspace --all-targets 2>&1 | grep -B2 -A6 "Tecla" | head -40
+```
+
+En cada `EventoOverlay::Tecla { vk, shift, ctrl }` añade `alt` o `..`. Donde
+el `alt` no importe todavía —el anotador de pantalla, la capa— usa `..`, que
+es más honesto que ignorar una variable con nombre.
+
+- [ ] **Paso 4: Cierra**
+
+```
+cargo test --workspace -- --test-threads=1
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+- [ ] **Paso 5: Commit**
+
+```bash
+git add crates/pixpin-shell/src/overlay.rs crates/pixpin-ui/src/anotador.rs apps/pixpin/src/capa.rs apps/pixpin/src/overlay.rs
+git commit -m "Alt y el cursor de giro en la ventana
+
+Dos huecos pequenos que el editor necesita. EventoOverlay::Tecla traia
+shift y ctrl pero no alt, y Alt es lo que escala desde el centro en vez
+de desde el ancla.
+
+Y no habia cursor de giro. Windows no trae uno: los IDC_* estandar son
+flechas, cruz y barra de texto. Se usa IDC_HAND porque al menos se
+distingue de los de redimension y no miente sobre lo que va a pasar. Un
+cursor de giro de verdad necesita un recurso propio y no entra aqui."
+```
+
+---
+
+## Tarea 11: La ventana del editor
+
+El hito. Al acabar esta tarea hay un editor que se abre, dibuja, selecciona,
+redimensiona, gira y deshace.
+
+**Ficheros:**
+- Crear: `apps/pixpin/src/ventana_editor.rs`
+- Modificar: `apps/pixpin/src/main.rs` — declarar el módulo y abrirlo
+- Prueba: en `ventana_editor.rs`, `mod pruebas` (solo lo puro; lo demás,
+  `#[ignore]` como manda la convención del proyecto para lo que necesita
+  escritorio)
+
+**Interfaces:**
+- Consume: `Gesto`, `Escena`, `Cache`, `Rejilla`, `Seleccion`, `Tiradores`,
+  `Camara` del motor; `VentanaOverlay`, `EventoOverlay`, `FormaCursorWin` de
+  `pixpin-shell`; `MotorRender`, `Pintor` de `pixpin-render`.
+- Produce:
+  ```rust
+  pub fn abrir(escena: Escena) -> anyhow::Result<Escena>;
+  pub fn forma_de(cursor: FormaCursor) -> FormaCursorWin;
+  pub fn a_evento(ev: &EventoOverlay, camara: &Camara) -> Option<EventoGesto>;
+  ```
+
+### El reparto
+
+El fichero de la ventana **traduce y nada más**: convierte `EventoOverlay` en
+`EventoGesto`, llama a la máquina, y hace lo que devuelve. Si crece más allá
+de eso, es que se ha colado lógica que debería estar en el motor.
+
+- [ ] **Paso 1: Escribe las pruebas que fallan**
+
+Lo que se puede probar sin escritorio es justo la traducción, que es todo lo
+que este fichero debería tener de propio:
+
+```rust
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use pixpin_geom::Tirador;
+    use pixpin_motor2d::camara::Camara;
+    use std::f32::consts::{FRAC_PI_2, PI};
+
+    #[test]
+    fn el_cursor_de_escalar_elige_la_flecha_por_su_direccion() {
+        // Windows solo tiene cuatro flechas de redimension. La direccion
+        // del tirador, ya girada con el elemento, se reparte entre ellas.
+        let se_recto = FormaCursor::Escalar {
+            tirador: Tirador::SuresteEsquina,
+            angulo: 0.0,
+        };
+        assert_eq!(forma_de(se_recto), FormaCursorWin::RedimNoSe);
+
+        // El mismo tirador con el elemento girado un cuarto de vuelta
+        // apunta a la otra diagonal.
+        let se_girado = FormaCursor::Escalar {
+            tirador: Tirador::SuresteEsquina,
+            angulo: FRAC_PI_2,
+        };
+        assert_eq!(forma_de(se_girado), FormaCursorWin::RedimNeSo);
+    }
+
+    #[test]
+    fn el_tirador_del_norte_es_la_flecha_vertical() {
+        let n = FormaCursor::Escalar { tirador: Tirador::NorteBorde, angulo: 0.0 };
+        assert_eq!(forma_de(n), FormaCursorWin::RedimNS);
+
+        // Girado noventa grados, el borde norte apunta al este.
+        let n = FormaCursor::Escalar { tirador: Tirador::NorteBorde, angulo: FRAC_PI_2 };
+        assert_eq!(forma_de(n), FormaCursorWin::RedimEO);
+    }
+
+    #[test]
+    fn media_vuelta_da_la_misma_flecha() {
+        // Una flecha de redimension no tiene punta: norte y sur son la
+        // misma. Sin esto, girar 180 grados cambiaria el cursor sin motivo.
+        let n = FormaCursor::Escalar { tirador: Tirador::NorteBorde, angulo: 0.0 };
+        let s = FormaCursor::Escalar { tirador: Tirador::SurBorde, angulo: 0.0 };
+        assert_eq!(forma_de(n), forma_de(s));
+
+        let girado = FormaCursor::Escalar { tirador: Tirador::NorteBorde, angulo: PI };
+        assert_eq!(forma_de(n), forma_de(girado));
+    }
+
+    #[test]
+    fn los_demas_cursores_se_traducen_uno_a_uno() {
+        assert_eq!(forma_de(FormaCursor::Flecha), FormaCursorWin::Flecha);
+        assert_eq!(forma_de(FormaCursor::Cruz), FormaCursorWin::Cruz);
+        assert_eq!(forma_de(FormaCursor::Mover), FormaCursorWin::Mover);
+        assert_eq!(forma_de(FormaCursor::Texto), FormaCursorWin::Texto);
+        assert_eq!(forma_de(FormaCursor::Giro), FormaCursorWin::Giro);
+    }
+
+    #[test]
+    fn el_raton_llega_al_motor_en_coordenadas_del_mundo() {
+        // El motor trabaja en el mundo; la ventana recibe pixeles. Si esta
+        // traduccion se olvidara, dibujar con el lienzo desplazado pintaria
+        // en otro sitio.
+        let camara = Camara { x: 100.0, y: 50.0, zoom: 2.0 };
+        let ev = EventoOverlay::BotonPulsado(Punto { x: 20, y: 10 });
+
+        let Some(EventoGesto::Pulsar { p, .. }) = a_evento(&ev, &camara) else {
+            panic!("un boton pulsado es un Pulsar");
+        };
+        assert_eq!(p, camara.en_mundo(Punto2::nuevo(20.0, 10.0)));
+    }
+
+    #[test]
+    fn control_zeta_es_deshacer_y_control_i_griega_rehacer() {
+        let camara = Camara::nueva();
+        let ctrl = |vk: u32| EventoOverlay::Tecla { vk, shift: false, ctrl: true, alt: false };
+
+        assert_eq!(a_evento(&ctrl(b'Z' as u32), &camara), Some(EventoGesto::Deshacer));
+        assert_eq!(a_evento(&ctrl(b'Y' as u32), &camara), Some(EventoGesto::Rehacer));
+        assert_eq!(a_evento(&ctrl(b'A' as u32), &camara), Some(EventoGesto::SeleccionarTodo));
+    }
+
+    #[test]
+    fn la_zeta_sin_control_no_deshace() {
+        // Escribir una zeta en un texto no puede deshacer el dibujo.
+        let camara = Camara::nueva();
+        let sola = EventoOverlay::Tecla { vk: b'Z' as u32, shift: false, ctrl: false, alt: false };
+        assert_ne!(a_evento(&sola, &camara), Some(EventoGesto::Deshacer));
+    }
+
+    #[test]
+    fn lo_que_no_le_toca_al_motor_no_llega_al_motor() {
+        let camara = Camara::nueva();
+        assert_eq!(a_evento(&EventoOverlay::Pintar, &camara), None);
+        assert_eq!(a_evento(&EventoOverlay::CambioDpi, &camara), None);
+    }
+}
+```
+
+Ajusta `Camara { x, y, zoom }` y `Camara::nueva()` a los nombres reales de
+`camara.rs` — míralos antes de escribir la prueba.
+
+- [ ] **Paso 2: Comprueba que fallan**
+
+```
+cargo test -p pixpin ventana_editor -- --test-threads=1
+```
+
+- [ ] **Paso 3: Escribe la traducción**
+
+```rust
+//! La ventana del editor avanzado.
+//!
+//! **Traduce y nada mas.** Convierte `EventoOverlay` en `EventoGesto`, llama
+//! a la maquina del motor, y hace lo que devuelve: redibujar esta region,
+//! poner este cursor. Si este fichero crece mas alla de eso, es que se ha
+//! colado logica que deberia estar en el motor.
+//!
+//! No hace falta fonteneria nueva: `VentanaOverlay` ya sirve ventanas
+//! completas —el editor de grabaciones la usa asi— y ya trae raton, teclas
+//! con sus modificadores, caracteres con IME, cambio de DPI, cursores y el
+//! bucle por eventos que da el 0 % de CPU en reposo.
+
+use pixpin_geom::Tirador;
+use pixpin_motor2d::camara::Camara;
+use pixpin_motor2d::gesto::{EventoGesto, FormaCursor, direccion_del_tirador};
+use pixpin_motor2d::vector::Punto2;
+use pixpin_shell::overlay::{EventoOverlay, FormaCursorWin};
+
+/// De la forma que pide el motor a la que entiende Windows.
+///
+/// Lo unico con sustancia es escalar: Windows solo trae cuatro flechas de
+/// redimension, asi que la direccion del tirador —ya girada con el
+/// elemento— se reparte entre ellas en cuartos de vuelta partidos por la
+/// mitad. Y como una flecha no tiene punta, norte y sur son la misma: se
+/// toma el angulo modulo media vuelta.
+pub fn forma_de(cursor: FormaCursor) -> FormaCursorWin {
+    use std::f32::consts::PI;
+    match cursor {
+        FormaCursor::Flecha => FormaCursorWin::Flecha,
+        FormaCursor::Cruz => FormaCursorWin::Cruz,
+        FormaCursor::Mover => FormaCursorWin::Mover,
+        FormaCursor::Texto => FormaCursorWin::Texto,
+        FormaCursor::Giro => FormaCursorWin::Giro,
+        FormaCursor::Escalar { tirador, angulo } => {
+            let d = direccion_del_tirador(tirador, angulo);
+            // A media vuelta, y en octavos: cada flecha cubre 45 grados.
+            let media = PI;
+            let d = d.rem_euclid(media);
+            let octavo = media / 4.0;
+            match (d / octavo).round() as i32 % 4 {
+                0 => FormaCursorWin::RedimNS,
+                1 => FormaCursorWin::RedimNeSo,
+                2 => FormaCursorWin::RedimEO,
+                _ => FormaCursorWin::RedimNoSe,
+            }
+        }
+    }
+}
+
+/// Del evento de la ventana al del motor. `None` es «esto no le toca al
+/// motor»: pintar, el DPI, el despertar de otro hilo.
+pub fn a_evento(ev: &EventoOverlay, camara: &Camara) -> Option<EventoGesto> {
+    let al_mundo = |p: &pixpin_geom::Punto| {
+        camara.en_mundo(Punto2::nuevo(p.x as f32, p.y as f32))
+    };
+    match ev {
+        EventoOverlay::BotonPulsado(p) => Some(EventoGesto::Pulsar {
+            p: al_mundo(p),
+            shift: false,
+            alt: false,
+        }),
+        EventoOverlay::RatonMovido(p) => Some(EventoGesto::Mover {
+            p: al_mundo(p),
+            shift: false,
+            alt: false,
+        }),
+        EventoOverlay::BotonSoltado(p) => Some(EventoGesto::Soltar { p: al_mundo(p) }),
+        EventoOverlay::Tecla { vk, ctrl, .. } => {
+            const VK_ESCAPE: u32 = 0x1B;
+            const VK_DELETE: u32 = 0x2E;
+            match (*vk, *ctrl) {
+                (VK_ESCAPE, _) => Some(EventoGesto::Escape),
+                (VK_DELETE, _) => Some(EventoGesto::Suprimir),
+                (v, true) if v == b'Z' as u32 => Some(EventoGesto::Deshacer),
+                (v, true) if v == b'Y' as u32 => Some(EventoGesto::Rehacer),
+                (v, true) if v == b'A' as u32 => Some(EventoGesto::SeleccionarTodo),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+```
+
+**Ojo con `shift` y `alt` en el ratón:** `EventoOverlay::BotonPulsado` y
+`RatonMovido` no los traen. La ventana los lee con `GetKeyState` en el momento
+de traducir, igual que hace `overlay.rs` con las teclas. Es la misma llamada y
+la misma justificación: preguntar por el estado de una tecla no tiene
+precondiciones. Deja `a_evento` como está —puro y comprobable— y que quien la
+llama sobrescriba los dos campos con lo que acaba de leer.
+
+- [ ] **Paso 4: Escribe el bucle de la ventana**
+
+Copia la forma de `apps/pixpin/src/editor.rs` (el editor de grabaciones), que
+ya hace exactamente esto con `VentanaOverlay`. La estructura:
+
+```rust
+pub fn abrir(escena: Escena) -> anyhow::Result<Escena> {
+    let mut escena = escena;
+    let mut gesto = Gesto::nuevo();
+    let mut camara = Camara::nueva();
+    let mut cache = Cache::nueva();
+    let mut rejilla = Rejilla::nueva();
+
+    let ventana = VentanaOverlay::nueva(area_de_trabajo())?;
+    let mut motor = MotorRender::nuevo(ventana.handle())?;
+
+    ventana.ejecutar(|ev| {
+        // 1. Traducir y, si le toca al motor, pasarselo.
+        if let Some(g) = a_evento(&ev, &camara) {
+            let g = con_modificadores(g);           // GetKeyState de Shift y Alt
+            let r = gesto.evento(g, &mut escena, 1.0 / camara.zoom);
+            ventana.poner_cursor(forma_de(r.cursor));
+            match r.region {
+                Region::Nada => {}
+                Region::Caja(x0, y0, x1, y1) => {
+                    ventana.invalidar(camara.en_pantalla_rect(x0, y0, x1, y1));
+                }
+                Region::Todo => ventana.invalidar_todo(),
+            }
+        }
+        // 2. Pintar solo cuando lo pide la ventana.
+        if matches!(ev, EventoOverlay::Pintar) {
+            rejilla.sincronizar(&escena);
+            pintar(&mut motor, &escena, &camara, &gesto, &mut cache, &rejilla);
+        }
+        if matches!(ev, EventoOverlay::Cerrar) {
+            return Continuar::No;
+        }
+        Continuar::Si
+    });
+
+    escena.compactar();
+    Ok(escena)
+}
+```
+
+Y `pintar`, que es donde se junta todo lo de las tareas 7 y 8:
+
+```rust
+fn pintar(
+    motor: &mut MotorRender,
+    escena: &Escena,
+    camara: &Camara,
+    gesto: &Gesto,
+    cache: &mut Cache,
+    rejilla: &Rejilla,
+) {
+    // La rejilla dice que PUEDE verse; la camara filtra lo que de verdad se
+    // ve. Sin la rejilla, esto recorreria los ocho mil elementos.
+    let vista = camara.caja_visible();
+    let candidatos = rejilla.candidatos(vista);
+
+    let mut pintor = motor.empezar();
+    pintor.transformar(camara.matriz());
+    for id in candidatos {
+        let Some(e) = escena.buscar(id) else { continue };
+        if e.borrado {
+            continue;
+        }
+        for orden in cache.ordenes(e, camara.zoom) {
+            pintor.orden(orden);
+        }
+    }
+    // Encima de todo: el marco de la seleccion, los tiradores y la
+    // marquesina si la hay.
+    let escala = 1.0 / camara.zoom;
+    if let Some(caja) = gesto.seleccion.caja(escena) {
+        pintor.marco(caja, escala);
+        for orden in Tiradores::de_caja(caja, 0.0, escala).ordenes(escala) {
+            pintor.orden(&orden);
+        }
+    }
+    if let Some(m) = gesto.marquesina() {
+        pintor.marquesina(m, escala);
+    }
+    pintor.terminar();
+}
+```
+
+Los nombres exactos de `Pintor` (`transformar`, `orden`, `marco`,
+`marquesina`, `empezar`, `terminar`) **no existen todavía tal cual**: mira
+`crates/pixpin-render/src/lienzo.rs` y usa los que haya, o añade los que
+falten siguiendo su estilo. Es el único sitio de esta tarea donde hay que
+inventar API, y debe quedarse en `pixpin-render`, no aquí.
+
+- [ ] **Paso 5: Ábrelo desde algún sitio**
+
+En `apps/pixpin/src/main.rs`, declara `mod ventana_editor;` y añade la entrada
+que lo abre. Lo mínimo para poder probarlo a mano: una opción en el menú de la
+bandeja, «Editor», que llame a `ventana_editor::abrir(Escena::nueva())`.
+
+Abrir un `.pixpin` desde ahí es la tarea siguiente del plan maestro, no ésta.
+
+- [ ] **Paso 6: Pruébalo a mano**
+
+Esto no lo cubre ninguna prueba automática y es lo que de verdad dice si la
+tarea está hecha:
+
+```
+cargo run --release
+```
+
+1. Abre el editor desde la bandeja.
+2. Dibuja tres trazos. `Ctrl+Z` tres veces: desaparecen de uno en uno.
+3. `Ctrl+Y` tres veces: vuelven.
+4. Cambia a la mano. Arrastra en vacío: aparece la marquesina y coge lo que
+   queda entero dentro.
+5. Con dos elementos elegidos, tira de una esquina: escalan los dos y la
+   esquina de enfrente no se mueve.
+6. Gira con el tirador de arriba. Con `Shift`, a saltos.
+7. A mitad de un arrastre, `Escape`: vuelve a su sitio.
+8. Un solo `Ctrl+Z` deshace el arrastre entero, no cada píxel.
+
+Si alguno falla, es un fallo del motor y no de la ventana: vuelve a la tarea
+correspondiente y añade la prueba que faltaba.
+
+- [ ] **Paso 7: Cierra**
+
+```
+cargo test --workspace -- --test-threads=1
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+- [ ] **Paso 8: Commit**
+
+```bash
+git add apps/pixpin/src/ventana_editor.rs apps/pixpin/src/main.rs crates/pixpin-render/src/lienzo.rs
+git commit -m "La ventana del editor: el hito
+
+Ya se abre, dibuja, selecciona, redimensiona, gira y deshace.
+
+No hizo falta fonteneria nueva. VentanaOverlay ya servia ventanas
+completas —el editor de grabaciones la usa asi— y ya traia raton, teclas
+con modificadores, caracteres con IME, cambio de DPI, cursores y el bucle
+por eventos que da el 0 % de CPU en reposo. Lo unico que le faltaba eran
+el campo alt y un cursor de giro, que fue la tarea anterior.
+
+Este fichero traduce y nada mas: EventoOverlay a EventoGesto, llamar a la
+maquina, y hacer lo que devuelve. Si crece mas alla de eso es que se ha
+colado logica que deberia estar en el motor.
+
+Lo unico con sustancia propia es el cursor de escalar. Windows solo trae
+cuatro flechas de redimension, asi que la direccion del tirador —ya
+girada con el elemento— se reparte entre ellas en octavos de vuelta. Y
+como una flecha no tiene punta, norte y sur son la misma: el angulo va
+modulo media vuelta, o girar 180 grados cambiaria el cursor sin motivo."
 ```
