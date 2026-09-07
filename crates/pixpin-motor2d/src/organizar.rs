@@ -373,6 +373,37 @@ mod pruebas {
     }
 
     #[test]
+    fn alinear_lo_ya_alineado_no_deja_paso() {
+        // alinear() ya se salta apuntar_edicion() cuando el desplazamiento
+        // es (0, 0) — comprobarlo aqui deja constancia de que el gesto
+        // «alinear sin que nada se mueva» no ensucia el historial, el mismo
+        // problema que el filtro de cerrar_paso() cubre para el resto.
+        let (mut escena, a, b, c) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b, c]);
+        let antes = escena.buscar(b).unwrap().x;
+
+        alinear(&mut escena, &sel, Alineacion::Izquierda);
+        let alineado = escena.buscar(b).unwrap().x;
+        assert_ne!(alineado, antes, "la primera vez si movio algo");
+
+        // Ya estan alineados: repetirlo no deberia mover nada ni dejar paso.
+        alinear(&mut escena, &sel, Alineacion::Izquierda);
+        assert_eq!(
+            escena.buscar(b).unwrap().x,
+            alineado,
+            "no se movio otra vez"
+        );
+
+        assert!(escena.deshacer(), "hay que deshacer la primera alineacion");
+        assert_eq!(
+            escena.buscar(b).unwrap().x,
+            antes,
+            "un solo deshacer basta: el segundo alinear no dejo paso propio"
+        );
+    }
+
+    #[test]
     fn alinear_y_repartir_dejan_un_solo_paso_de_deshacer() {
         let (mut escena, a, b, c) = con_tres();
         let mut sel = Seleccion::nueva();

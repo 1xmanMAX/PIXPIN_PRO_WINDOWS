@@ -314,9 +314,23 @@ impl Escena {
     /// Cierra el gesto. Un paso sin cambios no entra en el historial: hacer
     /// clic sin arrastrar no debe consumir un `Ctrl+Z`.
     pub fn cerrar_paso(&mut self) {
-        let Some(paso) = self.en_curso.take() else {
+        let Some(mut paso) = self.en_curso.take() else {
             return;
         };
+        // `apuntar_edicion` toma la instantanea sin saber si el elemento va
+        // a cambiar de verdad (lo hace al pulsar, para que el arrastre que
+        // sigue no asigne memoria). Un clic de seleccion sobre algo ya
+        // elegido, sin arrastre, deja entonces un `Editado` cuyo `antes` es
+        // igual al elemento actual: no es un cambio, y si se colara en el
+        // historial, `Ctrl+Z` no deshaceria nada visible. Se filtra aqui,
+        // antes de mirar si el paso quedo vacio.
+        //
+        // `Anadido`, `Borrado` y `Reordenado` no se filtran: esos solo se
+        // empujan cuando la accion ocurrio de verdad.
+        paso.cambios.retain(|c| match c {
+            Cambio::Editado { id, antes } => self.buscar(*id) != Some(antes.as_ref()),
+            _ => true,
+        });
         if paso.cambios.is_empty() {
             return;
         }
@@ -841,6 +855,34 @@ mod pruebas {
             escena.bytes_de_historial()
         );
         assert!(escena.deshacer(), "y aun asi se deshace lo reciente");
+    }
+
+    #[test]
+    fn un_editado_que_no_cambio_nada_se_descarta_y_uno_que_si_cambio_se_conserva() {
+        // apuntar_edicion() guarda la instantanea sin saber si el elemento
+        // va a cambiar de verdad; cerrar_paso() es quien tiene que
+        // descartar los que no cambiaron, o un clic sin efecto ensuciaria
+        // el historial. Las dos mitades juntas, para que el filtro no pase
+        // por descartar de mas.
+        let mut e = Escena::nueva();
+        let id = e.anadir(base());
+
+        // Mitad 1: se apunta y no se toca nada.
+        e.abrir_paso();
+        e.apuntar_edicion(id);
+        e.cerrar_paso();
+        assert!(e.deshacer(), "solo queda el paso de haberlo anadido");
+        assert!(e.buscar(id).unwrap().borrado);
+        assert!(!e.deshacer(), "el editado sin cambios no dejo paso propio");
+
+        // Mitad 2: se rehace el alta y esta vez si se toca el elemento.
+        e.rehacer();
+        e.abrir_paso();
+        e.apuntar_edicion(id);
+        e.buscar_mut(id).unwrap().mover(10.0, 0.0);
+        e.cerrar_paso();
+        assert!(e.deshacer(), "este si cambio: hay paso que deshacer");
+        assert_eq!(e.buscar(id).unwrap().x, 0.0, "y deshacerlo vuelve al sitio");
     }
 
     #[test]

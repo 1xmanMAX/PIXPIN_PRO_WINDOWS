@@ -949,6 +949,36 @@ mod pruebas {
     }
 
     #[test]
+    fn un_clic_sobre_lo_ya_seleccionado_sin_arrastrar_no_deja_paso_fantasma() {
+        // La instantanea de apuntar_edicion() se toma al pulsar (para que
+        // el arrastre que sigue no asigne memoria), pero un clic sin
+        // arrastre no cambia nada. Si ese paso entrara igual en el
+        // historial, Ctrl+Z no deshaceria nada visible y habria que
+        // pulsarlo dos veces para llegar al cambio de verdad.
+        let mut escena = Escena::nueva();
+        let id = escena.anadir(rect(0.0, 0.0, 100.0, 100.0));
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Mano;
+        g.seleccion.poner(id);
+
+        g.evento(pulsar(Punto2::nuevo(50.0, 50.0)), &mut escena, 1.0);
+        g.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(50.0, 50.0),
+            },
+            &mut escena,
+            1.0,
+        );
+
+        assert!(escena.deshacer(), "queda el paso de haberlo anadido");
+        assert!(
+            escena.buscar(id).unwrap().borrado,
+            "y es el unico paso: el clic no dejo nada de por medio"
+        );
+        assert!(!escena.deshacer(), "no hay paso fantasma del clic");
+    }
+
+    #[test]
     fn el_cursor_de_escalar_va_girado_con_el_elemento() {
         // En una figura a 45 grados, el tirador de la esquina ensena la
         // flecha que de verdad apunta hacia donde va a crecer.
