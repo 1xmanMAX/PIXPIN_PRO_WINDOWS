@@ -322,10 +322,11 @@ esto —lo dice su propio comentario— y hoy no lo usa nadie.
 La caché se indexa por `(id, version, nivel de detalle)`. El nivel de detalle
 es un entero pequeño sacado del zoom, **no el zoom en bruto**: si fuera el
 zoom, mover la rueda un grado tiraría los ocho mil. En concreto, el nivel es
-la octava del zoom —`log2(zoom)` truncado, del `-4` que corresponde al 5 % al
-`+4` del 3.000 %—, así que solo cambia al doblar o al partir por la mitad el
-aumento: nueve valores posibles en todo el recorrido. Encuadrar no cambia el
-nivel, así que arrastrar el lienzo no invalida nada.
+la octava del zoom, `log2(zoom)` redondeado hacia abajo. Entre los topes que
+ya tiene la cámara —5 % y 3.000 %— eso va de `-5` a `+4`: **diez valores en
+todo el recorrido**, y solo cambia al doblar o al partir por la mitad el
+aumento. Encuadrar no cambia el nivel, así que arrastrar el lienzo no
+invalida nada.
 
 Es la mayor de las tres y la que menos código cuesta.
 
