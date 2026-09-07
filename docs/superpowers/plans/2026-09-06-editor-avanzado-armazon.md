@@ -902,11 +902,37 @@ plano hecho en el teléfono se abre aquí como un montón de piezas sueltas.
 
 - [ ] **Paso 1: Escribe las pruebas que fallan**
 
-En `mod pruebas` de `excalidraw.rs`. **Ajusta los nombres de las funciones de
-carga y guardado a los reales del fichero** — mira las pruebas que ya tiene y
-copia de ahí la forma de llamarlas y de llegar a la escena:
+En `mod pruebas` de `excalidraw.rs`. La API real del fichero, ya comprobada,
+es la que usan estas pruebas:
+
+- `leer(json) -> Result<Lienzo, ErrorExcalidraw>` y `escribir(&Lienzo) -> String`.
+- `Lienzo` tiene `pub entradas: Vec<Entrada>` y `pub resto: Map<String, Value>`.
+  **No tiene campo `escena`.**
+- `Entrada` es `Nuestro { elemento: Elemento, original: Box<Value> }` o
+  `Ajeno(Box<Value>)`. El entrelazado de los dos es lo que conserva el orden
+  de pintado, y por eso no hay dos listas separadas.
+- `Lienzo::elementos()` devuelve un `Vec<Elemento>` **clonado**: sirve para
+  leer, no para modificar. Para tocar un elemento hay que ir por `entradas` y
+  casar `Entrada::Nuestro { elemento, .. }`.
+
+Ese último punto importa: la prueba de agrupar desde Windows modifica un
+elemento, así que va por `entradas`, no por `elementos()`.
 
 ```rust
+/// El primer elemento nuestro del lienzo, para poder tocarlo.
+///
+/// Va por `entradas` y no por `elementos()`, que devuelve clones y no
+/// serviria para modificar nada.
+fn primero_mut(l: &mut Lienzo) -> &mut Elemento {
+    l.entradas
+        .iter_mut()
+        .find_map(|e| match e {
+            Entrada::Nuestro { elemento, .. } => Some(elemento),
+            Entrada::Ajeno(_) => None,
+        })
+        .expect("el lienzo trae al menos un elemento nuestro")
+}
+
 #[test]
 fn los_grupos_del_movil_llegan_al_escritorio() {
     let json = r#"{
@@ -918,9 +944,9 @@ fn los_grupos_del_movil_llegan_al_escritorio() {
              "strokeColor":"#000000","seed":2,"groupIds":[]}
         ]
     }"#;
-    let lienzo = cargar(json).unwrap();
-    assert_eq!(lienzo.escena.elementos[0].grupos, vec!["g1", "g2"]);
-    assert!(lienzo.escena.elementos[1].grupos.is_empty());
+    let elementos = leer(json).unwrap().elementos();
+    assert_eq!(elementos[0].grupos, vec!["g1", "g2"]);
+    assert!(elementos[1].grupos.is_empty());
 }
 
 #[test]
@@ -931,8 +957,7 @@ fn un_elemento_sin_grupos_se_lee_igual() {
         {"type":"rectangle","x":0,"y":0,"width":10,"height":10,
          "strokeColor":"#000000","seed":1}
     ]}"#;
-    let lienzo = cargar(json).unwrap();
-    assert!(lienzo.escena.elementos[0].grupos.is_empty());
+    assert!(leer(json).unwrap().elementos()[0].grupos.is_empty());
 }
 
 #[test]
@@ -941,9 +966,9 @@ fn los_grupos_sobreviven_la_ida_y_la_vuelta() {
         {"type":"rectangle","x":0,"y":0,"width":10,"height":10,
          "strokeColor":"#000000","seed":1,"groupIds":["g1"]}
     ]}"#;
-    let lienzo = cargar(json).unwrap();
-    let otra_vez = cargar(&guardar(&lienzo)).unwrap();
-    assert_eq!(otra_vez.escena.elementos[0].grupos, vec!["g1"]);
+    let lienzo = leer(json).unwrap();
+    let otra_vez = leer(&escribir(&lienzo)).unwrap();
+    assert_eq!(otra_vez.elementos()[0].grupos, vec!["g1"]);
 }
 
 #[test]
@@ -954,34 +979,51 @@ fn agrupar_en_windows_se_ve_en_el_movil() {
         {"type":"rectangle","x":0,"y":0,"width":10,"height":10,
          "strokeColor":"#000000","seed":1}
     ]}"#;
-    let mut lienzo = cargar(json).unwrap();
-    lienzo.escena.elementos[0].grupos = vec!["nuevo".to_string()];
+    let mut lienzo = leer(json).unwrap();
+    primero_mut(&mut lienzo).grupos = vec!["nuevo".to_string()];
 
-    let vuelta = guardar(&lienzo);
+    let vuelta = escribir(&lienzo);
     assert!(
         vuelta.contains("\"groupIds\""),
         "el JSON tiene que llevar groupIds: {vuelta}"
     );
-    assert_eq!(cargar(&vuelta).unwrap().escena.elementos[0].grupos, vec!["nuevo"]);
+    assert_eq!(leer(&vuelta).unwrap().elementos()[0].grupos, vec!["nuevo"]);
 }
 
 #[test]
 fn desagrupar_en_windows_no_deja_los_grupos_viejos() {
     // Si groupIds solo se escribiera cuando hay grupos, desagrupar aqui
-    // dejaria intactos los del JSON original y el movil los seguiria
-    // viendo agrupados. Es el motivo de escribirlo siempre.
+    // dejaria intactos los del JSON original —que `escribir` reutiliza como
+    // base— y el movil los seguiria viendo agrupados. Es el motivo de
+    // escribirlo siempre, tambien vacio.
     let json = r#"{"type":"excalidraw","elements":[
         {"type":"rectangle","x":0,"y":0,"width":10,"height":10,
          "strokeColor":"#000000","seed":1,"groupIds":["viejo"]}
     ]}"#;
-    let mut lienzo = cargar(json).unwrap();
-    lienzo.escena.elementos[0].grupos.clear();
+    let mut lienzo = leer(json).unwrap();
+    primero_mut(&mut lienzo).grupos.clear();
 
-    let otra_vez = cargar(&guardar(&lienzo)).unwrap();
+    let otra_vez = leer(&escribir(&lienzo)).unwrap();
     assert!(
-        otra_vez.escena.elementos[0].grupos.is_empty(),
+        otra_vez.elementos()[0].grupos.is_empty(),
         "desagrupado aqui, desagrupado alla"
     );
+}
+
+#[test]
+fn un_elemento_ajeno_sigue_viajando_intacto_con_sus_grupos() {
+    // La garantia que no se puede romper: lo que Windows no entiende
+    // sobrevive al viaje. Anadir un campo al lado no puede estropearlo.
+    let json = r#"{"type":"excalidraw","elements":[
+        {"type":"pixpin-measure","x":0,"y":0,"groupIds":["g9"],"unidad":"m"}
+    ]}"#;
+    let lienzo = leer(json).unwrap();
+    assert_eq!(lienzo.cuantos_ajenos(), 1);
+
+    let vuelta = escribir(&lienzo);
+    assert!(vuelta.contains("pixpin-measure"), "el tipo ajeno sigue");
+    assert!(vuelta.contains("\"g9\""), "y su grupo tambien");
+    assert!(vuelta.contains("\"unidad\""), "y sus campos propios");
 }
 ```
 
