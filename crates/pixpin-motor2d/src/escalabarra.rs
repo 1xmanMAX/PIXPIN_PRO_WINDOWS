@@ -81,10 +81,10 @@ pub fn repartir(ancho_px: f32, escala: &Escala, cuadros_deseados: u32) -> Option
     // de valor absurdo, y el .max(1) fuerza un cuadro. Eso puede hacer ancho_usado_px
     // orders of magnitude por encima del ancho pedido. Reducimos cuadros hasta que
     // quepa; si ni con uno cabe, devolvemos None.
-    // Este bucle está acotado por la precisión de la mantisa de f32 (~24 bits).
+    // Este bucle esta acotado por la precision de la mantisa de f32 (~24 bits).
     // Al convertir cuadros: u32 a f32 por encima de 2^24 (≈16,7 millones), el
     // redondeo introduce error absoluto de hasta 256. Peor caso observado: ~130
-    // iteraciones. No depende de cuadros_deseados, solo de la aritmética f32.
+    // iteraciones. No depende de cuadros_deseados, solo de la aritmetica f32.
     while ancho_usado_px > ancho_px + 1e-3 && cuadros > 1 {
         cuadros -= 1;
         ancho_usado_px = (cuadros as f32 * paso) / escala.unidades_por_pixel;
@@ -233,25 +233,29 @@ mod pruebas {
 
     #[test]
     fn el_floor_cero_lleva_a_rechazo() {
-        // El .max(1) de cuadros solo actua cuando floor(total_mundo / paso) < 1,
-        // i.e., cuando el ancho en unidades de mundo es menor que el paso elegido.
-        // Con upp diminuto, total_mundo cae a cero por perdida de precision,
-        // paso_redondo devuelve 1.0, floor da 0, y .max(1) fuerza 1 cuadro.
-        // Pero ancho_usado_px = 1.0 / upp se dispara orders of magnitude,
-        // y la postcondicion lo rechaza. La rama .max(1) es guarda defensiva:
-        // en la practica todo camino que llega a ella sale rechazado por ancho.
+        // El .max(1) de cuadros solo actua cuando floor(total_mundo / paso) == 0.
+        // Para que floor sea cero, el paso no puede limitarlo: paso_redondo nunca
+        // devuelve mas que su argumento con entrada positiva. El unico camino es
+        // que total_mundo = ancho_px * upp se vaya a cero exacto por perdida de
+        // precision en f32, con ambas entradas validas.
+        //
+        // Cadena: ancho_px = 1e-6 (por encima de f32::EPSILON = 1.19e-7),
+        // upp = 1e-40 (subnormal pero valido: valida() lo acepta).
+        // Producto: 1e-6 * 1e-40 = 1e-46 cae debajo del subnormal minimo de f32
+        // y da 0.0 exacto. Entonces paso_redondo(0.0) devuelve 1.0,
+        // floor(0.0 / 1.0) = 0, y .max(1) fuerza 1 cuadro. Pero ancho_usado_px
+        // se dispara orders of magnitude y la postcondicion rechaza con None.
+        // La rama .max(1) es guarda defensiva: en la practica todo camino que
+        // llega a ella (floor == 0 de verdad) se rechaza por violacion del invariante.
         let escala = Escala {
-            unidades_por_pixel: 1e-20, // diminuto
+            unidades_por_pixel: 1e-40,
             unidad: "m".to_string(),
             decimales: 2,
         };
-        // ancho_px = 1e-10 px * upp = 1e-30 m de mundo, mucho menor que paso=1.0.
-        // floor(1e-30 / 1.0) = 0, .max(1) fuerza 1, pero ancho_usado_px = 1.0 / 1e-20
-        // = 1e20 px >> 1e-10 px pedidos. Postcondicion rechaza.
-        let b = repartir(1e-10, &escala, 1);
+        let b = repartir(1e-6, &escala, 1);
         assert!(
             b.is_none(),
-            "floor == 0 siempre rechazado por postcondicion de ancho"
+            "total_mundo = 0 por perdida de precision: floor == 0 rechazado"
         );
     }
 }
