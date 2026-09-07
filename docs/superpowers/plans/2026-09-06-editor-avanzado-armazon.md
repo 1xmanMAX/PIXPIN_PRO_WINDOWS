@@ -1,0 +1,2043 @@
+# Armazón del editor avanzado — Plan de implementación
+
+> **Para quien ejecute esto:** SUB-SKILL OBLIGATORIA — usa
+> `superpowers:subagent-driven-development` (recomendada) o
+> `superpowers:executing-plans` para ejecutar tarea a tarea. Los pasos usan
+> casillas (`- [ ]`) para ir marcando.
+
+**Objetivo:** dar a PixPin Max la máquina que le falta para ser un editor —
+selección múltiple, redimensionar, girar, deshacer de verdad— sin perder el
+0 % de CPU en reposo ni los 50 ms del atajo global.
+
+**Arquitectura:** la geometría se porta del Android (`Transform.kt`,
+`TransformHandles.kt`, `Collision.kt`, `History.kt`, `Organize.kt`) porque es
+verdad matemática y vale igual aquí; el gesto se rediseña para ratón y
+teclado. Todo lo nuevo vive en `pixpin-motor2d`, que es puro y se prueba sin
+escritorio; la ventana solo traduce.
+
+**Pila:** Rust 2024, `serde`, Direct2D vía `pixpin-render`, Win32 vía
+`pixpin-shell`. **Ninguna dependencia nueva.**
+
+**Diseño:** `docs/superpowers/specs/2026-09-06-editor-avanzado-design.md`
+
+---
+
+## Restricciones globales
+
+Valen para **todas** las tareas.
+
+- **El código va en español SIN tildes; la documentación, CON tildes.** Mira
+  `crates/pixpin-motor2d/src/escena.rs`: «Deshacer es logico», no «lógico».
+  Es la convención de todo el proyecto y no se negocia por fichero.
+- **`pixpin-motor2d` lleva `#![forbid(unsafe_code)]`.** No se toca.
+- **Ninguna dependencia nueva** en ningún `Cargo.toml` (D28).
+- **Baseline del procesador: `x86-64` explícito.** Jamás `target-cpu=native`:
+  el i3 de la máquina suelo no tiene AVX2 y el binario moriría al arrancar,
+  sin mensaje útil (D17).
+- **Reutiliza `pixpin_geom::Tirador`**, que ya tiene los ocho nombres
+  (`NoroesteEsquina`, `NorteBorde`, `NoresteEsquina`, `EsteBorde`,
+  `SuresteEsquina`, `SurBorde`, `SuroesteEsquina`, `OesteBorde`). No crees
+  otro enum con los mismos valores: `pixpin-motor2d` ya depende de
+  `pixpin-geom`.
+- **Las pruebas van en `mod pruebas` al final del fichero**, con nombres que
+  son frases: `fn el_marco_de_seleccion_rodea_la_caja_con_holgura()`.
+- **Convenio de `escala`:** en este motor `escala` significa *unidades de
+  mundo por píxel de pantalla*, o sea `1.0 / zoom`. Así lo usa ya
+  `pintado::marco_de_seleccion`. No lo inviertas.
+- **Camino caliente = mover el ratón mientras se dibuja.** Cero asignaciones,
+  y se invalida la región del último tramo, nunca la pantalla.
+- **Techo del historial: 8 MB** (D25).
+- **Puerta completa antes de fusionar**, los tres comandos:
+  - `cargo fmt --all --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
+  - `cargo test --workspace -- --test-threads=1`
+- **Una rama y una solicitud de cambios por tarea**, con el porqué escrito.
+
+---
+
+## Estructura de ficheros
+
+| Fichero | Responsabilidad | Tarea |
+|---|---|---|
+| `pixpin-motor2d/src/escena.rs` | Historial de transacciones | 1 |
+| `pixpin-motor2d/src/seleccion.rs` | **Nuevo.** Selección múltiple | 2 |
+| `pixpin-motor2d/src/elemento.rs` + `excalidraw.rs` | Campo `grupos` y su puente | 3 |
+| `pixpin-motor2d/src/transformar.rs` | **Nuevo.** Escalar y girar con ancla | 4 |
+| `pixpin-motor2d/src/tiradores.rs` | **Nuevo.** Dónde caen los 8 + el de giro | 5 |
+| `pixpin-motor2d/src/impacto.rs` | + picado múltiple y marquesina | 6 |
+| `pixpin-motor2d/src/indice.rs` | **Nuevo.** Rejilla espacial | 7 |
+| `pixpin-motor2d/src/cache.rs` | **Nuevo.** Caché de geometría por `version` | 8 |
+| `pixpin-motor2d/src/gesto.rs` | **Nuevo.** La máquina de estados | 9 |
+| `pixpin-shell/src/overlay.rs` | + `alt` en `Tecla`, + cursor de giro | 10 |
+| `apps/pixpin/src/ventana_editor.rs` | **Nuevo.** La ventana | 11 |
+| `pixpin-motor2d/src/organizar.rs` | **Nuevo.** Orden, grupos, alinear | 12 |
+| `pixpin-ui/src/propiedades.rs` | **Nuevo.** Qué se ajusta de qué | 13 |
+| `pixpin-render/src/lienzo.rs` | + capa estática cacheada | 14 |
+| `pixpin-motor2d/tests/asignaciones.rs` | **Nuevo.** El asignador que cuenta | 15 |
+
+**Hito:** al acabar la tarea 11 hay un editor que se abre, dibuja, selecciona,
+redimensiona, gira y deshace. De la 12 a la 15 es acabado y demostración.
+
+**Orden obligado:** 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11. De la 12 a
+la 15 pueden ir en cualquier orden entre ellas.
+
+---
+
+## Tarea 1: El historial de transacciones
+
+Hoy `Cambio` tiene tres variantes y no cubre redimensionar, girar ni cambiar
+de color. Y cada movimiento es su propio paso, así que arrastrar cuarenta
+elementos serían cuarenta `Ctrl+Z`.
+
+**Ficheros:**
+- Modificar: `crates/pixpin-motor2d/src/escena.rs` — el `enum Cambio` de la
+  línea 39 y `deshacer`/`rehacer`/`invertir` de las líneas 166-212
+- Modificar: `crates/pixpin-motor2d/src/elemento.rs` — añadir `bytes()`
+- Modificar: `apps/pixpin/src/capa.rs`, `apps/pixpin/src/pines.rs` — llamadas
+- Prueba: en `escena.rs`, dentro de `mod pruebas`
+
+**Interfaces:**
+- Consume: `Elemento` y `Escena` tal como están hoy.
+- Produce:
+  ```rust
+  impl Escena {
+      pub fn abrir_paso(&mut self);
+      pub fn cerrar_paso(&mut self);
+      pub fn cancelar_paso(&mut self);
+      pub fn apuntar_edicion(&mut self, id: u64);
+      pub fn deshacer(&mut self) -> bool;   // OJO: era Option<u64>
+      pub fn rehacer(&mut self) -> bool;    // OJO: era Option<u64>
+      pub fn bytes_de_historial(&self) -> usize;
+  }
+  impl Elemento {
+      pub fn bytes(&self) -> usize;
+  }
+  ```
+
+- [ ] **Paso 1: Escribe las pruebas que fallan**
+
+En `escena.rs`, dentro de `mod pruebas`:
+
+```rust
+#[test]
+fn un_paso_agrupa_todos_los_cambios_del_gesto() {
+    let mut escena = Escena::nueva();
+    let a = escena.anadir(base());
+    let b = escena.anadir(base());
+    let c = escena.anadir(base());
+
+    escena.abrir_paso();
+    for id in [a, b, c] {
+        escena.apuntar_edicion(id);
+        escena.buscar_mut(id).unwrap().mover(10.0, 0.0);
+    }
+    escena.cerrar_paso();
+
+    assert!(escena.deshacer(), "tiene que haber algo que deshacer");
+    assert_eq!(escena.buscar(a).unwrap().x, 0.0, "el primero vuelve");
+    assert_eq!(escena.buscar(c).unwrap().x, 0.0, "y el tercero tambien");
+    assert!(escena.deshacer(), "queda deshacer el haber anadido");
+}
+
+#[test]
+fn treinta_ciclos_de_deshacer_y_rehacer_no_deforman_el_dibujo() {
+    // El motivo de D24. Con la operacion inversa en vez del estado
+    // anterior, escalar por 1,5 y dividir por 1,5 acumularia error en coma
+    // flotante hasta que el dibujo se nota torcido.
+    let mut escena = Escena::nueva();
+    let id = escena.anadir(base());
+    let partida = escena.buscar(id).unwrap().clone();
+
+    for _ in 0..30 {
+        escena.abrir_paso();
+        escena.apuntar_edicion(id);
+        let e = escena.buscar_mut(id).unwrap();
+        e.ancho *= 1.5;
+        e.alto *= 1.5;
+        e.angulo += 0.37;
+        e.tocar();
+        escena.cerrar_paso();
+
+        assert!(escena.deshacer());
+    }
+
+    assert_eq!(
+        escena.buscar(id).unwrap(),
+        &partida,
+        "identico bit a bit, no aproximado"
+    );
+}
+
+#[test]
+fn cancelar_un_paso_deja_todo_como_estaba_y_no_ensucia_el_historial() {
+    let mut escena = Escena::nueva();
+    let id = escena.anadir(base());
+
+    escena.abrir_paso();
+    escena.apuntar_edicion(id);
+    escena.buscar_mut(id).unwrap().mover(500.0, 500.0);
+    escena.cancelar_paso();
+
+    assert_eq!(escena.buscar(id).unwrap().x, 0.0, "vuelve a su sitio");
+    assert!(escena.deshacer(), "queda el paso de haberlo anadido");
+    assert!(!escena.deshacer(), "y nada mas: el arrastre cancelado no cuenta");
+}
+
+#[test]
+fn un_gesto_sin_cambios_no_consume_un_ctrl_zeta() {
+    let mut escena = Escena::nueva();
+    escena.anadir(base());
+    escena.abrir_paso();
+    escena.cerrar_paso();
+
+    assert!(escena.deshacer(), "el anadido");
+    assert!(!escena.deshacer(), "el clic sin arrastrar no dejo paso");
+}
+
+#[test]
+fn apuntar_dos_veces_el_mismo_elemento_guarda_solo_el_estado_original() {
+    // Mover el raton produce cien avisos por gesto. Si cada uno guardara
+    // una instantanea, arrastrar un trazo largo se comeria el techo de
+    // memoria en un solo arrastre.
+    let mut escena = Escena::nueva();
+    let id = escena.anadir(base());
+
+    escena.abrir_paso();
+    for _ in 0..100 {
+        escena.apuntar_edicion(id);
+        escena.buscar_mut(id).unwrap().mover(1.0, 0.0);
+    }
+    escena.cerrar_paso();
+
+    assert!(escena.deshacer());
+    assert_eq!(escena.buscar(id).unwrap().x, 0.0, "vuelve al origen entero");
+}
+
+#[test]
+fn el_historial_no_pasa_de_ocho_megas() {
+    // D25: el techo va en memoria, no en numero de pasos.
+    let mut escena = Escena::nueva();
+    let puntos: Vec<Punto2> = (0..492)
+        .map(|i| Punto2::nuevo(i as f32, (i * 2) as f32))
+        .collect();
+    let id = escena.anadir(Elemento {
+        figura: Figura::Lapiz { puntos, presiones: Vec::new() },
+        ..base()
+    });
+
+    for _ in 0..500 {
+        escena.abrir_paso();
+        escena.apuntar_edicion(id);
+        escena.buscar_mut(id).unwrap().mover(1.0, 0.0);
+        escena.cerrar_paso();
+    }
+
+    assert!(
+        escena.bytes_de_historial() <= 8 * 1024 * 1024,
+        "el historial ocupa {} bytes",
+        escena.bytes_de_historial()
+    );
+    assert!(escena.deshacer(), "y aun asi se deshace lo reciente");
+}
+```
+
+Si `mod pruebas` de `escena.rs` no tiene ya un `fn base()`, añádelo (copia el
+de `pintado.rs`, que construye un `Elemento` con `Figura::Rectangulo`,
+100×50, semilla 1).
+
+- [ ] **Paso 2: Comprueba que fallan**
+
+```
+cargo test -p pixpin-motor2d escena -- --test-threads=1
+```
+
+Esperado: no compila — `no method named 'abrir_paso' found for struct 'Escena'`.
+
+- [ ] **Paso 3: Cambia el modelo del historial**
+
+En `escena.rs`, sustituye el `enum Cambio` de la línea 39:
+
+```rust
+/// Un cambio suelto. Cada uno sabe invertirse.
+#[derive(Debug, Clone, PartialEq)]
+enum Cambio {
+    Anadido(u64),
+    Borrado(u64),
+    /// El elemento entero **antes** del cambio.
+    ///
+    /// Guardar el estado anterior y no la operacion inversa es D24, y no es
+    /// preferencia de estilo: en coma flotante `(a * 1.5) / 1.5` no siempre
+    /// devuelve `a`. Con la operacion inversa, treinta ciclos de deshacer y
+    /// rehacer deforman el dibujo poco a poco — un fallo que aparece en
+    /// casa del usuario y no en las pruebas.
+    Editado { id: u64, antes: Box<Elemento> },
+}
+
+/// Todo lo que hizo un gesto. Un arrastre que mueve cuarenta elementos es
+/// **un** paso de deshacer, no cuarenta.
+#[derive(Debug, Clone, PartialEq, Default)]
+struct Paso {
+    cambios: Vec<Cambio>,
+}
+
+impl Cambio {
+    /// Lo que ocupa de cara al techo del historial.
+    fn bytes(&self) -> usize {
+        match self {
+            Cambio::Anadido(_) | Cambio::Borrado(_) => size_of::<Cambio>(),
+            Cambio::Editado { antes, .. } => size_of::<Cambio>() + antes.bytes(),
+        }
+    }
+}
+
+/// Techo del historial (D25). Ocho megas son quinientos arrastres de un
+/// trazo de 492 puntos —mas de lo que nadie deshace de una sentada— y una
+/// fraccion asumible de los ~1,5 GB que Windows 10 deja libres en la
+/// maquina suelo de 4 GB.
+const TECHO_HISTORIAL: usize = 8 * 1024 * 1024;
+
+fn bytes_de(paso: &Paso) -> usize {
+    paso.cambios.iter().map(Cambio::bytes).sum()
+}
+```
+
+Y cambia los campos de `Escena`:
+
+```rust
+    #[serde(skip)]
+    historia: Vec<Paso>,
+    #[serde(skip)]
+    rehacer: Vec<Paso>,
+    /// El paso que se esta construyendo, entre `abrir_paso` y `cerrar_paso`.
+    #[serde(skip)]
+    en_curso: Option<Paso>,
+    /// Lo que ocupan `historia` y `rehacer`, para no tener que recorrerlos.
+    #[serde(skip)]
+    bytes_historial: usize,
+```
+
+Añade `en_curso: None` y `bytes_historial: 0` a `impl Default for Escena`.
+
+- [ ] **Paso 4: Añade `bytes()` a `Elemento`**
+
+En `elemento.rs`, dentro de `impl Elemento`:
+
+```rust
+    /// Lo que ocupa de verdad, contando lo que hay al otro lado de los
+    /// punteros. `size_of` solo cuenta la cabecera, y un trazo de 492
+    /// puntos son cuatro kilobytes que no apareceran en el techo.
+    pub fn bytes(&self) -> usize {
+        let dentro = match &self.figura {
+            Figura::Lapiz { puntos, presiones } => {
+                puntos.len() * size_of::<Punto2>() + presiones.len() * size_of::<f32>()
+            }
+            Figura::Resaltador { puntos }
+            | Figura::Linea { puntos }
+            | Figura::Flecha { puntos, .. } => puntos.len() * size_of::<Punto2>(),
+            Figura::Texto { texto, familia, .. } => texto.len() + familia.len(),
+            _ => 0,
+        };
+        size_of::<Elemento>() + dentro
+    }
+```
+
+(En la tarea 3, cuando exista `grupos`, se le suma
+`self.grupos.iter().map(String::len).sum::<usize>()`.)
+
+- [ ] **Paso 5: Escribe las transacciones**
+
+Sustituye `deshacer`, `rehacer` e `invertir` (líneas 166-212) por:
+
+```rust
+    /// Empieza un gesto. Todo lo que pase hasta `cerrar_paso` sera un solo
+    /// paso de deshacer.
+    ///
+    /// Abrir dos veces sin cerrar no es error: el segundo abrir no hace
+    /// nada. La ventana puede recibir un `WM_LBUTTONDOWN` sin su
+    /// `WM_LBUTTONUP` si el usuario suelta fuera, y perder el gesto entero
+    /// por eso seria peor que ignorarlo.
+    pub fn abrir_paso(&mut self) {
+        if self.en_curso.is_none() {
+            self.en_curso = Some(Paso::default());
+        }
+    }
+
+    /// Guarda el estado actual de un elemento para poder volver a el.
+    ///
+    /// Apuntarlo dos veces dentro del mismo paso guarda **solo la primera**:
+    /// mover el raton produce cien avisos por gesto, y cien instantaneas de
+    /// un trazo largo se comerian el techo en un solo arrastre.
+    pub fn apuntar_edicion(&mut self, id: u64) {
+        let Some(paso) = &self.en_curso else { return };
+        let ya_esta = paso
+            .cambios
+            .iter()
+            .any(|c| matches!(c, Cambio::Editado { id: i, .. } if *i == id));
+        if ya_esta {
+            return;
+        }
+        let Some(e) = self.buscar(id) else { return };
+        let cambio = Cambio::Editado { id, antes: Box::new(e.clone()) };
+        if let Some(paso) = &mut self.en_curso {
+            paso.cambios.push(cambio);
+        }
+    }
+
+    /// Cierra el gesto. Un paso sin cambios no entra en el historial: hacer
+    /// clic sin arrastrar no debe consumir un `Ctrl+Z`.
+    pub fn cerrar_paso(&mut self) {
+        let Some(paso) = self.en_curso.take() else { return };
+        if paso.cambios.is_empty() {
+            return;
+        }
+        self.bytes_historial += bytes_de(&paso);
+        self.historia.push(paso);
+        for p in self.rehacer.drain(..) {
+            self.bytes_historial -= bytes_de(&p);
+        }
+        self.podar();
+    }
+
+    /// Deshace el gesto en curso sin apuntarlo. Es lo que hace `Escape` a
+    /// mitad de un arrastre, y sale gratis porque el paso ya guarda el
+    /// estado anterior de lo que se estaba tocando.
+    pub fn cancelar_paso(&mut self) {
+        let Some(paso) = self.en_curso.take() else { return };
+        self.aplicar_inverso(&paso);
+    }
+
+    /// Deshace el ultimo gesto. Devuelve si habia algo que deshacer.
+    pub fn deshacer(&mut self) -> bool {
+        let Some(paso) = self.historia.pop() else { return false };
+        self.bytes_historial -= bytes_de(&paso);
+        let inverso = self.aplicar_inverso(&paso);
+        self.bytes_historial += bytes_de(&inverso);
+        self.rehacer.push(inverso);
+        true
+    }
+
+    /// Rehace el ultimo gesto deshecho.
+    pub fn rehacer(&mut self) -> bool {
+        let Some(paso) = self.rehacer.pop() else { return false };
+        self.bytes_historial -= bytes_de(&paso);
+        let inverso = self.aplicar_inverso(&paso);
+        self.bytes_historial += bytes_de(&inverso);
+        self.historia.push(inverso);
+        true
+    }
+
+    /// Aplica el paso al reves y devuelve el paso que lo desharia.
+    ///
+    /// Que devuelva su propio inverso es lo que hace que deshacer y rehacer
+    /// sean la misma funcion. Con dos funciones distintas, acabarian
+    /// discrepando en cuanto se anadiera una variante a `Cambio`.
+    fn aplicar_inverso(&mut self, paso: &Paso) -> Paso {
+        let mut inverso = Paso::default();
+        // Al reves: si un gesto borro y luego anadio, deshacerlo tiene que
+        // quitar lo anadido antes de restaurar lo borrado.
+        for c in paso.cambios.iter().rev() {
+            match c {
+                Cambio::Anadido(id) => {
+                    self.borrar(*id);
+                    inverso.cambios.push(Cambio::Borrado(*id));
+                }
+                Cambio::Borrado(id) => {
+                    self.restaurar(*id);
+                    inverso.cambios.push(Cambio::Anadido(*id));
+                }
+                Cambio::Editado { id, antes } => {
+                    if let Some(i) = self.elementos.iter().position(|e| e.id == *id) {
+                        let ahora = self.elementos[i].clone();
+                        self.elementos[i] = (**antes).clone();
+                        inverso.cambios.push(Cambio::Editado {
+                            id: *id,
+                            antes: Box::new(ahora),
+                        });
+                    }
+                }
+            }
+        }
+        inverso
+    }
+
+    /// Tira los pasos mas antiguos hasta caber en el techo (D25).
+    ///
+    /// El techo va en memoria y no en numero de pasos porque quinientos
+    /// pasos son ocho kilobytes o doscientos megas segun lo que se haya
+    /// tocado, y en un equipo de 4 GB eso no se puede prometer.
+    fn podar(&mut self) {
+        while self.bytes_historial > TECHO_HISTORIAL && self.historia.len() > 1 {
+            let viejo = self.historia.remove(0);
+            self.bytes_historial -= bytes_de(&viejo);
+        }
+    }
+
+    /// Lo que ocupa el historial ahora mismo.
+    pub fn bytes_de_historial(&self) -> usize {
+        self.bytes_historial
+    }
+
+    /// Si hay algo que deshacer en esta sesion.
+    pub fn hay_que_deshacer(&self) -> bool {
+        !self.historia.is_empty()
+    }
+```
+
+**Ojo con `anadir()`:** hoy mete `Cambio::Anadido` directamente en
+`self.historia`. Ahora tiene que envolverlo en un `Paso` de un solo cambio si
+no hay paso abierto, y meterlo en el paso en curso si lo hay:
+
+```rust
+    // Dentro de `anadir`, donde hoy hace `self.historia.push(Cambio::Anadido(id))`:
+    self.apuntar_anadido(id);
+
+    // Y un ayudante privado nuevo:
+    fn apuntar_anadido(&mut self, id: u64) {
+        let cambio = Cambio::Anadido(id);
+        match &mut self.en_curso {
+            Some(paso) => paso.cambios.push(cambio),
+            None => {
+                let paso = Paso { cambios: vec![cambio] };
+                self.bytes_historial += bytes_de(&paso);
+                self.historia.push(paso);
+                self.rehacer.clear();
+            }
+        }
+    }
+```
+
+Haz lo mismo con `borrar_apuntando` y `apuntar_movimiento`: donde antes
+metían un `Cambio` suelto, ahora va al paso en curso o a un paso propio.
+
+- [ ] **Paso 6: Arregla a quien llamaba a lo viejo**
+
+`deshacer()` y `rehacer()` devolvían `Option<u64>`. Encuentra a quién afecta:
+
+```
+cargo build --workspace 2>&1 | grep -B2 -A4 "deshacer\|rehacer" | head -40
+```
+
+Los sitios conocidos son `apps/pixpin/src/capa.rs` y `apps/pixpin/src/pines.rs`.
+Ninguno usa el `u64` para otra cosa que redibujar, así que el cambio es
+mecánico: `if let Some(_) = escena.deshacer()` pasa a `if escena.deshacer()`.
+
+- [ ] **Paso 7: Comprueba que pasan y que no rompiste nada**
+
+```
+cargo test --workspace -- --test-threads=1
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+Esperado: todo verde, y las pruebas que ya había siguen pasando.
+
+- [ ] **Paso 8: Commit**
+
+```bash
+git add crates/pixpin-motor2d/src/escena.rs crates/pixpin-motor2d/src/elemento.rs apps/pixpin/src/capa.rs apps/pixpin/src/pines.rs
+git commit -m "El historial pasa de tres variantes a transacciones
+
+Cambio solo sabia de anadir, borrar y mover: redimensionar, girar y
+cambiar de color no se podian deshacer. Y cada movimiento era su propio
+paso, asi que arrastrar cuarenta elementos habrian sido cuarenta Ctrl+Z.
+
+Ahora un gesto es un paso (abrir_paso/cerrar_paso) y Cambio::Editado
+guarda el elemento entero de antes. Guardar el estado anterior y no la
+operacion inversa es D24, y no es preferencia: en coma flotante
+(a * 1.5) / 1.5 no siempre devuelve a, y treinta ciclos de deshacer
+deforman el dibujo. La prueba lo exige identico bit a bit.
+
+El techo va en memoria y no en numero de pasos (D25): quinientos pasos
+son ocho kilobytes o doscientos megas segun lo que se haya tocado, y en
+un equipo de 4 GB eso no se puede prometer.
+
+Sale gratis cancelar_paso, que es lo que hace Escape a mitad de un
+arrastre: el paso ya guarda el estado anterior, asi que cancelar es
+aplicarlo y tirar el paso."
+```
+
+---
+
+## Tarea 2: Selección múltiple
+
+Hoy `elemento_en()` devuelve un `Option<u64>` y `marco_de_seleccion()` dibuja
+el marco de uno. No existe seleccionar varios, y sin eso no hay editor: no se
+puede mover un grupo, ni alinear, ni borrar de una vez.
+
+**Ficheros:**
+- Crear: `crates/pixpin-motor2d/src/seleccion.rs`
+- Modificar: `crates/pixpin-motor2d/src/lib.rs` — declarar y reexportar
+- Prueba: en `seleccion.rs`, `mod pruebas`
+
+**Interfaces:**
+- Consume: `Escena`, `Elemento`, `Punto2` de la tarea 1.
+- Produce:
+  ```rust
+  pub struct Seleccion { /* campos privados */ }
+  impl Seleccion {
+      pub fn nueva() -> Self;
+      pub fn ids(&self) -> &[u64];
+      pub fn esta_vacia(&self) -> bool;
+      pub fn cuantos(&self) -> usize;
+      pub fn contiene(&self, id: u64) -> bool;
+      pub fn poner(&mut self, id: u64);
+      pub fn alternar(&mut self, id: u64);
+      pub fn poner_todos(&mut self, ids: impl IntoIterator<Item = u64>);
+      pub fn limpiar(&mut self);
+      pub fn capacidad(&self) -> usize;
+      pub fn caja(&self, escena: &Escena) -> Option<(f32, f32, f32, f32)>;
+      pub fn centro(&self, escena: &Escena) -> Option<Punto2>;
+  }
+  ```
+
+- [ ] **Paso 1: Escribe las pruebas que fallan**
+
+Crea `crates/pixpin-motor2d/src/seleccion.rs` con solo esto:
+
+```rust
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use crate::elemento::{ColorRgba, EstiloTrazo, Figura};
+
+    fn rect(x: f32, y: f32, ancho: f32, alto: f32) -> Elemento {
+        Elemento {
+            id: 0,
+            figura: Figura::Rectangulo,
+            x,
+            y,
+            ancho,
+            alto,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: None,
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn poner_sustituye_y_alternar_anade_o_quita() {
+        let mut s = Seleccion::nueva();
+        s.poner(1);
+        assert_eq!(s.ids(), &[1]);
+
+        // Clic normal sustituye.
+        s.poner(2);
+        assert_eq!(s.ids(), &[2]);
+
+        // Shift+clic anade.
+        s.alternar(3);
+        assert_eq!(s.ids(), &[2, 3]);
+
+        // Shift+clic sobre lo ya elegido lo quita.
+        s.alternar(2);
+        assert_eq!(s.ids(), &[3]);
+    }
+
+    #[test]
+    fn poner_dos_veces_el_mismo_no_lo_duplica() {
+        let mut s = Seleccion::nueva();
+        s.alternar(7);
+        s.poner(7);
+        assert_eq!(s.ids(), &[7], "una sola vez");
+    }
+
+    #[test]
+    fn la_caja_de_varios_abarca_a_todos() {
+        let mut escena = Escena::nueva();
+        let a = escena.anadir(rect(0.0, 0.0, 10.0, 10.0));
+        let b = escena.anadir(rect(100.0, 50.0, 20.0, 20.0));
+
+        let mut s = Seleccion::nueva();
+        s.poner_todos([a, b]);
+
+        let (x0, y0, x1, y1) = s.caja(&escena).unwrap();
+        assert_eq!((x0, y0), (0.0, 0.0));
+        assert_eq!((x1, y1), (120.0, 70.0));
+        assert_eq!(s.centro(&escena).unwrap(), Punto2::nuevo(60.0, 35.0));
+    }
+
+    #[test]
+    fn un_elemento_borrado_no_cuenta_para_la_caja() {
+        // Deshacer es borrado logico: el elemento sigue en la lista. Si la
+        // caja lo contara, el marco abarcaria cosas que el usuario no ve.
+        let mut escena = Escena::nueva();
+        let a = escena.anadir(rect(0.0, 0.0, 10.0, 10.0));
+        let b = escena.anadir(rect(500.0, 500.0, 10.0, 10.0));
+        escena.borrar(b);
+
+        let mut s = Seleccion::nueva();
+        s.poner_todos([a, b]);
+
+        let (_, _, x1, y1) = s.caja(&escena).unwrap();
+        assert_eq!((x1, y1), (10.0, 10.0), "el borrado no estira la caja");
+    }
+
+    #[test]
+    fn una_seleccion_de_solo_borrados_no_tiene_caja() {
+        let mut escena = Escena::nueva();
+        let a = escena.anadir(rect(0.0, 0.0, 10.0, 10.0));
+        escena.borrar(a);
+
+        let mut s = Seleccion::nueva();
+        s.poner(a);
+        assert!(s.caja(&escena).is_none());
+    }
+
+    #[test]
+    fn limpiar_conserva_la_capacidad_para_no_reasignar() {
+        // D26: arrastrar una marquesina es camino caliente. El Vec se
+        // reutiliza con clear(), que no devuelve la memoria al sistema.
+        let mut s = Seleccion::nueva();
+        s.poner_todos(1..=50);
+        let capacidad = s.capacidad();
+        s.limpiar();
+        assert!(s.esta_vacia());
+        assert_eq!(s.capacidad(), capacidad, "clear() no reasigna");
+    }
+}
+```
+
+- [ ] **Paso 2: Comprueba que falla**
+
+Declara el módulo en `lib.rs` (`pub mod seleccion;`) y corre:
+
+```
+cargo test -p pixpin-motor2d seleccion -- --test-threads=1
+```
+
+Esperado: `cannot find type 'Seleccion' in this scope`.
+
+- [ ] **Paso 3: Escribe la implementación**
+
+Encima del `mod pruebas`, en el mismo fichero:
+
+```rust
+//! Que elementos estan elegidos.
+//!
+//! # Por que un `Vec` y no un `HashSet` (D26)
+//!
+//! Una seleccion de trabajo son de uno a veinte elementos. Buscar
+//! linealmente en veinte es mas rapido que calcular un hash, y sobre todo:
+//! el `Vec` se reutiliza con `clear()`, que conserva la memoria ya pedida.
+//! Arrastrar una marquesina reconstruye la seleccion en cada aviso del
+//! raton —camino caliente— y ahi la regla es cero asignaciones.
+//!
+//! El orden de los ids no significa nada, pero es estable a proposito: un
+//! `HashSet` lo cambiaria de un recorrido a otro, y con el cambiaria el
+//! orden en que se pintan los marcos.
+
+use crate::elemento::Elemento;
+use crate::escena::Escena;
+use crate::vector::Punto2;
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Seleccion {
+    ids: Vec<u64>,
+}
+
+impl Seleccion {
+    pub fn nueva() -> Self {
+        Self::default()
+    }
+
+    pub fn ids(&self) -> &[u64] {
+        &self.ids
+    }
+
+    pub fn esta_vacia(&self) -> bool {
+        self.ids.is_empty()
+    }
+
+    pub fn cuantos(&self) -> usize {
+        self.ids.len()
+    }
+
+    pub fn contiene(&self, id: u64) -> bool {
+        self.ids.contains(&id)
+    }
+
+    /// Lo que hace un clic normal: sustituye la seleccion entera.
+    pub fn poner(&mut self, id: u64) {
+        self.ids.clear();
+        self.ids.push(id);
+    }
+
+    /// Lo que hace `Shift` + clic: lo anade si no estaba, lo quita si estaba.
+    pub fn alternar(&mut self, id: u64) {
+        match self.ids.iter().position(|x| *x == id) {
+            Some(i) => {
+                self.ids.remove(i);
+            }
+            None => self.ids.push(id),
+        }
+    }
+
+    /// Lo que hace la marquesina o `Ctrl+A`: sustituye por todos estos.
+    pub fn poner_todos(&mut self, ids: impl IntoIterator<Item = u64>) {
+        self.ids.clear();
+        for id in ids {
+            if !self.ids.contains(&id) {
+                self.ids.push(id);
+            }
+        }
+    }
+
+    /// Vacia la seleccion **conservando la memoria pedida** (D26).
+    pub fn limpiar(&mut self) {
+        self.ids.clear();
+    }
+
+    /// Para la prueba de que `limpiar` no reasigna.
+    pub fn capacidad(&self) -> usize {
+        self.ids.capacity()
+    }
+
+    /// Los elementos elegidos que siguen vivos.
+    ///
+    /// Filtra los borrados porque deshacer es borrado logico: el elemento
+    /// sigue en la lista, y si contara, el marco abarcaria cosas que el
+    /// usuario no ve en la pantalla.
+    fn vivos<'a>(&'a self, escena: &'a Escena) -> impl Iterator<Item = &'a Elemento> + 'a {
+        self.ids
+            .iter()
+            .filter_map(move |id| escena.buscar(*id))
+            .filter(|e| !e.borrado)
+    }
+
+    /// La caja que abarca todo lo elegido, paralela a los ejes.
+    ///
+    /// Paralela a los ejes aunque los elementos esten girados: es lo que
+    /// hacen Excalidraw y el Android. Cada elemento conserva su propio
+    /// angulo; la caja es solo el marco desde el que se tira.
+    pub fn caja(&self, escena: &Escena) -> Option<(f32, f32, f32, f32)> {
+        let mut caja: Option<(f32, f32, f32, f32)> = None;
+        for e in self.vivos(escena) {
+            let (x0, y0, x1, y1) = e.caja();
+            caja = Some(match caja {
+                None => (x0, y0, x1, y1),
+                Some((a, b, c, d)) => (a.min(x0), b.min(y0), c.max(x1), d.max(y1)),
+            });
+        }
+        caja
+    }
+
+    /// El centro de la caja: alrededor de el se gira y se escala.
+    pub fn centro(&self, escena: &Escena) -> Option<Punto2> {
+        let (x0, y0, x1, y1) = self.caja(escena)?;
+        Some(Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0))
+    }
+}
+```
+
+- [ ] **Paso 4: Declara y reexporta**
+
+En `crates/pixpin-motor2d/src/lib.rs`, manteniendo el orden alfabético que ya
+tiene:
+
+```rust
+pub mod seleccion;
+pub use seleccion::Seleccion;
+```
+
+- [ ] **Paso 5: Comprueba que pasan**
+
+```
+cargo test -p pixpin-motor2d seleccion -- --test-threads=1
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+- [ ] **Paso 6: Commit**
+
+```bash
+git add crates/pixpin-motor2d/src/seleccion.rs crates/pixpin-motor2d/src/lib.rs
+git commit -m "Seleccion multiple
+
+elemento_en() devuelve un Option<u64> y marco_de_seleccion() dibuja el
+marco de uno. Sin seleccionar varios no hay editor: no se puede mover un
+grupo, ni alinear, ni borrar de una vez.
+
+Un Vec y no un HashSet (D26). Una seleccion de trabajo son de uno a
+veinte elementos: buscar linealmente en veinte gana a calcular un hash, y
+clear() conserva la memoria pedida. Arrastrar una marquesina reconstruye
+la seleccion en cada aviso del raton, que es camino caliente, y ahi la
+regla es cero asignaciones. Hay una prueba que lo exige.
+
+La caja de varios es paralela a los ejes aunque los elementos esten
+girados, como en Excalidraw y en el Android: cada uno conserva su angulo
+y la caja es solo el marco desde el que se tira. Y filtra los borrados,
+porque deshacer es borrado logico y si no el marco abarcaria cosas que el
+usuario no ve."
+```
+
+---
+
+## Tarea 3: Grupos, y que sobrevivan el viaje al móvil
+
+El puente ya conserva los `groupIds` del móvil dentro del JSON original —
+`elemento_hacia` escribe encima del `Value` de partida en vez de construirlo
+de cero (línea 266 de `excalidraw.rs`)— pero Windows no puede **leerlos**. Un
+plano hecho en el teléfono se abre aquí como un montón de piezas sueltas.
+
+**Ficheros:**
+- Modificar: `crates/pixpin-motor2d/src/elemento.rs` — campo `grupos`, y
+  sumarlo en `bytes()`
+- Modificar: `crates/pixpin-motor2d/src/excalidraw.rs` — leerlo en
+  `elemento_desde` (línea 183), escribirlo en `elemento_hacia` (línea 269)
+- Prueba: en `excalidraw.rs`, `mod pruebas`
+
+**Interfaces:**
+- Consume: `Elemento` de la tarea 1, con su `bytes()`.
+- Produce: `Elemento { pub grupos: Vec<String>, .. }`
+
+- [ ] **Paso 1: Escribe las pruebas que fallan**
+
+En `mod pruebas` de `excalidraw.rs`. **Ajusta los nombres de las funciones de
+carga y guardado a los reales del fichero** — mira las pruebas que ya tiene y
+copia de ahí la forma de llamarlas y de llegar a la escena:
+
+```rust
+#[test]
+fn los_grupos_del_movil_llegan_al_escritorio() {
+    let json = r#"{
+        "type": "excalidraw",
+        "elements": [
+            {"type":"rectangle","x":0,"y":0,"width":10,"height":10,
+             "strokeColor":"#000000","seed":1,"groupIds":["g1","g2"]},
+            {"type":"rectangle","x":20,"y":0,"width":10,"height":10,
+             "strokeColor":"#000000","seed":2,"groupIds":[]}
+        ]
+    }"#;
+    let lienzo = cargar(json).unwrap();
+    assert_eq!(lienzo.escena.elementos[0].grupos, vec!["g1", "g2"]);
+    assert!(lienzo.escena.elementos[1].grupos.is_empty());
+}
+
+#[test]
+fn un_elemento_sin_grupos_se_lee_igual() {
+    // Compatibilidad hacia atras: los ficheros que ya guardamos no llevan
+    // el campo y tienen que seguir abriendo.
+    let json = r#"{"type":"excalidraw","elements":[
+        {"type":"rectangle","x":0,"y":0,"width":10,"height":10,
+         "strokeColor":"#000000","seed":1}
+    ]}"#;
+    let lienzo = cargar(json).unwrap();
+    assert!(lienzo.escena.elementos[0].grupos.is_empty());
+}
+
+#[test]
+fn los_grupos_sobreviven_la_ida_y_la_vuelta() {
+    let json = r#"{"type":"excalidraw","elements":[
+        {"type":"rectangle","x":0,"y":0,"width":10,"height":10,
+         "strokeColor":"#000000","seed":1,"groupIds":["g1"]}
+    ]}"#;
+    let lienzo = cargar(json).unwrap();
+    let otra_vez = cargar(&guardar(&lienzo)).unwrap();
+    assert_eq!(otra_vez.escena.elementos[0].grupos, vec!["g1"]);
+}
+
+#[test]
+fn agrupar_en_windows_se_ve_en_el_movil() {
+    // Lo que hace util esta tarea: no solo conservar los grupos del
+    // telefono, sino que los que se hagan aqui vuelvan alla.
+    let json = r#"{"type":"excalidraw","elements":[
+        {"type":"rectangle","x":0,"y":0,"width":10,"height":10,
+         "strokeColor":"#000000","seed":1}
+    ]}"#;
+    let mut lienzo = cargar(json).unwrap();
+    lienzo.escena.elementos[0].grupos = vec!["nuevo".to_string()];
+
+    let vuelta = guardar(&lienzo);
+    assert!(
+        vuelta.contains("\"groupIds\""),
+        "el JSON tiene que llevar groupIds: {vuelta}"
+    );
+    assert_eq!(cargar(&vuelta).unwrap().escena.elementos[0].grupos, vec!["nuevo"]);
+}
+
+#[test]
+fn desagrupar_en_windows_no_deja_los_grupos_viejos() {
+    // Si groupIds solo se escribiera cuando hay grupos, desagrupar aqui
+    // dejaria intactos los del JSON original y el movil los seguiria
+    // viendo agrupados. Es el motivo de escribirlo siempre.
+    let json = r#"{"type":"excalidraw","elements":[
+        {"type":"rectangle","x":0,"y":0,"width":10,"height":10,
+         "strokeColor":"#000000","seed":1,"groupIds":["viejo"]}
+    ]}"#;
+    let mut lienzo = cargar(json).unwrap();
+    lienzo.escena.elementos[0].grupos.clear();
+
+    let otra_vez = cargar(&guardar(&lienzo)).unwrap();
+    assert!(
+        otra_vez.escena.elementos[0].grupos.is_empty(),
+        "desagrupado aqui, desagrupado alla"
+    );
+}
+```
+
+- [ ] **Paso 2: Comprueba que fallan**
+
+```
+cargo test -p pixpin-motor2d excalidraw -- --test-threads=1
+```
+
+Esperado: `no field 'grupos' on type 'Elemento'`.
+
+- [ ] **Paso 3: Añade el campo**
+
+En `elemento.rs`, dentro de `struct Elemento`, junto a los demás
+`#[serde(default)]`:
+
+```rust
+    /// Los grupos a los que pertenece, con los identificadores del movil
+    /// (`groupIds` de Excalidraw).
+    ///
+    /// Cadenas y no numeros porque el movil las genera como cadenas y esto
+    /// viaja de ida y vuelta sin tocarlas. Inventar aqui un `u64`
+    /// obligaria a mantener una tabla de traduccion, que es una segunda
+    /// verdad sobre lo mismo.
+    #[serde(default)]
+    pub grupos: Vec<String>,
+```
+
+Y en `bytes()`, que la tarea 1 dejó preparado:
+
+```rust
+        let grupos: usize = self.grupos.iter().map(String::len).sum();
+        size_of::<Elemento>() + dentro + grupos
+```
+
+- [ ] **Paso 4: Léelo y escríbelo en el puente**
+
+En `elemento_desde` (línea 183), donde se construye el `Elemento`:
+
+```rust
+        grupos: v
+            .get("groupIds")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|g| g.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
+```
+
+En `elemento_hacia` (línea 269), junto a los demás `mapa.insert`:
+
+```rust
+    // Se escribe siempre, tambien vacio: si solo se escribiera cuando hay
+    // grupos, desagrupar en Windows dejaria los groupIds viejos del
+    // original y el movil los volveria a ver agrupados.
+    mapa.insert(
+        "groupIds".into(),
+        Value::Array(e.grupos.iter().map(|g| Value::String(g.clone())).collect()),
+    );
+```
+
+- [ ] **Paso 5: Arregla los constructores literales**
+
+El campo es obligatorio en las construcciones literales de `Elemento`.
+Encuéntralas:
+
+```
+cargo build --workspace --all-targets 2>&1 | grep -A3 "missing field" | head -40
+```
+
+En cada una añade `grupos: Vec::new(),`. Están sobre todo en los `mod pruebas`
+y en `formas.rs`.
+
+- [ ] **Paso 6: Comprueba que pasan**
+
+```
+cargo test --workspace -- --test-threads=1
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+Vigila especialmente que **las pruebas de ida y vuelta del `.pixpin` sigan
+verdes**: son las que garantizan que un elemento que Windows no entiende
+sobrevive al viaje, y esta tarea toca justo ese camino.
+
+- [ ] **Paso 7: Commit**
+
+```bash
+git add crates/pixpin-motor2d/src/elemento.rs crates/pixpin-motor2d/src/excalidraw.rs crates/pixpin-motor2d/src/formas.rs
+git commit -m "Los grupos del movil dejan de ser invisibles en Windows
+
+El puente ya conservaba los groupIds dentro del JSON original, porque
+elemento_hacia escribe encima del Value de partida en vez de construirlo
+de cero. Pero Windows no podia leerlos: un plano hecho en el telefono se
+abria aqui como un monton de piezas sueltas.
+
+Elemento gana grupos: Vec<String>. Cadenas y no numeros porque el movil
+las genera asi y esto viaja de ida y vuelta sin tocarlas; inventar un u64
+obligaria a una tabla de traduccion, que es una segunda verdad sobre lo
+mismo.
+
+groupIds se escribe siempre, tambien vacio. Si solo se escribiera cuando
+hay grupos, desagrupar en Windows dejaria los del original intactos y el
+movil los seguiria viendo agrupados. Hay una prueba para eso."
+```
+
+---
+
+## Tarea 4: Transformar — escalar y girar con ancla
+
+La tarea más delicada del plan. En el motor no existe **ni una línea** de
+redimensionado de elementos: lo único parecido es `escalar_anclado` de
+`pixpin-pin`, que redimensiona la *ventana* del pin. Esto se escribe de cero.
+
+**Ficheros:**
+- Crear: `crates/pixpin-motor2d/src/transformar.rs`
+- Modificar: `crates/pixpin-motor2d/src/lib.rs`
+- Modificar: `crates/pixpin-motor2d/Cargo.toml` — ya depende de `pixpin-geom`;
+  comprueba que sí antes de nada
+- Prueba: en `transformar.rs`, `mod pruebas`
+
+**Interfaces:**
+- Consume: `Elemento`, `Punto2`, `pixpin_geom::Tirador`.
+- Produce:
+  ```rust
+  pub const MINIMO: f32 = 1.0;
+  pub const SALTO_GIRO: f32 = std::f32::consts::FRAC_PI_2 / 6.0; // 15 grados
+
+  pub fn escalar(
+      e: &mut Elemento,
+      tirador: Tirador,
+      p: Punto2,
+      proporcional: bool,
+      desde_centro: bool,
+  );
+  pub fn girar(e: &mut Elemento, centro: Punto2, delta: f32);
+  pub fn angulo_hacia(centro: Punto2, p: Punto2) -> f32;
+  pub fn a_saltos(angulo: f32) -> f32;
+  ```
+
+### La idea, antes del código
+
+Todo sale de una sola fórmula. El elemento se dibuja **girado `ang` alrededor
+de su centro**, así que un punto del mundo `q` corresponde al punto local
+`q.girar(centro, -ang)`. Escalar es multiplicar el desplazamiento respecto al
+ancla, y devolverlo al mundo:
+
+```
+nuevo(q) = ancla_en_el_mundo + R(ang) · ( (q_local − ancla_local) · (sx, sy) )
+```
+
+Comprueba tú mismo que el ancla no se mueve: si `q` es el ancla, `q_local`
+es `ancla_local`, el desplazamiento es cero, y el resultado es
+`ancla_en_el_mundo`. **Por construcción, no por cuidado.**
+
+La forma evidente —cambiar `ancho` y `alto` y volver a girar— falla porque el
+centro se desplaza y el elemento acaba girado alrededor de un centro nuevo. El
+usuario ve que la figura «se escapa» al redimensionarla.
+
+- [ ] **Paso 1: Escribe las pruebas que fallan**
+
+Crea `crates/pixpin-motor2d/src/transformar.rs` con solo el `mod pruebas`:
+
+```rust
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use crate::elemento::{ColorRgba, EstiloTrazo, Figura};
+    use std::f32::consts::{FRAC_PI_2, PI};
+
+    /// Un rectangulo de 100x50 con la esquina en el origen.
+    fn rect() -> Elemento {
+        Elemento {
+            id: 1,
+            figura: Figura::Rectangulo,
+            x: 0.0,
+            y: 0.0,
+            ancho: 100.0,
+            alto: 50.0,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: None,
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+        }
+    }
+
+    /// La esquina superior izquierda, ya en el mundo (girada).
+    fn esquina_no(e: &Elemento) -> Punto2 {
+        let (x0, y0, x1, y1) = e.caja();
+        let c = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        Punto2::nuevo(x0, y0).girar(c, e.angulo)
+    }
+
+    fn cerca(a: Punto2, b: Punto2, que: &str) {
+        assert!(
+            (a.x - b.x).abs() < 1e-3 && (a.y - b.y).abs() < 1e-3,
+            "{que}: esperaba ({}, {}), es ({}, {})",
+            b.x,
+            b.y,
+            a.x,
+            a.y
+        );
+    }
+
+    #[test]
+    fn escalar_por_una_esquina_deja_quieta_la_de_enfrente() {
+        let mut e = rect();
+        let ancla = esquina_no(&e);
+
+        escalar(&mut e, Tirador::SuresteEsquina, Punto2::nuevo(200.0, 100.0), false, false);
+
+        assert_eq!(e.ancho, 200.0);
+        assert_eq!(e.alto, 100.0);
+        cerca(esquina_no(&e), ancla, "la esquina anclada");
+    }
+
+    #[test]
+    fn con_el_elemento_girado_la_esquina_anclada_sigue_sin_moverse() {
+        // ESTA es la prueba que justifica la tarea entera. La forma
+        // evidente —cambiar ancho/alto y volver a girar— la falla, porque
+        // el centro se desplaza y el elemento acaba girado alrededor de un
+        // centro nuevo.
+        for angulo in [0.0, 0.5236, FRAC_PI_2, PI, 2.6] {
+            let mut e = rect();
+            e.angulo = angulo;
+            let ancla = esquina_no(&e);
+
+            escalar(&mut e, Tirador::SuresteEsquina, Punto2::nuevo(180.0, 90.0), false, false);
+
+            cerca(esquina_no(&e), ancla, &format!("a {angulo} radianes"));
+        }
+    }
+
+    #[test]
+    fn escalar_y_devolver_deja_el_elemento_donde_estaba() {
+        for angulo in [0.0, 0.5236, FRAC_PI_2, PI] {
+            let mut e = rect();
+            e.angulo = angulo;
+            let (x0, y0, x1, y1) = e.caja();
+            let c = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+            let se_original = Punto2::nuevo(x1, y1).girar(c, angulo);
+
+            escalar(&mut e, Tirador::SuresteEsquina, Punto2::nuevo(300.0, 300.0), false, false);
+            escalar(&mut e, Tirador::SuresteEsquina, se_original, false, false);
+
+            assert!((e.ancho - 100.0).abs() < 1e-2, "ancho a {angulo}: {}", e.ancho);
+            assert!((e.alto - 50.0).abs() < 1e-2, "alto a {angulo}: {}", e.alto);
+        }
+    }
+
+    #[test]
+    fn un_tirador_de_lado_solo_mueve_su_eje() {
+        let mut e = rect();
+        escalar(&mut e, Tirador::EsteBorde, Punto2::nuevo(300.0, 999.0), false, false);
+        assert_eq!(e.ancho, 300.0);
+        assert_eq!(e.alto, 50.0, "el lado este no toca el alto");
+    }
+
+    #[test]
+    fn escalar_un_trazo_mueve_sus_puntos() {
+        // Elemento::caja() calcula la caja DE LOS PUNTOS para las figuras
+        // con puntos. Si solo se cambiara ancho/alto, el trazo no escalaria
+        // y el marco de seleccion se despegaria del dibujo.
+        let mut e = Elemento {
+            figura: Figura::Lapiz {
+                puntos: vec![
+                    Punto2::nuevo(0.0, 0.0),
+                    Punto2::nuevo(50.0, 25.0),
+                    Punto2::nuevo(100.0, 50.0),
+                ],
+                presiones: Vec::new(),
+            },
+            grosor: 0.0, // sin margen, para que la caja sean los puntos
+            ..rect()
+        };
+
+        escalar(&mut e, Tirador::SuresteEsquina, Punto2::nuevo(200.0, 100.0), false, false);
+
+        let Figura::Lapiz { puntos, .. } = &e.figura else {
+            panic!("sigue siendo un lapiz");
+        };
+        cerca(puntos[0], Punto2::nuevo(0.0, 0.0), "el primero es el ancla");
+        cerca(puntos[2], Punto2::nuevo(200.0, 100.0), "el ultimo va al cursor");
+        cerca(puntos[1], Punto2::nuevo(100.0, 50.0), "el de en medio, a escala");
+    }
+
+    #[test]
+    fn con_shift_se_conserva_la_proporcion() {
+        let mut e = rect();
+        escalar(&mut e, Tirador::SuresteEsquina, Punto2::nuevo(200.0, 999.0), true, false);
+        assert!(
+            (e.ancho / e.alto - 2.0).abs() < 1e-3,
+            "100x50 es 2:1, y es {}x{}",
+            e.ancho,
+            e.alto
+        );
+    }
+
+    #[test]
+    fn con_alt_se_escala_desde_el_centro() {
+        let mut e = rect();
+        let (x0, y0, x1, y1) = e.caja();
+        let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+
+        escalar(&mut e, Tirador::SuresteEsquina, Punto2::nuevo(150.0, 75.0), false, true);
+
+        let (x0, y0, x1, y1) = e.caja();
+        cerca(
+            Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0),
+            centro,
+            "el centro no se mueve",
+        );
+    }
+
+    #[test]
+    fn cruzar_el_ancla_voltea_en_vez_de_aplastar() {
+        // D30: aplastar a cero pierde informacion sin remedio; voltear es
+        // reversible y es lo que espera quien cruzo el raton al otro lado.
+        let mut e = rect();
+        escalar(&mut e, Tirador::SuresteEsquina, Punto2::nuevo(-100.0, 50.0), false, false);
+
+        assert!(e.ancho >= MINIMO, "no se aplasta: {}", e.ancho);
+        let (x0, _, x1, _) = e.caja();
+        assert!(x0 < 0.0 && x1 <= 0.0 + 1e-3, "quedo al otro lado del ancla");
+    }
+
+    #[test]
+    fn girar_alrededor_de_su_centro_suma_el_angulo_y_no_lo_mueve() {
+        let mut e = rect();
+        let (x0, y0, x1, y1) = e.caja();
+        let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+
+        girar(&mut e, centro, FRAC_PI_2);
+
+        assert!((e.angulo - FRAC_PI_2).abs() < 1e-6);
+        let (x0, y0, x1, y1) = e.caja();
+        cerca(
+            Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0),
+            centro,
+            "girar sobre si mismo no lo mueve",
+        );
+    }
+
+    #[test]
+    fn girar_alrededor_de_un_centro_ajeno_lo_mueve_en_orbita() {
+        // Es lo que pasa al girar una seleccion de varios: cada uno gira
+        // sobre si mismo Y orbita el centro comun.
+        let mut e = rect();
+        let ajeno = Punto2::nuevo(0.0, 0.0);
+        let (x0, y0, x1, y1) = e.caja();
+        let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+
+        girar(&mut e, ajeno, FRAC_PI_2);
+
+        let (x0, y0, x1, y1) = e.caja();
+        let nuevo = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        cerca(nuevo, centro.girar(ajeno, FRAC_PI_2), "orbito el centro comun");
+    }
+
+    #[test]
+    fn girar_un_trazo_gira_sus_puntos() {
+        let mut e = Elemento {
+            figura: Figura::Lapiz {
+                puntos: vec![Punto2::nuevo(10.0, 0.0), Punto2::nuevo(20.0, 0.0)],
+                presiones: Vec::new(),
+            },
+            grosor: 0.0,
+            ..rect()
+        };
+        girar(&mut e, Punto2::nuevo(0.0, 0.0), FRAC_PI_2);
+
+        let Figura::Lapiz { puntos, .. } = &e.figura else { panic!() };
+        cerca(puntos[0], Punto2::nuevo(0.0, 10.0), "el primero");
+        cerca(puntos[1], Punto2::nuevo(0.0, 20.0), "el segundo");
+    }
+
+    #[test]
+    fn los_saltos_de_giro_son_de_quince_grados() {
+        assert!((a_saltos(0.20) - 0.0).abs() < 1e-6, "0,20 rad baja a 0");
+        assert!((a_saltos(0.30) - SALTO_GIRO).abs() < 1e-6, "0,30 rad sube a 15");
+        assert!((a_saltos(-0.30) + SALTO_GIRO).abs() < 1e-6, "y en negativo");
+    }
+
+    #[test]
+    fn el_angulo_hacia_arriba_es_cero() {
+        // El tirador de giro esta encima del elemento; con el cursor ahi
+        // mismo, el giro tiene que ser cero y no un cuarto de vuelta.
+        let c = Punto2::nuevo(0.0, 0.0);
+        assert!(angulo_hacia(c, Punto2::nuevo(0.0, -10.0)).abs() < 1e-6);
+        let derecha = angulo_hacia(c, Punto2::nuevo(10.0, 0.0));
+        assert!((derecha - FRAC_PI_2).abs() < 1e-6, "a la derecha, +90: {derecha}");
+    }
+
+    #[test]
+    fn transformar_sube_la_version_para_invalidar_la_cache() {
+        let mut e = rect();
+        let antes = e.version;
+        escalar(&mut e, Tirador::SuresteEsquina, Punto2::nuevo(200.0, 100.0), false, false);
+        assert_ne!(e.version, antes, "sin esto la cache pintaria lo viejo");
+    }
+}
+```
+
+- [ ] **Paso 2: Comprueba que fallan**
+
+Declara `pub mod transformar;` en `lib.rs` y corre:
+
+```
+cargo test -p pixpin-motor2d transformar -- --test-threads=1
+```
+
+Esperado: `cannot find function 'escalar' in this scope`.
+
+- [ ] **Paso 3: Escribe la implementación**
+
+Encima del `mod pruebas`:
+
+```rust
+//! Mover, escalar y girar. Puerto de `Transform.kt` del Android.
+//!
+//! # El problema del ancla
+//!
+//! Redimensionar tirando de una esquina significa que **la de enfrente no
+//! se mueve**. Sin giro es aritmetica de colegio. Con el elemento girado,
+//! la forma evidente esta mal:
+//!
+//! > Cambio `ancho` y `alto` -> el centro se desplaza -> el elemento se
+//! > dibuja girado **alrededor de un centro nuevo** -> la esquina anclada
+//! > se va.
+//!
+//! El usuario lo ve como que la figura «se escapa» al redimensionarla.
+//!
+//! # La formula
+//!
+//! Un elemento se dibuja girado `ang` alrededor de su centro, asi que un
+//! punto del mundo `q` es el punto local `q.girar(centro, -ang)`. Escalar
+//! es multiplicar el desplazamiento respecto al ancla y devolverlo:
+//!
+//! ```text
+//! nuevo(q) = ancla_mundo + R(ang) · ( (q_local − ancla_local) · (sx, sy) )
+//! ```
+//!
+//! Si `q` es el ancla, el desplazamiento es cero y el resultado es el ancla:
+//! **queda quieta por construccion, no por cuidado**.
+//!
+//! # La regla de los puntos
+//!
+//! `Elemento::caja()` calcula la caja **de los puntos** para lapiz,
+//! resaltador, linea y flecha. Por eso: toda transformacion que toque una
+//! figura con puntos, toca los puntos. Si solo se cambiara `ancho`, el
+//! trazo no escalaria y el marco se despegaria del dibujo. Es el mismo
+//! motivo por el que `Elemento::mover` ya mueve los puntos.
+
+use pixpin_geom::Tirador;
+
+use crate::elemento::{Elemento, Figura};
+use crate::vector::Punto2;
+
+/// Por debajo de esto no se aplasta: se voltea (D30).
+pub const MINIMO: f32 = 1.0;
+
+/// Quince grados, el salto de giro con `Shift`.
+pub const SALTO_GIRO: f32 = std::f32::consts::FRAC_PI_2 / 6.0;
+
+/// El centro de la caja de un elemento.
+fn centro_de(e: &Elemento) -> Punto2 {
+    let (x0, y0, x1, y1) = e.caja();
+    Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0)
+}
+
+/// Que ejes mueve cada tirador, y donde queda su ancla dentro de la caja
+/// en tantos por uno: `(0,0)` es la esquina noroeste, `(1,1)` la sureste.
+fn ancla_y_ejes(t: Tirador) -> (f32, f32, bool, bool) {
+    match t {
+        Tirador::NoroesteEsquina => (1.0, 1.0, true, true),
+        Tirador::NorteBorde => (0.5, 1.0, false, true),
+        Tirador::NoresteEsquina => (0.0, 1.0, true, true),
+        Tirador::EsteBorde => (0.0, 0.5, true, false),
+        Tirador::SuresteEsquina => (0.0, 0.0, true, true),
+        Tirador::SurBorde => (0.5, 0.0, false, true),
+        Tirador::SuroesteEsquina => (1.0, 0.0, true, true),
+        Tirador::OesteBorde => (1.0, 0.5, true, false),
+    }
+}
+
+/// Escala `e` arrastrando `tirador` hasta el punto `p` del mundo.
+///
+/// - `proporcional` (`Shift`): conserva la razon entre ancho y alto.
+/// - `desde_centro` (`Alt`): el ancla pasa a ser el centro.
+pub fn escalar(
+    e: &mut Elemento,
+    tirador: Tirador,
+    p: Punto2,
+    proporcional: bool,
+    desde_centro: bool,
+) {
+    let (x0, y0, x1, y1) = e.caja();
+    let (ancho, alto) = (x1 - x0, y1 - y0);
+    // Una caja degenerada no se puede escalar: dividir por cero daria NaN,
+    // y un NaN en la geometria borra el elemento de la pantalla sin error.
+    if ancho.abs() < f32::EPSILON || alto.abs() < f32::EPSILON {
+        return;
+    }
+    let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+    let ang = e.angulo;
+
+    let (ax, ay, mueve_x, mueve_y) = ancla_y_ejes(tirador);
+    let ancla_local = if desde_centro {
+        centro
+    } else {
+        Punto2::nuevo(x0 + ancho * ax, y0 + alto * ay)
+    };
+
+    // El cursor, en el marco propio del elemento.
+    let p_local = p.girar(centro, -ang);
+
+    // Cuanto se estira cada eje. El tirador que no mueve un eje lo deja a 1.
+    //
+    // Dos sutilezas. Con `desde_centro`, la referencia es media caja y no la
+    // caja entera: el cursor se aleja del centro, no del borde de enfrente.
+    // Y el `signo` existe porque el ancla puede estar a la derecha o abajo
+    // (tiradores del oeste y del norte): ahi, alejarse del ancla es ir hacia
+    // los negativos.
+    let mut sx = if mueve_x {
+        let ancla_a_borde = if desde_centro { ancho / 2.0 } else { ancho };
+        let signo = if ax > 0.5 { -1.0 } else { 1.0 };
+        (p_local.x - ancla_local.x) * signo / ancla_a_borde
+    } else {
+        1.0
+    };
+    let mut sy = if mueve_y {
+        let ancla_a_borde = if desde_centro { alto / 2.0 } else { alto };
+        let signo = if ay > 0.5 { -1.0 } else { 1.0 };
+        (p_local.y - ancla_local.y) * signo / ancla_a_borde
+    } else {
+        1.0
+    };
+
+    if proporcional && mueve_x && mueve_y {
+        // El que mas se ha movido manda, para que la figura siga al cursor
+        // por el eje en que el usuario esta tirando de verdad.
+        let k = if sx.abs() > sy.abs() { sx.abs() } else { sy.abs() };
+        sx = k * sx.signum();
+        sy = k * sy.signum();
+    }
+
+    // No se aplasta: se voltea (D30). El minimo se aplica al tamano final,
+    // conservando el signo, que es lo que produce el volteo.
+    let tope = |s: f32, largo: f32| -> f32 {
+        if (s * largo).abs() < MINIMO {
+            MINIMO / largo * if s < 0.0 { -1.0 } else { 1.0 }
+        } else {
+            s
+        }
+    };
+    let sx = tope(sx, ancho);
+    let sy = tope(sy, alto);
+
+    let ancla_mundo = ancla_local.girar(centro, ang);
+    let origen = Punto2::nuevo(0.0, 0.0);
+
+    // La formula del encabezado, en una sola funcion.
+    let mapear = |q: Punto2| -> Punto2 {
+        let ql = q.girar(centro, -ang);
+        let d = Punto2::nuevo((ql.x - ancla_local.x) * sx, (ql.y - ancla_local.y) * sy);
+        ancla_mundo.sumar(d.girar(origen, ang))
+    };
+
+    // Las figuras con puntos escalan sus puntos: su caja sale de ellos.
+    match &mut e.figura {
+        Figura::Lapiz { puntos, .. }
+        | Figura::Resaltador { puntos }
+        | Figura::Linea { puntos }
+        | Figura::Flecha { puntos, .. } => {
+            for q in puntos.iter_mut() {
+                *q = mapear(*q);
+            }
+        }
+        _ => {}
+    }
+
+    // Y todas, incluidas esas, actualizan su caja: `x`/`y` se usan para las
+    // figuras sin puntos, y para las que los tienen es informacion
+    // coherente que no debe quedarse vieja.
+    let centro_nuevo = mapear(centro);
+    e.ancho = (ancho * sx).abs();
+    e.alto = (alto * sy).abs();
+    e.x = centro_nuevo.x - e.ancho / 2.0;
+    e.y = centro_nuevo.y - e.alto / 2.0;
+    e.tocar();
+}
+
+/// Gira `e` en `delta` radianes alrededor de `centro`.
+///
+/// Si `centro` es el suyo, gira sobre si mismo. Si es ajeno —el centro de
+/// una seleccion de varios— ademas orbita: es lo que hace que girar cinco
+/// elementos a la vez se vea como girar el conjunto.
+pub fn girar(e: &mut Elemento, centro: Punto2, delta: f32) {
+    let propio = centro_de(e);
+
+    match &mut e.figura {
+        Figura::Lapiz { puntos, .. }
+        | Figura::Resaltador { puntos }
+        | Figura::Linea { puntos }
+        | Figura::Flecha { puntos, .. } => {
+            for q in puntos.iter_mut() {
+                *q = q.girar(centro, delta);
+            }
+        }
+        _ => {}
+    }
+
+    let nuevo = propio.girar(centro, delta);
+    e.x += nuevo.x - propio.x;
+    e.y += nuevo.y - propio.y;
+    e.angulo += delta;
+    e.tocar();
+}
+
+/// El angulo del centro al punto, con **cero apuntando hacia arriba**.
+///
+/// Hacia arriba y no hacia la derecha porque el tirador de giro esta encima
+/// del elemento: con el cursor ahi mismo, el giro tiene que ser cero.
+pub fn angulo_hacia(centro: Punto2, p: Punto2) -> f32 {
+    let d = p.restar(centro);
+    d.x.atan2(-d.y)
+}
+
+/// Redondea a saltos de quince grados. Es lo que hace `Shift` al girar.
+pub fn a_saltos(angulo: f32) -> f32 {
+    (angulo / SALTO_GIRO).round() * SALTO_GIRO
+}
+```
+
+- [ ] **Paso 4: Comprueba que pasan**
+
+```
+cargo test -p pixpin-motor2d transformar -- --test-threads=1
+```
+
+Si falla `con_el_elemento_girado...`, el fallo casi seguro está en `mapear`:
+el desplazamiento se gira alrededor **del origen**, no del centro, porque ya
+es un vector y no un punto.
+
+Si falla `cruzar_el_ancla_voltea...`, revisa `tope`: tiene que conservar el
+signo, que es justo lo que produce el volteo.
+
+- [ ] **Paso 5: La puerta entera**
+
+```
+cargo test --workspace -- --test-threads=1
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+- [ ] **Paso 6: Commit**
+
+```bash
+git add crates/pixpin-motor2d/src/transformar.rs crates/pixpin-motor2d/src/lib.rs
+git commit -m "Escalar y girar, con el ancla quieta
+
+En el motor no habia ni una linea de redimensionado de elementos: lo
+unico parecido era escalar_anclado de pixpin-pin, que redimensiona la
+ventana del pin.
+
+Lo dificil es el ancla. Redimensionar tirando de una esquina significa
+que la de enfrente no se mueve, y con el elemento girado la forma
+evidente falla: cambiar ancho y alto desplaza el centro, el elemento
+acaba girado alrededor de un centro nuevo, y la esquina anclada se va.
+El usuario lo ve como que la figura se escapa.
+
+La formula es una sola: nuevo(q) = ancla_mundo + R(ang) · ((q_local −
+ancla_local) · (sx, sy)). Si q es el ancla, el desplazamiento es cero y
+sale el ancla. Queda quieta por construccion, no por cuidado. La prueba
+lo comprueba a 0, 30, 90, 180 y 149 grados.
+
+Y una regla que se escapa facil: Elemento::caja() calcula la caja DE LOS
+PUNTOS para lapiz, resaltador, linea y flecha, asi que escalar un trazo
+tiene que escalar sus 492 puntos. Si solo se cambiara ancho, el trazo no
+escalaria y el marco se despegaria del dibujo.
+
+Por debajo del minimo se voltea en vez de aplastar (D30): aplastar a cero
+pierde informacion sin remedio, voltear es reversible y es lo que espera
+quien cruzo el raton al otro lado."
+```
+
+---
+
+## Tarea 5: Dónde caen los tiradores
+
+Ocho de tamaño más uno de giro. **Viven en el mundo pero miden en pantalla**:
+un tirador tiene 8 píxeles al 20 % y al 500 %.
+
+**Ficheros:**
+- Crear: `crates/pixpin-motor2d/src/tiradores.rs`
+- Modificar: `crates/pixpin-motor2d/src/lib.rs`
+- Prueba: en `tiradores.rs`, `mod pruebas`
+
+**Interfaces:**
+- Consume: `Elemento`, `Punto2`, `Orden`, `pixpin_geom::Tirador`,
+  `transformar::MINIMO`.
+- Produce:
+  ```rust
+  pub const LADO: f32 = 8.0;              // pixeles de pantalla
+  pub const ZONA: f32 = 10.0;             // pixeles de pantalla
+  pub const SEPARACION_GIRO: f32 = 24.0;  // pixeles de pantalla
+
+  #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+  pub enum Agarre { Tamano(Tirador), Giro }
+
+  pub struct Tiradores {
+      pub tamano: [(Tirador, Punto2); 8],
+      pub giro: Punto2,
+      pub centro: Punto2,
+      pub angulo: f32,
+  }
+
+  impl Tiradores {
+      pub fn de_caja(caja: (f32, f32, f32, f32), angulo: f32, escala: f32) -> Self;
+      pub fn de_elemento(e: &Elemento, escala: f32) -> Self;
+      pub fn en(&self, p: Punto2, escala: f32) -> Option<Agarre>;
+      pub fn ordenes(&self, escala: f32) -> Vec<Orden>;
+  }
+  ```
+
+Recuerda el convenio: **`escala` son unidades de mundo por píxel de
+pantalla**, o sea `1.0 / zoom`, igual que en `pintado::marco_de_seleccion`.
+
+- [ ] **Paso 1: Escribe las pruebas que fallan**
+
+Crea `crates/pixpin-motor2d/src/tiradores.rs` con solo el `mod pruebas`:
+
+```rust
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use std::f32::consts::FRAC_PI_2;
+
+    /// Una caja de 100x50 en el origen.
+    const CAJA: (f32, f32, f32, f32) = (0.0, 0.0, 100.0, 50.0);
+
+    fn busca(t: &Tiradores, cual: Tirador) -> Punto2 {
+        t.tamano.iter().find(|(c, _)| *c == cual).unwrap().1
+    }
+
+    fn cerca(a: Punto2, b: Punto2, que: &str) {
+        assert!(
+            (a.x - b.x).abs() < 1e-3 && (a.y - b.y).abs() < 1e-3,
+            "{que}: esperaba ({}, {}), es ({}, {})",
+            b.x, b.y, a.x, a.y
+        );
+    }
+
+    #[test]
+    fn los_ocho_caen_en_las_esquinas_y_en_los_medios() {
+        let t = Tiradores::de_caja(CAJA, 0.0, 1.0);
+        cerca(busca(&t, Tirador::NoroesteEsquina), Punto2::nuevo(0.0, 0.0), "NO");
+        cerca(busca(&t, Tirador::NorteBorde), Punto2::nuevo(50.0, 0.0), "N");
+        cerca(busca(&t, Tirador::NoresteEsquina), Punto2::nuevo(100.0, 0.0), "NE");
+        cerca(busca(&t, Tirador::EsteBorde), Punto2::nuevo(100.0, 25.0), "E");
+        cerca(busca(&t, Tirador::SuresteEsquina), Punto2::nuevo(100.0, 50.0), "SE");
+        cerca(busca(&t, Tirador::SurBorde), Punto2::nuevo(50.0, 50.0), "S");
+        cerca(busca(&t, Tirador::SuroesteEsquina), Punto2::nuevo(0.0, 50.0), "SO");
+        cerca(busca(&t, Tirador::OesteBorde), Punto2::nuevo(0.0, 25.0), "O");
+    }
+
+    #[test]
+    fn con_la_caja_girada_los_tiradores_giran_con_ella() {
+        let t = Tiradores::de_caja(CAJA, FRAC_PI_2, 1.0);
+        let centro = Punto2::nuevo(50.0, 25.0);
+        // La esquina noroeste, girada un cuarto de vuelta sobre el centro.
+        cerca(
+            busca(&t, Tirador::NoroesteEsquina),
+            Punto2::nuevo(0.0, 0.0).girar(centro, FRAC_PI_2),
+            "NO girada",
+        );
+    }
+
+    #[test]
+    fn el_de_giro_queda_separado_por_encima_y_gira_tambien() {
+        // Encima del borde norte, a SEPARACION_GIRO pixeles de pantalla.
+        let t = Tiradores::de_caja(CAJA, 0.0, 1.0);
+        cerca(t.giro, Punto2::nuevo(50.0, -SEPARACION_GIRO), "sin girar");
+
+        let g = Tiradores::de_caja(CAJA, FRAC_PI_2, 1.0);
+        let centro = Punto2::nuevo(50.0, 25.0);
+        cerca(
+            g.giro,
+            Punto2::nuevo(50.0, -SEPARACION_GIRO).girar(centro, FRAC_PI_2),
+            "girado",
+        );
+    }
+
+    #[test]
+    fn la_separacion_del_giro_se_mide_en_pixeles_de_pantalla() {
+        // Al 20 % de aumento (escala 5.0) el tirador se separa cinco veces
+        // mas en el mundo, para verse igual de separado en la pantalla.
+        let t = Tiradores::de_caja(CAJA, 0.0, 5.0);
+        cerca(t.giro, Punto2::nuevo(50.0, -SEPARACION_GIRO * 5.0), "al 20 %");
+    }
+
+    #[test]
+    fn picar_un_tirador_lo_encuentra_por_su_zona_y_no_por_su_dibujo() {
+        let t = Tiradores::de_caja(CAJA, 0.0, 1.0);
+
+        // Justo encima: lo encuentra.
+        assert_eq!(
+            t.en(Punto2::nuevo(100.0, 50.0), 1.0),
+            Some(Agarre::Tamano(Tirador::SuresteEsquina))
+        );
+        // A nueve pixeles: dentro de la zona de diez, aunque el dibujo mida
+        // ocho. Nadie acierta un cuadradito de ocho pixeles al primer
+        // intento.
+        assert_eq!(
+            t.en(Punto2::nuevo(100.0 + 9.0, 50.0), 1.0),
+            Some(Agarre::Tamano(Tirador::SuresteEsquina))
+        );
+        // A veinte: fuera.
+        assert_eq!(t.en(Punto2::nuevo(100.0 + 20.0, 50.0), 1.0), None);
+    }
+
+    #[test]
+    fn la_zona_de_picado_tambien_se_mide_en_pixeles_de_pantalla() {
+        // Al 20 % (escala 5.0), diez pixeles de pantalla son cincuenta del
+        // mundo. Si no, al alejarse los tiradores serian inalcanzables.
+        let t = Tiradores::de_caja(CAJA, 0.0, 5.0);
+        assert_eq!(
+            t.en(Punto2::nuevo(100.0 + 45.0, 50.0), 5.0),
+            Some(Agarre::Tamano(Tirador::SuresteEsquina))
+        );
+    }
+
+    #[test]
+    fn el_de_giro_manda_sobre_el_de_tamano_si_se_solapan() {
+        // Con una caja muy pequena, el de giro puede caer encima del borde
+        // norte. Girar es el gesto mas dificil de acertar de los dos, asi
+        // que gana.
+        let minuscula = (0.0, 0.0, 2.0, 2.0);
+        let t = Tiradores::de_caja(minuscula, 0.0, 1.0);
+        assert_eq!(t.en(t.giro, 1.0), Some(Agarre::Giro));
+    }
+
+    #[test]
+    fn picar_lejos_de_todo_no_encuentra_nada() {
+        let t = Tiradores::de_caja(CAJA, 0.0, 1.0);
+        assert_eq!(t.en(Punto2::nuevo(500.0, 500.0), 1.0), None);
+    }
+
+    #[test]
+    fn cada_tirador_se_pinta_con_relleno_y_borde() {
+        // Nueve tiradores por dos ordenes cada uno. El borde no es adorno:
+        // un cuadrado blanco sin el es invisible sobre fondo claro.
+        let t = Tiradores::de_caja(CAJA, 0.0, 1.0);
+        assert_eq!(t.ordenes(1.0).len(), 18);
+    }
+
+    #[test]
+    fn los_cuadraditos_giran_con_el_elemento() {
+        // En una figura a 45 grados, los cuadraditos van a 45 grados y no
+        // de canto. Cuesta una linea y es de lo que separa un editor que
+        // se siente bien de uno que no.
+        let t = Tiradores::de_caja(CAJA, FRAC_PI_2, 1.0);
+        let Orden::Relleno { puntos, .. } = &t.ordenes(1.0)[0] else {
+            panic!("la primera orden es el relleno del primer tirador");
+        };
+        let lado = puntos[0].distancia(puntos[1]);
+        assert!((lado - LADO).abs() < 1e-3, "sigue siendo cuadrado: {lado}");
+        // Girado un cuarto de vuelta, el lado que iba en x ahora va en y.
+        assert!(
+            (puntos[0].x - puntos[1].x).abs() < 1e-3,
+            "el primer lado quedo vertical"
+        );
+    }
+}
+```
+
+- [ ] **Paso 2: Comprueba que falla**
+
+Declara `pub mod tiradores;` en `lib.rs` y corre:
+
+```
+cargo test -p pixpin-motor2d tiradores -- --test-threads=1
+```
+
+Esperado: `cannot find type 'Tiradores' in this scope`.
+
+- [ ] **Paso 3: Escribe la implementación**
+
+```rust
+//! Donde caen los nueve puntos de agarre y cual esta bajo el cursor.
+//!
+//! # Viven en el mundo, miden en pantalla
+//!
+//! Un tirador tiene ocho pixeles siempre: al 500 % no se convierte en un
+//! ladrillo y al 20 % no desaparece. En unidades del mundo eso es
+//! `LADO * escala`, donde `escala` es —como en todo este motor— unidades de
+//! mundo por pixel de pantalla, o sea `1.0 / zoom`.
+//!
+//! # Por que la zona de picado es mas grande que el dibujo
+//!
+//! Diez pixeles contra ocho. Nadie acierta un cuadradito de ocho pixeles al
+//! primer intento, y fallar un tirador no es un fallo pequeno: el clic cae
+//! en el elemento de debajo y lo que el usuario queria redimensionar acaba
+//! movido.
+
+use pixpin_geom::Tirador;
+
+use crate::elemento::{ColorRgba, Elemento, EstiloTrazo};
+use crate::pintado::Orden;
+use crate::vector::Punto2;
+
+/// Lado del cuadradito que se dibuja, en pixeles de pantalla.
+pub const LADO: f32 = 8.0;
+
+/// Radio de la zona que responde al cursor, en pixeles de pantalla.
+pub const ZONA: f32 = 10.0;
+
+/// Cuanto se separa el tirador de giro del borde de arriba, en pixeles.
+pub const SEPARACION_GIRO: f32 = 24.0;
+
+const RELLENO: ColorRgba = ColorRgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+const BORDE: ColorRgba = ColorRgba { r: 0.36, g: 0.42, b: 0.95, a: 1.0 };
+
+/// De que se ha agarrado el cursor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Agarre {
+    Tamano(Tirador),
+    Giro,
+}
+
+/// Los nueve puntos de agarre, ya en coordenadas del mundo.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tiradores {
+    pub tamano: [(Tirador, Punto2); 8],
+    pub giro: Punto2,
+    pub centro: Punto2,
+    pub angulo: f32,
+}
+
+impl Tiradores {
+    /// Los tiradores de una caja paralela a los ejes, girada `angulo`
+    /// alrededor de su centro.
+    pub fn de_caja(caja: (f32, f32, f32, f32), angulo: f32, escala: f32) -> Self {
+        let (x0, y0, x1, y1) = caja;
+        let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        let (mx, my) = (centro.x, centro.y);
+
+        // Sin girar primero, y luego se gira todo de una vez: es una
+        // operacion por punto en vez de una formula distinta por esquina.
+        let sitios = [
+            (Tirador::NoroesteEsquina, Punto2::nuevo(x0, y0)),
+            (Tirador::NorteBorde, Punto2::nuevo(mx, y0)),
+            (Tirador::NoresteEsquina, Punto2::nuevo(x1, y0)),
+            (Tirador::EsteBorde, Punto2::nuevo(x1, my)),
+            (Tirador::SuresteEsquina, Punto2::nuevo(x1, y1)),
+            (Tirador::SurBorde, Punto2::nuevo(mx, y1)),
+            (Tirador::SuroesteEsquina, Punto2::nuevo(x0, y1)),
+            (Tirador::OesteBorde, Punto2::nuevo(x0, my)),
+        ];
+        let tamano = sitios.map(|(c, p)| (c, p.girar(centro, angulo)));
+
+        // El de giro, separado por encima del borde norte. La separacion va
+        // en pixeles de pantalla, como todo lo demas de aqui.
+        let giro = Punto2::nuevo(mx, y0 - SEPARACION_GIRO * escala).girar(centro, angulo);
+
+        Self { tamano, giro, centro, angulo }
+    }
+
+    /// Los tiradores de un elemento.
+    pub fn de_elemento(e: &Elemento, escala: f32) -> Self {
+        Self::de_caja(e.caja(), e.angulo, escala)
+    }
+
+    /// De que hay agarre bajo el punto, si de alguno.
+    ///
+    /// El de giro se mira primero: con una caja muy pequena puede caer
+    /// encima del borde norte, y girar es el gesto mas dificil de acertar
+    /// de los dos.
+    pub fn en(&self, p: Punto2, escala: f32) -> Option<Agarre> {
+        let radio = ZONA * escala;
+        if p.distancia(self.giro) <= radio {
+            return Some(Agarre::Giro);
+        }
+        self.tamano
+            .iter()
+            .find(|(_, q)| p.distancia(*q) <= radio)
+            .map(|(c, _)| Agarre::Tamano(*c))
+    }
+
+    /// Como se pintan: un cuadradito blanco con borde por cada uno.
+    ///
+    /// Girados con el elemento, para que en una figura a 45 grados los
+    /// cuadraditos vayan a 45 grados y no de canto.
+    pub fn ordenes(&self, escala: f32) -> Vec<Orden> {
+        let mitad = LADO * escala / 2.0;
+        let mut fuera = Vec::with_capacity(9);
+        let sitios = self.tamano.iter().map(|(_, p)| p).chain([&self.giro]);
+        for p in sitios {
+            let esquinas = [
+                Punto2::nuevo(p.x - mitad, p.y - mitad),
+                Punto2::nuevo(p.x + mitad, p.y - mitad),
+                Punto2::nuevo(p.x + mitad, p.y + mitad),
+                Punto2::nuevo(p.x - mitad, p.y + mitad),
+            ];
+            let puntos: Vec<Punto2> = esquinas
+                .iter()
+                .map(|q| q.girar(*p, self.angulo))
+                .collect();
+            fuera.push(Orden::Relleno { puntos: puntos.clone(), color: RELLENO });
+            let mut cerrado = puntos;
+            cerrado.push(cerrado[0]);
+            fuera.push(Orden::Polilinea {
+                puntos: cerrado,
+                color: BORDE,
+                grosor: (1.0 * escala).max(0.5),
+                estilo: EstiloTrazo::Solido,
+            });
+        }
+        fuera
+    }
+}
+```
+
+- [ ] **Paso 4: Comprueba que pasan y cierra**
+
+```
+cargo test -p pixpin-motor2d tiradores -- --test-threads=1
+cargo test --workspace -- --test-threads=1
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+- [ ] **Paso 5: Commit**
+
+```bash
+git add crates/pixpin-motor2d/src/tiradores.rs crates/pixpin-motor2d/src/lib.rs
+git commit -m "Los nueve tiradores: donde caen y cual esta bajo el cursor
+
+Ocho de tamano y uno de giro. Viven en el mundo pero miden en pantalla:
+un tirador tiene ocho pixeles al 20 % y al 500 %, que en unidades del
+mundo es LADO * escala. Si midieran en el mundo, al alejarse serian
+invisibles y al acercarse, ladrillos.
+
+La zona que responde son diez pixeles y el dibujo ocho, a proposito.
+Nadie acierta un cuadradito de ocho pixeles al primer intento, y fallar
+un tirador no es un fallo pequeno: el clic cae en el elemento de debajo y
+lo que se queria redimensionar acaba movido.
+
+El de giro se mira antes que los de tamano. Con una caja muy pequena cae
+encima del borde norte, y de los dos gestos girar es el mas dificil de
+acertar."
+```
