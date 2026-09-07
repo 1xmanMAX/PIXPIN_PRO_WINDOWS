@@ -431,6 +431,37 @@ mod pruebas {
     }
 
     #[test]
+    fn la_marquesina_funciona_igual_arrastrada_en_cualquier_direccion() {
+        // La marquesina se arrastra en cualquier direccion, y de derecha a
+        // izquierda o de abajo a arriba llega con x1 < x0 o y1 < y0. La
+        // normalizacion debe asegurar que da el mismo resultado.
+        let dentro = Elemento {
+            id: 1,
+            x: 10.0,
+            y: 10.0,
+            ancho: 20.0,
+            alto: 20.0,
+            ..base()
+        };
+        let fuera = Elemento {
+            id: 2,
+            x: 500.0,
+            y: 500.0,
+            ancho: 10.0,
+            alto: 10.0,
+            ..base()
+        };
+        let lista = vec![dentro, fuera];
+
+        let normal = dentro_de(&lista, (0.0, 0.0, 100.0, 100.0));
+        let invertido = dentro_de(&lista, (100.0, 100.0, 0.0, 0.0));
+        assert_eq!(
+            normal, invertido,
+            "el sentido del arrastre no debe cambiar el resultado"
+        );
+    }
+
+    #[test]
     fn elementos_en_los_devuelve_de_arriba_abajo() {
         // El orden de la lista ES el orden de pintado: el ultimo se pinta
         // encima. Al picar, el de encima va primero, que es lo que el usuario
