@@ -506,6 +506,7 @@ impl Anotador {
             semilla: self.semilla,
             version: 0,
             borrado: false,
+            grupos: Vec::new(),
         }
     }
 
@@ -606,6 +607,7 @@ impl Anotador {
             semilla: self.semilla,
             version: 0,
             borrado: false,
+            grupos: Vec::new(),
         })
     }
 }

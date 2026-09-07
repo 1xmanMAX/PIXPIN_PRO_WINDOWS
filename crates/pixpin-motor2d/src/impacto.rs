@@ -139,6 +139,7 @@ mod pruebas {
             semilla: 1,
             version: 0,
             borrado: false,
+            grupos: Vec::new(),
         }
     }
 

@@ -137,9 +137,7 @@ mod pruebas {
             semilla: 1,
             version: 0,
             borrado: false,
-            // OJO: sin `grupos`. Ese campo llega en la tarea 3, que va
-            // despues de esta. Su paso 5 lo anade aqui y en el resto de
-            // construcciones literales de una vez.
+            grupos: Vec::new(),
         }
     }
 

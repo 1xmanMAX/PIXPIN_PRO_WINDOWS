@@ -484,6 +484,7 @@ mod pruebas {
             semilla: 99,
             version: 0,
             borrado: false,
+            grupos: Vec::new(),
         }
     }
 

@@ -226,6 +226,7 @@ mod pruebas {
             semilla: 1,
             version: 1,
             borrado: false,
+            grupos: Vec::new(),
         }
     }
 

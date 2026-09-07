@@ -460,6 +460,7 @@ mod pruebas {
             semilla: 1,
             version: 0,
             borrado: false,
+            grupos: Vec::new(),
         }
     }
 
@@ -481,6 +482,7 @@ mod pruebas {
             semilla: 1,
             version: 0,
             borrado: false,
+            grupos: Vec::new(),
         }
     }
 

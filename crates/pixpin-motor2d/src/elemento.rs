@@ -125,6 +125,15 @@ pub struct Elemento {
     /// nada de disco.
     #[serde(default)]
     pub borrado: bool,
+    /// Los grupos a los que pertenece, con los identificadores del movil
+    /// (`groupIds` de Excalidraw).
+    ///
+    /// Cadenas y no numeros porque el movil las genera como cadenas y esto
+    /// viaja de ida y vuelta sin tocarlas. Inventar aqui un `u64`
+    /// obligaria a mantener una tabla de traduccion, que es una segunda
+    /// verdad sobre lo mismo.
+    #[serde(default)]
+    pub grupos: Vec<String>,
 }
 
 fn estilo_por_defecto() -> EstiloTrazo {
@@ -221,7 +230,8 @@ impl Elemento {
             Figura::Texto { texto, familia, .. } => texto.len() + familia.len(),
             _ => 0,
         };
-        size_of::<Elemento>() + dentro
+        let grupos: usize = self.grupos.iter().map(String::len).sum();
+        size_of::<Elemento>() + dentro + grupos
     }
 }
 
@@ -254,6 +264,7 @@ mod pruebas {
             semilla: 42,
             version: 0,
             borrado: false,
+            grupos: Vec::new(),
         }
     }
 

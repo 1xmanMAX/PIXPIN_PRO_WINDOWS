@@ -88,6 +88,7 @@ mod pruebas {
             semilla: 12345,
             version: 0,
             borrado: false,
+            grupos: Vec::new(),
         }
     }
 
