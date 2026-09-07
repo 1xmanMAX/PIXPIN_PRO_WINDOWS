@@ -171,6 +171,16 @@ mod pruebas {
     }
 
     #[test]
+    fn poner_todos_elimina_duplicados_en_la_entrada() {
+        // El metodo acepta cualquier iterador y no puede fiarse de que quien
+        // lo llama le de ids unicos. La rama que evita duplicados es
+        // justamente la que lo hace cuadratico, y sin esta prueba no se ejecuta.
+        let mut s = Seleccion::nueva();
+        s.poner_todos([1, 1, 2]);
+        assert_eq!(s.ids(), &[1, 2]);
+    }
+
+    #[test]
     fn la_caja_de_varios_abarca_a_todos() {
         let mut escena = Escena::nueva();
         let a = escena.anadir(rect(0.0, 0.0, 10.0, 10.0));
