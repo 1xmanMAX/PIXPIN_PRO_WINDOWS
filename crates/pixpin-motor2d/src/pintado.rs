@@ -13,6 +13,7 @@ use crate::azar::Azar;
 use crate::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
 use crate::escena::Escena;
 use crate::formas;
+use crate::medida::Escala;
 use crate::trazo::{self, Ajustes};
 use crate::vector::Punto2;
 
@@ -316,10 +317,36 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             opacidad: e.opacidad,
         }),
 
-        // La cota y la barra de escala se pintan en `ordenes_medibles`
-        // (tarea 4): su rotulo depende de la escala, que puede cambiar sin
-        // que cambie el elemento, y esta funcion es la que la cache guarda.
-        Figura::Cota { .. } | Figura::EscalaGrafica => {}
+        // La raya y sus marcas en los extremos. **Sin texto**: el rotulo
+        // depende de la escala y va en `ordenes_medibles`, fuera de la
+        // cache, porque la escala puede cambiar sin que cambie el elemento.
+        Figura::Cota { puntos } => {
+            if puntos.len() >= 2 {
+                let (a, b) = (puntos[0], puntos[puntos.len() - 1]);
+                salida.push(Orden::Polilinea {
+                    puntos: vec![a, b],
+                    color: con_opacidad(e.trazo, e.opacidad),
+                    grosor: e.grosor,
+                    estilo: e.estilo,
+                });
+                // Las marcas de los extremos, perpendiculares a la raya.
+                let perp = b
+                    .restar(a)
+                    .unitario()
+                    .perpendicular()
+                    .escalar(e.grosor * 3.0);
+                for extremo in [a, b] {
+                    salida.push(Orden::Polilinea {
+                        puntos: vec![extremo.sumar(perp), extremo.restar(perp)],
+                        color: con_opacidad(e.trazo, e.opacidad),
+                        grosor: e.grosor,
+                        estilo: EstiloTrazo::Solido,
+                    });
+                }
+            }
+        }
+        // La barra entera depende de la escala: va en `ordenes_medibles`.
+        Figura::EscalaGrafica => {}
     }
 
     // El angulo se aplica aqui, una vez, sobre la geometria ya generada.
@@ -488,6 +515,100 @@ pub fn marco_de_seleccion(escena: &Escena, id: u64, escala: f32) -> Option<Orden
         grosor: (1.5 * escala.max(0.01)).max(1.0),
         estilo: EstiloTrazo::Discontinuo,
     })
+}
+
+/// Lo que hay que pintar y **depende de la escala**, asi que no se cachea.
+///
+/// La cache guarda geometria indexada por `(id, version, nivel)`. Calibrar
+/// cambia la escala sin tocar ningun elemento, asi que la version no sube y
+/// la cache no se enteraria: se seguirian viendo pixeles despues de calibrar.
+///
+/// Por eso el rotulo de la cota y los cuadros de la barra salen por aqui,
+/// fuera de la cache. Es barato: un texto por cota visible y unos rectangulos
+/// por barra, contra el garabato con ruido que si es caro y si se cachea.
+pub fn ordenes_medibles(e: &Elemento, escala: Option<&Escala>, coma: char) -> Vec<Orden> {
+    if e.borrado {
+        return Vec::new();
+    }
+    match &e.figura {
+        Figura::Cota { puntos } if puntos.len() >= 2 => {
+            let (a, b) = (puntos[0], puntos[puntos.len() - 1]);
+            let medio = a.hacia(b, 0.5);
+            // Un poco por encima de la raya, del lado que no la tapa.
+            let alto = e.grosor.max(1.0) * 6.0;
+            let arriba = b.restar(a).unitario().perpendicular().escalar(alto);
+            let p = medio.sumar(arriba);
+            vec![Orden::Texto {
+                texto: crate::medida::texto_de_cota(e, escala, coma),
+                x: p.x,
+                y: p.y,
+                tam: alto * 2.0,
+                familia: "Segoe UI".to_string(),
+                color: con_opacidad(e.trazo, e.opacidad),
+                ancho_max: a.distancia(b),
+            }]
+        }
+        Figura::EscalaGrafica => barra(e, escala, coma),
+        _ => Vec::new(),
+    }
+}
+
+/// Los cuadros de la barra y sus numeros.
+///
+/// Sin escala no dibuja nada: una barra que no puede decir cuanto mide cada
+/// cuadro es un adorno que engana.
+fn barra(e: &Elemento, escala: Option<&Escala>, coma: char) -> Vec<Orden> {
+    let Some(esc) = escala.filter(|x| x.valida()) else {
+        return Vec::new();
+    };
+    let Some(rep) = crate::escalabarra::repartir(e.ancho, esc, 4) else {
+        return Vec::new();
+    };
+    let ancho_cuadro = rep.ancho_usado_px / rep.cuadros as f32;
+    let alto = e.alto.max(4.0) * 0.5;
+    let tinta = con_opacidad(e.trazo, e.opacidad);
+    let claro = ColorRgba {
+        r: 1.0,
+        g: 1.0,
+        b: 1.0,
+        a: tinta.a,
+    };
+
+    let mut fuera = Vec::with_capacity(rep.cuadros as usize * 2 + 2);
+    for i in 0..rep.cuadros {
+        let x0 = e.x + i as f32 * ancho_cuadro;
+        let x1 = x0 + ancho_cuadro;
+        // A cuadros alternos: todos iguales no se podrian contar.
+        let color = if i % 2 == 0 { tinta } else { claro };
+        fuera.push(Orden::Relleno {
+            puntos: vec![
+                Punto2::nuevo(x0, e.y),
+                Punto2::nuevo(x1, e.y),
+                Punto2::nuevo(x1, e.y + alto),
+                Punto2::nuevo(x0, e.y + alto),
+            ],
+            color,
+        });
+    }
+    // El numero del principio y el del final: con esos dos se lee la barra.
+    for (i, valor) in [(0u32, 0.0f32), (rep.cuadros, rep.cuadros as f32 * rep.paso)] {
+        let x = e.x + i as f32 * ancho_cuadro;
+        fuera.push(Orden::Texto {
+            texto: format!(
+                "{} {}",
+                format!("{valor:.*}", esc.decimales.min(6) as usize)
+                    .replace('.', &coma.to_string()),
+                esc.unidad
+            ),
+            x,
+            y: e.y + alto + 2.0,
+            tam: alto,
+            familia: "Segoe UI".to_string(),
+            color: tinta,
+            ancho_max: ancho_cuadro * 2.0,
+        });
+    }
+    fuera
 }
 
 #[cfg(test)]
@@ -862,5 +983,165 @@ mod pruebas {
                 "se dibuja en {p:?} pero ahi no se toca"
             );
         }
+    }
+
+    fn cota_de(a: Punto2, b: Punto2) -> Elemento {
+        Elemento {
+            figura: Figura::Cota { puntos: vec![a, b] },
+            x: a.x.min(b.x),
+            y: a.y.min(b.y),
+            ancho: (b.x - a.x).abs(),
+            alto: (b.y - a.y).abs(),
+            ..base()
+        }
+    }
+
+    fn metros(por_pixel: f32) -> Escala {
+        Escala {
+            unidades_por_pixel: por_pixel,
+            unidad: "m".to_string(),
+            decimales: 2,
+        }
+    }
+
+    fn textos_de(ordenes: &[Orden]) -> Vec<String> {
+        ordenes
+            .iter()
+            .filter_map(|o| match o {
+                Orden::Texto { texto, .. } => Some(texto.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn la_raya_de_la_cota_se_dibuja_sin_texto() {
+        // La geometria no depende de la escala, asi que se puede cachear.
+        let c = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0));
+        let o = ordenes(&c);
+        assert!(!o.is_empty(), "algo dibuja");
+        assert!(textos_de(&o).is_empty(), "pero el texto no va aqui");
+    }
+
+    #[test]
+    fn el_rotulo_dice_pixeles_sin_escala_y_unidades_con_ella() {
+        let c = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0));
+
+        let sin = textos_de(&ordenes_medibles(&c, None, ','));
+        assert_eq!(sin, vec!["100 px".to_string()]);
+
+        let con = textos_de(&ordenes_medibles(&c, Some(&metros(0.01)), ','));
+        assert_eq!(con, vec!["1,00 m".to_string()]);
+    }
+
+    #[test]
+    fn una_cota_no_puede_mentir() {
+        // LA prueba que justifica no guardar el texto (D34). Se mueve un
+        // extremo y el numero cambia solo, porque se deriva al pintar.
+        let mut c = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0));
+        let e = metros(0.01);
+        let antes = textos_de(&ordenes_medibles(&c, Some(&e), ','));
+
+        let Figura::Cota { puntos } = &mut c.figura else {
+            panic!()
+        };
+        puntos[1] = Punto2::nuevo(200.0, 0.0);
+
+        let despues = textos_de(&ordenes_medibles(&c, Some(&e), ','));
+        assert_ne!(antes, despues, "el rotulo tiene que haber cambiado");
+        assert_eq!(despues, vec!["2,00 m".to_string()]);
+    }
+
+    #[test]
+    fn calibrar_cambia_los_rotulos_sin_tocar_el_elemento() {
+        // El motivo de sacar el rotulo de la cache: la escala cambia y el
+        // elemento no, asi que la version no sube y la cache no se enteraria.
+        let c = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0));
+        let a = textos_de(&ordenes_medibles(&c, Some(&metros(0.01)), ','));
+        let b = textos_de(&ordenes_medibles(&c, Some(&metros(0.02)), ','));
+        assert_ne!(a, b, "otra escala, otro rotulo");
+    }
+
+    #[test]
+    fn el_rotulo_va_en_medio_de_la_raya() {
+        let c = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0));
+        let o = ordenes_medibles(&c, Some(&metros(0.01)), ',');
+        let Some(Orden::Texto { x, y, .. }) = o.iter().find(|o| matches!(o, Orden::Texto { .. }))
+        else {
+            panic!("hay rotulo")
+        };
+        assert!((x - 50.0).abs() < 20.0, "cerca del medio en x: {x}");
+        assert!(y.abs() < 30.0, "y cerca de la raya: {y}");
+    }
+
+    #[test]
+    fn una_barra_sin_escala_no_dibuja_cuadros() {
+        // Una barra que no puede decir cuanto mide cada cuadro es un adorno
+        // que engana.
+        let b = Elemento {
+            figura: Figura::EscalaGrafica,
+            x: 0.0,
+            y: 0.0,
+            ancho: 400.0,
+            alto: 24.0,
+            ..base()
+        };
+        assert!(ordenes_medibles(&b, None, ',').is_empty());
+    }
+
+    #[test]
+    fn una_barra_con_escala_dibuja_sus_cuadros_y_sus_numeros() {
+        let b = Elemento {
+            figura: Figura::EscalaGrafica,
+            x: 0.0,
+            y: 0.0,
+            ancho: 400.0,
+            alto: 24.0,
+            ..base()
+        };
+        let o = ordenes_medibles(&b, Some(&metros(0.01)), ',');
+        let rellenos = o
+            .iter()
+            .filter(|x| matches!(x, Orden::Relleno { .. }))
+            .count();
+        assert!(rellenos >= 2, "al menos dos cuadros: {rellenos}");
+        let textos = textos_de(&o);
+        assert!(!textos.is_empty(), "y sus numeros");
+        assert!(
+            textos.iter().any(|t| t.contains('m')),
+            "con la unidad: {textos:?}"
+        );
+    }
+
+    #[test]
+    fn los_cuadros_de_la_barra_alternan() {
+        // La reglita es a cuadros blancos y negros: si fueran todos iguales
+        // no se podrian contar.
+        let b = Elemento {
+            figura: Figura::EscalaGrafica,
+            x: 0.0,
+            y: 0.0,
+            ancho: 400.0,
+            alto: 24.0,
+            ..base()
+        };
+        let o = ordenes_medibles(&b, Some(&metros(0.01)), ',');
+        let colores: Vec<ColorRgba> = o
+            .iter()
+            .filter_map(|x| match x {
+                Orden::Relleno { color, .. } => Some(*color),
+                _ => None,
+            })
+            .collect();
+        assert!(colores.len() >= 2);
+        assert_ne!(
+            colores[0], colores[1],
+            "el segundo cuadro es del otro color"
+        );
+    }
+
+    #[test]
+    fn una_figura_que_no_mide_no_produce_ordenes_medibles() {
+        assert!(ordenes_medibles(&base(), Some(&metros(0.01)), ',').is_empty());
     }
 }
