@@ -3070,6 +3070,22 @@ un ratón y un teclado.
   }
   ```
 
+### Dos estados del diseño que esta tarea NO trae, y por qué
+
+El diagrama de la §7 del diseño lleva dos estados más. Quedan fuera a
+propósito, y conviene decirlo antes de que alguien los eche en falta:
+
+- **`Encuadrando`** (botón central o `Espacio`). No entra porque **no es un
+  estado del gesto**: mover el lienzo solo cambia la cámara, no toca la
+  escena, no abre paso de deshacer y no produce nada que probar sin ventana.
+  Vive en `ventana_editor.rs` (tarea 11), donde está la cámara.
+- **`Escribiendo`.** El texto es un subsistema entero —cursor, IME,
+  reajuste de líneas, edición dentro de la caja— y el anotador ya tiene el
+  suyo en `pixpin-ui/anotador.rs`. Meterlo aquí duplicaría esa lógica antes
+  de decidir cuál de las dos se queda. La herramienta de texto sigue
+  funcionando en el anotador; en el editor llega con la segunda entrega,
+  junto con el tacto del trazo.
+
 ### Por qué la máquina toca la escena
 
 En la §1 del diseño dije «devuelve intenciones y no toca nada». Eso era
@@ -3423,8 +3439,8 @@ cargo test -p pixpin-motor2d gesto -- --test-threads=1
 
 - [ ] **Paso 4: Escribe la implementación**
 
-El esqueleto, con la lógica que las pruebas exigen. Rellena los `match` que
-falten guiándote de los errores del compilador:
+Primero el tipo y el despacho de eventos; los tres métodos del gesto van en
+el paso siguiente:
 
 ```rust
 //! Todo lo que pasa entre pulsar y soltar.
@@ -3474,8 +3490,43 @@ use crate::vector::Punto2;
 /// memoria — la regla del camino caliente.
 pub const PUNTOS_RESERVADOS: usize = 512;
 
-// ... aqui va el `enum Herramienta` traido de pixpin-ui/anotador.rs, con su
-// `impl` de `necesita_arrastre` y `deja_rastro` tal cual ...
+/// Con que se dibuja. Vino de `pixpin-ui/anotador.rs` en el paso 1: quien
+/// decide que hace un clic tiene que saber que herramienta hay puesta, y esa
+/// decision es logica pura, no interfaz.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Herramienta {
+    /// Seleccionar y mover lo ya dibujado.
+    Mano,
+    Lapiz,
+    Resaltador,
+    Linea,
+    Flecha,
+    Rectangulo,
+    Elipse,
+    Texto,
+    /// Oscurece todo menos una zona (D51).
+    Foco,
+    /// Amplia alrededor del cursor. No deja rastro: es una vista (D52).
+    Lupa,
+    Borrador,
+}
+
+impl Herramienta {
+    /// Si necesita un arrastre de verdad para producir algo. El lapiz no:
+    /// un clic deja un punto de tinta, que es lo que espera cualquiera que
+    /// haya usado un rotulador.
+    pub fn necesita_arrastre(self) -> bool {
+        !matches!(self, Herramienta::Lapiz | Herramienta::Texto)
+    }
+
+    /// Si lo que dibuja se guarda en el documento.
+    pub fn deja_rastro(self) -> bool {
+        !matches!(
+            self,
+            Herramienta::Mano | Herramienta::Lupa | Herramienta::Borrador
+        )
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EventoGesto {
@@ -3580,8 +3631,12 @@ impl Gesto {
             }
             EventoGesto::Suprimir => {
                 escena.abrir_paso();
-                for id in self.seleccion.ids().to_vec() {
-                    escena.borrar(id);
+                for &id in self.seleccion.ids() {
+                    // `borrar_apuntando` y no `borrar`: el primero apunta el
+                    // cambio en el paso, el segundo no. Con `borrar`, la
+                    // prueba `suprimir_borra_lo_seleccionado_de_una_vez`
+                    // falla en su segunda mitad.
+                    escena.borrar_apuntando(id);
                 }
                 escena.cerrar_paso();
                 self.seleccion.limpiar();
@@ -3624,13 +3679,24 @@ En el mismo `impl Gesto`:
     }
 
     /// El elemento nuevo que empieza esta herramienta en este punto.
+    ///
+    /// Los puntos se reservan de una vez, igual que el buffer del gesto: es
+    /// lo que hace que mover el raton dibujando **no asigne memoria**. Si
+    /// este `Vec` empezara vacio, crecer de 4 a 8 a 16... asignaria una
+    /// docena de veces por trazo, en el unico camino del programa con un
+    /// plazo sagrado. La tarea 15 lo comprueba contando asignaciones.
     fn nuevo_elemento(&self, p: Punto2) -> Elemento {
+        let reservados = || {
+            let mut v = Vec::with_capacity(PUNTOS_RESERVADOS);
+            v.push(p);
+            v
+        };
         let figura = match self.herramienta {
             Herramienta::Lapiz => Figura::Lapiz {
-                puntos: vec![p],
+                puntos: reservados(),
                 presiones: Vec::new(),
             },
-            Herramienta::Resaltador => Figura::Resaltador { puntos: vec![p] },
+            Herramienta::Resaltador => Figura::Resaltador { puntos: reservados() },
             Herramienta::Linea => Figura::Linea { puntos: vec![p, p] },
             Herramienta::Flecha => Figura::Flecha {
                 puntos: vec![p, p],
@@ -3786,7 +3852,11 @@ Y de vuelta dentro del `impl Gesto`:
             self.estado = Estado::Marquesina { origen: p, hasta: p };
             return Respuesta { region: Region::Todo, cursor: FormaCursor::Flecha };
         }
-        if self.herramienta.deja_rastro() {
+        // El texto no entra en esta entrega (ver arriba): con la herramienta
+        // de texto puesta, un clic en vacio no hace nada en vez de dejar un
+        // rectangulo, que es lo que pasaria al caer en el `_` de
+        // `nuevo_elemento`.
+        if self.herramienta.deja_rastro() && self.herramienta != Herramienta::Texto {
             self.seleccion.limpiar();
             self.trazo.clear();
             self.trazo.push(p);
@@ -3856,7 +3926,7 @@ Y de vuelta dentro del `impl Gesto`:
 
             Estado::Moviendo { anterior } => {
                 let (dx, dy) = (p.x - anterior.x, p.y - anterior.y);
-                for id in self.seleccion.ids().to_vec() {
+                for &id in self.seleccion.ids() {
                     // Sin esto el paso queda vacio y no hay nada que
                     // deshacer. Es el error mas facil de cometer aqui.
                     escena.apuntar_edicion(id);
@@ -3869,7 +3939,7 @@ Y de vuelta dentro del `impl Gesto`:
             }
 
             Estado::Escalando { tirador } => {
-                for id in self.seleccion.ids().to_vec() {
+                for &id in self.seleccion.ids() {
                     escena.apuntar_edicion(id);
                     if let Some(e) = escena.buscar_mut(id) {
                         transformar::escalar(e, tirador, p, shift, alt);
@@ -3889,7 +3959,7 @@ Y de vuelta dentro del `impl Gesto`:
                 let ahora = angulo_hacia(centro, p);
                 let ahora = if shift { a_saltos(ahora) } else { ahora };
                 let delta = ahora - anterior;
-                for id in self.seleccion.ids().to_vec() {
+                for &id in self.seleccion.ids() {
                     escena.apuntar_edicion(id);
                     if let Some(e) = escena.buscar_mut(id) {
                         transformar::girar(e, centro, delta);
@@ -3920,17 +3990,16 @@ Y de vuelta dentro del `impl Gesto`:
     }
 ```
 
-**Dos avisos:**
+**Un aviso.** Fíjate en que los bucles sobre `self.seleccion.ids()` **no llevan
+`.to_vec()`**, y no debe llevarlo. Parece que hiciera falta —dentro se toma
+`&mut escena`— pero no: `escena` es un parámetro aparte, no un campo de
+`self`, así que el préstamo inmutable de `self.seleccion` y el mutable de
+`escena` no se pisan.
 
-En `Suprimir`, usa `escena.borrar_apuntando(id)` y no `escena.borrar(id)`: el
-primero apunta el cambio en el paso, el segundo no. Si te equivocas, la prueba
-`suprimir_borra_lo_seleccionado_de_una_vez` falla en su segunda mitad.
-
-Y fíjate en el `.to_vec()` de los bucles sobre `self.seleccion.ids()`: hace
-falta porque dentro se toma `&mut escena` y el préstamo de `ids()` sigue vivo.
-Es una asignación por gesto, no por aviso del ratón, así que no toca el camino
-caliente — pero si algún día molesta, la salida es guardar los ids en un
-`Vec` propio del `Gesto` reutilizado con `clear()`, igual que el trazo.
+Es importante, no cosmético: `mover` se llama **en cada aviso del ratón**. Un
+`.to_vec()` ahí asigna memoria en el camino caliente, sesenta veces por
+segundo mientras se arrastra, y la prueba del asignador de la tarea 15 lo
+caza.
 
 - [ ] **Paso 6: Cierra**
 
@@ -4505,3 +4574,1363 @@ girada con el elemento— se reparte entre ellas en octavos de vuelta. Y
 como una flecha no tiene punta, norte y sur son la misma: el angulo va
 modulo media vuelta, o girar 180 grados cambiaria el cursor sin motivo."
 ```
+
+---
+
+## Tarea 12: Organizar — orden, grupos, alinear, distribuir
+
+Puerto de `Organize.kt` (310 líneas, puras). La tarea 3 trajo el campo
+`grupos`; ésta lo hace servir para algo.
+
+**Ficheros:**
+- Crear: `crates/pixpin-motor2d/src/organizar.rs`
+- Modificar: `crates/pixpin-motor2d/src/lib.rs`
+- Prueba: en `organizar.rs`, `mod pruebas`
+
+**Interfaces:**
+- Consume: `Escena`, `Seleccion`, `Elemento`.
+- Produce:
+  ```rust
+  pub enum Alineacion { Izquierda, CentroHorizontal, Derecha,
+                        Arriba, CentroVertical, Abajo }
+  pub enum Reparto { Horizontal, Vertical }
+
+  pub fn agrupar(escena: &mut Escena, sel: &Seleccion) -> Option<String>;
+  pub fn desagrupar(escena: &mut Escena, sel: &Seleccion);
+  pub fn hermanos_de(escena: &Escena, id: u64) -> Vec<u64>;
+  pub fn al_frente(escena: &mut Escena, sel: &Seleccion);
+  pub fn al_fondo(escena: &mut Escena, sel: &Seleccion);
+  pub fn alinear(escena: &mut Escena, sel: &Seleccion, como: Alineacion);
+  pub fn repartir(escena: &mut Escena, sel: &Seleccion, como: Reparto);
+  ```
+
+- [ ] **Paso 1: Escribe las pruebas que fallan**
+
+```rust
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use crate::elemento::{ColorRgba, EstiloTrazo, Figura};
+
+    fn rect(x: f32, y: f32, ancho: f32, alto: f32) -> Elemento {
+        Elemento {
+            id: 0, figura: Figura::Rectangulo, x, y, ancho, alto, angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0), relleno: None, grosor: 0.0,
+            estilo: EstiloTrazo::Solido, rugosidad: 1.0, opacidad: 1.0,
+            semilla: 1, version: 0, borrado: false, grupos: Vec::new(),
+        }
+    }
+
+    fn con_tres() -> (Escena, u64, u64, u64) {
+        let mut e = Escena::nueva();
+        let a = e.anadir(rect(0.0, 0.0, 10.0, 10.0));
+        let b = e.anadir(rect(50.0, 30.0, 20.0, 20.0));
+        let c = e.anadir(rect(100.0, 60.0, 10.0, 40.0));
+        (e, a, b, c)
+    }
+
+    #[test]
+    fn agrupar_pone_el_mismo_grupo_a_todos_y_desagrupar_lo_quita() {
+        let (mut escena, a, b, _) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b]);
+
+        let grupo = agrupar(&mut escena, &sel).unwrap();
+        assert!(escena.buscar(a).unwrap().grupos.contains(&grupo));
+        assert!(escena.buscar(b).unwrap().grupos.contains(&grupo));
+
+        desagrupar(&mut escena, &sel);
+        assert!(escena.buscar(a).unwrap().grupos.is_empty());
+    }
+
+    #[test]
+    fn agrupar_uno_solo_no_crea_grupo() {
+        // Un grupo de uno no es un grupo: seria basura en el fichero que
+        // ademas viaja al movil.
+        let (mut escena, a, _, _) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner(a);
+        assert!(agrupar(&mut escena, &sel).is_none());
+        assert!(escena.buscar(a).unwrap().grupos.is_empty());
+    }
+
+    #[test]
+    fn desagrupar_solo_quita_el_grupo_de_dentro_y_respeta_los_de_fuera() {
+        // Un elemento puede estar en varios grupos anidados, como en
+        // Excalidraw. Desagrupar deshace el mas interno, no todos.
+        let (mut escena, a, b, _) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b]);
+        let fuera = agrupar(&mut escena, &sel).unwrap();
+        let dentro = agrupar(&mut escena, &sel).unwrap();
+
+        desagrupar(&mut escena, &sel);
+        let g = &escena.buscar(a).unwrap().grupos;
+        assert!(g.contains(&fuera), "el de fuera sigue");
+        assert!(!g.contains(&dentro), "el de dentro se fue");
+    }
+
+    #[test]
+    fn tocar_uno_de_un_grupo_los_trae_a_todos() {
+        let (mut escena, a, b, c) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b]);
+        agrupar(&mut escena, &sel);
+
+        let hermanos = hermanos_de(&escena, a);
+        assert!(hermanos.contains(&a) && hermanos.contains(&b));
+        assert!(!hermanos.contains(&c));
+    }
+
+    #[test]
+    fn un_elemento_sin_grupo_es_hermano_de_si_mismo_y_de_nadie_mas() {
+        let (escena, a, _, _) = con_tres();
+        assert_eq!(hermanos_de(&escena, a), vec![a]);
+    }
+
+    #[test]
+    fn al_frente_y_al_fondo_cambian_el_orden_de_pintado() {
+        // El orden de la lista ES el orden de pintado: el ultimo va encima.
+        let (mut escena, a, _, _) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner(a);
+
+        al_frente(&mut escena, &sel);
+        assert_eq!(escena.elementos.last().unwrap().id, a);
+
+        al_fondo(&mut escena, &sel);
+        assert_eq!(escena.elementos.first().unwrap().id, a);
+    }
+
+    #[test]
+    fn al_frente_conserva_el_orden_relativo_de_lo_que_sube() {
+        let (mut escena, a, b, _) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b]);
+        al_frente(&mut escena, &sel);
+
+        let ids: Vec<u64> = escena.elementos.iter().map(|e| e.id).collect();
+        let ia = ids.iter().position(|x| *x == a).unwrap();
+        let ib = ids.iter().position(|x| *x == b).unwrap();
+        assert!(ia < ib, "a estaba antes que b y lo sigue estando");
+    }
+
+    #[test]
+    fn alinear_a_la_izquierda_los_lleva_al_borde_del_mas_a_la_izquierda() {
+        let (mut escena, a, b, c) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b, c]);
+
+        alinear(&mut escena, &sel, Alineacion::Izquierda);
+        for id in [a, b, c] {
+            assert_eq!(escena.buscar(id).unwrap().caja().0, 0.0);
+        }
+    }
+
+    #[test]
+    fn alinear_al_centro_usa_el_centro_del_conjunto() {
+        let (mut escena, a, b, c) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b, c]);
+        let centro = sel.centro(&escena).unwrap();
+
+        alinear(&mut escena, &sel, Alineacion::CentroVertical);
+        for id in [a, b, c] {
+            let (_, y0, _, y1) = escena.buscar(id).unwrap().caja();
+            assert!(((y0 + y1) / 2.0 - centro.y).abs() < 1e-3);
+        }
+    }
+
+    #[test]
+    fn repartir_deja_los_huecos_iguales() {
+        let (mut escena, a, b, c) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b, c]);
+
+        repartir(&mut escena, &sel, Reparto::Horizontal);
+
+        let mut centros: Vec<f32> = [a, b, c]
+            .iter()
+            .map(|id| {
+                let (x0, _, x1, _) = escena.buscar(*id).unwrap().caja();
+                (x0 + x1) / 2.0
+            })
+            .collect();
+        centros.sort_by(|p, q| p.partial_cmp(q).unwrap());
+        let h1 = centros[1] - centros[0];
+        let h2 = centros[2] - centros[1];
+        assert!((h1 - h2).abs() < 1e-3, "huecos {h1} y {h2}");
+    }
+
+    #[test]
+    fn repartir_no_mueve_los_dos_de_los_extremos() {
+        // Repartir coloca lo de en medio; mover los extremos cambiaria el
+        // sitio del conjunto, que no es lo que nadie espera.
+        let (mut escena, a, b, c) = con_tres();
+        let (x_a, x_c) = (
+            escena.buscar(a).unwrap().caja().0,
+            escena.buscar(c).unwrap().caja().0,
+        );
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b, c]);
+
+        repartir(&mut escena, &sel, Reparto::Horizontal);
+
+        assert_eq!(escena.buscar(a).unwrap().caja().0, x_a);
+        assert_eq!(escena.buscar(c).unwrap().caja().0, x_c);
+    }
+
+    #[test]
+    fn alinear_y_repartir_dejan_un_solo_paso_de_deshacer() {
+        let (mut escena, a, b, c) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b, c]);
+        let antes = escena.buscar(b).unwrap().x;
+
+        alinear(&mut escena, &sel, Alineacion::Izquierda);
+        assert!(escena.deshacer());
+        assert_eq!(escena.buscar(b).unwrap().x, antes, "los tres de una vez");
+    }
+
+    #[test]
+    fn con_menos_de_tres_repartir_no_hace_nada() {
+        let (mut escena, a, b, _) = con_tres();
+        let antes = escena.buscar(b).unwrap().x;
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([a, b]);
+
+        repartir(&mut escena, &sel, Reparto::Horizontal);
+        assert_eq!(escena.buscar(b).unwrap().x, antes, "no hay nada en medio");
+    }
+}
+```
+
+- [ ] **Paso 2: Comprueba que fallan**
+
+```
+cargo test -p pixpin-motor2d organizar -- --test-threads=1
+```
+
+- [ ] **Paso 3: Escribe la implementación**
+
+```rust
+//! Orden de pintado, grupos, alinear y repartir. Puerto de `Organize.kt`.
+//!
+//! # Los grupos son una lista y no un identificador
+//!
+//! `Elemento::grupos` es un `Vec<String>` porque un elemento puede estar en
+//! varios grupos anidados, como en Excalidraw: el ultimo de la lista es el
+//! mas interno. Desagrupar deshace **solo el mas interno**, que es lo que
+//! espera quien agrupo dos veces.
+//!
+//! # Todo lo de aqui es un solo paso de deshacer
+//!
+//! Alinear cinco elementos es un `Ctrl+Z`, no cinco. Cada funcion publica
+//! abre y cierra su paso.
+
+use crate::escena::Escena;
+use crate::seleccion::Seleccion;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Alineacion {
+    Izquierda,
+    CentroHorizontal,
+    Derecha,
+    Arriba,
+    CentroVertical,
+    Abajo,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reparto {
+    Horizontal,
+    Vertical,
+}
+
+/// Mete lo elegido en un grupo nuevo. `None` si no hay al menos dos: un
+/// grupo de uno no es un grupo, y ademas viajaria al movil como basura.
+pub fn agrupar(escena: &mut Escena, sel: &Seleccion) -> Option<String> {
+    if sel.cuantos() < 2 {
+        return None;
+    }
+    // El nombre sale del contador de la escena, que ya garantiza que no se
+    // repite dentro del documento. Con prefijo para no confundirlo con un
+    // id de elemento al mirar el JSON a ojo.
+    let grupo = format!("g{}", escena.siguiente_id);
+    escena.siguiente_id += 1;
+
+    escena.abrir_paso();
+    for id in sel.ids() {
+        escena.apuntar_edicion(*id);
+        if let Some(e) = escena.buscar_mut(*id) {
+            e.grupos.push(grupo.clone());
+            e.tocar();
+        }
+    }
+    escena.cerrar_paso();
+    Some(grupo)
+}
+
+/// Deshace el grupo mas interno de lo elegido.
+pub fn desagrupar(escena: &mut Escena, sel: &Seleccion) {
+    escena.abrir_paso();
+    for id in sel.ids() {
+        escena.apuntar_edicion(*id);
+        if let Some(e) = escena.buscar_mut(*id) {
+            e.grupos.pop();
+            e.tocar();
+        }
+    }
+    escena.cerrar_paso();
+}
+
+/// Todos los que comparten el grupo mas interno de este. Si no tiene
+/// grupo, solo el.
+///
+/// Es lo que convierte «pinche un elemento» en «cogi el grupo entero».
+pub fn hermanos_de(escena: &Escena, id: u64) -> Vec<u64> {
+    let Some(e) = escena.buscar(id) else { return Vec::new() };
+    let Some(grupo) = e.grupos.last() else { return vec![id] };
+    escena
+        .visibles()
+        .filter(|o| o.grupos.last() == Some(grupo))
+        .map(|o| o.id)
+        .collect()
+}
+
+/// Sube lo elegido al frente, conservando su orden relativo.
+pub fn al_frente(escena: &mut Escena, sel: &Seleccion) {
+    reordenar(escena, sel, true);
+}
+
+/// Baja lo elegido al fondo, conservando su orden relativo.
+pub fn al_fondo(escena: &mut Escena, sel: &Seleccion) {
+    reordenar(escena, sel, false);
+}
+
+fn reordenar(escena: &mut Escena, sel: &Seleccion, al_frente: bool) {
+    // Particionar conserva el orden dentro de cada mitad, que es justo lo
+    // que hace falta: subir dos elementos no debe intercambiarlos.
+    let (movidos, quietos): (Vec<_>, Vec<_>) = escena
+        .elementos
+        .drain(..)
+        .partition(|e| sel.contiene(e.id));
+    escena.elementos = if al_frente {
+        quietos.into_iter().chain(movidos).collect()
+    } else {
+        movidos.into_iter().chain(quietos).collect()
+    };
+}
+
+/// Alinea lo elegido contra el borde o el centro del conjunto.
+pub fn alinear(escena: &mut Escena, sel: &Seleccion, como: Alineacion) {
+    let Some((cx0, cy0, cx1, cy1)) = sel.caja(escena) else { return };
+    escena.abrir_paso();
+    for id in sel.ids().to_vec() {
+        let Some(e) = escena.buscar(id) else { continue };
+        let (x0, y0, x1, y1) = e.caja();
+        let (dx, dy) = match como {
+            Alineacion::Izquierda => (cx0 - x0, 0.0),
+            Alineacion::Derecha => (cx1 - x1, 0.0),
+            Alineacion::CentroHorizontal => ((cx0 + cx1) / 2.0 - (x0 + x1) / 2.0, 0.0),
+            Alineacion::Arriba => (0.0, cy0 - y0),
+            Alineacion::Abajo => (0.0, cy1 - y1),
+            Alineacion::CentroVertical => (0.0, (cy0 + cy1) / 2.0 - (y0 + y1) / 2.0),
+        };
+        if dx == 0.0 && dy == 0.0 {
+            continue;
+        }
+        escena.apuntar_edicion(id);
+        if let Some(e) = escena.buscar_mut(id) {
+            e.mover(dx, dy);
+        }
+    }
+    escena.cerrar_paso();
+}
+
+/// Deja huecos iguales entre los centros, sin mover los dos extremos.
+///
+/// No mover los extremos es lo que hace que repartir no cambie el sitio del
+/// conjunto: se coloca lo de en medio, que es lo que se pide.
+pub fn repartir(escena: &mut Escena, sel: &Seleccion, como: Reparto) {
+    if sel.cuantos() < 3 {
+        return;
+    }
+    let centro_de = |escena: &Escena, id: u64| -> Option<f32> {
+        let (x0, y0, x1, y1) = escena.buscar(id)?.caja();
+        Some(match como {
+            Reparto::Horizontal => (x0 + x1) / 2.0,
+            Reparto::Vertical => (y0 + y1) / 2.0,
+        })
+    };
+
+    let mut orden: Vec<(u64, f32)> = sel
+        .ids()
+        .iter()
+        .filter_map(|id| centro_de(escena, *id).map(|c| (*id, c)))
+        .collect();
+    orden.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    let (primero, ultimo) = (orden[0].1, orden[orden.len() - 1].1);
+    let hueco = (ultimo - primero) / (orden.len() - 1) as f32;
+
+    escena.abrir_paso();
+    for (i, (id, actual)) in orden.iter().enumerate().skip(1).take(orden.len() - 2) {
+        let quiero = primero + hueco * i as f32;
+        let d = quiero - actual;
+        if d == 0.0 {
+            continue;
+        }
+        escena.apuntar_edicion(*id);
+        if let Some(e) = escena.buscar_mut(*id) {
+            match como {
+                Reparto::Horizontal => e.mover(d, 0.0),
+                Reparto::Vertical => e.mover(0.0, d),
+            }
+        }
+    }
+    escena.cerrar_paso();
+}
+```
+
+`siguiente_id` es `pub` en `Escena`, así que `agrupar` puede usarlo. Si te
+chirría que un contador de elementos nombre grupos, la alternativa es un
+contador propio — pero entonces hay que guardarlo en el fichero, y eso es un
+campo más en el formato por muy poca cosa.
+
+- [ ] **Paso 4: Cierra y commit**
+
+```
+cargo test --workspace -- --test-threads=1
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+```bash
+git add crates/pixpin-motor2d/src/organizar.rs crates/pixpin-motor2d/src/lib.rs
+git commit -m "Organizar: orden de pintado, grupos, alinear y repartir
+
+Puerto de Organize.kt. La tarea de los grupos trajo el campo; esta lo
+hace servir para algo: tocar un elemento de un grupo los trae a todos.
+
+grupos es una lista y no un identificador porque un elemento puede estar
+en varios grupos anidados, como en Excalidraw: el ultimo es el mas
+interno, y desagrupar deshace solo ese. Agrupar uno solo no hace nada, un
+grupo de uno no es un grupo y viajaria al movil como basura.
+
+Repartir no mueve los dos extremos: coloca lo de en medio. Mover los
+extremos cambiaria el sitio del conjunto, que no es lo que nadie espera
+al pulsar «repartir».
+
+Y todo lo de aqui es un solo paso de deshacer. Alinear cinco elementos es
+un Ctrl+Z, no cinco."
+```
+
+---
+
+## Tarea 13: El panel de propiedades
+
+Lo que el Android resuelve en `PanelLateral.kt` con 2.185 líneas. Aquí, mucho
+menos, por una decisión: **el panel enseña solo lo que tiene sentido para lo
+seleccionado.**
+
+**Ficheros:**
+- Crear: `crates/pixpin-ui/src/propiedades.rs`
+- Modificar: `crates/pixpin-ui/src/lib.rs`
+- Modificar: `apps/pixpin/src/ventana_editor.rs` — pintarlo
+- Prueba: en `propiedades.rs`, `mod pruebas`
+
+**Interfaces:**
+- Consume: `Elemento`, `Figura`, `Herramienta` del motor.
+- Produce:
+  ```rust
+  pub enum Propiedad { ColorTrazo, Relleno, Grosor, Estilo, Rugosidad,
+                       Opacidad, Fuente, TamanoTexto, PuntaFlecha }
+
+  pub fn de_figura(f: &Figura) -> &'static [Propiedad];
+  pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad];
+  pub fn comunes(elementos: &[&Elemento]) -> Vec<Propiedad>;
+  ```
+
+- [ ] **Paso 1: Escribe las pruebas que fallan**
+
+```rust
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use pixpin_motor2d::elemento::Figura;
+
+    #[test]
+    fn un_trazo_a_mano_no_tiene_relleno() {
+        // Una mancha de tinta no tiene interior que rellenar. Ensenar el
+        // control en gris es ruido, y en un portatil viejo es ademas
+        // espacio robado al lienzo.
+        let p = de_figura(&Figura::Lapiz { puntos: Vec::new(), presiones: Vec::new() });
+        assert!(!p.contains(&Propiedad::Relleno));
+        assert!(p.contains(&Propiedad::Grosor));
+    }
+
+    #[test]
+    fn un_texto_tiene_fuente_y_no_rugosidad() {
+        let p = de_figura(&Figura::Texto {
+            texto: String::new(),
+            tam: 16.0,
+            familia: "Segoe UI".to_string(),
+        });
+        assert!(p.contains(&Propiedad::Fuente));
+        assert!(p.contains(&Propiedad::TamanoTexto));
+        assert!(!p.contains(&Propiedad::Rugosidad), "las letras no son a mano");
+    }
+
+    #[test]
+    fn un_rectangulo_si_tiene_relleno_y_rugosidad() {
+        let p = de_figura(&Figura::Rectangulo);
+        assert!(p.contains(&Propiedad::Relleno));
+        assert!(p.contains(&Propiedad::Rugosidad));
+    }
+
+    #[test]
+    fn una_flecha_tiene_puntas() {
+        let p = de_figura(&Figura::Flecha {
+            puntos: Vec::new(),
+            punta_inicio: false,
+            punta_fin: true,
+        });
+        assert!(p.contains(&Propiedad::PuntaFlecha));
+    }
+
+    #[test]
+    fn el_resaltador_no_tiene_rugosidad_ni_estilo() {
+        // Es grueso, translucido y liso a proposito: resaltar sobre texto
+        // tiene que dejarlo legible.
+        let p = de_figura(&Figura::Resaltador { puntos: Vec::new() });
+        assert!(!p.contains(&Propiedad::Rugosidad));
+        assert!(!p.contains(&Propiedad::Estilo));
+    }
+
+    #[test]
+    fn con_varios_elegidos_solo_salen_las_propiedades_comunes() {
+        // Un texto y un rectangulo comparten color y opacidad, nada mas.
+        // Ensenar «rugosidad» con un texto elegido cambiaria algo que el
+        // usuario no ve.
+        let texto = elem(Figura::Texto {
+            texto: String::new(),
+            tam: 16.0,
+            familia: "Segoe UI".to_string(),
+        });
+        let rect = elem(Figura::Rectangulo);
+        let p = comunes(&[&texto, &rect]);
+
+        assert!(p.contains(&Propiedad::ColorTrazo));
+        assert!(p.contains(&Propiedad::Opacidad));
+        assert!(!p.contains(&Propiedad::Rugosidad));
+        assert!(!p.contains(&Propiedad::Fuente));
+    }
+
+    #[test]
+    fn sin_nada_elegido_no_hay_panel() {
+        assert!(comunes(&[]).is_empty());
+    }
+
+    #[test]
+    fn las_comunes_salen_en_el_mismo_orden_siempre() {
+        // El orden es el del enum. Si dependiera del orden de la
+        // seleccion, los controles bailarian de sitio al elegir en
+        // distinto orden, que es de las cosas mas molestas que puede hacer
+        // una interfaz.
+        let a = elem(Figura::Rectangulo);
+        let b = elem(Figura::Elipse);
+        assert_eq!(comunes(&[&a, &b]), comunes(&[&b, &a]));
+    }
+
+    #[test]
+    fn la_herramienta_manda_cuando_no_hay_nada_elegido() {
+        // Antes de dibujar tambien se eligen color y grosor.
+        let p = de_herramienta(Herramienta::Lapiz);
+        assert!(p.contains(&Propiedad::Grosor));
+        assert!(!p.contains(&Propiedad::Relleno));
+    }
+
+    #[test]
+    fn la_mano_y_la_lupa_no_ajustan_nada() {
+        assert!(de_herramienta(Herramienta::Mano).is_empty());
+        assert!(de_herramienta(Herramienta::Lupa).is_empty());
+    }
+}
+```
+
+Añade el ayudante `fn elem(figura: Figura) -> Elemento` construyendo un
+`Elemento` como en las tareas anteriores.
+
+- [ ] **Paso 2: Escribe la implementación**
+
+La tabla es lo único con sustancia, y sale de `DrawProperties.kt`:
+
+```rust
+//! Que se puede ajustar de cada cosa.
+//!
+//! El panel ensena **solo lo que tiene sentido para lo seleccionado**: con
+//! un trazo a mano no aparece «relleno», con un texto aparece la fuente y no
+//! la rugosidad. Ensenar el control en gris es ruido, y en la pantalla de un
+//! portatil viejo es ademas espacio robado al lienzo.
+//!
+//! El Android resuelve esto en `PanelLateral.kt` con 2.185 lineas; la tabla
+//! en si esta en `DrawProperties.kt` (332 lineas, puras) y es lo que se
+//! porta. Todo lo demas de aquellas 2.185 es Compose.
+
+use pixpin_motor2d::elemento::{Elemento, Figura};
+use pixpin_motor2d::gesto::Herramienta;
+
+/// El orden de este enum es el orden en que salen los controles. No es
+/// casual: si dependiera del orden de la seleccion, los controles bailarian
+/// de sitio al elegir en distinto orden.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Propiedad {
+    ColorTrazo,
+    Relleno,
+    Grosor,
+    Estilo,
+    Rugosidad,
+    Opacidad,
+    Fuente,
+    TamanoTexto,
+    PuntaFlecha,
+}
+
+use Propiedad::*;
+
+pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
+    match f {
+        Figura::Lapiz { .. } => &[ColorTrazo, Grosor, Opacidad],
+        // Grueso, translucido y liso a proposito (D45): resaltar sobre
+        // texto tiene que dejarlo legible.
+        Figura::Resaltador { .. } => &[ColorTrazo, Grosor, Opacidad],
+        Figura::Linea { .. } => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
+        Figura::Flecha { .. } => {
+            &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad, PuntaFlecha]
+        }
+        Figura::Rectangulo | Figura::Elipse => {
+            &[ColorTrazo, Relleno, Grosor, Estilo, Rugosidad, Opacidad]
+        }
+        Figura::Texto { .. } => &[ColorTrazo, Opacidad, Fuente, TamanoTexto],
+        // El foco oscurece lo de alrededor: su color es el del velo.
+        Figura::Foco { .. } => &[Opacidad],
+        Figura::Imagen { .. } => &[Opacidad],
+    }
+}
+
+/// Lo que se puede ajustar antes de dibujar, cuando no hay nada elegido.
+pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad] {
+    match h {
+        // No dejan rastro: no hay nada que ajustar.
+        Herramienta::Mano | Herramienta::Lupa | Herramienta::Borrador => &[],
+        Herramienta::Lapiz | Herramienta::Resaltador => &[ColorTrazo, Grosor, Opacidad],
+        Herramienta::Linea => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
+        Herramienta::Flecha => {
+            &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad, PuntaFlecha]
+        }
+        Herramienta::Rectangulo | Herramienta::Elipse => {
+            &[ColorTrazo, Relleno, Grosor, Estilo, Rugosidad, Opacidad]
+        }
+        Herramienta::Texto => &[ColorTrazo, Opacidad, Fuente, TamanoTexto],
+        Herramienta::Foco => &[Opacidad],
+    }
+}
+
+/// Lo que se puede ajustar de todos a la vez.
+///
+/// Solo lo comun: ensenar «rugosidad» con un texto elegido cambiaria algo
+/// que el usuario no ve cambiar.
+pub fn comunes(elementos: &[&Elemento]) -> Vec<Propiedad> {
+    let Some((primero, resto)) = elementos.split_first() else {
+        return Vec::new();
+    };
+    let mut fuera: Vec<Propiedad> = de_figura(&primero.figura)
+        .iter()
+        .copied()
+        .filter(|p| resto.iter().all(|e| de_figura(&e.figura).contains(p)))
+        .collect();
+    // El orden del enum, no el de la seleccion.
+    fuera.sort_unstable();
+    fuera
+}
+```
+
+- [ ] **Paso 3: Píntalo en la ventana**
+
+En `ventana_editor.rs`, el panel se dibuja a la derecha **solo si
+`comunes(...)` no está vacío**. Con nada seleccionado, se usa
+`de_herramienta(gesto.herramienta)`; si eso también está vacío —la mano, la
+lupa—, no hay panel y el lienzo ocupa todo.
+
+Sigue el estilo de `crates/pixpin-ui/src/panel.rs` (87 líneas) y de
+`caja_herramientas.rs`, que ya resuelven esto para el anotador.
+
+- [ ] **Paso 4: Cierra y commit**
+
+```
+cargo test --workspace -- --test-threads=1
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+```bash
+git add crates/pixpin-ui/src/propiedades.rs crates/pixpin-ui/src/lib.rs apps/pixpin/src/ventana_editor.rs
+git commit -m "El panel ensena solo lo que tiene sentido
+
+Con un trazo a mano no aparece «relleno»; con un texto aparece la fuente
+y no la rugosidad. Ensenar el control en gris es ruido, y en la pantalla
+de un portatil viejo es ademas espacio robado al lienzo.
+
+El Android resuelve esto en PanelLateral.kt con 2.185 lineas. La tabla en
+si esta en DrawProperties.kt, 332 lineas puras, y es lo unico que se
+porta: el resto es Compose.
+
+Con varios elegidos salen solo las propiedades comunes, y en el orden del
+enum y no en el de la seleccion. Si dependiera del orden de la seleccion,
+los controles bailarian de sitio al elegir en distinto orden, que es de
+las cosas mas molestas que puede hacer una interfaz.
+
+Y sin nada elegido y con la mano puesta no hay panel: el lienzo ocupa
+todo."
+```
+
+---
+
+## Tarea 14: La capa estática
+
+Mientras arrastras un elemento, los otros 7.999 no cambian. En una iGPU con
+memoria compartida, esto es la diferencia entre arrastrar y **ver** arrastrar.
+
+**Ficheros:**
+- Crear: `crates/pixpin-render/src/capa_estatica.rs`
+- Modificar: `crates/pixpin-render/src/lib.rs`
+- Modificar: `apps/pixpin/src/ventana_editor.rs` — prepararla y soltarla
+- Prueba: en `capa_estatica.rs`, `mod pruebas` (la política, que es pura)
+
+### La decisión que simplifica todo
+
+La tentación es cachear la capa **siempre** e ir invalidándola cuando algo
+cambia. Eso obliga a saber qué ha cambiado en la escena en cada fotograma, y
+acaba en un sistema de invalidación tan caro como lo que ahorra.
+
+En su lugar: **la capa solo vive durante un gesto.** Al pulsar se prepara con
+todo menos lo seleccionado; mientras dura el arrastre se copia y se pinta
+encima lo que se mueve; al soltar se tira. Fuera de un gesto no hay nada que
+invalidar, porque no hay capa.
+
+Sale gratis por qué: durante un gesto, lo único que cambia es lo seleccionado,
+y eso es exactamente lo que se excluye.
+
+**Interfaces:**
+- Produce:
+  ```rust
+  /// Con que se preparo la capa. Comparar dos dice si sigue valiendo.
+  #[derive(Debug, Clone, PartialEq)]
+  pub struct Estampa {
+      pub camara: (f32, f32, f32),   // x, y, zoom
+      pub tamano: (u32, u32),
+      pub excluidos: Vec<u64>,
+  }
+
+  pub fn sigue_valiendo(preparada: &Estampa, ahora: &Estampa) -> bool;
+
+  pub struct CapaEstatica { /* privado: el ID2D1Bitmap1 */ }
+  impl CapaEstatica {
+      pub fn nueva() -> Self;
+      pub fn preparar(&mut self, motor: &mut MotorRender, e: Estampa) -> Result<(), ErrorRender>;
+      pub fn volcar(&self, motor: &mut MotorRender, ahora: &Estampa) -> bool;
+      pub fn soltar(&mut self);
+      pub fn lista(&self) -> bool;
+      pub fn bytes(&self) -> usize;
+  }
+  ```
+
+- [ ] **Paso 1: Escribe las pruebas de la política**
+
+Lo que se puede probar sin GPU es cuándo la capa vale y cuándo no, que es
+donde están los fallos de verdad:
+
+```rust
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+
+    fn estampa() -> Estampa {
+        Estampa {
+            camara: (0.0, 0.0, 1.0),
+            tamano: (1920, 1080),
+            excluidos: vec![7],
+        }
+    }
+
+    #[test]
+    fn la_misma_estampa_vale() {
+        assert!(sigue_valiendo(&estampa(), &estampa()));
+    }
+
+    #[test]
+    fn mover_la_camara_la_invalida() {
+        // La capa esta pintada en coordenadas de pantalla: si el lienzo se
+        // desplaza, lo pintado ya no cae donde toca.
+        let mut ahora = estampa();
+        ahora.camara.0 += 1.0;
+        assert!(!sigue_valiendo(&estampa(), &ahora));
+    }
+
+    #[test]
+    fn cambiar_el_aumento_la_invalida() {
+        let mut ahora = estampa();
+        ahora.camara.2 = 2.0;
+        assert!(!sigue_valiendo(&estampa(), &ahora));
+    }
+
+    #[test]
+    fn cambiar_el_tamano_de_la_ventana_la_invalida() {
+        let mut ahora = estampa();
+        ahora.tamano = (1280, 720);
+        assert!(!sigue_valiendo(&estampa(), &ahora));
+    }
+
+    #[test]
+    fn cambiar_lo_excluido_la_invalida() {
+        // Si la seleccion cambia a mitad de gesto, la capa lleva pintado un
+        // elemento que ahora se esta moviendo: se veria por duplicado, uno
+        // quieto y otro siguiendo al raton.
+        let mut ahora = estampa();
+        ahora.excluidos = vec![8];
+        assert!(!sigue_valiendo(&estampa(), &ahora));
+    }
+
+    #[test]
+    fn el_orden_de_lo_excluido_no_importa() {
+        // La seleccion es un Vec cuyo orden no significa nada. Invalidar
+        // por reordenarlo tiraria la capa sin motivo.
+        let preparada = Estampa { excluidos: vec![1, 2, 3], ..estampa() };
+        let ahora = Estampa { excluidos: vec![3, 1, 2], ..estampa() };
+        assert!(sigue_valiendo(&preparada, &ahora));
+    }
+
+    #[test]
+    fn una_capa_recien_creada_no_esta_lista() {
+        let c = CapaEstatica::nueva();
+        assert!(!c.lista());
+        assert_eq!(c.bytes(), 0, "sin gesto en curso no ocupa nada");
+    }
+}
+```
+
+- [ ] **Paso 2: Escribe la política**
+
+```rust
+//! Pintar una vez lo que no se mueve, y copiarlo en cada fotograma.
+//!
+//! Mientras se arrastra un elemento, los otros 7.999 no cambian. En una iGPU
+//! con memoria compartida, pintarlos una vez a un mapa de bits y copiarlo es
+//! la diferencia entre arrastrar y **ver** arrastrar.
+//!
+//! # Solo vive durante un gesto
+//!
+//! La tentacion es cachear siempre e ir invalidando cuando algo cambia. Eso
+//! obliga a saber que ha cambiado en la escena en cada fotograma y acaba en
+//! un sistema de invalidacion tan caro como lo que ahorra.
+//!
+//! Aqui la capa se prepara al pulsar —con todo menos lo seleccionado—, se
+//! copia mientras dura el arrastre, y se tira al soltar. Fuera de un gesto
+//! no hay nada que invalidar porque no hay capa. Y durante el gesto lo unico
+//! que cambia es lo seleccionado, que es justo lo que se excluye.
+//!
+//! # Lo que cuesta
+//!
+//! En 1080p son unos 8 MB, y en la maquina suelo la memoria de video sale de
+//! los mismos 4 GB. Es **una de las tres copias vivas** que el presupuesto
+//! concede al nivel `Ligero`, y solo mientras dura un arrastre. Queda para
+//! medir en la tarea 15, no para prometer.
+
+/// Con que se preparo la capa.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Estampa {
+    /// `x`, `y` y aumento de la camara.
+    pub camara: (f32, f32, f32),
+    pub tamano: (u32, u32),
+    /// Lo que NO esta en la capa porque se esta moviendo.
+    pub excluidos: Vec<u64>,
+}
+
+/// Si la capa preparada con `preparada` sirve para pintar `ahora`.
+///
+/// La comparacion de la camara es exacta a proposito. Podria pensarse en una
+/// tolerancia —«si se movio menos de un pixel, vale»— pero encuadrar mueve
+/// la camara de verdad y la capa esta en coordenadas de pantalla: cualquier
+/// desplazamiento la desalinea, y un dibujo medio pixel corrido se ve.
+pub fn sigue_valiendo(preparada: &Estampa, ahora: &Estampa) -> bool {
+    if preparada.camara != ahora.camara || preparada.tamano != ahora.tamano {
+        return false;
+    }
+    // El orden de la seleccion no significa nada, asi que se comparan como
+    // conjuntos: invalidar por reordenarla tiraria la capa sin motivo.
+    if preparada.excluidos.len() != ahora.excluidos.len() {
+        return false;
+    }
+    ahora
+        .excluidos
+        .iter()
+        .all(|id| preparada.excluidos.contains(id))
+}
+```
+
+- [ ] **Paso 3: Escribe la parte que toca la GPU**
+
+Esto va en `pixpin-render`, donde `unsafe` está permitido con `// SAFETY:` en
+cada bloque, como manda el encabezado del crate.
+
+`CapaEstatica` guarda un `ID2D1Bitmap1` creado con
+`CreateBitmap` y la bandera de destino de dibujo, del tamaño de la ventana.
+`preparar` cambia el destino del contexto a ese mapa, pinta la escena sin los
+excluidos y devuelve el destino a la pantalla. `volcar` hace un `DrawBitmap`
+de ese mapa sobre el destino real.
+
+Sigue el estilo de `superficie.rs` (331 líneas), que ya crea y gestiona
+recursos de Direct2D con su `Drop`. **Dos reglas que no puedes saltarte:**
+
+1. Cada bloque `unsafe` con su `// SAFETY:` explicando la precondición. El
+   crate lleva `#![deny(clippy::undocumented_unsafe_blocks)]`.
+2. `soltar()` tiene que dejar caer el bitmap de verdad (`= None`), no
+   marcarlo como inválido. Si no, los 8 MB se quedan vivos entre gestos y el
+   presupuesto de copias vivas se incumple en reposo, que es justo donde más
+   duele.
+
+Las pruebas de esta parte van marcadas `#[ignore]` con el motivo escrito,
+como ya hacen las de bandeja y atajos: necesitan un dispositivo Direct3D y
+`windows-latest` no lo ofrece de forma fiable.
+
+- [ ] **Paso 4: Úsala desde la ventana**
+
+En `ventana_editor.rs`:
+
+```rust
+// Al pulsar, si hay algo que se va a mover.
+if !gesto.seleccion.esta_vacia() && !gesto.en_reposo() {
+    capa.preparar(&mut motor, estampa_de(&camara, tamano, &gesto.seleccion))?;
+}
+// En cada fotograma del gesto.
+if capa.volcar(&mut motor, &ahora) {
+    pintar_solo(&mut motor, &escena, gesto.seleccion.ids());
+} else {
+    pintar(&mut motor, &escena, &camara, &gesto, &mut cache, &rejilla);
+}
+// Al soltar o al cancelar.
+capa.soltar();
+```
+
+Fíjate en que `volcar` devuelve `bool`: si la capa ya no vale —porque se
+encuadró a mitad del gesto—, se pinta todo como siempre. **Nunca** hay que
+repintar la capa a mitad de un arrastre: eso sería pagar el precio completo en
+el peor momento.
+
+- [ ] **Paso 5: Cierra y commit**
+
+```
+cargo test --workspace -- --test-threads=1
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+```bash
+git add crates/pixpin-render/src/capa_estatica.rs crates/pixpin-render/src/lib.rs apps/pixpin/src/ventana_editor.rs
+git commit -m "La capa estatica: pintar una vez lo que no se mueve
+
+Mientras se arrastra un elemento, los otros 7.999 no cambian. En una iGPU
+con memoria compartida, pintarlos una vez a un mapa de bits y copiarlo es
+la diferencia entre arrastrar y ver arrastrar.
+
+La decision que lo simplifica todo: la capa solo vive durante un gesto.
+Cachear siempre e ir invalidando obligaria a saber que ha cambiado en la
+escena en cada fotograma, y acabaria costando lo que ahorra. Asi, fuera
+de un gesto no hay nada que invalidar porque no hay capa, y durante el
+gesto lo unico que cambia es lo seleccionado, que es lo que se excluye.
+
+La politica —cuando vale la capa— es pura y se prueba sin GPU. Lo que
+toca Direct2D va marcado #[ignore] como el resto de lo que necesita
+escritorio.
+
+soltar() deja caer el bitmap de verdad y no lo marca como invalido: si no,
+los 8 MB se quedarian vivos entre gestos y el presupuesto de copias vivas
+se incumpliria en reposo, que es donde mas duele."
+```
+
+---
+
+## Tarea 15: Contar asignaciones y medir de verdad
+
+La última, y la que decide si todo lo anterior sirvió de algo.
+
+**Ficheros:**
+- Crear: `crates/pixpin-motor2d/tests/asignaciones.rs`
+- Crear: `medidas/2026-09-06-editor-avanzado.md`
+- Prueba: el propio fichero de pruebas
+
+### Por qué esto es una tarea y no un apéndice
+
+Dos hechos encontrados al planificar:
+
+1. **El asignador que cuenta no existe.** El documento de rendimiento pone
+   «asignaciones en el camino caliente: 0, carril automático» en su tabla de
+   presupuesto, y no hay nada que lo mida.
+2. **La máquina suelo nunca se ha medido.** Las nueve mediciones del proyecto
+   se llaman todas `equipo-desarrollo`.
+
+- [ ] **Paso 1: Escribe el asignador que cuenta**
+
+Va en `tests/` y no en `src/` a propósito: un `#[global_allocator]` afecta a
+todo el binario, y no queremos uno en el programa de verdad.
+
+```rust
+//! Cuantas veces pide memoria el camino caliente.
+//!
+//! El documento de rendimiento pone «asignaciones en el camino caliente: 0»
+//! en su tabla de presupuesto, y hasta ahora no habia nada que lo midiera.
+//!
+//! El camino caliente es uno solo: **mover el raton mientras se dibuja**.
+//! Tiene el unico plazo sagrado del editor —un fotograma del refresco real,
+//! 16 ms a 60 Hz— y es donde una asignacion se nota, porque el asignador
+//! puede irse al sistema operativo en el peor momento.
+//!
+//! Esto vive en `tests/` y no en `src/` porque un `#[global_allocator]`
+//! afecta a todo el binario: no queremos uno en el programa de verdad.
+
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static VECES: AtomicUsize = AtomicUsize::new(0);
+static CONTANDO: AtomicUsize = AtomicUsize::new(0);
+
+struct Contador;
+
+// SAFETY: se delega todo en `System`, que cumple el contrato de
+// `GlobalAlloc`. Lo unico anadido es un contador atomico, que no toca la
+// memoria devuelta ni cambia el puntero.
+unsafe impl GlobalAlloc for Contador {
+    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
+        if CONTANDO.load(Ordering::Relaxed) == 1 {
+            VECES.fetch_add(1, Ordering::Relaxed);
+        }
+        // SAFETY: mismo `Layout` que nos han dado.
+        unsafe { System.alloc(l) }
+    }
+
+    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
+        // SAFETY: el puntero y el layout vienen de nuestro `alloc`.
+        unsafe { System.dealloc(p, l) }
+    }
+
+    unsafe fn realloc(&self, p: *mut u8, l: Layout, nuevo: usize) -> *mut u8 {
+        // Reasignar tambien cuenta: es lo que hace un `Vec` al crecer, y es
+        // justo lo que esta prueba viene a cazar.
+        if CONTANDO.load(Ordering::Relaxed) == 1 {
+            VECES.fetch_add(1, Ordering::Relaxed);
+        }
+        // SAFETY: el puntero y el layout vienen de nuestro `alloc`.
+        unsafe { System.realloc(p, l, nuevo) }
+    }
+}
+
+#[global_allocator]
+static ASIGNADOR: Contador = Contador;
+
+/// Cuenta las asignaciones que hace `f`.
+///
+/// Un solo hilo: las pruebas de este proyecto corren con `--test-threads=1`
+/// justamente porque varias toman recursos globales, y el contador es uno
+/// mas.
+fn contando<T>(f: impl FnOnce() -> T) -> (T, usize) {
+    VECES.store(0, Ordering::Relaxed);
+    CONTANDO.store(1, Ordering::Relaxed);
+    let r = f();
+    CONTANDO.store(0, Ordering::Relaxed);
+    (r, VECES.load(Ordering::Relaxed))
+}
+```
+
+- [ ] **Paso 2: Escribe las pruebas de presupuesto**
+
+```rust
+use pixpin_motor2d::escena::Escena;
+use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
+use pixpin_motor2d::vector::Punto2;
+
+#[test]
+fn mover_el_raton_dibujando_no_asigna_memoria() {
+    // La puerta que faltaba. Si esto falla, hay un `Vec` creciendo o un
+    // `to_vec()` colado en el camino caliente.
+    let mut escena = Escena::nueva();
+    let mut gesto = Gesto::nuevo();
+    gesto.herramienta = Herramienta::Lapiz;
+
+    // Empezar el trazo SI asigna: crea el elemento y reserva sus puntos.
+    // Eso pasa una vez por trazo, no una vez por aviso del raton.
+    gesto.evento(
+        EventoGesto::Pulsar { p: Punto2::nuevo(0.0, 0.0), shift: false, alt: false },
+        &mut escena,
+        1.0,
+    );
+
+    let (_, veces) = contando(|| {
+        for i in 1..400 {
+            gesto.evento(
+                EventoGesto::Mover {
+                    p: Punto2::nuevo(i as f32, (i % 7) as f32),
+                    shift: false,
+                    alt: false,
+                },
+                &mut escena,
+                1.0,
+            );
+        }
+    });
+
+    assert_eq!(veces, 0, "el camino caliente asigno {veces} veces");
+}
+
+#[test]
+fn arrastrar_una_seleccion_tampoco_asigna() {
+    // Arrastrar es tan camino caliente como dibujar, y es donde un
+    // `.to_vec()` sobre los ids de la seleccion se cuela con mas facilidad:
+    // parece necesario por el prestamo y no lo es.
+    use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+
+    let mut escena = Escena::nueva();
+    let mut ids = Vec::new();
+    for i in 0..20 {
+        ids.push(escena.anadir(Elemento {
+            id: 0,
+            figura: Figura::Rectangulo,
+            x: i as f32 * 5.0,
+            y: 0.0,
+            ancho: 40.0,
+            alto: 40.0,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: Some(ColorRgba::opaco(1.0, 0.0, 0.0)),
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+        }));
+    }
+
+    let mut gesto = Gesto::nuevo();
+    gesto.herramienta = Herramienta::Mano;
+    gesto.seleccion.poner_todos(ids);
+
+    // Pulsar SI asigna: abre el paso y guarda una instantanea por elemento.
+    // Eso pasa una vez por gesto.
+    gesto.evento(
+        EventoGesto::Pulsar { p: Punto2::nuevo(10.0, 10.0), shift: false, alt: false },
+        &mut escena,
+        1.0,
+    );
+
+    let (_, veces) = contando(|| {
+        for i in 1..400 {
+            gesto.evento(
+                EventoGesto::Mover {
+                    p: Punto2::nuevo(10.0 + i as f32, 10.0),
+                    shift: false,
+                    alt: false,
+                },
+                &mut escena,
+                1.0,
+            );
+        }
+    });
+
+    assert_eq!(veces, 0, "arrastrar asigno {veces} veces");
+}
+
+#[test]
+fn mover_el_raton_en_reposo_tampoco_asigna() {
+    // Pasar el raton por encima calcula el cursor, que consulta tiradores y
+    // picado. Es casi tan frecuente como dibujar.
+    let mut escena = Escena::nueva();
+    let mut gesto = Gesto::nuevo();
+    gesto.herramienta = Herramienta::Mano;
+
+    let (_, veces) = contando(|| {
+        for i in 0..400 {
+            gesto.evento(
+                EventoGesto::Mover {
+                    p: Punto2::nuevo(i as f32, 0.0),
+                    shift: false,
+                    alt: false,
+                },
+                &mut escena,
+                1.0,
+            );
+        }
+    });
+
+    assert_eq!(veces, 0, "pasar el raton asigno {veces} veces");
+}
+
+#[test]
+fn encuadrar_sesenta_fotogramas_solo_calcula_la_geometria_una_vez() {
+    // No es una prueba de tiempo —eso depende de la maquina— sino de
+    // comportamiento: encuadrar no cambia el aumento, asi que no debe
+    // invalidar nada. Es lo que hace que arrastrar el lienzo con ocho mil
+    // elementos no cueste nada.
+    use pixpin_motor2d::cache::Cache;
+    use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+
+    const CUANTOS: u64 = 500;
+    const FOTOGRAMAS: u64 = 60;
+
+    let mut escena = Escena::nueva();
+    for i in 0..CUANTOS {
+        escena.anadir(Elemento {
+            id: 0,
+            figura: Figura::Rectangulo,
+            x: i as f32 * 30.0,
+            y: 0.0,
+            ancho: 20.0,
+            alto: 20.0,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: None,
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: (i + 1) as u32,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+        });
+    }
+
+    let mut cache = Cache::nueva();
+    for _ in 0..FOTOGRAMAS {
+        // Encuadrar mueve la camara pero NO el aumento: el zoom que se le
+        // pasa a la cache es el mismo en los sesenta fotogramas.
+        for e in escena.visibles() {
+            cache.ordenes(e, 1.0);
+        }
+    }
+
+    assert_eq!(cache.fallos(), CUANTOS, "solo el primer fotograma calcula");
+    assert_eq!(cache.aciertos(), CUANTOS * (FOTOGRAMAS - 1));
+}
+```
+
+Si te sale un número distinto de 500 fallos, la caché se está invalidando por
+algo que no debería: mira el nivel de detalle.
+
+- [ ] **Paso 3: Si alguna falla, arréglalo donde toca**
+
+Los sospechosos, por orden de probabilidad:
+
+| Síntoma | Causa casi segura |
+|---|---|
+| Asigna una vez cada pocos avisos | Un `Vec` creciendo: falta un `with_capacity` |
+| Asigna una vez por aviso | Un `to_vec()` o un `collect()` en el camino caliente |
+| Asigna en reposo | `cursor_en` construyendo `Tiradores`, que tiene un array fijo pero llama a `Seleccion::caja` |
+
+**El arreglo va en el motor, nunca en la prueba.** Si te ves tentado de subir
+el número esperado de cero a «unas pocas», para y piensa: el presupuesto dice
+cero, y cero es comprobable.
+
+- [ ] **Paso 4: Mide, y escribe lo que salga**
+
+Crea `medidas/2026-09-06-editor-avanzado.md`. Mide **cuatro cosas**, con la
+escena de verdad —un `.pixpin` del usuario, no una inventada— y también con
+carga sintética:
+
+| Qué | Cómo |
+|---|---|
+| Latencia de trazo | Tiempo entre `WM_MOUSEMOVE` y el fin del `Present`, en el peor de 500 avisos |
+| Fotogramas al arrastrar | Con 8.000 y con 20.000 elementos, con y sin capa estática |
+| RAM en reposo | Con el editor abierto y sin tocar nada |
+| RAM en pico | Arrastrando una selección de 500 elementos |
+
+Y hazlo **dos veces**: con el nivel `Completo` y con **`Ligero` forzado** desde
+`pixpinmax.toml`. La decisión D15 dice con estas palabras que esa anulación
+«no es un lujo: es lo que permite ejercitar y medir la ruta ligera en
+cualquier máquina».
+
+**Y el informe tiene que decir lo que es.** Empieza el documento con esto,
+literalmente:
+
+> **Medido en el equipo de desarrollo** (Intel Core i7-10510U, 4 núcleos
+> físicos, 15,8 GB de RAM, Intel UHD + NVIDIA MX250, Windows 11), **no en la
+> máquina suelo.** El usuario no tiene el i3 de 2012 a mano. La carga
+> sintética de 8.000 y 20.000 elementos busca acercarse, pero **no sustituye
+> la medición del suelo, que sigue pendiente.**
+>
+> Un riesgo que este carril no puede cubrir: este equipo es un Comet Lake
+> **con AVX2**. Un binario compilado con `target-cpu=native` funcionaría aquí
+> perfectamente y moriría en el i3 con instrucción ilegal. Eso no se pilla
+> midiendo, sino vigilando la configuración de compilación, y por eso D17
+> fija el baseline en `x86-64` explícito.
+
+Sigue el formato de los nueve informes que ya hay en `medidas/`.
+
+- [ ] **Paso 5: Cierra y commit**
+
+```
+cargo test --workspace -- --test-threads=1
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+```bash
+git add crates/pixpin-motor2d/tests/asignaciones.rs medidas/2026-09-06-editor-avanzado.md
+git commit -m "Contar asignaciones, y medir diciendo donde se midio
+
+Dos huecos encontrados al planificar. El documento de rendimiento pone
+«asignaciones en el camino caliente: 0, carril automatico» en su tabla de
+presupuesto y no habia nada que lo midiera. Y las nueve mediciones del
+proyecto se llaman todas equipo-desarrollo: la maquina suelo nunca se ha
+medido.
+
+El asignador que cuenta vive en tests/ y no en src/ porque un
+global_allocator afecta a todo el binario, y no queremos uno en el
+programa de verdad. Cuenta tambien las reasignaciones, que es lo que hace
+un Vec al crecer y justo lo que la prueba viene a cazar.
+
+El usuario no tiene el i3 de 2012 a mano, asi que se mide aqui con Ligero
+forzado y carga sintetica de 8.000 y 20.000 elementos. Y el informe lo
+dice con todas las letras: medido en el equipo de desarrollo, no en el
+suelo, y la del suelo sigue pendiente. Un numero medido en el sitio
+equivocado y presentado como bueno es peor que no tenerlo."
+```
+
+---
+
+## Cuando esté todo
+
+**Lo que hay que poder hacer, y no se podía antes de empezar:**
+
+1. Seleccionar varios elementos, a mano o con marquesina.
+2. Redimensionarlos por cualquiera de los ocho tiradores, girado o no, sin
+   que la esquina anclada se mueva.
+3. Girarlos, sueltos o en conjunto, a saltos de 15° con `Shift`.
+4. Deshacer un arrastre entero con un solo `Ctrl+Z`.
+5. Cancelar un arrastre a mitad con `Escape`.
+6. Agrupar, alinear y repartir.
+7. Abrir un plano hecho en el móvil con sus grupos intactos, y devolverlo.
+
+**Lo que queda fuera y dónde va:**
+
+| Qué | Dónde |
+|---|---|
+| Filtro de un euro, pulso del trazo, espina Catmull-Rom | Segunda entrega del editor |
+| Escribir texto **dentro del editor** (el anotador ya lo tiene) | Segunda entrega del editor |
+| Las veinte herramientas que faltan | Fase B de `2026-09-06-android-a-windows.md` |
+| Que el anotador y el pin hereden tiradores e historial | Decisión aparte |
+| Abrir un `.pixpin` desde el editor | Fase A/C del plan maestro |
+| El croquis 3D | Fase D |
+| La sincronización por WiFi | Aplazada por el usuario |
