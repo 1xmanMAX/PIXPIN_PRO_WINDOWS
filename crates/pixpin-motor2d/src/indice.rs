@@ -22,7 +22,7 @@
 //! jamas **de menos**. Un elemento que no salga de aqui es un elemento que
 //! desaparece de la pantalla sin ningun error visible.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[cfg(test)]
 use crate::elemento::Elemento;
@@ -77,10 +77,10 @@ impl Rejilla {
     /// reconstruyera, seria mas cara que la fuerza bruta que viene a
     /// evitar.
     pub fn sincronizar(&mut self, escena: &Escena) {
-        let mut vistos: Vec<u64> = Vec::with_capacity(escena.elementos.len());
+        let mut vistos: HashSet<u64> = HashSet::with_capacity(escena.elementos.len());
 
         for e in &escena.elementos {
-            vistos.push(e.id);
+            vistos.insert(e.id);
             let cambio = match self.versiones.get(&e.id) {
                 Some(v) => *v != e.version,
                 None => true,
@@ -298,6 +298,34 @@ mod pruebas {
             rejilla
                 .candidatos((-100.0, -100.0, 100.0, 100.0))
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn un_elemento_restaurado_vuelve_a_la_rejilla() {
+        // Deshacer un borrado es exactamente esto: restaurar sube la
+        // version igual que borrar, y la rejilla tiene que volver a
+        // apuntar el elemento o desaparece de la pantalla sin explicacion.
+        let mut escena = Escena::nueva();
+        let id = escena.anadir(rect(1, 0.0, 0.0, 10.0, 10.0));
+        let mut rejilla = Rejilla::nueva();
+        rejilla.sincronizar(&escena);
+
+        escena.borrar(id);
+        rejilla.sincronizar(&escena);
+        assert!(
+            rejilla
+                .candidatos((-100.0, -100.0, 100.0, 100.0))
+                .is_empty(),
+            "borrado, no deberia estar"
+        );
+
+        escena.restaurar(id);
+        rejilla.sincronizar(&escena);
+        assert_eq!(
+            rejilla.candidatos((-100.0, -100.0, 100.0, 100.0)),
+            vec![id],
+            "restaurado, deberia volver a salir"
         );
     }
 
