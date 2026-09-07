@@ -24,6 +24,7 @@ pub mod escena;
 pub mod excalidraw;
 pub mod formas;
 pub mod formato;
+pub mod gesto;
 pub mod impacto;
 pub mod indice;
 pub mod pintado;
