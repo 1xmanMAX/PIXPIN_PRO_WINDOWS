@@ -26,6 +26,7 @@ pub mod formato;
 pub mod impacto;
 pub mod pintado;
 pub mod seleccion;
+pub mod transformar;
 pub mod trazo;
 pub mod vector;
 
