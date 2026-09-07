@@ -116,6 +116,66 @@ pub fn elemento_en(elementos: &[Elemento], p: Punto2) -> Option<u64> {
     elementos.iter().rev().find(|e| toca(e, p)).map(|e| e.id)
 }
 
+/// Las cuatro esquinas de la caja del elemento, ya giradas.
+///
+/// En orden: noroeste, noreste, sureste, suroeste. Es lo que hace falta
+/// para saber si cabe dentro de algo: la caja sin girar de un cuadrado de
+/// 100 girado 45 grados mide 141 en diagonal, y usarla daria por dentro
+/// cosas que se salen.
+pub fn esquinas_giradas(e: &Elemento) -> [Punto2; 4] {
+    let (x0, y0, x1, y1) = e.caja();
+    let c = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+    [
+        Punto2::nuevo(x0, y0),
+        Punto2::nuevo(x1, y0),
+        Punto2::nuevo(x1, y1),
+        Punto2::nuevo(x0, y1),
+    ]
+    .map(|p| {
+        if e.angulo == 0.0 {
+            p
+        } else {
+            p.girar(c, e.angulo)
+        }
+    })
+}
+
+/// Todos los que tocan el punto, **de arriba abajo**.
+///
+/// El orden de la lista es el de pintado —el ultimo se pinta encima—, asi
+/// que se recorre al reves: el de encima va primero, que es el que el
+/// usuario cree que esta tocando.
+pub fn elementos_en(elementos: &[Elemento], p: Punto2) -> Vec<u64> {
+    elementos
+        .iter()
+        .rev()
+        .filter(|e| toca(e, p))
+        .map(|e| e.id)
+        .collect()
+}
+
+/// Los que caben **enteros** dentro de la caja. Es la marquesina (D29).
+///
+/// Enteros y no «los que toquen» a proposito: con trazos largos, tocar
+/// selecciona cosas que el usuario no ve venir. Un trazo que cruza la
+/// pantalla entraria en cualquier marquesina que roce su camino, y el
+/// usuario acabaria moviendo medio dibujo sin saber por que.
+pub fn dentro_de(elementos: &[Elemento], caja: (f32, f32, f32, f32)) -> Vec<u64> {
+    let (mx0, my0, mx1, my1) = caja;
+    let (mx0, mx1) = (mx0.min(mx1), mx0.max(mx1));
+    let (my0, my1) = (my0.min(my1), my0.max(my1));
+    elementos
+        .iter()
+        .filter(|e| !e.borrado)
+        .filter(|e| {
+            esquinas_giradas(e)
+                .iter()
+                .all(|q| q.x >= mx0 && q.x <= mx1 && q.y >= my0 && q.y <= my1)
+        })
+        .map(|e| e.id)
+        .collect()
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -139,6 +199,7 @@ mod pruebas {
             semilla: 1,
             version: 0,
             borrado: false,
+            grupos: Vec::new(),
         }
     }
 
@@ -290,5 +351,176 @@ mod pruebas {
         };
         assert!(toca(&e, Punto2::nuevo(200.0, 150.0)));
         assert!(!toca(&e, Punto2::nuevo(500.0, 400.0)));
+    }
+
+    #[test]
+    fn la_marquesina_coge_lo_que_esta_entero_dentro_y_no_lo_que_toca() {
+        // D29. Con trazos largos, «lo que toque» selecciona cosas que el
+        // usuario no ve venir: un trazo de dos metros que cruza la pantalla
+        // entraria en cualquier marquesina que roce su camino.
+        let dentro = Elemento {
+            x: 10.0,
+            y: 10.0,
+            ancho: 20.0,
+            alto: 20.0,
+            ..base()
+        };
+        let a_medias = Elemento {
+            x: 90.0,
+            y: 10.0,
+            ancho: 40.0,
+            alto: 20.0,
+            ..base()
+        };
+        let fuera = Elemento {
+            x: 500.0,
+            y: 500.0,
+            ancho: 10.0,
+            alto: 10.0,
+            ..base()
+        };
+        let mut lista = vec![dentro, a_medias, fuera];
+        for (i, e) in lista.iter_mut().enumerate() {
+            e.id = i as u64 + 1;
+        }
+
+        let cogidos = dentro_de(&lista, (0.0, 0.0, 100.0, 100.0));
+        assert_eq!(cogidos, vec![1], "solo el que cabe entero");
+    }
+
+    #[test]
+    fn un_elemento_girado_cuenta_por_sus_esquinas_giradas() {
+        // Un cuadrado de 100 girado 45 grados mide 141 en diagonal: cabe en su
+        // caja sin girar pero NO en una marquesina justa.
+        use std::f32::consts::FRAC_PI_4;
+        let e = Elemento {
+            id: 1,
+            x: 0.0,
+            y: 0.0,
+            ancho: 100.0,
+            alto: 100.0,
+            angulo: FRAC_PI_4,
+            ..base()
+        };
+        let lista = vec![e];
+
+        assert!(
+            dentro_de(&lista, (0.0, 0.0, 100.0, 100.0)).is_empty(),
+            "girado, se sale de su propia caja"
+        );
+        assert_eq!(
+            dentro_de(&lista, (-30.0, -30.0, 130.0, 130.0)),
+            vec![1],
+            "con sitio de sobra, si"
+        );
+    }
+
+    #[test]
+    fn la_marquesina_no_coge_los_borrados() {
+        let mut a = Elemento {
+            id: 1,
+            x: 0.0,
+            y: 0.0,
+            ancho: 10.0,
+            alto: 10.0,
+            ..base()
+        };
+        a.borrado = true;
+        let lista = vec![a];
+        assert!(dentro_de(&lista, (-100.0, -100.0, 100.0, 100.0)).is_empty());
+    }
+
+    #[test]
+    fn la_marquesina_funciona_igual_arrastrada_en_cualquier_direccion() {
+        // La marquesina se arrastra en cualquier direccion, y de derecha a
+        // izquierda o de abajo a arriba llega con x1 < x0 o y1 < y0. La
+        // normalizacion debe asegurar que da el mismo resultado.
+        let dentro = Elemento {
+            id: 1,
+            x: 10.0,
+            y: 10.0,
+            ancho: 20.0,
+            alto: 20.0,
+            ..base()
+        };
+        let fuera = Elemento {
+            id: 2,
+            x: 500.0,
+            y: 500.0,
+            ancho: 10.0,
+            alto: 10.0,
+            ..base()
+        };
+        let lista = vec![dentro, fuera];
+
+        let normal = dentro_de(&lista, (0.0, 0.0, 100.0, 100.0));
+        let invertido = dentro_de(&lista, (100.0, 100.0, 0.0, 0.0));
+        assert_eq!(
+            normal, invertido,
+            "el sentido del arrastre no debe cambiar el resultado"
+        );
+    }
+
+    #[test]
+    fn elementos_en_los_devuelve_de_arriba_abajo() {
+        // El orden de la lista ES el orden de pintado: el ultimo se pinta
+        // encima. Al picar, el de encima va primero, que es lo que el usuario
+        // cree que esta tocando.
+        let a = Elemento {
+            id: 1,
+            x: 0.0,
+            y: 0.0,
+            ancho: 100.0,
+            alto: 100.0,
+            relleno: Some(ColorRgba::opaco(1.0, 0.0, 0.0)),
+            ..base()
+        };
+        let b = Elemento { id: 2, ..a.clone() };
+        let lista = vec![a, b];
+
+        assert_eq!(elementos_en(&lista, Punto2::nuevo(50.0, 50.0)), vec![2, 1]);
+    }
+
+    #[test]
+    fn elementos_en_y_elemento_en_estan_de_acuerdo() {
+        let a = Elemento {
+            id: 1,
+            x: 0.0,
+            y: 0.0,
+            ancho: 100.0,
+            alto: 100.0,
+            relleno: Some(ColorRgba::opaco(1.0, 0.0, 0.0)),
+            ..base()
+        };
+        let b = Elemento {
+            id: 2,
+            x: 20.0,
+            y: 20.0,
+            ..a.clone()
+        };
+        let lista = vec![a, b];
+        let p = Punto2::nuevo(50.0, 50.0);
+
+        assert_eq!(
+            elemento_en(&lista, p),
+            elementos_en(&lista, p).first().copied(),
+            "el primero de la lista es el que devuelve elemento_en"
+        );
+    }
+
+    #[test]
+    fn las_esquinas_giradas_de_un_elemento_sin_giro_son_su_caja() {
+        let e = Elemento {
+            x: 10.0,
+            y: 20.0,
+            ancho: 30.0,
+            alto: 40.0,
+            angulo: 0.0,
+            ..base()
+        };
+        let c = esquinas_giradas(&e);
+        let (x0, y0, x1, y1) = e.caja();
+        assert_eq!(c[0], Punto2::nuevo(x0, y0));
+        assert_eq!(c[2], Punto2::nuevo(x1, y1));
     }
 }

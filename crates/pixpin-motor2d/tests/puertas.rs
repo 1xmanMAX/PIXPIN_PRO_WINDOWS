@@ -41,6 +41,7 @@ fn elemento(i: u64) -> Elemento {
         semilla: (i as u32 * 7919) | 1,
         version: 0,
         borrado: false,
+        grupos: Vec::new(),
     }
 }
 

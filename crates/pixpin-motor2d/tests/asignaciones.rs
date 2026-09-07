@@ -1,0 +1,242 @@
+//! Cuantas veces pide memoria el camino caliente.
+//!
+//! El documento de rendimiento pone «asignaciones en el camino caliente: 0»
+//! en su tabla de presupuesto, y hasta ahora no habia nada que lo midiera.
+//!
+//! El camino caliente es uno solo: **mover el raton mientras se dibuja**.
+//! Tiene el unico plazo sagrado del editor —un fotograma del refresco real,
+//! 16 ms a 60 Hz— y es donde una asignacion se nota, porque el asignador
+//! puede irse al sistema operativo en el peor momento.
+//!
+//! Esto vive en `tests/` y no en `src/` porque un `#[global_allocator]`
+//! afecta a todo el binario: no queremos uno en el programa de verdad.
+
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static VECES: AtomicUsize = AtomicUsize::new(0);
+static CONTANDO: AtomicUsize = AtomicUsize::new(0);
+
+struct Contador;
+
+// SAFETY: se delega todo en `System`, que cumple el contrato de
+// `GlobalAlloc`. Lo unico anadido es un contador atomico, que no toca la
+// memoria devuelta ni cambia el puntero.
+unsafe impl GlobalAlloc for Contador {
+    unsafe fn alloc(&self, l: Layout) -> *mut u8 {
+        if CONTANDO.load(Ordering::Relaxed) == 1 {
+            VECES.fetch_add(1, Ordering::Relaxed);
+        }
+        // SAFETY: mismo `Layout` que nos han dado.
+        unsafe { System.alloc(l) }
+    }
+
+    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {
+        // SAFETY: el puntero y el layout vienen de nuestro `alloc`.
+        unsafe { System.dealloc(p, l) }
+    }
+
+    unsafe fn realloc(&self, p: *mut u8, l: Layout, nuevo: usize) -> *mut u8 {
+        // Reasignar tambien cuenta: es lo que hace un `Vec` al crecer, y es
+        // justo lo que esta prueba viene a cazar.
+        if CONTANDO.load(Ordering::Relaxed) == 1 {
+            VECES.fetch_add(1, Ordering::Relaxed);
+        }
+        // SAFETY: el puntero y el layout vienen de nuestro `alloc`.
+        unsafe { System.realloc(p, l, nuevo) }
+    }
+}
+
+#[global_allocator]
+static ASIGNADOR: Contador = Contador;
+
+/// Cuenta las asignaciones que hace `f`.
+///
+/// Un solo hilo: las pruebas de este proyecto corren con `--test-threads=1`
+/// justamente porque varias toman recursos globales, y el contador es uno
+/// mas.
+fn contando<T>(f: impl FnOnce() -> T) -> (T, usize) {
+    VECES.store(0, Ordering::Relaxed);
+    CONTANDO.store(1, Ordering::Relaxed);
+    let r = f();
+    CONTANDO.store(0, Ordering::Relaxed);
+    (r, VECES.load(Ordering::Relaxed))
+}
+
+use pixpin_motor2d::escena::Escena;
+use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
+use pixpin_motor2d::vector::Punto2;
+
+#[test]
+fn mover_el_raton_dibujando_no_asigna_memoria() {
+    // La puerta que faltaba. Si esto falla, hay un `Vec` creciendo o un
+    // `to_vec()` colado en el camino caliente.
+    let mut escena = Escena::nueva();
+    let mut gesto = Gesto::nuevo();
+    gesto.herramienta = Herramienta::Lapiz;
+
+    // Empezar el trazo SI asigna: crea el elemento y reserva sus puntos.
+    // Eso pasa una vez por trazo, no una vez por aviso del raton.
+    gesto.evento(
+        EventoGesto::Pulsar {
+            p: Punto2::nuevo(0.0, 0.0),
+            shift: false,
+            alt: false,
+        },
+        &mut escena,
+        1.0,
+    );
+
+    let (_, veces) = contando(|| {
+        for i in 1..400 {
+            gesto.evento(
+                EventoGesto::Mover {
+                    p: Punto2::nuevo(i as f32, (i % 7) as f32),
+                    shift: false,
+                    alt: false,
+                },
+                &mut escena,
+                1.0,
+            );
+        }
+    });
+
+    assert_eq!(veces, 0, "el camino caliente asigno {veces} veces");
+}
+
+#[test]
+fn arrastrar_una_seleccion_tampoco_asigna() {
+    // Arrastrar es tan camino caliente como dibujar, y es donde un
+    // `.to_vec()` sobre los ids de la seleccion se cuela con mas facilidad:
+    // parece necesario por el prestamo y no lo es.
+    use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+
+    let mut escena = Escena::nueva();
+    let mut ids = Vec::new();
+    for i in 0..20 {
+        ids.push(escena.anadir(Elemento {
+            id: 0,
+            figura: Figura::Rectangulo,
+            x: i as f32 * 5.0,
+            y: 0.0,
+            ancho: 40.0,
+            alto: 40.0,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: Some(ColorRgba::opaco(1.0, 0.0, 0.0)),
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+        }));
+    }
+
+    let mut gesto = Gesto::nuevo();
+    gesto.herramienta = Herramienta::Mano;
+    gesto.seleccion.poner_todos(ids);
+
+    // Pulsar SI asigna: abre el paso y guarda una instantanea por elemento.
+    // Eso pasa una vez por gesto.
+    gesto.evento(
+        EventoGesto::Pulsar {
+            p: Punto2::nuevo(10.0, 10.0),
+            shift: false,
+            alt: false,
+        },
+        &mut escena,
+        1.0,
+    );
+
+    let (_, veces) = contando(|| {
+        for i in 1..400 {
+            gesto.evento(
+                EventoGesto::Mover {
+                    p: Punto2::nuevo(10.0 + i as f32, 10.0),
+                    shift: false,
+                    alt: false,
+                },
+                &mut escena,
+                1.0,
+            );
+        }
+    });
+
+    assert_eq!(veces, 0, "arrastrar asigno {veces} veces");
+}
+
+#[test]
+fn mover_el_raton_en_reposo_tampoco_asigna() {
+    // Pasar el raton por encima calcula el cursor, que consulta tiradores y
+    // picado. Es casi tan frecuente como dibujar.
+    let mut escena = Escena::nueva();
+    let mut gesto = Gesto::nuevo();
+    gesto.herramienta = Herramienta::Mano;
+
+    let (_, veces) = contando(|| {
+        for i in 0..400 {
+            gesto.evento(
+                EventoGesto::Mover {
+                    p: Punto2::nuevo(i as f32, 0.0),
+                    shift: false,
+                    alt: false,
+                },
+                &mut escena,
+                1.0,
+            );
+        }
+    });
+
+    assert_eq!(veces, 0, "pasar el raton asigno {veces} veces");
+}
+
+#[test]
+fn encuadrar_sesenta_fotogramas_solo_calcula_la_geometria_una_vez() {
+    // No es una prueba de tiempo —eso depende de la maquina— sino de
+    // comportamiento: encuadrar no cambia el aumento, asi que no debe
+    // invalidar nada. Es lo que hace que arrastrar el lienzo con ocho mil
+    // elementos no cueste nada.
+    use pixpin_motor2d::cache::Cache;
+    use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+
+    const CUANTOS: u64 = 500;
+    const FOTOGRAMAS: u64 = 60;
+
+    let mut escena = Escena::nueva();
+    for i in 0..CUANTOS {
+        escena.anadir(Elemento {
+            id: 0,
+            figura: Figura::Rectangulo,
+            x: i as f32 * 30.0,
+            y: 0.0,
+            ancho: 20.0,
+            alto: 20.0,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: None,
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: (i + 1) as u32,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+        });
+    }
+
+    let mut cache = Cache::nueva();
+    for _ in 0..FOTOGRAMAS {
+        // Encuadrar mueve la camara pero NO el aumento: el zoom que se le
+        // pasa a la cache es el mismo en los sesenta fotogramas.
+        for e in escena.visibles() {
+            cache.ordenes(e, 1.0);
+        }
+    }
+
+    assert_eq!(cache.fallos(), CUANTOS, "solo el primer fotograma calcula");
+    assert_eq!(cache.aciertos(), CUANTOS * (FOTOGRAMAS - 1));
+}

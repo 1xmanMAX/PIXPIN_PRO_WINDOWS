@@ -60,6 +60,7 @@ mod pines;
 mod reproductor;
 mod scroll;
 mod ventana_ajustes;
+mod ventana_editor;
 
 use anyhow::{Context, Result};
 use overlay::{AccionFinal, ModoConfirmacion, Recursos, TextosBarra, ejecutar_overlay};
@@ -72,6 +73,14 @@ use pixpin_shell::{
 use pixpin_store::ajustes::PreferenciaNivel;
 use pixpin_store::{Almacen, Catalogo, Ubicacion, ajustes, comandos, idioma, rutas};
 use pixpin_ui::FormatoColorLupa;
+
+/// El identificador del «Editor» de la bandeja (tarea 11, el hito).
+///
+/// Ni pasa por `comandos::CATALOGO` (no tiene atajo, ni traduccion todavia:
+/// es lo minimo para poder probar el editor a mano) ni cae en el rango de
+/// las regiones guardadas (que empieza en `pixpin_store::regiones::PRIMER_ID`,
+/// 1000): un hueco propio evita chocar con cualquiera de los dos.
+const ID_VENTANA_EDITOR: u32 = 900;
 
 fn main() -> Result<()> {
     // Con panic = "abort" y sin consola, un panico moria MUDO: ni log ni
@@ -288,6 +297,11 @@ fn arrancar(
                 // pulsarse por inercia al buscar otra cosa.
                 .filter(|d| d.en_bandeja && d.comando != comandos::Comando::Salir)
                 .map(entrada)
+                // El editor avanzado (tarea 11): sin catalogo ni traduccion
+                // todavia, es lo minimo para abrirlo desde la bandeja y
+                // probarlo a mano. Abrir un `.pixpin` desde aqui es la
+                // tarea siguiente del plan maestro.
+                .chain(std::iter::once((ID_VENTANA_EDITOR, "Editor".to_string())))
                 .collect(),
             aparte: comandos::CATALOGO
                 .iter()
@@ -678,6 +692,15 @@ fn arrancar(
                 match hecho {
                     Ok(cuantos) => tracing::info!(cuantos, "ficheros abiertos como pines"),
                     Err(e) => tracing::warn!(?e, "no se pudieron abrir los ficheros"),
+                }
+                Continuar::Si
+            }
+            Evento::Menu(id) if id == ID_VENTANA_EDITOR => {
+                match ventana_editor::abrir(pixpin_motor2d::Escena::nueva()) {
+                    Ok(escena) => {
+                        tracing::info!(elementos = escena.cuantos_visibles(), "editor cerrado")
+                    }
+                    Err(e) => tracing::warn!(?e, "no se pudo abrir el editor"),
                 }
                 Continuar::Si
             }

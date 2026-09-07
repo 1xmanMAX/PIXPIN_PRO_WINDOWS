@@ -17,14 +17,21 @@
 
 pub mod aligerar;
 pub mod azar;
+pub mod cache;
 pub mod camara;
 pub mod elemento;
 pub mod escena;
 pub mod excalidraw;
 pub mod formas;
 pub mod formato;
+pub mod gesto;
 pub mod impacto;
+pub mod indice;
+pub mod organizar;
 pub mod pintado;
+pub mod seleccion;
+pub mod tiradores;
+pub mod transformar;
 pub mod trazo;
 pub mod vector;
 
@@ -35,10 +42,14 @@ pub use elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
 pub use escena::Escena;
 pub use formas::{elipse, linea, punta_flecha, rectangulo};
 pub use formato::{EXTENSION, ErrorFormato, cargar, guardar};
-pub use impacto::{TOLERANCIA, elemento_en, toca};
+pub use impacto::{TOLERANCIA, dentro_de, elemento_en, elementos_en, esquinas_giradas, toca};
+pub use organizar::{
+    Alineacion, Reparto, agrupar, al_fondo, al_frente, alinear, desagrupar, hermanos_de, repartir,
+};
 pub use pintado::{
     Orden, marco_de_seleccion, ordenes, ordenes_a_distancia, ordenes_de_escena,
     ordenes_de_escena_vista,
 };
+pub use seleccion::Seleccion;
 pub use trazo::{Ajustes, PuntoTrazo, contorno, linea_central, poligono};
 pub use vector::{Punto2, distancia_a_segmento};

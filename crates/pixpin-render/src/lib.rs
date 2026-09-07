@@ -10,9 +10,11 @@ pub mod motor;
 
 pub use motor::{Color, ErrorRender, MotorRender, validar_tamano_rgba};
 
+pub mod capa_estatica;
 pub mod lienzo;
 pub mod superficie;
 
 pub use superficie::Superficie;
 
+pub use capa_estatica::{CapaEstatica, Estampa, sigue_valiendo};
 pub use lienzo::{EstiloTexto, Pintor, RectF, Tramo};

@@ -24,40 +24,10 @@ pub const LUPA_POR_DEFECTO: f32 = 2.0;
 pub const LUPA_MINIMA: f32 = 1.5;
 pub const LUPA_MAXIMA: f32 = 8.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Herramienta {
-    /// Seleccionar y mover lo ya dibujado.
-    Mano,
-    Lapiz,
-    Resaltador,
-    Linea,
-    Flecha,
-    Rectangulo,
-    Elipse,
-    Texto,
-    /// Oscurece todo menos una zona (D51).
-    Foco,
-    /// Amplia alrededor del cursor. No deja rastro: es una vista (D52).
-    Lupa,
-    Borrador,
-}
-
-impl Herramienta {
-    /// Si la herramienta necesita un arrastre de verdad para producir algo.
-    /// El lapiz no: un clic deja un punto de tinta, que es lo que espera
-    /// cualquiera que haya usado un rotulador.
-    pub fn necesita_arrastre(self) -> bool {
-        !matches!(self, Herramienta::Lapiz | Herramienta::Texto)
-    }
-
-    /// Si lo que dibuja se guarda en el documento.
-    pub fn deja_rastro(self) -> bool {
-        !matches!(
-            self,
-            Herramienta::Mano | Herramienta::Lupa | Herramienta::Borrador
-        )
-    }
-}
+// La herramienta vive en el motor desde que la maquina del gesto se mudo
+// alli: quien decide que hace un clic tiene que saber que herramienta hay
+// puesta, y esa decision es logica pura, no interfaz.
+pub use pixpin_motor2d::gesto::Herramienta;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TeclaAnotador {
@@ -506,6 +476,7 @@ impl Anotador {
             semilla: self.semilla,
             version: 0,
             borrado: false,
+            grupos: Vec::new(),
         }
     }
 
@@ -606,6 +577,7 @@ impl Anotador {
             semilla: self.semilla,
             version: 0,
             borrado: false,
+            grupos: Vec::new(),
         })
     }
 }

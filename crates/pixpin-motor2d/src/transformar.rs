@@ -1,0 +1,781 @@
+//! Mover, escalar y girar. Puerto de `Transform.kt` del Android.
+//!
+//! # El problema del ancla
+//!
+//! Redimensionar tirando de una esquina significa que **la de enfrente no
+//! se mueve**. Sin giro es aritmetica de colegio. Con el elemento girado,
+//! la forma evidente esta mal:
+//!
+//! > Cambio `ancho` y `alto` -> el centro se desplaza -> el elemento se
+//! > dibuja girado **alrededor de un centro nuevo** -> la esquina anclada
+//! > se va.
+//!
+//! El usuario lo ve como que la figura «se escapa» al redimensionarla.
+//!
+//! # La formula
+//!
+//! Un elemento se dibuja girado `ang` alrededor de su centro, asi que un
+//! punto del mundo `q` es el punto local `q.girar(centro, -ang)`. Escalar
+//! es multiplicar el desplazamiento respecto al ancla y devolverlo:
+//!
+//! ```text
+//! nuevo(q) = ancla_mundo + R(ang) . ( (q_local - ancla_local) . (sx, sy) )
+//! ```
+//!
+//! Si `q` es el ancla, el desplazamiento es cero y el resultado es el ancla:
+//! **queda quieta por construccion, no por cuidado**.
+//!
+//! # La regla de los puntos
+//!
+//! `Elemento::caja()` calcula la caja **de los puntos** para lapiz,
+//! resaltador, linea y flecha. Por eso: toda transformacion que toque una
+//! figura con puntos, toca los puntos. Si solo se cambiara `ancho`, el
+//! trazo no escalaria y el marco se despegaria del dibujo. Es el mismo
+//! motivo por el que `Elemento::mover` ya mueve los puntos.
+
+use pixpin_geom::Tirador;
+
+use crate::elemento::{Elemento, Figura};
+use crate::vector::Punto2;
+
+/// Por debajo de esto no se aplasta: se voltea (D30).
+pub const MINIMO: f32 = 1.0;
+
+/// Quince grados, el salto de giro con `Shift`.
+pub const SALTO_GIRO: f32 = std::f32::consts::FRAC_PI_2 / 6.0;
+
+/// El centro de la caja de un elemento.
+fn centro_de(e: &Elemento) -> Punto2 {
+    let (x0, y0, x1, y1) = e.caja();
+    Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0)
+}
+
+/// Que ejes mueve cada tirador, y donde queda su ancla dentro de la caja
+/// en tantos por uno: `(0,0)` es la esquina noroeste, `(1,1)` la sureste.
+fn ancla_y_ejes(t: Tirador) -> (f32, f32, bool, bool) {
+    match t {
+        Tirador::NoroesteEsquina => (1.0, 1.0, true, true),
+        Tirador::NorteBorde => (0.5, 1.0, false, true),
+        Tirador::NoresteEsquina => (0.0, 1.0, true, true),
+        Tirador::EsteBorde => (0.0, 0.5, true, false),
+        Tirador::SuresteEsquina => (0.0, 0.0, true, true),
+        Tirador::SurBorde => (0.5, 0.0, false, true),
+        Tirador::SuroesteEsquina => (1.0, 0.0, true, true),
+        Tirador::OesteBorde => (1.0, 0.5, true, false),
+    }
+}
+
+/// Escala `e` arrastrando `tirador` hasta el punto `p` del mundo.
+///
+/// - `proporcional` (`Shift`): conserva la razon entre ancho y alto.
+/// - `desde_centro` (`Alt`): el ancla pasa a ser el centro.
+pub fn escalar(
+    e: &mut Elemento,
+    tirador: Tirador,
+    p: Punto2,
+    proporcional: bool,
+    desde_centro: bool,
+) {
+    let (x0, y0, x1, y1) = e.caja();
+    let (ancho, alto) = (x1 - x0, y1 - y0);
+    // Una caja degenerada no se puede escalar: dividir por cero daria NaN,
+    // y un NaN en la geometria borra el elemento de la pantalla sin error.
+    if ancho.abs() < f32::EPSILON || alto.abs() < f32::EPSILON {
+        return;
+    }
+    let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+    let ang = e.angulo;
+
+    let (ax, ay, mueve_x, mueve_y) = ancla_y_ejes(tirador);
+    let ancla_local = if desde_centro {
+        centro
+    } else {
+        Punto2::nuevo(x0 + ancho * ax, y0 + alto * ay)
+    };
+
+    // El cursor, en el marco propio del elemento.
+    let p_local = p.girar(centro, -ang);
+
+    // Cuanto se estira cada eje. El tirador que no mueve un eje lo deja a 1.
+    //
+    // Dos sutilezas. Con `desde_centro`, la referencia es media caja y no la
+    // caja entera: el cursor se aleja del centro, no del borde de enfrente.
+    // Y el `signo` existe porque el ancla puede estar a la derecha o abajo
+    // (tiradores del oeste y del norte): ahi, alejarse del ancla es ir hacia
+    // los negativos.
+    let mut sx = if mueve_x {
+        let ancla_a_borde = if desde_centro { ancho / 2.0 } else { ancho };
+        let signo = if ax > 0.5 { -1.0 } else { 1.0 };
+        (p_local.x - ancla_local.x) * signo / ancla_a_borde
+    } else {
+        1.0
+    };
+    let mut sy = if mueve_y {
+        let ancla_a_borde = if desde_centro { alto / 2.0 } else { alto };
+        let signo = if ay > 0.5 { -1.0 } else { 1.0 };
+        (p_local.y - ancla_local.y) * signo / ancla_a_borde
+    } else {
+        1.0
+    };
+
+    if proporcional && mueve_x && mueve_y {
+        // El que mas se ha movido manda, para que la figura siga al cursor
+        // por el eje en que el usuario esta tirando de verdad.
+        let k = if sx.abs() > sy.abs() {
+            sx.abs()
+        } else {
+            sy.abs()
+        };
+        sx = k * sx.signum();
+        sy = k * sy.signum();
+    }
+
+    // No se aplasta: se voltea (D30). El minimo se aplica al tamano final,
+    // conservando el signo, que es lo que produce el volteo.
+    let tope = |s: f32, largo: f32| -> f32 {
+        if (s * largo).abs() < MINIMO {
+            MINIMO / largo * if s < 0.0 { -1.0 } else { 1.0 }
+        } else {
+            s
+        }
+    };
+    let sx = tope(sx, ancho);
+    let sy = tope(sy, alto);
+
+    // Las figuras SIN puntos (rectangulo, elipse, foco, texto, imagen) no
+    // guardan geometria propia: su caja sale de `x/y/ancho/alto`, que se
+    // dibujan girados `ang` alrededor de su centro. Para ellas, `mapear` es
+    // la formula del encabezado tal cual: recibe un punto DEL MUNDO.
+    //
+    // Las figuras CON puntos (lapiz, resaltador, linea, flecha) son
+    // distintas: sus `puntos` se guardan en marco LOCAL (sin girar), y es
+    // quien dibuja el que aplica `ang` alrededor del centro de su caja para
+    // verlos en el mundo (asi lo trata ya `impacto::toca`). Pasarles esos
+    // puntos locales a `mapear` -que espera un punto de mundo y por eso
+    // empieza deshaciendo el giro- los des-gira una vez de mas: con
+    // `ang == 0` no se nota (deshacer un giro nulo no hace nada), pero con
+    // `ang != 0` manda el trazo a otro sitio.
+    match &mut e.figura {
+        Figura::Lapiz { puntos, .. }
+        | Figura::Resaltador { puntos }
+        | Figura::Linea { puntos }
+        | Figura::Flecha { puntos, .. } => {
+            // A(u): el escalado puro en marco local, respecto al ancla
+            // -tambien local-. Sin ningun giro de por medio: `u` ya esta en
+            // el marco en el que vive el ancla.
+            for q in puntos.iter_mut() {
+                q.x = ancla_local.x + (q.x - ancla_local.x) * sx;
+                q.y = ancla_local.y + (q.y - ancla_local.y) * sy;
+            }
+
+            // Ese escalado puro ya deja el ancla quieta en marco local, pero
+            // el centro de la caja de los puntos se ha desplazado -de `centro`
+            // a `c_A`-, y quien dibuja gira alrededor del centro ACTUAL. Sin
+            // corregir eso, lo que se ve queda girado alrededor del centro
+            // equivocado (el mismo problema de fondo que resuelve toda esta
+            // tarea, aqui otra vez en marco local).
+            //
+            // La correccion es una traslacion fija `k`, la misma para todos
+            // los puntos: sale de exigir que lo que se vea despues -los
+            // puntos finales girados `ang` alrededor de su propio centro
+            // nuevo- sea lo que la formula del encabezado manda ver. Con
+            // `ang == 0` la rotacion es la identidad y `k` sale cero, asi
+            // que no cambia nada de lo que ya funcionaba sin giro.
+            if !puntos.is_empty() {
+                let cx = (puntos.iter().map(|q| q.x).fold(f32::MAX, f32::min)
+                    + puntos.iter().map(|q| q.x).fold(f32::MIN, f32::max))
+                    / 2.0;
+                let cy = (puntos.iter().map(|q| q.y).fold(f32::MAX, f32::min)
+                    + puntos.iter().map(|q| q.y).fold(f32::MIN, f32::max))
+                    / 2.0;
+                let c_a = Punto2::nuevo(cx, cy);
+                let d = c_a.restar(centro);
+                let origen = Punto2::nuevo(0.0, 0.0);
+                let k = d.girar(origen, ang).restar(d);
+                for q in puntos.iter_mut() {
+                    *q = q.sumar(k);
+                }
+            }
+        }
+        _ => {
+            let ancla_mundo = ancla_local.girar(centro, ang);
+            let origen = Punto2::nuevo(0.0, 0.0);
+
+            // La formula del encabezado, en una sola funcion.
+            let mapear = |q: Punto2| -> Punto2 {
+                let ql = q.girar(centro, -ang);
+                let d = Punto2::nuevo((ql.x - ancla_local.x) * sx, (ql.y - ancla_local.y) * sy);
+                ancla_mundo.sumar(d.girar(origen, ang))
+            };
+
+            let centro_nuevo = mapear(centro);
+            e.ancho = (ancho * sx).abs();
+            e.alto = (alto * sy).abs();
+            e.x = centro_nuevo.x - e.ancho / 2.0;
+            e.y = centro_nuevo.y - e.alto / 2.0;
+        }
+    }
+
+    // Las figuras con puntos sacan `x/y/ancho/alto` de su propia caja, ya
+    // con los puntos movidos: es exacto por construccion. Multiplicar
+    // `ancho` por `sx` no sirve porque el grosor -que `caja()` suma como
+    // margen- no escala con el trazo: la extension se estira pero el
+    // margen no, y `ancho * sx` arrastra ese margen sin estirar tambien.
+    if e.puntos().is_some() {
+        let (nx0, ny0, nx1, ny1) = e.caja();
+        e.x = nx0;
+        e.y = ny0;
+        e.ancho = nx1 - nx0;
+        e.alto = ny1 - ny0;
+    }
+
+    e.tocar();
+}
+
+/// Gira `e` en `delta` radianes alrededor de `centro`.
+///
+/// Si `centro` es el suyo, gira sobre si mismo. Si es ajeno -el centro de
+/// una seleccion de varios- ademas orbita: es lo que hace que girar cinco
+/// elementos a la vez se vea como girar el conjunto.
+///
+/// Los `puntos` de un trazo estan en marco LOCAL: quien dibuja ya les
+/// aplica `e.angulo` alrededor de su centro. Girarlos aqui **ademas** de
+/// subir `e.angulo` cuenta la rotacion dos veces -al dibujar se deshace la
+/// mitad de lo que se penso que se habia girado-, asi que aqui los puntos
+/// solo se TRASLADAN por la orbita (`nuevo - propio`, que es un
+/// desplazamiento, no un giro); el giro entero lo aporta `e.angulo`. Con
+/// centro propio la orbita es cero y solo cambia el angulo, que es lo
+/// correcto.
+pub fn girar(e: &mut Elemento, centro: Punto2, delta: f32) {
+    let propio = centro_de(e);
+    let nuevo = propio.girar(centro, delta);
+    let t = nuevo.restar(propio);
+
+    match &mut e.figura {
+        Figura::Lapiz { puntos, .. }
+        | Figura::Resaltador { puntos }
+        | Figura::Linea { puntos }
+        | Figura::Flecha { puntos, .. } => {
+            for q in puntos.iter_mut() {
+                *q = q.sumar(t);
+            }
+        }
+        _ => {}
+    }
+
+    e.x += t.x;
+    e.y += t.y;
+    e.angulo += delta;
+    e.tocar();
+}
+
+/// El angulo del centro al punto, con **cero apuntando hacia arriba**.
+///
+/// Hacia arriba y no hacia la derecha porque el tirador de giro esta encima
+/// del elemento: con el cursor ahi mismo, el giro tiene que ser cero.
+pub fn angulo_hacia(centro: Punto2, p: Punto2) -> f32 {
+    let d = p.restar(centro);
+    d.x.atan2(-d.y)
+}
+
+/// Redondea a saltos de quince grados. Es lo que hace `Shift` al girar.
+pub fn a_saltos(angulo: f32) -> f32 {
+    (angulo / SALTO_GIRO).round() * SALTO_GIRO
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use crate::elemento::{ColorRgba, EstiloTrazo, Figura};
+    use std::f32::consts::{FRAC_PI_2, FRAC_PI_6, PI};
+
+    /// Un rectangulo de 100x50 con la esquina en el origen.
+    fn rect() -> Elemento {
+        Elemento {
+            id: 1,
+            figura: Figura::Rectangulo,
+            x: 0.0,
+            y: 0.0,
+            ancho: 100.0,
+            alto: 50.0,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: None,
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+        }
+    }
+
+    /// La esquina superior izquierda, ya en el mundo (girada).
+    fn esquina_no(e: &Elemento) -> Punto2 {
+        let (x0, y0, x1, y1) = e.caja();
+        let c = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        Punto2::nuevo(x0, y0).girar(c, e.angulo)
+    }
+
+    fn cerca(a: Punto2, b: Punto2, que: &str) {
+        assert!(
+            (a.x - b.x).abs() < 1e-3 && (a.y - b.y).abs() < 1e-3,
+            "{que}: esperaba ({}, {}), es ({}, {})",
+            b.x,
+            b.y,
+            a.x,
+            a.y
+        );
+    }
+
+    #[test]
+    fn escalar_por_una_esquina_deja_quieta_la_de_enfrente() {
+        let mut e = rect();
+        let ancla = esquina_no(&e);
+
+        escalar(
+            &mut e,
+            Tirador::SuresteEsquina,
+            Punto2::nuevo(200.0, 100.0),
+            false,
+            false,
+        );
+
+        assert_eq!(e.ancho, 200.0);
+        assert_eq!(e.alto, 100.0);
+        cerca(esquina_no(&e), ancla, "la esquina anclada");
+    }
+
+    /// El punto del mundo al que hay que arrastrar para hacer, en un
+    /// elemento girado `angulo`, **el mismo gesto** que `local` haria en uno
+    /// sin girar.
+    ///
+    /// Sin esto, las pruebas de abajo arrastrarian al mismo punto del mundo
+    /// para todos los angulos, que no es el mismo gesto: a 90 grados ese
+    /// punto cae al otro lado del ancla y lo que sale es un volteo, no un
+    /// escalado. Y tras un volteo la esquina que se queda quieta ya no es la
+    /// noroeste, asi que la comprobacion dejaria de tener sentido.
+    fn arrastre_equivalente(local: Punto2, centro: Punto2, angulo: f32) -> Punto2 {
+        local.girar(centro, angulo)
+    }
+
+    #[test]
+    fn con_el_elemento_girado_la_esquina_anclada_sigue_sin_moverse() {
+        // ESTA es la prueba que justifica la tarea entera. La forma
+        // evidente —cambiar ancho/alto y volver a girar— la falla, porque
+        // el centro se desplaza y el elemento acaba girado alrededor de un
+        // centro nuevo.
+        for angulo in [0.0, FRAC_PI_6, FRAC_PI_2, PI, 2.6] {
+            let mut e = rect();
+            e.angulo = angulo;
+            let centro = Punto2::nuevo(50.0, 25.0);
+            let ancla = esquina_no(&e);
+            let destino = arrastre_equivalente(Punto2::nuevo(180.0, 90.0), centro, angulo);
+
+            escalar(&mut e, Tirador::SuresteEsquina, destino, false, false);
+
+            cerca(esquina_no(&e), ancla, &format!("a {angulo} radianes"));
+            assert!(
+                (e.ancho - 180.0).abs() < 1e-2,
+                "ancho a {angulo}: {}",
+                e.ancho
+            );
+            assert!((e.alto - 90.0).abs() < 1e-2, "alto a {angulo}: {}", e.alto);
+        }
+    }
+
+    #[test]
+    fn escalar_y_devolver_deja_el_elemento_donde_estaba() {
+        for angulo in [0.0, FRAC_PI_6, FRAC_PI_2, PI] {
+            let mut e = rect();
+            e.angulo = angulo;
+            let centro = Punto2::nuevo(50.0, 25.0);
+            let se_original = arrastre_equivalente(Punto2::nuevo(100.0, 50.0), centro, angulo);
+            let lejos = arrastre_equivalente(Punto2::nuevo(300.0, 150.0), centro, angulo);
+
+            escalar(&mut e, Tirador::SuresteEsquina, lejos, false, false);
+            escalar(&mut e, Tirador::SuresteEsquina, se_original, false, false);
+
+            assert!(
+                (e.ancho - 100.0).abs() < 1e-2,
+                "ancho a {angulo}: {}",
+                e.ancho
+            );
+            assert!((e.alto - 50.0).abs() < 1e-2, "alto a {angulo}: {}", e.alto);
+        }
+    }
+
+    #[test]
+    fn cruzar_el_ancla_con_el_elemento_girado_voltea_sin_degenerar() {
+        // El caso que las dos pruebas de arriba evitan a proposito, aqui
+        // comprobado de frente: arrastrar al otro lado del ancla en un
+        // elemento girado voltea. Lo que se exige es que el resultado siga
+        // siendo un elemento valido —sin cero, sin NaN— y no que la esquina
+        // noroeste siga quieta, porque tras un volteo esa ya no es el ancla.
+        for angulo in [0.0, FRAC_PI_2, 2.6] {
+            let mut e = rect();
+            e.angulo = angulo;
+            let centro = Punto2::nuevo(50.0, 25.0);
+            let detras = arrastre_equivalente(Punto2::nuevo(-120.0, 90.0), centro, angulo);
+
+            escalar(&mut e, Tirador::SuresteEsquina, detras, false, false);
+
+            assert!(e.ancho >= MINIMO, "no se aplasta a {angulo}: {}", e.ancho);
+            assert!(e.alto >= MINIMO, "ni de alto a {angulo}: {}", e.alto);
+            assert!(e.x.is_finite() && e.y.is_finite(), "sin NaN a {angulo}");
+        }
+    }
+
+    #[test]
+    fn un_tirador_de_lado_solo_mueve_su_eje() {
+        let mut e = rect();
+        escalar(
+            &mut e,
+            Tirador::EsteBorde,
+            Punto2::nuevo(300.0, 999.0),
+            false,
+            false,
+        );
+        assert_eq!(e.ancho, 300.0);
+        assert_eq!(e.alto, 50.0, "el lado este no toca el alto");
+    }
+
+    #[test]
+    fn escalar_un_trazo_mueve_sus_puntos() {
+        // Elemento::caja() calcula la caja DE LOS PUNTOS para las figuras
+        // con puntos. Si solo se cambiara ancho/alto, el trazo no escalaria
+        // y el marco de seleccion se despegaria del dibujo.
+        //
+        // Los numeros de abajo salen a mano de la formula del encabezado de
+        // este fichero, NO de volver a leer `e.caja()`: comparar la caja
+        // final consigo misma es circular, solo falla si alguien vuelve a
+        // la formula vieja `ancho * sx`.
+        //
+        // Con grosor 4.0, la caja de partida lleva un margen de 2.0 por
+        // lado: (-2,-2,102,52), es decir ancho=104, alto=54. El tirador
+        // SuresteEsquina ancla la esquina opuesta (noroeste), (-2,-2).
+        //   sx = (200 - (-2)) / 104 = 202/104
+        //   sy = (100 - (-2)) /  54 = 102/54
+        // Sin giro, cada punto q sale de ancla + (q - ancla) * (sx, sy):
+        //   (0,0)     -> (-2 + 2*sx,   -2 + 2*sy)   = (49/26, 16/9)
+        //   (50,25)   -> (-2 + 52*sx,  -2 + 27*sy)  = (99, 49)
+        //   (100,50)  -> (-2 + 102*sx, -2 + 52*sy)  = (5099/26, 866/9)
+        // La caja final vuelve a sumar el margen de 2.0 a los extremos de
+        // esos puntos.
+        let mut e = Elemento {
+            figura: Figura::Lapiz {
+                puntos: vec![
+                    Punto2::nuevo(0.0, 0.0),
+                    Punto2::nuevo(50.0, 25.0),
+                    Punto2::nuevo(100.0, 50.0),
+                ],
+                presiones: Vec::new(),
+            },
+            grosor: 4.0,
+            ..rect()
+        };
+
+        escalar(
+            &mut e,
+            Tirador::SuresteEsquina,
+            Punto2::nuevo(200.0, 100.0),
+            false,
+            false,
+        );
+
+        let Figura::Lapiz { puntos, .. } = &e.figura else {
+            panic!("sigue siendo un lapiz");
+        };
+        assert_eq!(puntos.len(), 3, "sigue teniendo sus tres puntos");
+        cerca(puntos[0], Punto2::nuevo(49.0 / 26.0, 16.0 / 9.0), "primero");
+        cerca(puntos[1], Punto2::nuevo(99.0, 49.0), "segundo");
+        cerca(
+            puntos[2],
+            Punto2::nuevo(5099.0 / 26.0, 866.0 / 9.0),
+            "tercero",
+        );
+
+        assert!(
+            (e.ancho - 198.230_77).abs() < 1e-2,
+            "ancho: esperaba 198.23, es {}",
+            e.ancho
+        );
+        assert!(
+            (e.alto - 98.444_44).abs() < 1e-2,
+            "alto: esperaba 98.44, es {}",
+            e.alto
+        );
+        assert!(
+            (e.x - (-0.115_38)).abs() < 1e-2,
+            "x: esperaba -0.12, es {}",
+            e.x
+        );
+        assert!(
+            (e.y - (-0.222_22)).abs() < 1e-2,
+            "y: esperaba -0.22, es {}",
+            e.y
+        );
+    }
+
+    #[test]
+    fn escalar_un_trazo_girado_deja_quieto_el_ancla_en_el_mundo() {
+        // El hueco exacto que dejo sin cazar: ninguna prueba tenia una
+        // figura con puntos Y angulo distinto de cero a la vez.
+        for angulo in [FRAC_PI_6, FRAC_PI_2] {
+            let mut e = Elemento {
+                figura: Figura::Lapiz {
+                    puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 50.0)],
+                    presiones: Vec::new(),
+                },
+                grosor: 0.0,
+                angulo,
+                ..rect()
+            };
+            let centro = Punto2::nuevo(50.0, 25.0);
+            let ancla = esquina_no(&e);
+            let destino = arrastre_equivalente(Punto2::nuevo(180.0, 90.0), centro, angulo);
+
+            escalar(&mut e, Tirador::SuresteEsquina, destino, false, false);
+
+            cerca(
+                esquina_no(&e),
+                ancla,
+                &format!("el ancla del trazo a {angulo}"),
+            );
+
+            let (x0, y0, x1, y1) = e.caja();
+            let c = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+            let Figura::Lapiz { puntos, .. } = &e.figura else {
+                panic!()
+            };
+            cerca(
+                puntos[1].girar(c, e.angulo),
+                destino,
+                &format!("el extremo arrastrado queda bajo el cursor a {angulo}"),
+            );
+        }
+    }
+
+    #[test]
+    fn escalar_anisotropo_un_trazo_girado_no_lo_manda_a_otro_sitio() {
+        // El contraejemplo del critico 2, tal cual: tratar los puntos
+        // -que estan en marco LOCAL- como si ya fueran del mundo manda el
+        // trazo a otro sitio en cuanto angulo != 0.
+        let mut e = Elemento {
+            figura: Figura::Lapiz {
+                puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 50.0)],
+                presiones: Vec::new(),
+            },
+            grosor: 0.0,
+            angulo: FRAC_PI_2,
+            ..rect()
+        };
+
+        // sx = 2, sy = 1 al tirar de la esquina sureste hasta (25, 175).
+        escalar(
+            &mut e,
+            Tirador::SuresteEsquina,
+            Punto2::nuevo(25.0, 175.0),
+            false,
+            false,
+        );
+
+        let (x0, y0, x1, y1) = e.caja();
+        let c = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        let Figura::Lapiz { puntos, .. } = &e.figura else {
+            panic!()
+        };
+        cerca(
+            puntos[0].girar(c, e.angulo),
+            Punto2::nuevo(75.0, -25.0),
+            "el ancla, geometria efectiva",
+        );
+        cerca(
+            puntos[1].girar(c, e.angulo),
+            Punto2::nuevo(25.0, 175.0),
+            "el extremo arrastrado, geometria efectiva",
+        );
+    }
+
+    #[test]
+    fn con_shift_se_conserva_la_proporcion() {
+        let mut e = rect();
+        escalar(
+            &mut e,
+            Tirador::SuresteEsquina,
+            Punto2::nuevo(200.0, 999.0),
+            true,
+            false,
+        );
+        assert!(
+            (e.ancho / e.alto - 2.0).abs() < 1e-3,
+            "100x50 es 2:1, y es {}x{}",
+            e.ancho,
+            e.alto
+        );
+    }
+
+    #[test]
+    fn con_alt_se_escala_desde_el_centro() {
+        let mut e = rect();
+        let (x0, y0, x1, y1) = e.caja();
+        let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+
+        escalar(
+            &mut e,
+            Tirador::SuresteEsquina,
+            Punto2::nuevo(150.0, 75.0),
+            false,
+            true,
+        );
+
+        let (x0, y0, x1, y1) = e.caja();
+        cerca(
+            Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0),
+            centro,
+            "el centro no se mueve",
+        );
+    }
+
+    #[test]
+    fn cruzar_el_ancla_voltea_en_vez_de_aplastar() {
+        // D30: aplastar a cero pierde informacion sin remedio; voltear es
+        // reversible y es lo que espera quien cruzo el raton al otro lado.
+        let mut e = rect();
+        escalar(
+            &mut e,
+            Tirador::SuresteEsquina,
+            Punto2::nuevo(-100.0, 50.0),
+            false,
+            false,
+        );
+
+        assert!(e.ancho >= MINIMO, "no se aplasta: {}", e.ancho);
+        let (x0, _, x1, _) = e.caja();
+        assert!(x0 < 0.0 && x1 <= 0.0 + 1e-3, "quedo al otro lado del ancla");
+    }
+
+    #[test]
+    fn girar_alrededor_de_su_centro_suma_el_angulo_y_no_lo_mueve() {
+        let mut e = rect();
+        let (x0, y0, x1, y1) = e.caja();
+        let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+
+        girar(&mut e, centro, FRAC_PI_2);
+
+        assert!((e.angulo - FRAC_PI_2).abs() < 1e-6);
+        let (x0, y0, x1, y1) = e.caja();
+        cerca(
+            Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0),
+            centro,
+            "girar sobre si mismo no lo mueve",
+        );
+    }
+
+    #[test]
+    fn girar_alrededor_de_un_centro_ajeno_lo_mueve_en_orbita() {
+        // Es lo que pasa al girar una seleccion de varios: cada uno gira
+        // sobre si mismo Y orbita el centro comun.
+        let mut e = rect();
+        let ajeno = Punto2::nuevo(0.0, 0.0);
+        let (x0, y0, x1, y1) = e.caja();
+        let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+
+        girar(&mut e, ajeno, FRAC_PI_2);
+
+        let (x0, y0, x1, y1) = e.caja();
+        let nuevo = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        cerca(
+            nuevo,
+            centro.girar(ajeno, FRAC_PI_2),
+            "orbito el centro comun",
+        );
+    }
+
+    #[test]
+    fn girar_un_trazo_gira_su_geometria_efectiva() {
+        // Los puntos de un trazo estan en marco LOCAL: quien dibuja les
+        // aplica `e.angulo` alrededor del centro de su caja. Por eso lo que
+        // tiene que comprobarse es esa geometria EFECTIVA (puntos girados
+        // por `e.angulo`), no los puntos crudos: girarlos aqui otra vez,
+        // ademas de subir `e.angulo`, contaria la rotacion dos veces y el
+        // trazo no se moveria.
+        let mut e = Elemento {
+            figura: Figura::Lapiz {
+                puntos: vec![Punto2::nuevo(10.0, 0.0), Punto2::nuevo(20.0, 0.0)],
+                presiones: Vec::new(),
+            },
+            grosor: 0.0,
+            ..rect()
+        };
+        girar(&mut e, Punto2::nuevo(0.0, 0.0), FRAC_PI_2);
+
+        assert!((e.angulo - FRAC_PI_2).abs() < 1e-6);
+        let (x0, y0, x1, y1) = e.caja();
+        let c = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        let Figura::Lapiz { puntos, .. } = &e.figura else {
+            panic!()
+        };
+        // Con angulo inicial 0, girar el elemento alrededor de un centro
+        // ajeno es lo mismo que girar sus puntos originales alrededor de
+        // ese mismo centro: es la comprobacion independiente de la formula.
+        cerca(
+            puntos[0].girar(c, e.angulo),
+            Punto2::nuevo(10.0, 0.0).girar(Punto2::nuevo(0.0, 0.0), FRAC_PI_2),
+            "el primero, geometria efectiva",
+        );
+        cerca(
+            puntos[1].girar(c, e.angulo),
+            Punto2::nuevo(20.0, 0.0).girar(Punto2::nuevo(0.0, 0.0), FRAC_PI_2),
+            "el segundo, geometria efectiva",
+        );
+    }
+
+    #[test]
+    fn los_saltos_de_giro_son_de_quince_grados() {
+        // La media division son 7,5 grados = 0,1309 rad: por debajo se baja
+        // al salto anterior y por encima se sube al siguiente.
+        assert!(
+            (a_saltos(0.10) - 0.0).abs() < 1e-6,
+            "0,10 rad (5,7 grados) baja a 0"
+        );
+        assert!(
+            (a_saltos(0.20) - SALTO_GIRO).abs() < 1e-6,
+            "0,20 rad (11,5) ya sube a 15"
+        );
+        assert!(
+            (a_saltos(0.30) - SALTO_GIRO).abs() < 1e-6,
+            "0,30 rad (17,2) tambien"
+        );
+        assert!((a_saltos(-0.30) + SALTO_GIRO).abs() < 1e-6, "y en negativo");
+    }
+
+    #[test]
+    fn el_angulo_hacia_arriba_es_cero() {
+        // El tirador de giro esta encima del elemento; con el cursor ahi
+        // mismo, el giro tiene que ser cero y no un cuarto de vuelta.
+        let c = Punto2::nuevo(0.0, 0.0);
+        assert!(angulo_hacia(c, Punto2::nuevo(0.0, -10.0)).abs() < 1e-6);
+        let derecha = angulo_hacia(c, Punto2::nuevo(10.0, 0.0));
+        assert!(
+            (derecha - FRAC_PI_2).abs() < 1e-6,
+            "a la derecha, +90: {derecha}"
+        );
+    }
+
+    #[test]
+    fn transformar_sube_la_version_para_invalidar_la_cache() {
+        let mut e = rect();
+        let antes = e.version;
+        escalar(
+            &mut e,
+            Tirador::SuresteEsquina,
+            Punto2::nuevo(200.0, 100.0),
+            false,
+            false,
+        );
+        assert_ne!(e.version, antes, "sin esto la cache pintaria lo viejo");
+    }
+}
