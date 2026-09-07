@@ -530,7 +530,7 @@ pub fn ordenes_medibles(e: &Elemento, escala: Option<&Escala>, coma: char) -> Ve
     if e.borrado {
         return Vec::new();
     }
-    match &e.figura {
+    let mut salida = match &e.figura {
         Figura::Cota { puntos } if puntos.len() >= 2 => {
             let (a, b) = (puntos[0], puntos[puntos.len() - 1]);
             let medio = a.hacia(b, 0.5);
@@ -550,7 +550,22 @@ pub fn ordenes_medibles(e: &Elemento, escala: Option<&Escala>, coma: char) -> Ve
         }
         Figura::EscalaGrafica => barra(e, escala, coma),
         _ => Vec::new(),
+    };
+
+    // Mismo bloque que cierra `ordenes()`: el tirador de giro se ofrece para
+    // cualquier elemento, `Cota` y `EscalaGrafica` incluidas, y esta salida
+    // vive fuera de esa funcion (D-cache-escala), asi que no hereda su giro
+    // por delegacion. Hay que aplicarlo aqui tambien o el rotulo gira sin la
+    // raya y la barra gira sin sus cuadros.
+    if e.angulo != 0.0 {
+        let (x0, y0, x1, y1) = e.caja();
+        let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        for o in salida.iter_mut() {
+            girar_orden(o, centro, e.angulo);
+        }
     }
+
+    salida
 }
 
 /// Los cuadros de la barra y sus numeros.
@@ -594,12 +609,7 @@ fn barra(e: &Elemento, escala: Option<&Escala>, coma: char) -> Vec<Orden> {
     for (i, valor) in [(0u32, 0.0f32), (rep.cuadros, rep.cuadros as f32 * rep.paso)] {
         let x = e.x + i as f32 * ancho_cuadro;
         fuera.push(Orden::Texto {
-            texto: format!(
-                "{} {}",
-                format!("{valor:.*}", esc.decimales.min(6) as usize)
-                    .replace('.', &coma.to_string()),
-                esc.unidad
-            ),
+            texto: crate::medida::formatear_valor(valor, &esc.unidad, esc.decimales, coma),
             x,
             y: e.y + alto + 2.0,
             tam: alto,
@@ -1143,5 +1153,142 @@ mod pruebas {
     #[test]
     fn una_figura_que_no_mide_no_produce_ordenes_medibles() {
         assert!(ordenes_medibles(&base(), Some(&metros(0.01)), ',').is_empty());
+    }
+
+    #[test]
+    fn el_rotulo_de_una_cota_girada_cae_donde_lo_deja_el_giro() {
+        // El fallo de esta ronda: `ordenes()` aplica `e.angulo` al final,
+        // `ordenes_medibles()` no lo aplicaba nunca. Sin escala calculamos a
+        // mano donde tiene que caer el rotulo antes de girar, y comparamos
+        // ese punto GIRADO con `Punto2::girar` contra lo que sale del
+        // programa. No se copia el valor de la salida.
+        let mut c = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0));
+        c.angulo = std::f32::consts::FRAC_PI_2;
+
+        // Sin girar: medio de la raya (50, 0), desplazado "alto" =
+        // grosor.max(1.0) * 6.0 = 12.0 en la perpendicular a (1, 0), que es
+        // (0, -1). El centro de giro es el centro de la caja de la cota:
+        // con grosor 2.0 la caja es (-1, -1, 101, 1), centro (50, 0).
+        let sin_girar = Punto2::nuevo(50.0, -12.0);
+        let centro = Punto2::nuevo(50.0, 0.0);
+        let esperado = sin_girar.girar(centro, c.angulo);
+
+        let o = ordenes_medibles(&c, Some(&metros(0.01)), ',');
+        let Some(Orden::Texto { x, y, .. }) = o.iter().find(|o| matches!(o, Orden::Texto { .. }))
+        else {
+            panic!("hay rotulo")
+        };
+        assert!(
+            (*x - esperado.x).abs() < 1e-2 && (*y - esperado.y).abs() < 1e-2,
+            "esperaba el rotulo en {esperado:?}, salio en ({x}, {y})"
+        );
+    }
+
+    #[test]
+    fn el_rotulo_sigue_pegado_a_su_raya_al_girar() {
+        // Si el rotulo no girara con la raya, se despegaria de ella al girar
+        // la cota: es justo el fallo que motiva esta ronda. La distancia del
+        // rotulo al centro de la cota NO sirve para cazarlo aqui: en una
+        // cota de dos puntos el centro de giro coincide con el punto medio
+        // de la raya, y la rotacion conserva la distancia a su propio
+        // centro se aplique o no al rotulo. Lo que si delata el fallo es la
+        // perpendicularidad: el rotulo se pinta perpendicular a la raya, asi
+        // que si la raya gira y el rotulo no, dejan de ser perpendiculares.
+        let mut c = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0));
+        c.angulo = 0.7;
+
+        let ordenes_raya = ordenes(&c);
+        let Some(Orden::Polilinea { puntos, .. }) = ordenes_raya.first() else {
+            panic!("la raya es la primera orden de ordenes()")
+        };
+        let (a, b) = (puntos[0], puntos[1]);
+        let medio = a.hacia(b, 0.5);
+        let direccion = b.restar(a).unitario();
+
+        let o = ordenes_medibles(&c, Some(&metros(0.01)), ',');
+        let Some(Orden::Texto { x, y, .. }) = o.iter().find(|o| matches!(o, Orden::Texto { .. }))
+        else {
+            panic!("hay rotulo")
+        };
+        let hacia_rotulo = Punto2::nuevo(*x, *y).restar(medio);
+
+        assert!(
+            hacia_rotulo.producto(direccion).abs() < 1e-2,
+            "el rotulo ya no es perpendicular a su raya girada: producto {}",
+            hacia_rotulo.producto(direccion)
+        );
+    }
+
+    #[test]
+    fn una_barra_girada_dibuja_sus_cuadros_girados() {
+        let recta = Elemento {
+            figura: Figura::EscalaGrafica,
+            x: 0.0,
+            y: 0.0,
+            ancho: 400.0,
+            alto: 24.0,
+            ..base()
+        };
+        let girada = Elemento {
+            angulo: std::f32::consts::FRAC_PI_2,
+            ..recta.clone()
+        };
+
+        let a = puntos_de(&ordenes_medibles(&recta, Some(&metros(0.01)), ','));
+        let b = puntos_de(&ordenes_medibles(&girada, Some(&metros(0.01)), ','));
+
+        assert_eq!(a.len(), b.len(), "la misma geometria, en otro sitio");
+        assert!(
+            a.iter().zip(&b).any(|(p, q)| p.distancia(*q) > 1.0),
+            "girar la barra tiene que mover algo"
+        );
+    }
+
+    #[test]
+    fn ordenes_medibles_con_escala_invalida_cae_a_pixeles_y_la_barra_no_dibuja() {
+        let invalida = Escala {
+            unidades_por_pixel: 0.0,
+            unidad: "m".to_string(),
+            decimales: 2,
+        };
+        assert!(
+            !invalida.valida(),
+            "la escala del caso tiene que ser invalida"
+        );
+
+        let c = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0));
+        let textos = textos_de(&ordenes_medibles(&c, Some(&invalida), ','));
+        assert_eq!(
+            textos,
+            vec!["100 px".to_string()],
+            "escala invalida se trata como si no hubiera escala"
+        );
+
+        let b = Elemento {
+            figura: Figura::EscalaGrafica,
+            x: 0.0,
+            y: 0.0,
+            ancho: 400.0,
+            alto: 24.0,
+            ..base()
+        };
+        assert!(
+            ordenes_medibles(&b, Some(&invalida), ',').is_empty(),
+            "una barra que no puede decir cuanto mide cada cuadro no dibuja nada"
+        );
+    }
+
+    #[test]
+    fn una_cota_de_longitud_cero_no_da_panico_ni_nan() {
+        let c = cota_de(Punto2::nuevo(5.0, 5.0), Punto2::nuevo(5.0, 5.0));
+        let o = ordenes_medibles(&c, Some(&metros(0.01)), ',');
+        for orden in &o {
+            if let Orden::Texto { x, y, .. } = orden {
+                assert!(
+                    x.is_finite() && y.is_finite(),
+                    "coordenadas no finitas: ({x}, {y})"
+                );
+            }
+        }
     }
 }

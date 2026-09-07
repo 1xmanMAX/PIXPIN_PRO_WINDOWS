@@ -113,6 +113,17 @@ pub fn rotulo_del_reves(grados: f32) -> bool {
     normalizar_grados(grados).abs() > 90.0
 }
 
+/// El numero y su unidad, ya formateados: los decimales que toquen, el punto
+/// cambiado por `coma`, y la unidad detras.
+///
+/// Es solo el formato. Quien llama ya trae el valor en las unidades que hay
+/// que escribir — esta funcion no convierte nada, eso es cosa de la escala.
+pub(crate) fn formatear_valor(valor: f32, unidad: &str, decimales: u8, coma: char) -> String {
+    let d = decimales.min(6) as usize;
+    let s = format!("{valor:.d$}");
+    format!("{} {}", s.replace('.', &coma.to_string()), unidad)
+}
+
 /// Como se escribe una longitud en pixeles.
 ///
 /// Sin escala valida se escriben pixeles, que al menos no enganan. Quien lo
@@ -122,9 +133,7 @@ pub fn texto_de_medida(largo_px: f32, escala: Option<&Escala>, coma: char) -> St
         return format!("{} px", largo_px.round() as i64);
     };
     let valor = largo_px * e.unidades_por_pixel;
-    let d = e.decimales.min(6) as usize;
-    let s = format!("{valor:.d$}");
-    format!("{} {}", s.replace('.', &coma.to_string()), e.unidad)
+    formatear_valor(valor, &e.unidad, e.decimales, coma)
 }
 
 /// Lo que va escrito **dentro** de la cota: cuanto mide y hacia donde va.
