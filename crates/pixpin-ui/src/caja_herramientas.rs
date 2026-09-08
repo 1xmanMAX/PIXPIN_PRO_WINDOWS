@@ -32,7 +32,11 @@ pub enum BotonCaja {
 
 /// El orden en que se ven. La mano primero porque es a la que se vuelve, y
 /// las acciones al final, separadas por su propio grupo.
-pub const BOTONES: [BotonCaja; 14] = [
+///
+/// Cota, Escalar y EscalaGrafica van con las demas de dibujar, antes de
+/// Deshacer: sin estar aqui no hay manera de elegirlas, y quedarian
+/// implementadas pero muertas (Ruling K).
+pub const BOTONES: [BotonCaja; 17] = [
     BotonCaja::Elegir(Herramienta::Mano),
     BotonCaja::Elegir(Herramienta::Lapiz),
     BotonCaja::Elegir(Herramienta::Resaltador),
@@ -44,6 +48,9 @@ pub const BOTONES: [BotonCaja; 14] = [
     BotonCaja::Elegir(Herramienta::Foco),
     BotonCaja::Elegir(Herramienta::Lupa),
     BotonCaja::Elegir(Herramienta::Borrador),
+    BotonCaja::Elegir(Herramienta::Cota),
+    BotonCaja::Elegir(Herramienta::Escalar),
+    BotonCaja::Elegir(Herramienta::EscalaGrafica),
     BotonCaja::Deshacer,
     BotonCaja::Rehacer,
     BotonCaja::Salir,
@@ -272,14 +279,46 @@ mod pruebas {
     }
 
     #[test]
-    fn estan_las_once_herramientas_y_las_tres_acciones() {
+    fn estan_las_catorce_herramientas_y_las_tres_acciones() {
         let herramientas = BOTONES
             .iter()
             .filter(|b| matches!(b, BotonCaja::Elegir(_)))
             .count();
-        assert_eq!(herramientas, 11, "faltan herramientas en la caja");
+        assert_eq!(herramientas, 14, "faltan herramientas en la caja");
+        assert!(BOTONES.contains(&BotonCaja::Elegir(Herramienta::Cota)));
+        assert!(BOTONES.contains(&BotonCaja::Elegir(Herramienta::Escalar)));
+        assert!(BOTONES.contains(&BotonCaja::Elegir(Herramienta::EscalaGrafica)));
         assert!(BOTONES.contains(&BotonCaja::Deshacer));
         assert!(BOTONES.contains(&BotonCaja::Rehacer));
         assert!(BOTONES.contains(&BotonCaja::Salir));
+    }
+
+    #[test]
+    fn la_caja_con_diecisiete_botones_sigue_cabiendo_entera_en_el_area_de_trabajo() {
+        // `colocar` promete en su documentacion que la caja siempre queda
+        // entera en el area de trabajo. Tres botones mas son tres mas de
+        // alto, y una caja medio fuera de pantalla no se puede usar.
+        //
+        // El area es la de un monitor normal, no la "bajo" de
+        // `la_caja_nunca_se_sale_del_area_de_trabajo`: esa es a proposito
+        // mas baja que catorce botones (para probar el tope, no el caso de
+        // uso), asi que no sirve para comprobar que "cabe entera".
+        let c = CajaHerramientas::colocar(contenido(), area(), 100);
+        assert_eq!(BOTONES.len(), 17);
+        assert!(
+            c.marco.arriba() >= area().arriba() && c.marco.abajo() <= area().abajo(),
+            "se sale por arriba o por abajo: {c:?}"
+        );
+        assert!(
+            c.marco.izquierda() >= area().izquierda() && c.marco.derecha() <= area().derecha(),
+            "se sale de lado: {c:?}"
+        );
+        for i in 0..BOTONES.len() {
+            let r = c.rect_de(i);
+            assert!(
+                r.arriba() >= c.marco.arriba() && r.abajo() <= c.marco.abajo(),
+                "el boton {i} se sale del marco"
+            );
+        }
     }
 }

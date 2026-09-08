@@ -82,8 +82,6 @@ fn etiqueta(b: BotonCaja) -> &'static str {
         BotonCaja::Elegir(Herramienta::Foco) => "F",
         BotonCaja::Elegir(Herramienta::Lupa) => "Q",
         BotonCaja::Elegir(Herramienta::Borrador) => "B",
-        // Todavia no estan en `BOTONES` (tarea 6): la letra existe porque
-        // `Herramienta` es exhaustivo aqui, no porque tengan boton hoy.
         BotonCaja::Elegir(Herramienta::Cota) => "A",
         BotonCaja::Elegir(Herramienta::Escalar) => "E",
         BotonCaja::Elegir(Herramienta::EscalaGrafica) => "G",

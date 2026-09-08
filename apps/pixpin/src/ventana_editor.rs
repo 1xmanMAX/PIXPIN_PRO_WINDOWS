@@ -34,7 +34,9 @@ use pixpin_geom::Punto;
 use pixpin_motor2d::cache::Cache;
 use pixpin_motor2d::camara::Camara;
 use pixpin_motor2d::escena::Escena;
-use pixpin_motor2d::gesto::{EventoGesto, FormaCursor, Gesto, Region, direccion_del_tirador};
+use pixpin_motor2d::gesto::{
+    EventoGesto, FormaCursor, Gesto, Peticion, Region, direccion_del_tirador,
+};
 use pixpin_motor2d::indice::Rejilla;
 use pixpin_motor2d::pintado::Orden;
 use pixpin_motor2d::vector::Punto2;
@@ -227,6 +229,31 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
                 } else if !activo_ahora && capa.lista() {
                     capa.soltar();
                 }
+                // El cajetin de calibrar: abre su propio bucle de eventos y
+                // no vuelve hasta que se acepta con Enter o se cancela con
+                // Escape. Si se cancela, `pedir_medida` devuelve `None` y no
+                // se llama a `calibrar`: el lienzo queda exactamente como
+                // estaba (cancelar no puede cambiar la escala).
+                if let Some(Peticion::Calibrar { largo_px }) = r.pide {
+                    rejilla.sincronizar(&escena);
+                    if let Some((valor, unidad)) = pedir_medida(
+                        &ventana,
+                        &mut motor,
+                        &superficie,
+                        &escena,
+                        &camara,
+                        &gesto,
+                        &mut cache,
+                        &rejilla,
+                        &capa,
+                        ancho_px,
+                        alto_px,
+                        largo_px,
+                    ) {
+                        gesto.calibrar(&mut escena, largo_px, valor, &unidad);
+                    }
+                    ventana.invalidar();
+                }
             }
             // 2. Pintar solo cuando lo pide la ventana.
             if matches!(ev, EventoOverlay::Pintar) {
@@ -242,6 +269,7 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
                     &capa,
                     ancho_px,
                     alto_px,
+                    |_| {},
                 );
             }
             if matches!(ev, EventoOverlay::Cerrar) {
@@ -260,6 +288,12 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
 
 /// Pinta un fotograma entero: lo que hay en pantalla, y encima el marco de
 /// la seleccion, sus tiradores y la marquesina si la hay.
+///
+/// `encima` se llama al final, con la transformacion todavia puesta a la
+/// del mundo: quien la pasa es quien decide si dibuja en coordenadas del
+/// mundo o si la deshace con `Pintor::desplazar(0.0, 0.0)` primero (el
+/// cajetin de calibrar hace esto ultimo: es un dialogo en pantalla, no algo
+/// del lienzo).
 #[allow(clippy::too_many_arguments)]
 fn pintar(
     motor: &mut MotorRender,
@@ -272,6 +306,7 @@ fn pintar(
     capa: &CapaEstatica,
     ancho_px: f32,
     alto_px: f32,
+    encima: impl FnOnce(&pixpin_render::Pintor<'_>),
 ) {
     let Ok(destino) = superficie.empezar(motor) else {
         return;
@@ -319,6 +354,16 @@ fn pintar(
             for orden in cache.ordenes(e, camara.zoom) {
                 dibujar_orden(p, orden, vista);
             }
+            // Lo que depende de la escala no pasa por la cache: se genera
+            // cada fotograma. Es barato -un texto por cota visible- y es lo
+            // que hace que calibrar surta efecto sin invalidar nada.
+            //
+            // La coma va como separador decimal (D39), no el del sistema:
+            // si algun dia hay que respetar el idioma del usuario, sale de
+            // los ajustes y se pasa aqui, no se lee dentro del motor.
+            for orden in pixpin_motor2d::pintado::ordenes_medibles(e, escena.escala.as_ref(), ',') {
+                dibujar_orden(p, &orden, vista);
+            }
         }
 
         // Encima de todo: el marco de la seleccion, sus tiradores y la
@@ -342,8 +387,153 @@ fn pintar(
         if let Some(m) = gesto.marquesina() {
             p.marquesina(m, escala);
         }
+        encima(p);
     });
     let _ = superficie.presentar();
+}
+
+/// Lo que el usuario teclea al calibrar, convertido a numero.
+///
+/// Acepta coma y punto porque se escribe una cosa o la otra segun la
+/// costumbre y el teclado, y obligar a una sola es hacerle repetir el gesto
+/// a la mitad de la gente.
+fn leer_medida(texto: &str) -> Option<f32> {
+    let v: f32 = texto.trim().replace(',', ".").parse().ok()?;
+    if !v.is_finite() || v <= 0.0 {
+        return None;
+    }
+    Some(v)
+}
+
+/// El cajetin de calibrar: se escribe el numero y se elige la unidad de
+/// `pixpin_motor2d::medida::UNIDADES` con Tab, siguiendo el mismo estilo de
+/// tarjeta oscura que `apps/pixpin/src/overlay.rs` usa para el panel
+/// «Seleccionar todo» y la barra de resultado.
+///
+/// Abre su propio bucle de eventos porque necesita seguir pintando el
+/// fotograma (con el dialogo encima) mientras espera lo que se teclea; por
+/// eso su prueba necesita sesion de escritorio y va marcada `#[ignore]`.
+///
+/// Devuelve `None` si se cancela con Escape o si `leer_medida` rechaza lo
+/// tecleado al pulsar Enter. **Si al cancelar la escala cambiara, seria un
+/// fallo**: quien llama no tiene que tocar la escena cuando esto devuelve
+/// `None`, y por eso aqui no se toca `escena` en ningun caso: solo se lee.
+#[allow(clippy::too_many_arguments)]
+fn pedir_medida(
+    ventana: &VentanaOverlay,
+    motor: &mut MotorRender,
+    superficie: &Superficie,
+    escena: &Escena,
+    camara: &Camara,
+    gesto: &Gesto,
+    cache: &mut Cache,
+    rejilla: &Rejilla,
+    capa: &CapaEstatica,
+    ancho_px: f32,
+    alto_px: f32,
+    largo_px: f32,
+) -> Option<(f32, String)> {
+    let mut texto = String::new();
+    let mut indice_unidad = 0usize;
+    ventana.invalidar();
+
+    loop {
+        pixpin_shell::overlay::bombear_pendientes();
+        for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
+            if hwnd != ventana.handle() {
+                continue;
+            }
+            match ev {
+                EventoOverlay::Caracter(c) => match c {
+                    '\r' | '\n' => {
+                        let unidad = pixpin_motor2d::medida::UNIDADES[indice_unidad];
+                        return leer_medida(&texto).map(|v| (v, unidad.to_string()));
+                    }
+                    '\u{1b}' => return None,
+                    '\u{8}' => {
+                        texto.pop();
+                        ventana.invalidar();
+                    }
+                    '\t' => {
+                        indice_unidad =
+                            (indice_unidad + 1) % pixpin_motor2d::medida::UNIDADES.len();
+                        ventana.invalidar();
+                    }
+                    c if c.is_ascii_digit() || c == ',' || c == '.' => {
+                        texto.push(c);
+                        ventana.invalidar();
+                    }
+                    _ => {}
+                },
+                EventoOverlay::Cerrar => return None,
+                EventoOverlay::Pintar => {
+                    let unidad = pixpin_motor2d::medida::UNIDADES[indice_unidad];
+                    pintar(
+                        motor,
+                        superficie,
+                        escena,
+                        camara,
+                        gesto,
+                        cache,
+                        rejilla,
+                        capa,
+                        ancho_px,
+                        alto_px,
+                        |p| dibujar_cajetin(p, ancho_px, alto_px, largo_px, &texto, unidad),
+                    );
+                }
+                _ => {}
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
+/// La tarjeta del cajetin de calibrar, centrada en la ventana y en
+/// coordenadas de pantalla (no del mundo: un dialogo no se mueve con la
+/// camara). `Pintor::desplazar(0.0, 0.0)` deshace la vista del mundo que
+/// `pintar` dejo puesta antes de llamar a `encima`.
+fn dibujar_cajetin(
+    p: &pixpin_render::Pintor<'_>,
+    ancho_px: f32,
+    alto_px: f32,
+    largo_px: f32,
+    texto: &str,
+    unidad: &str,
+) {
+    p.desplazar(0.0, 0.0);
+
+    let ancho = 260.0;
+    let alto = 90.0;
+    let caja = RectF {
+        x: (ancho_px - ancho) / 2.0,
+        y: (alto_px - alto) / 2.0,
+        ancho,
+        alto,
+    };
+    p.rellenar_redondeado(
+        caja,
+        8.0,
+        Color {
+            r: 0.12,
+            g: 0.12,
+            b: 0.14,
+            a: 0.92,
+        },
+    );
+
+    let pregunta = format!("Cuanto miden {largo_px:.0} px?");
+    p.texto(&pregunta, caja.x + 16.0, caja.y + 12.0, 13.0, Color::BLANCO);
+
+    let entrada = format!("{texto} {unidad}");
+    let (tw, th) = p.medir_texto(&entrada, 20.0);
+    p.texto(
+        &entrada,
+        caja.x + (caja.ancho - tw) / 2.0,
+        caja.y + 32.0 + (alto - 32.0 - th) / 2.0,
+        20.0,
+        Color::BLANCO,
+    );
 }
 
 /// Traduce una `Orden` ya calculada por el motor a la llamada de `Pintor`
@@ -641,5 +831,39 @@ mod pruebas {
         // superficie de composicion). No se puede probar en CI sin
         // escritorio; se deja marcada para ejecutarla a mano.
         let _ = abrir(Escena::nueva());
+    }
+
+    #[test]
+    fn una_medida_tecleada_se_lee_con_coma_o_con_punto() {
+        // El usuario escribe «3,5» o «3.5» segun la costumbre y el teclado.
+        assert!((leer_medida("3,5").unwrap() - 3.5).abs() < 1e-5);
+        assert!((leer_medida("3.5").unwrap() - 3.5).abs() < 1e-5);
+        assert!((leer_medida(" 12 ").unwrap() - 12.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn una_medida_que_no_es_un_numero_se_rechaza() {
+        assert!(leer_medida("").is_none());
+        assert!(leer_medida("tres").is_none());
+        assert!(leer_medida("-3").is_none(), "una medida negativa no existe");
+        assert!(leer_medida("0").is_none());
+    }
+
+    #[test]
+    #[ignore = "necesita sesion de escritorio con GPU; ejecutar con --ignored"]
+    fn pedir_medida_devuelve_none_al_cancelar_con_escape() {
+        // El bucle de `pedir_medida` abre su propia ventana de overlay y
+        // necesita un motor D3D11 de verdad: no se puede probar en CI sin
+        // escritorio, se deja marcada para ejecutarla a mano.
+        //
+        // Si al cancelar la escala cambiara, seria un fallo (D39): cancelar
+        // tiene que dejar el lienzo exactamente como estaba. A mano: abrir
+        // el editor, calibrar con la herramienta Escalar, pulsar Escape en
+        // el cajetin y comprobar que `escena.escala` sigue siendo la de
+        // antes de arrastrar.
+        let dispositivo =
+            pixpin_capture::Dispositivo::nuevo().expect("sin dispositivo para la prueba manual");
+        let motor = MotorRender::nuevo(dispositivo.d3d()).expect("sin motor para la prueba manual");
+        let _ = motor;
     }
 }

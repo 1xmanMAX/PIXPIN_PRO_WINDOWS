@@ -1273,6 +1273,57 @@ mod pruebas {
     }
 
     #[test]
+    fn la_cota_deja_los_puntos_donde_se_arrastro() {
+        // Una cota con los puntos mal mide mal: "una cota no puede mentir"
+        // es la propiedad que justifica el diseno de toda esta fase. No
+        // basta con comprobar que hay un elemento y que es una Cota (eso ya
+        // lo hace `la_cota_deja_una_cota_y_un_paso_de_deshacer`); hace falta
+        // comprobar que el primer punto es donde se pulso y el segundo el
+        // que sigue al cursor, tal como hace `mover` para Linea y Flecha.
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Cota;
+
+        // Un arrastre real trae varios `Mover` antes de soltar, no uno
+        // solo: si el segundo punto se acumulase en vez de sustituirse (el
+        // fallo que esta prueba busca), harian falta varios avisos de
+        // movimiento para notarlo.
+        g.evento(pulsar(Punto2::nuevo(10.0, 20.0)), &mut escena, 1.0);
+        g.evento(mover(Punto2::nuevo(60.0, 20.0)), &mut escena, 1.0);
+        g.evento(mover(Punto2::nuevo(80.0, 20.0)), &mut escena, 1.0);
+        // `soltar` no toca la geometria: el ultimo punto es el del ultimo
+        // `Mover`, asi que el arrastre real termina con uno en el mismo
+        // sitio donde se suelta.
+        g.evento(mover(Punto2::nuevo(110.0, 20.0)), &mut escena, 1.0);
+        g.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(110.0, 20.0),
+            },
+            &mut escena,
+            1.0,
+        );
+
+        let Figura::Cota { puntos } = &escena.visibles().next().unwrap().figura else {
+            panic!("tiene que ser una Cota");
+        };
+        assert_eq!(
+            puntos.len(),
+            2,
+            "solo dos puntos, no uno por cada aviso de movimiento"
+        );
+        assert_eq!(
+            puntos[0],
+            Punto2::nuevo(10.0, 20.0),
+            "el primer punto es donde se pulso"
+        );
+        assert_eq!(
+            puntos[1],
+            Punto2::nuevo(110.0, 20.0),
+            "el segundo sigue al cursor, no se acumula"
+        );
+    }
+
+    #[test]
     fn la_cota_funciona_sin_haber_calibrado() {
         // D35: sin escala mide en pixeles. La herramienta no se bloquea.
         let mut escena = Escena::nueva();
