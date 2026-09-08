@@ -70,6 +70,14 @@ pub struct Lienzo {
     /// en `resto`, porque `leer`/`escribir` la traducen a su propio tipo en
     /// vez de dejarla como JSON crudo.
     pub escala: Option<Escala>,
+    /// La clave `escala` cruda del JSON, cuando no supimos entenderla.
+    ///
+    /// `escala` es `None` tanto si no habia ninguna como si la habia y era
+    /// invalida — eso esta bien para medir, pero no para escribir: «no la
+    /// entiendo» y «no la hay» no pueden representarse igual, o una escala
+    /// corrupta de una version futura del movil se destruye en silencio al
+    /// pasar por Windows. Privado: solo lo usan `leer` y `escribir`.
+    escala_no_entendida: Option<Value>,
 }
 
 impl Lienzo {
@@ -115,11 +123,19 @@ pub fn leer(json: &str) -> Result<Lienzo, ErrorExcalidraw> {
             None => Entrada::Ajeno(Box::new(v)),
         })
         .collect();
-    let escala = mapa.get("escala").and_then(escala_desde);
+    let escala_cruda = mapa.remove("escala");
+    let escala = escala_cruda.as_ref().and_then(escala_desde);
+    // Si habia una clave y no supimos entenderla, se guarda tal cual para
+    // devolverla intacta al escribir en vez de pisarla con null.
+    let escala_no_entendida = match (&escala_cruda, &escala) {
+        (Some(v), None) => Some(v.clone()),
+        _ => None,
+    };
     Ok(Lienzo {
         entradas,
         resto: mapa,
         escala,
+        escala_no_entendida,
     })
 }
 
@@ -141,10 +157,14 @@ pub fn escribir(lienzo: &Lienzo) -> String {
         .or_insert_with(|| Value::String("excalidraw".into()));
     // Se escribe siempre, tambien cuando es None: si solo se escribiera
     // cuando hay escala, la del original sobreviviria y el movil seguiria
-    // midiendo con una escala que aqui se borro.
-    match &lienzo.escala {
-        Some(e) => mapa.insert("escala".into(), escala_hacia(e)),
-        None => mapa.insert("escala".into(), Value::Null),
+    // midiendo con una escala que aqui se borro. Pero None no siempre
+    // significa «no hay»: si habia una clave y no se entendio, se devuelve
+    // tal cual en vez de null, para no destruir en silencio una escala
+    // corrupta o de una version futura del movil.
+    match (&lienzo.escala, &lienzo.escala_no_entendida) {
+        (Some(e), _) => mapa.insert("escala".into(), escala_hacia(e)),
+        (None, Some(cruda)) => mapa.insert("escala".into(), cruda.clone()),
+        (None, None) => mapa.insert("escala".into(), Value::Null),
     };
     serde_json::to_string_pretty(&Value::Object(mapa)).unwrap_or_default()
 }
@@ -165,7 +185,11 @@ fn escala_desde(v: &Value) -> Option<Escala> {
             .and_then(Value::as_str)
             .unwrap_or("m")
             .to_string(),
-        decimales: v.get("decimales").and_then(Value::as_u64).unwrap_or(2) as u8,
+        // El mismo tope que `Escala::calibrando` (medida.rs): sin el, un
+        // "decimales" disparatado del movil entraria tal cual en el tipo, y
+        // solo se veria recortado de casualidad porque `formatear_valor`
+        // vuelve a recortar a 6 al pintar.
+        decimales: (v.get("decimales").and_then(Value::as_u64).unwrap_or(2) as u8).min(6),
     })
 }
 
@@ -264,9 +288,18 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
             tam: num_o(v, "fontSize", 20.0),
             familia: "Segoe UI".into(),
         },
-        "pixpin-measure" => Figura::Cota {
-            puntos: puntos_desde(v, x, y),
-        },
+        "pixpin-measure" => {
+            let puntos = puntos_desde(v, x, y);
+            // Sin dos puntos no hay raya que dibujar ni que tocar
+            // (pintado.rs y impacto.rs exigen `len() >= 2`): seria una cota
+            // invisible e inseleccionable que se guarda para siempre. Mejor
+            // que caiga al carril ajeno, que es donde sobrevivia intacta
+            // antes de que aprendieramos a leer `pixpin-measure`.
+            if puntos.len() < 2 {
+                return None;
+            }
+            Figura::Cota { puntos }
+        }
         "pixpin-scalebar" => Figura::EscalaGrafica,
         // El resto son suyos y no sabemos dibujarlos: `pixpin-mosaic`,
         // `pixpin-solid`, `pixpin-gantt`... y tambien `diamond` e `image`,
@@ -892,6 +925,58 @@ mod pruebas {
             leer(&vuelta).unwrap().elementos()[0].figura,
             Figura::Cota { .. }
         ));
+    }
+
+    #[test]
+    fn una_escala_que_no_entendemos_sobrevive_intacta_y_no_se_pisa_con_null() {
+        // Hallazgo 7: `leer` no quitaba «escala» de `resto`, y `escribir` la
+        // pisaba siempre. Una escala corrupta -o de una version futura del
+        // movil que aqui no se entiende- pasaba por Windows y salia con
+        // "escala": null: «no la entiendo» y «no la hay» se representaban
+        // igual, exactamente lo que `Entrada::Ajeno` existe para impedir en
+        // los elementos.
+        let json = r##"{"type":"excalidraw","elements":[],
+            "escala":{"unidadesPorPixel":0,"unidad":"m","decimales":2,"deVersionFutura":true}}"##;
+        let l = leer(json).unwrap();
+        assert!(l.escala.is_none(), "no la entendemos, no mide con ella");
+
+        let vuelta = escribir(&l);
+        assert!(
+            !vuelta.contains("\"escala\":null") && !vuelta.contains("\"escala\": null"),
+            "la escala corrupta se piso con null:\n{vuelta}"
+        );
+        assert!(
+            vuelta.contains("deVersionFutura"),
+            "el campo que no entendemos tiene que sobrevivir tal cual:\n{vuelta}"
+        );
+    }
+
+    #[test]
+    fn el_decimales_de_una_escala_del_movil_tambien_se_recorta_a_seis() {
+        // El mismo tope que `Escala::calibrando`, para que el invariante del
+        // tipo lo sostengan los dos constructores y no solo uno.
+        let json = r##"{"type":"excalidraw","elements":[],
+            "escala":{"unidadesPorPixel":0.03,"unidad":"m","decimales":44}}"##;
+        let l = leer(json).unwrap();
+        assert_eq!(l.escala.unwrap().decimales, 6);
+    }
+
+    #[test]
+    fn una_cota_del_movil_sin_puntos_entra_como_ajena_y_no_como_cota_fantasma() {
+        // Hallazgo 8: sin dos puntos no hay raya que dibujar ni que tocar, y
+        // antes de que `elemento_desde` aprendiera `pixpin-measure` este
+        // mismo JSON sobrevivia intacto como ajeno. Una cota sin puntos no
+        // es una cota: mejor que vuelva a caer ahi, donde no se pierde.
+        let json = r##"{"type":"excalidraw","elements":[
+            {"id":"m1","type":"pixpin-measure","x":0,"y":0,"width":0,"height":0,
+             "strokeColor":"#000000","seed":1}
+        ]}"##;
+        let l = leer(json).unwrap();
+        assert_eq!(l.cuantos_ajenos(), 1, "sin puntos, tiene que caer a ajeno");
+        assert!(l.elementos().is_empty());
+
+        let vuelta = escribir(&l);
+        assert!(vuelta.contains("pixpin-measure"), "sobrevive intacta");
     }
 
     #[test]
