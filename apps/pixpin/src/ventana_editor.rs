@@ -40,7 +40,7 @@ use pixpin_motor2d::gesto::{
 use pixpin_motor2d::indice::Rejilla;
 use pixpin_motor2d::pintado::Orden;
 use pixpin_motor2d::vector::Punto2;
-use pixpin_motor2d::{ColorRgba, EstiloTrazo};
+use pixpin_motor2d::{ColorRgba, Elemento, Escala, EstiloTrazo};
 use pixpin_render::{CapaEstatica, Color, Estampa, MotorRender, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, FormaCursorWin, VentanaOverlay};
 
@@ -221,8 +221,18 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
                             if e.borrado {
                                 continue;
                             }
-                            for orden in cache.ordenes(e, camara.zoom) {
-                                dibujar_orden(p, orden, vista);
+                            // Las dos llamadas -aqui y en `pintar`- tienen
+                            // que usar la MISMA funcion: lo que no pase por
+                            // `ordenes_de_elemento` no entra en la capa, y
+                            // `pintar` ya no lo repinta mientras la capa
+                            // valga (ve su comentario para el porque).
+                            for orden in ordenes_de_elemento(
+                                &mut cache,
+                                e,
+                                camara.zoom,
+                                escena.escala.as_ref(),
+                            ) {
+                                dibujar_orden(p, &orden, vista);
                             }
                         }
                     });
@@ -284,6 +294,32 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
     ventana.ocultar();
     escena.compactar();
     Ok(escena)
+}
+
+/// Todas las ordenes de un elemento para un fotograma: las cacheadas (forma,
+/// colores...) mas las que dependen de la escala (el numero de una cota, el
+/// cuadro de una barra), que se recalculan cada vez porque `cache` no las
+/// guarda -es lo que hace que calibrar surta efecto sin invalidar nada-.
+///
+/// La usan `pintar` y el cierre de `capa.preparar` (mas abajo, en `abrir`):
+/// las dos veces que se decide que ordenes representan a un elemento en un
+/// fotograma. Si un camino llamara solo a `cache.ordenes` y se olvidara de
+/// esta funcion, ese elemento perderia sus rotulos de medida alli donde falte
+/// -es justo lo que paso con la capa estatica: hornea solo lo que pasa por
+/// aqui, asi que si el rotulo no entra, desaparece mientras dura el arrastre-.
+///
+/// La coma va como separador decimal (D39), no el del sistema: si algun dia
+/// hay que respetar el idioma del usuario, sale de los ajustes y se pasa
+/// aqui, no se lee dentro del motor.
+fn ordenes_de_elemento(
+    cache: &mut Cache,
+    e: &Elemento,
+    zoom: f32,
+    escala: Option<&Escala>,
+) -> Vec<Orden> {
+    let mut ordenes: Vec<Orden> = cache.ordenes(e, zoom).to_vec();
+    ordenes.extend(pixpin_motor2d::pintado::ordenes_medibles(e, escala, ','));
+    ordenes
 }
 
 /// Pinta un fotograma entero: lo que hay en pantalla, y encima el marco de
@@ -351,17 +387,7 @@ fn pintar(
             if e.borrado {
                 continue;
             }
-            for orden in cache.ordenes(e, camara.zoom) {
-                dibujar_orden(p, orden, vista);
-            }
-            // Lo que depende de la escala no pasa por la cache: se genera
-            // cada fotograma. Es barato -un texto por cota visible- y es lo
-            // que hace que calibrar surta efecto sin invalidar nada.
-            //
-            // La coma va como separador decimal (D39), no el del sistema:
-            // si algun dia hay que respetar el idioma del usuario, sale de
-            // los ajustes y se pasa aqui, no se lee dentro del motor.
-            for orden in pixpin_motor2d::pintado::ordenes_medibles(e, escena.escala.as_ref(), ',') {
+            for orden in ordenes_de_elemento(cache, e, camara.zoom, escena.escala.as_ref()) {
                 dibujar_orden(p, &orden, vista);
             }
         }
@@ -865,5 +891,51 @@ mod pruebas {
             pixpin_capture::Dispositivo::nuevo().expect("sin dispositivo para la prueba manual");
         let motor = MotorRender::nuevo(dispositivo.d3d()).expect("sin motor para la prueba manual");
         let _ = motor;
+    }
+
+    #[test]
+    fn ordenes_de_elemento_incluye_el_rotulo_de_una_cota() {
+        // El fallo real (ronda 1 de la tarea 6): el cierre de
+        // `capa.preparar` horneaba solo `cache.ordenes(e, ...)`, sin las
+        // `ordenes_medibles`. Como `pintar` salta con `continue` todo lo que
+        // la capa ya volco, el numero de CUALQUIER cota visible en pantalla
+        // desaparecia mientras se arrastraba OTRO elemento cualquiera -no
+        // hacia falta tocar la cota, bastaba con que la capa se horneara-.
+        //
+        // El arreglo es que los dos caminos llamen a `ordenes_de_elemento`
+        // en vez de a `cache.ordenes` a secas. Esta prueba fija lo que esa
+        // funcion compartida tiene que devolver para una cota: no puede
+        // probar la ventana de verdad (necesita GPU y sesion interactiva),
+        // pero si puede probar que la funcion de la que dependen los dos
+        // caminos no vuelve a "olvidarse" del rotulo.
+        let cota = Elemento {
+            figura: Figura::Cota {
+                puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
+            },
+            id: 1,
+            x: 0.0,
+            y: 0.0,
+            ancho: 100.0,
+            alto: 0.0,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: None,
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+        };
+        let mut cache = Cache::nueva();
+
+        let ordenes = ordenes_de_elemento(&mut cache, &cota, 1.0, None);
+
+        assert!(
+            ordenes.iter().any(|o| matches!(o, Orden::Texto { .. })),
+            "una cota tiene que traer su rotulo, venga o no de la cache"
+        );
     }
 }
