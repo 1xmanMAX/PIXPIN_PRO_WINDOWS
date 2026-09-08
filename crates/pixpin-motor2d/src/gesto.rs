@@ -46,6 +46,31 @@ use crate::vector::Punto2;
 /// memoria — la regla del camino caliente.
 pub const PUNTOS_RESERVADOS: usize = 512;
 
+/// El punto final restringido a un angulo redondo, para Shift-arrastrar.
+///
+/// El giro medio -de 0 a 180 grados- se reparte en `pasos` tramos iguales:
+/// con 12 salen horizontal, vertical y las dos diagonales cada 15 grados
+/// (Linea y Flecha, en `pixpin-ui/anotador.rs`); con 2 solo salen horizontal
+/// y vertical (`Calibrando` aqui abajo: calibrar sobre el borde de una
+/// pared es el caso normal, y a pulso sale torcida -un grado de mas son dos
+/// centimetros de error por metro-).
+///
+/// Publica y aqui, en el motor, y no repetida en `pixpin-ui`: es logica
+/// pura sin nada de interfaz, y `pixpin-ui` ya depende de este crate.
+pub fn restringir_angulo(inicio: Punto2, fin: Punto2, pasos: f32) -> Punto2 {
+    let (dx, dy) = (fin.x - inicio.x, fin.y - inicio.y);
+    let radio = (dx * dx + dy * dy).sqrt();
+    if radio == 0.0 {
+        return fin;
+    }
+    let paso = std::f32::consts::PI / pasos;
+    let angulo = (dy.atan2(dx) / paso).round() * paso;
+    Punto2 {
+        x: inicio.x + radio * angulo.cos(),
+        y: inicio.y + radio * angulo.sin(),
+    }
+}
+
 /// Con que se dibuja. Vino de `pixpin-ui/anotador.rs` en el paso 1: quien
 /// decide que hace un clic tiene que saber que herramienta hay puesta, y esa
 /// decision es logica pura, no interfaz.
@@ -214,7 +239,7 @@ impl Gesto {
         match ev {
             EventoGesto::Pulsar { p, shift, alt } => self.pulsar(p, shift, alt, escena, escala),
             EventoGesto::Mover { p, shift, alt } => self.mover(p, shift, alt, escena, escala),
-            EventoGesto::Soltar { p } => self.soltar(p, escena),
+            EventoGesto::Soltar { p } => self.soltar(p, escena, escala),
             EventoGesto::Escape => {
                 escena.cancelar_paso();
                 self.estado = Estado::Reposo;
@@ -675,6 +700,19 @@ impl Gesto {
             }
 
             Estado::Calibrando => {
+                // Calibrar sobre el borde de una pared es el caso normal, y
+                // a pulso sale torcida: un grado de mas son dos centimetros
+                // de error por metro (diseno S5). Con Shift se sujeta a
+                // horizontal o vertical, con el mismo mecanismo que ya usan
+                // Linea y Flecha en `pixpin-ui/anotador.rs` -aqui con 2
+                // pasos por media vuelta en vez de 12, porque calibrar solo
+                // ofrece las dos, no las diagonales.
+                let origen = *self.trazo.first().unwrap_or(&p);
+                let p = if shift {
+                    restringir_angulo(origen, p, 2.0)
+                } else {
+                    p
+                };
                 // Mismo buffer que `Dibujando`, ya reservado: mover el raton
                 // calibrando tampoco asigna memoria.
                 if self.trazo.len() < PUNTOS_RESERVADOS {
@@ -691,7 +729,7 @@ impl Gesto {
         }
     }
 
-    fn soltar(&mut self, p: Punto2, escena: &mut Escena) -> Respuesta {
+    fn soltar(&mut self, p: Punto2, escena: &mut Escena, escala: f32) -> Respuesta {
         if let Estado::Marquesina { origen, .. } = self.estado {
             let caja = (origen.x, origen.y, p.x, p.y);
             let cogidos = dentro_de(&escena.elementos, caja);
@@ -699,11 +737,22 @@ impl Gesto {
         }
         // Escalar no deja rastro: al soltar, la distancia entre el primer y
         // el ultimo punto se convierte en una peticion. Menos de dos
-        // pixeles es un clic, no una medida, y no se pide nada.
+        // pixeles DE PANTALLA es un clic, no una medida, y no se pide nada.
+        // `largo_px` viaja en unidades de MUNDO -son las de `p`-, asi que el
+        // umbral tiene que pasar por `escala` (unidades de mundo por pixel
+        // de pantalla, la misma convencion que `HOLGURA_SELECCION*escala`
+        // en `pintado::marco_de_seleccion`) o dejaria de ser dos pixeles en
+        // cuanto la camara tuviera zoom.
         let pide = if let Estado::Calibrando = self.estado {
             let origen = *self.trazo.first().unwrap_or(&p);
-            let largo_px = origen.distancia(p);
-            (largo_px >= 2.0).then_some(Peticion::Calibrar { largo_px })
+            // El extremo es el ultimo punto del `trazo`, no el `p` crudo del
+            // evento: es el que `mover` dejo ya sujeto a Shift. Si se usara
+            // `p` a pulso, la sujecion de arriba pintaria la raya recta
+            // mientras se arrastra y luego mediria la torcida real al
+            // soltar -justo el fallo que Shift existe para evitar.
+            let fin = self.trazo.last().copied().unwrap_or(p);
+            let largo_px = origen.distancia(fin);
+            (largo_px >= 2.0 * escala.max(f32::EPSILON)).then_some(Peticion::Calibrar { largo_px })
         } else {
             None
         };
@@ -1185,6 +1234,110 @@ mod pruebas {
             panic!("al soltar tiene que pedir la medida, dio {:?}", r.pide);
         };
         assert!((largo_px - 100.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn shift_sujeta_la_raya_de_calibrar_a_horizontal_o_vertical() {
+        // Diseno S5: «con Shift se sujeta a horizontal o vertical. Calibrar
+        // sobre el borde de una pared es el caso normal, y a pulso sale
+        // torcida: un grado de mas son dos centimetros de error por
+        // metro». `Estado::Calibrando` recibia `shift` y no lo miraba.
+        //
+        // `restringir_angulo` conserva el radio y solo redondea el angulo
+        // -el mismo mecanismo que `Linea`-, asi que `largo_px` (la distancia
+        // al origen) no varia al sujetar: lo que cambia es HACIA DONDE cae
+        // el punto. Por eso la prueba mira el ultimo punto del `trazo`
+        // -campo privado, pero este modulo de pruebas es descendiente de
+        // `gesto` y lo alcanza- y no `Peticion::Calibrar`.
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Escalar;
+
+        g.evento(pulsar(Punto2::nuevo(0.0, 0.0)), &mut escena, 1.0);
+        // Casi horizontal, pero no del todo: sin sujetar, el ultimo punto
+        // del trazo seria justo este, con y = 10.0.
+        g.evento(
+            EventoGesto::Mover {
+                p: Punto2::nuevo(100.0, 10.0),
+                shift: true,
+                alt: false,
+            },
+            &mut escena,
+            1.0,
+        );
+
+        let ultimo = *g.trazo.last().expect("el trazo tiene al menos un punto");
+        assert!(
+            ultimo.y.abs() < 1e-2,
+            "sujeto a horizontal, y tiene que caer en 0: salio {ultimo:?}"
+        );
+    }
+
+    #[test]
+    fn sin_shift_la_raya_de_calibrar_no_se_sujeta() {
+        // Caso negativo del anterior: sin Shift el punto se queda tal cual
+        // llega, torcido incluido -es justo lo que Shift existe para poder
+        // evitar cuando se quiere.
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Escalar;
+
+        g.evento(pulsar(Punto2::nuevo(0.0, 0.0)), &mut escena, 1.0);
+        g.evento(mover(Punto2::nuevo(100.0, 10.0)), &mut escena, 1.0);
+
+        let ultimo = *g.trazo.last().expect("el trazo tiene al menos un punto");
+        assert!(
+            (ultimo.y - 10.0).abs() < 1e-3,
+            "sin Shift no se sujeta: y tenia que seguir en 10, salio {ultimo:?}"
+        );
+    }
+
+    #[test]
+    fn el_umbral_de_calibrar_son_dos_pixeles_de_pantalla_y_no_de_mundo() {
+        // Hallazgo 9: `largo_px` viaja en unidades de MUNDO, y el umbral se
+        // comparaba contra 2.0 a pulso -dos unidades de mundo, no dos
+        // pixeles de pantalla. Con un zoom que aleja la camara, `escala`
+        // (unidades de mundo por pixel) crece, y dos pixeles de pantalla
+        // son mas de dos unidades de mundo.
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Escalar;
+
+        // 3 unidades de mundo: mas de dos unidades de mundo a pulso, pero
+        // con un zoom al 10% (escala = 10.0 unidades de mundo por pixel)
+        // son solo 0,3 pixeles de pantalla, menos que el umbral de dos.
+        g.evento(pulsar(Punto2::nuevo(0.0, 0.0)), &mut escena, 10.0);
+        g.evento(mover(Punto2::nuevo(3.0, 0.0)), &mut escena, 10.0);
+        let r = g.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(3.0, 0.0),
+            },
+            &mut escena,
+            10.0,
+        );
+        assert_eq!(
+            r.pide, None,
+            "3 unidades de mundo con escala 10 son 0,3 px de pantalla: no llega al umbral"
+        );
+
+        // La misma distancia de mundo, con la camara a tamano natural
+        // (escala = 1.0): ahora si son tres pixeles de pantalla, por
+        // encima del umbral.
+        let mut g2 = Gesto::nuevo();
+        g2.herramienta = Herramienta::Escalar;
+        g2.evento(pulsar(Punto2::nuevo(0.0, 0.0)), &mut escena, 1.0);
+        g2.evento(mover(Punto2::nuevo(3.0, 0.0)), &mut escena, 1.0);
+        let r2 = g2.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(3.0, 0.0),
+            },
+            &mut escena,
+            1.0,
+        );
+        assert!(
+            r2.pide.is_some(),
+            "3 unidades de mundo con escala 1 son 3 px de pantalla: llega al umbral"
+        );
     }
 
     #[test]

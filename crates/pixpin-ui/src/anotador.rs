@@ -121,20 +121,16 @@ const PASOS_DE_ANGULO: f32 = 12.0;
 /// El punto final ya restringido por la tecla de mayusculas: las lineas y
 /// flechas se enganchan a angulos redondos, y los rectangulos y elipses
 /// salen cuadrados y circulos. Lo demas se queda como esta.
+///
+/// El angulo redondo no se calcula aqui: es `gesto::restringir_angulo`, la
+/// misma cuenta que usa `Calibrando` para sujetarse a horizontal o vertical.
+/// Repetirla en este crate era la logica pura escrita dos veces en el sitio
+/// equivocado -esta es la interfaz, la cuenta es del motor.
 fn restringir(inicio: Punto2, fin: Punto2, herramienta: Herramienta) -> Punto2 {
     let (dx, dy) = (fin.x - inicio.x, fin.y - inicio.y);
     match herramienta {
         Herramienta::Linea | Herramienta::Flecha => {
-            let radio = (dx * dx + dy * dy).sqrt();
-            if radio == 0.0 {
-                return fin;
-            }
-            let paso = std::f32::consts::PI / PASOS_DE_ANGULO;
-            let angulo = (dy.atan2(dx) / paso).round() * paso;
-            Punto2 {
-                x: inicio.x + radio * angulo.cos(),
-                y: inicio.y + radio * angulo.sin(),
-            }
+            pixpin_motor2d::gesto::restringir_angulo(inicio, fin, PASOS_DE_ANGULO)
         }
         Herramienta::Rectangulo | Herramienta::Elipse | Herramienta::Foco => {
             // El lado manda el eje mas largo, y se conserva hacia donde se
