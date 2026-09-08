@@ -8,7 +8,7 @@
 
 use pixpin_geom::Punto;
 use pixpin_render::{Color, Pintor, RectF};
-use pixpin_ui::{BOTONES, BotonCaja, CajaHerramientas, Herramienta};
+use pixpin_ui::{BotonCaja, CajaHerramientas, Herramienta};
 
 pub fn pintar_caja(
     p: &Pintor,
@@ -35,7 +35,10 @@ pub fn pintar_caja(
         },
     );
 
-    for (i, boton) in BOTONES.iter().enumerate() {
+    // La lista viene de la caja, no de una constante fija: cada superficie
+    // tiene la suya (BOTONES del anotador, BOTONES_EDITOR del editor), y
+    // este dibujo es el mismo para las dos.
+    for (i, boton) in caja.botones().iter().enumerate() {
         let r = caja.rect_de(i);
         let caja_boton = RectF {
             x: (r.x - origen.x) as f32,

@@ -35,7 +35,7 @@ use pixpin_motor2d::cache::Cache;
 use pixpin_motor2d::camara::Camara;
 use pixpin_motor2d::escena::Escena;
 use pixpin_motor2d::gesto::{
-    EventoGesto, FormaCursor, Gesto, Peticion, Region, direccion_del_tirador,
+    EventoGesto, FormaCursor, Gesto, Herramienta, Peticion, Region, direccion_del_tirador,
 };
 use pixpin_motor2d::indice::Rejilla;
 use pixpin_motor2d::pintado::Orden;
@@ -43,6 +43,7 @@ use pixpin_motor2d::vector::Punto2;
 use pixpin_motor2d::{ColorRgba, Elemento, Escala, EstiloTrazo};
 use pixpin_render::{CapaEstatica, Color, Estampa, MotorRender, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, FormaCursorWin, VentanaOverlay};
+use pixpin_ui::{BOTONES_EDITOR, BotonCaja, CajaHerramientas};
 
 /// De la forma que pide el motor a la que entiende Windows.
 ///
@@ -132,6 +133,52 @@ fn con_modificadores(g: EventoGesto) -> EventoGesto {
     }
 }
 
+/// La herramienta que elige cada letra, siguiendo `caja_dibujo::etiqueta`.
+///
+/// Solo las herramientas que ahi se pintan con una letra de verdad tienen
+/// atajo: Linea, Flecha, Rectangulo y Elipse se pintan con un simbolo
+/// ("/", ">", "square", "circle") porque no hay icono todavia, y un simbolo
+/// no es una tecla memorizable. Pura, para poder probarla sin ventana.
+fn tecla_a_herramienta(c: char) -> Option<Herramienta> {
+    match c.to_ascii_uppercase() {
+        'M' => Some(Herramienta::Mano),
+        'L' => Some(Herramienta::Lapiz),
+        'R' => Some(Herramienta::Resaltador),
+        'T' => Some(Herramienta::Texto),
+        'F' => Some(Herramienta::Foco),
+        'Q' => Some(Herramienta::Lupa),
+        'B' => Some(Herramienta::Borrador),
+        'A' => Some(Herramienta::Cota),
+        'E' => Some(Herramienta::Escalar),
+        'G' => Some(Herramienta::EscalaGrafica),
+        _ => None,
+    }
+}
+
+/// Que hacer al pulsar un boton de la caja del editor. Pura -no toca la
+/// ventana ni pinta nada-, asi se prueba sin GPU ni sesion de escritorio.
+/// Mismo contrato que `CapaViva::pulsar_boton` en `capa.rs`: devuelve
+/// `false` si el boton pide salir.
+fn pulsar_boton(boton: BotonCaja, gesto: &mut Gesto, escena: &mut Escena) -> bool {
+    match boton {
+        BotonCaja::Elegir(h) => {
+            gesto.herramienta = h;
+            true
+        }
+        BotonCaja::Deshacer => {
+            escena.deshacer();
+            true
+        }
+        BotonCaja::Rehacer => {
+            escena.rehacer();
+            true
+        }
+        // Sin paleta de colores en el editor todavia.
+        BotonCaja::Color => true,
+        BotonCaja::Salir => false,
+    }
+}
+
 /// Abre el editor y no vuelve hasta que se cierra la ventana.
 ///
 /// Devuelve la escena tal como quedo, compactada: los elementos borrados de
@@ -168,12 +215,57 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
     let mut rejilla = Rejilla::nueva();
     let mut capa = CapaEstatica::nueva();
     let (ancho_px, alto_px) = (area.ancho as f32, area.alto as f32);
+    // "Contenido" y area de trabajo son el mismo rectangulo, como en
+    // `CapaViva::nueva` (`capa.rs`): aqui el contenido ES la pantalla
+    // entera, no hay un pin ni una ventana mas pequena de referencia.
+    let caja = CajaHerramientas::colocar(area, area, monitor.escala_por_cien, &BOTONES_EDITOR);
 
     'bucle: loop {
         pixpin_shell::overlay::bombear_pendientes();
         for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if hwnd != ventana.handle() {
                 continue;
+            }
+            // 0. La caja de herramientas es un dialogo en pantalla: un clic
+            // ahi ELIGE o dispara una accion, y no puede llegar ademas al
+            // gesto como si fuera un trazo en el lienzo -mismo cuidado que
+            // `CapaViva::raton` ya toma en `capa.rs`-. Se resuelve con las
+            // coordenadas de pantalla tal cual llegan, ANTES de que
+            // `a_evento` las convierta a mundo con la camara.
+            if let EventoOverlay::BotonPulsado(p) = ev {
+                if let Some(boton) = caja.boton_en(p) {
+                    if !pulsar_boton(boton, &mut gesto, &mut escena) {
+                        break 'bucle;
+                    }
+                    // El cursor se pone al vuelo con el siguiente
+                    // `RatonMovido`: no hace falta calcularlo aqui, y
+                    // `cursor_en` es privado de `gesto.rs` a proposito.
+                    ventana.invalidar();
+                    continue;
+                }
+                if caja.contiene(p) {
+                    // El hueco entre botones: de la caja, pero no un boton.
+                    continue;
+                }
+            }
+            if let EventoOverlay::BotonSoltado(p) = ev {
+                if caja.contiene(p) {
+                    continue;
+                }
+            }
+            // Los atajos de teclado de la caja (D53): la letra que pinta
+            // `caja_dibujo::etiqueta` elige la herramienta. Llegan como
+            // caracter compuesto (WM_CHAR), no como `EventoGesto`: el
+            // cajetin de calibrar tiene su PROPIO bucle de eventos
+            // (`pedir_medida`, mas abajo) y nunca lo comparte con este, asi
+            // que una letra no puede robarle un caracter mientras esta
+            // abierto.
+            if let EventoOverlay::Caracter(c) = ev {
+                if let Some(h) = tecla_a_herramienta(c) {
+                    gesto.herramienta = h;
+                    ventana.invalidar();
+                    continue;
+                }
             }
             // 1. Traducir y, si le toca al motor, pasarselo.
             if let Some(g) = a_evento(&ev, &camara) {
@@ -256,6 +348,8 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
                         &mut cache,
                         &rejilla,
                         &capa,
+                        &caja,
+                        monitor.escala_por_cien,
                         ancho_px,
                         alto_px,
                         largo_px,
@@ -277,6 +371,8 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
                     &mut cache,
                     &rejilla,
                     &capa,
+                    &caja,
+                    monitor.escala_por_cien,
                     ancho_px,
                     alto_px,
                     |_| {},
@@ -330,6 +426,11 @@ fn ordenes_de_elemento(
 /// mundo o si la deshace con `Pintor::desplazar(0.0, 0.0)` primero (el
 /// cajetin de calibrar hace esto ultimo: es un dialogo en pantalla, no algo
 /// del lienzo).
+///
+/// La caja de herramientas es del mismo tipo de dialogo, y se pinta aqui
+/// mismo -no via `encima`- para que salga en los dos caminos que llaman a
+/// `pintar` (el bucle principal y `pedir_medida`) sin que ninguno tenga que
+/// acordarse de repetirla.
 #[allow(clippy::too_many_arguments)]
 fn pintar(
     motor: &mut MotorRender,
@@ -340,6 +441,8 @@ fn pintar(
     cache: &mut Cache,
     rejilla: &Rejilla,
     capa: &CapaEstatica,
+    caja_herramientas: &CajaHerramientas,
+    escala_por_cien: u32,
     ancho_px: f32,
     alto_px: f32,
     encima: impl FnOnce(&pixpin_render::Pintor<'_>),
@@ -413,6 +516,18 @@ fn pintar(
         if let Some(m) = gesto.marquesina() {
             p.marquesina(m, escala);
         }
+        // La caja es un dialogo en pantalla, no algo del lienzo: no se mueve
+        // ni se escala con la camara. `desplazar(0.0, 0.0)` deshace la vista
+        // del mundo que `poner_vista` dejo puesta arriba, igual que hace
+        // `dibujar_cajetin` mas abajo.
+        p.desplazar(0.0, 0.0);
+        crate::caja_dibujo::pintar_caja(
+            p,
+            caja_herramientas,
+            gesto.herramienta,
+            escala_por_cien,
+            Punto { x: 0, y: 0 },
+        );
         encima(p);
     });
     let _ = superficie.presentar();
@@ -455,6 +570,8 @@ fn pedir_medida(
     cache: &mut Cache,
     rejilla: &Rejilla,
     capa: &CapaEstatica,
+    caja: &CajaHerramientas,
+    escala_por_cien: u32,
     ancho_px: f32,
     alto_px: f32,
     largo_px: f32,
@@ -503,6 +620,8 @@ fn pedir_medida(
                         cache,
                         rejilla,
                         capa,
+                        caja,
+                        escala_por_cien,
                         ancho_px,
                         alto_px,
                         |p| dibujar_cajetin(p, ancho_px, alto_px, largo_px, &texto, unidad),
@@ -647,6 +766,120 @@ mod pruebas {
     use pixpin_motor2d::escena::Escena;
     use pixpin_motor2d::gesto::{EventoGesto, Gesto};
     use std::f32::consts::{FRAC_PI_2, PI};
+
+    /// El hallazgo 3 de la revision final: las tres herramientas de medir
+    /// estaban implementadas y probadas, pero no habia forma de elegirlas
+    /// en la unica superficie que las implementa. Estas tres pruebas fijan
+    /// las decisiones puras de las que depende el arreglo -que boton cae
+    /// bajo un punto, que herramienta elige una tecla, y que hace cada
+    /// boton- para no depender de una ventana de verdad.
+    #[test]
+    fn las_tres_herramientas_de_medir_tienen_boton_en_la_caja_del_editor() {
+        let c = CajaHerramientas::colocar(rect_de_prueba(), rect_de_prueba(), 100, &BOTONES_EDITOR);
+        for h in [
+            Herramienta::Cota,
+            Herramienta::Escalar,
+            Herramienta::EscalaGrafica,
+        ] {
+            let indice = BOTONES_EDITOR
+                .iter()
+                .position(|b| *b == BotonCaja::Elegir(h))
+                .unwrap_or_else(|| panic!("{h:?} no esta en la caja del editor"));
+            let r = c.rect_de(indice);
+            let centro = Punto {
+                x: r.x + r.ancho as i32 / 2,
+                y: r.y + r.alto as i32 / 2,
+            };
+            assert_eq!(c.boton_en(centro), Some(BotonCaja::Elegir(h)));
+        }
+    }
+
+    #[test]
+    fn las_letras_de_medir_eligen_la_herramienta_de_medir() {
+        assert_eq!(tecla_a_herramienta('A'), Some(Herramienta::Cota));
+        assert_eq!(tecla_a_herramienta('E'), Some(Herramienta::Escalar));
+        assert_eq!(tecla_a_herramienta('G'), Some(Herramienta::EscalaGrafica));
+        // Sin distincion de mayusculas: es lo que espera cualquiera que
+        // teclee sin fijarse en Bloq Mayus.
+        assert_eq!(tecla_a_herramienta('a'), Some(Herramienta::Cota));
+    }
+
+    #[test]
+    fn una_letra_sin_herramienta_asignada_no_elige_nada() {
+        // Caso negativo: si esto devolviera Some para cualquier caracter,
+        // escribir en el cajetin de calibrar (que usa su PROPIO bucle de
+        // eventos, no este) tampoco estaria a salvo si algun dia compartiera
+        // codigo con esta funcion.
+        assert_eq!(tecla_a_herramienta('9'), None);
+        assert_eq!(tecla_a_herramienta(' '), None);
+        assert_eq!(tecla_a_herramienta('Z'), None);
+    }
+
+    #[test]
+    fn pulsar_un_boton_de_elegir_cambia_la_herramienta_del_gesto() {
+        let mut gesto = Gesto::nuevo();
+        let mut escena = Escena::nueva();
+        assert_eq!(gesto.herramienta, Herramienta::Lapiz);
+        let sigue = pulsar_boton(
+            BotonCaja::Elegir(Herramienta::Cota),
+            &mut gesto,
+            &mut escena,
+        );
+        assert!(sigue, "elegir una herramienta no pide salir");
+        assert_eq!(gesto.herramienta, Herramienta::Cota);
+    }
+
+    #[test]
+    fn pulsar_deshacer_y_rehacer_llama_a_la_escena() {
+        // Rotura a proposito: si `BotonCaja::Deshacer` no llamara a
+        // `escena.deshacer()`, el trazo seguiria vivo tras pulsarlo. Esta
+        // prueba lo caza comprobando la escena de verdad, no solo el valor
+        // devuelto.
+        let mut gesto = Gesto::nuevo();
+        let mut escena = Escena::nueva();
+        gesto.herramienta = Herramienta::Lapiz;
+        gesto.evento(
+            EventoGesto::Pulsar {
+                p: Punto2::nuevo(0.0, 0.0),
+                shift: false,
+                alt: false,
+            },
+            &mut escena,
+            1.0,
+        );
+        gesto.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(10.0, 0.0),
+            },
+            &mut escena,
+            1.0,
+        );
+        assert_eq!(escena.cuantos_visibles(), 1);
+
+        assert!(pulsar_boton(BotonCaja::Deshacer, &mut gesto, &mut escena));
+        assert_eq!(escena.cuantos_visibles(), 0, "Deshacer tiene que deshacer");
+
+        assert!(pulsar_boton(BotonCaja::Rehacer, &mut gesto, &mut escena));
+        assert_eq!(escena.cuantos_visibles(), 1, "Rehacer tiene que rehacer");
+    }
+
+    #[test]
+    fn pulsar_salir_pide_salir_y_los_demas_no() {
+        let mut gesto = Gesto::nuevo();
+        let mut escena = Escena::nueva();
+        assert!(!pulsar_boton(BotonCaja::Salir, &mut gesto, &mut escena));
+        assert!(pulsar_boton(BotonCaja::Color, &mut gesto, &mut escena));
+        assert!(pulsar_boton(BotonCaja::Deshacer, &mut gesto, &mut escena));
+    }
+
+    fn rect_de_prueba() -> pixpin_geom::Rect {
+        pixpin_geom::Rect {
+            x: 0,
+            y: 0,
+            ancho: 1920,
+            alto: 1080,
+        }
+    }
 
     /// El fallo real: los tiradores se pintaban con el angulo fijo en cero
     /// (`Tiradores::de_caja(caja, 0.0, escala)`) mientras `gesto.rs` los

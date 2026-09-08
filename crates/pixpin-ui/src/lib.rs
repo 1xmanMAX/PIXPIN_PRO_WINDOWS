@@ -20,7 +20,7 @@ pub use anotador::{
     Anotador, EfectoAnotador, EventoAnotador, Herramienta, TeclaAnotador, UMBRAL_ARRASTRE,
 };
 pub use barra::{AccionBarra, Barra};
-pub use caja_herramientas::{BOTONES, BotonCaja, CajaHerramientas};
+pub use caja_herramientas::{BOTONES, BOTONES_EDITOR, BotonCaja, CajaHerramientas};
 pub use lupa::{FormatoColorLupa, Lupa, texto_color};
 pub use overlay::{Efecto, EstadoOverlay, EventoEntrada, Fase, FormaCursor, TeclaOverlay};
 pub use panel::PanelTodo;

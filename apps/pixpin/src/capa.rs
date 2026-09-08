@@ -20,8 +20,8 @@ use pixpin_nivel::Nivel;
 use pixpin_render::{Color, MotorRender, RectF, Superficie};
 use pixpin_shell::overlay::{FormaCursorWin, MSG_DESPIERTA, VentanaOverlay};
 use pixpin_ui::{
-    Anotador, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, Herramienta, Lupa,
-    TeclaAnotador,
+    Anotador, BOTONES, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, Herramienta,
+    Lupa, TeclaAnotador,
 };
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -105,6 +105,7 @@ impl CapaViva {
             monitor.area_trabajo,
             monitor.area_trabajo,
             monitor.escala_por_cien,
+            &BOTONES,
         );
 
         Ok(CapaViva {

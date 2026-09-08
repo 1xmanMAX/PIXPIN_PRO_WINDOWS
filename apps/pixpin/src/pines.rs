@@ -93,8 +93,8 @@ use pixpin_pin::{
 use pixpin_render::MotorRender;
 use pixpin_store::{Almacen, ColorGrupo, PinGuardado, TipoEntrada};
 use pixpin_ui::{
-    Anotador, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, Herramienta, Lupa,
-    TeclaAnotador,
+    Anotador, BOTONES, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, Herramienta,
+    Lupa, TeclaAnotador,
 };
 use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 
@@ -897,8 +897,12 @@ impl Pines {
             .or_else(|| disposicion.principal())
             .copied()
             .context("sin monitor para la paleta")?;
-        let caja =
-            CajaHerramientas::colocar(contenido, monitor.area_trabajo, monitor.escala_por_cien);
+        let caja = CajaHerramientas::colocar(
+            contenido,
+            monitor.area_trabajo,
+            monitor.escala_por_cien,
+            &BOTONES,
+        );
         let pedidos = Rc::clone(&self.pedidos);
         let hwnd_app = self.hwnd_app;
         let paleta = Paleta::nueva(

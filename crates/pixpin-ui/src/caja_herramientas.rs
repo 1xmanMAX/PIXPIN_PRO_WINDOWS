@@ -33,10 +33,34 @@ pub enum BotonCaja {
 /// El orden en que se ven. La mano primero porque es a la que se vuelve, y
 /// las acciones al final, separadas por su propio grupo.
 ///
-/// Cota, Escalar y EscalaGrafica van con las demas de dibujar, antes de
-/// Deshacer: sin estar aqui no hay manera de elegirlas, y quedarian
-/// implementadas pero muertas (Ruling K).
-pub const BOTONES: [BotonCaja; 17] = [
+/// Esta es la caja del anotador (la capa de pantalla y la paleta del pin):
+/// `anotador.rs::construir` no sabe hacer `Cota`, `Escalar` ni
+/// `EscalaGrafica` -su `match` cae en `_ => return None`-, asi que esos tres
+/// botones no van aqui. Viven en `BOTONES_EDITOR`, la caja de la otra
+/// superficie, que si los implementa.
+pub const BOTONES: [BotonCaja; 14] = [
+    BotonCaja::Elegir(Herramienta::Mano),
+    BotonCaja::Elegir(Herramienta::Lapiz),
+    BotonCaja::Elegir(Herramienta::Resaltador),
+    BotonCaja::Elegir(Herramienta::Linea),
+    BotonCaja::Elegir(Herramienta::Flecha),
+    BotonCaja::Elegir(Herramienta::Rectangulo),
+    BotonCaja::Elegir(Herramienta::Elipse),
+    BotonCaja::Elegir(Herramienta::Texto),
+    BotonCaja::Elegir(Herramienta::Foco),
+    BotonCaja::Elegir(Herramienta::Lupa),
+    BotonCaja::Elegir(Herramienta::Borrador),
+    BotonCaja::Deshacer,
+    BotonCaja::Rehacer,
+    BotonCaja::Salir,
+];
+
+/// La caja del editor avanzado (`apps/pixpin/src/ventana_editor.rs`), la
+/// unica superficie que implementa `Cota`, `Escalar` y `EscalaGrafica` de
+/// verdad: pinta `ordenes_medibles`, atiende `Peticion::Calibrar` y sabe
+/// dibujar su cajetin. Por eso las tres van aqui, con las demas de dibujar,
+/// antes de Deshacer.
+pub const BOTONES_EDITOR: [BotonCaja; 17] = [
     BotonCaja::Elegir(Herramienta::Mano),
     BotonCaja::Elegir(Herramienta::Lapiz),
     BotonCaja::Elegir(Herramienta::Resaltador),
@@ -60,18 +84,28 @@ pub const BOTONES: [BotonCaja; 17] = [
 pub struct CajaHerramientas {
     pub marco: Rect,
     escala_por_cien: u32,
+    /// La lista de botones que representa esta caja. Cada superficie tiene
+    /// la suya (`BOTONES` del anotador, `BOTONES_EDITOR` del editor): la caja
+    /// es la misma geometria, pero da por hecho una lista, no lee una
+    /// constante global.
+    botones: &'static [BotonCaja],
 }
 
 impl CajaHerramientas {
     /// A la izquierda del contenido si cabe; si no, a la derecha; si tampoco,
     /// dentro y pegada al borde izquierdo. Siempre entera en el area de
     /// trabajo: una caja medio fuera de pantalla no se puede usar.
-    pub fn colocar(contenido: Rect, area_trabajo: Rect, escala_por_cien: u32) -> CajaHerramientas {
+    pub fn colocar(
+        contenido: Rect,
+        area_trabajo: Rect,
+        escala_por_cien: u32,
+        botones: &'static [BotonCaja],
+    ) -> CajaHerramientas {
         let e = |v: u32| v * escala_por_cien / 100;
         let lado = e(LADO_BOTON_LOGICO);
         let hueco = e(HUECO_LOGICO);
         let margen = e(MARGEN_LOGICO);
-        let n = BOTONES.len() as u32;
+        let n = botones.len() as u32;
 
         let ancho = lado + 2 * margen;
         let alto = n * lado + (n - 1) * hueco + 2 * margen;
@@ -105,6 +139,7 @@ impl CajaHerramientas {
                 alto,
             },
             escala_por_cien,
+            botones,
         }
     }
 
@@ -127,11 +162,17 @@ impl CajaHerramientas {
         if !self.marco.contiene(p) {
             return None;
         }
-        BOTONES
+        self.botones
             .iter()
             .enumerate()
             .find(|(i, _)| self.rect_de(*i).contiene(p))
             .map(|(_, b)| *b)
+    }
+
+    /// La lista de botones de esta caja, en orden: quien la pinta la
+    /// necesita para saber que dibujar en cada indice.
+    pub fn botones(&self) -> &'static [BotonCaja] {
+        self.botones
     }
 
     /// Si el punto cae sobre la caja. Sirve para NO empezar un trazo al
@@ -165,7 +206,7 @@ mod pruebas {
 
     #[test]
     fn la_caja_va_a_la_izquierda_si_cabe() {
-        let c = CajaHerramientas::colocar(contenido(), area(), 100);
+        let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES);
         assert!(
             c.marco.derecha() <= contenido().x,
             "deberia quedar a la izquierda del contenido"
@@ -182,7 +223,7 @@ mod pruebas {
             ancho: 400,
             alto: 300,
         };
-        let c = CajaHerramientas::colocar(pegado, area(), 100);
+        let c = CajaHerramientas::colocar(pegado, area(), 100, &BOTONES);
         assert!(
             c.marco.x >= pegado.derecha(),
             "deberia irse a la derecha, esta en {}",
@@ -210,6 +251,7 @@ mod pruebas {
                 },
                 bajo,
                 100,
+                &BOTONES,
             );
             assert!(
                 c.marco.arriba() >= bajo.arriba(),
@@ -224,7 +266,7 @@ mod pruebas {
 
     #[test]
     fn cada_boton_cae_dentro_del_marco_y_no_se_solapa_con_el_siguiente() {
-        let c = CajaHerramientas::colocar(contenido(), area(), 150);
+        let c = CajaHerramientas::colocar(contenido(), area(), 150, &BOTONES);
         for i in 0..BOTONES.len() {
             let r = c.rect_de(i);
             assert!(
@@ -243,7 +285,7 @@ mod pruebas {
 
     #[test]
     fn se_encuentra_el_boton_bajo_el_punto() {
-        let c = CajaHerramientas::colocar(contenido(), area(), 100);
+        let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES);
         let r = c.rect_de(1); // el lapiz
         let centro = Punto {
             x: r.x + r.ancho as i32 / 2,
@@ -259,7 +301,7 @@ mod pruebas {
     fn fuera_de_la_caja_no_hay_boton() {
         // Es lo que distingue "elegir herramienta" de "empezar a dibujar":
         // sin esto, pulsar junto a la caja no dibujaria.
-        let c = CajaHerramientas::colocar(contenido(), area(), 100);
+        let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES);
         assert_eq!(c.boton_en(Punto { x: 1500, y: 900 }), None);
         assert!(!c.contiene(Punto { x: 1500, y: 900 }));
     }
@@ -268,7 +310,7 @@ mod pruebas {
     fn en_el_hueco_entre_botones_no_hay_boton_pero_si_caja() {
         // El hueco pertenece a la caja: pulsar ahi no debe empezar un trazo
         // por detras de la barra.
-        let c = CajaHerramientas::colocar(contenido(), area(), 100);
+        let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES);
         let r0 = c.rect_de(0);
         let hueco = Punto {
             x: r0.x + 1,
@@ -279,32 +321,54 @@ mod pruebas {
     }
 
     #[test]
-    fn estan_las_catorce_herramientas_y_las_tres_acciones() {
+    fn estan_las_once_herramientas_del_anotador_y_las_tres_acciones() {
+        // BOTONES es la caja del anotador: no lleva Cota, Escalar ni
+        // EscalaGrafica porque `anotador::construir` no sabe hacerlas -su
+        // `match` cae en `_ => return None`-. Ofrecer un boton que no hace
+        // nada es peor que no ofrecerlo.
         let herramientas = BOTONES
             .iter()
             .filter(|b| matches!(b, BotonCaja::Elegir(_)))
             .count();
-        assert_eq!(herramientas, 14, "faltan herramientas en la caja");
-        assert!(BOTONES.contains(&BotonCaja::Elegir(Herramienta::Cota)));
-        assert!(BOTONES.contains(&BotonCaja::Elegir(Herramienta::Escalar)));
-        assert!(BOTONES.contains(&BotonCaja::Elegir(Herramienta::EscalaGrafica)));
+        assert_eq!(herramientas, 11, "faltan o sobran herramientas en la caja");
+        assert!(!BOTONES.contains(&BotonCaja::Elegir(Herramienta::Cota)));
+        assert!(!BOTONES.contains(&BotonCaja::Elegir(Herramienta::Escalar)));
+        assert!(!BOTONES.contains(&BotonCaja::Elegir(Herramienta::EscalaGrafica)));
         assert!(BOTONES.contains(&BotonCaja::Deshacer));
         assert!(BOTONES.contains(&BotonCaja::Rehacer));
         assert!(BOTONES.contains(&BotonCaja::Salir));
     }
 
     #[test]
+    fn estan_las_tres_herramientas_de_medir_en_la_caja_del_editor() {
+        // BOTONES_EDITOR es la caja de `ventana_editor.rs`, la unica
+        // superficie que implementa medir de verdad.
+        let herramientas = BOTONES_EDITOR
+            .iter()
+            .filter(|b| matches!(b, BotonCaja::Elegir(_)))
+            .count();
+        assert_eq!(herramientas, 14, "faltan o sobran herramientas en la caja");
+        assert!(BOTONES_EDITOR.contains(&BotonCaja::Elegir(Herramienta::Cota)));
+        assert!(BOTONES_EDITOR.contains(&BotonCaja::Elegir(Herramienta::Escalar)));
+        assert!(BOTONES_EDITOR.contains(&BotonCaja::Elegir(Herramienta::EscalaGrafica)));
+        assert!(BOTONES_EDITOR.contains(&BotonCaja::Deshacer));
+        assert!(BOTONES_EDITOR.contains(&BotonCaja::Rehacer));
+        assert!(BOTONES_EDITOR.contains(&BotonCaja::Salir));
+    }
+
+    #[test]
     fn la_caja_con_diecisiete_botones_sigue_cabiendo_entera_en_el_area_de_trabajo() {
         // `colocar` promete en su documentacion que la caja siempre queda
-        // entera en el area de trabajo. Tres botones mas son tres mas de
-        // alto, y una caja medio fuera de pantalla no se puede usar.
+        // entera en el area de trabajo. BOTONES_EDITOR es la lista mas
+        // larga de las dos (17, tres mas que BOTONES): si la promesa se
+        // sostiene para ella, se sostiene para cualquiera de las dos.
         //
         // El area es la de un monitor normal, no la "bajo" de
         // `la_caja_nunca_se_sale_del_area_de_trabajo`: esa es a proposito
-        // mas baja que catorce botones (para probar el tope, no el caso de
-        // uso), asi que no sirve para comprobar que "cabe entera".
-        let c = CajaHerramientas::colocar(contenido(), area(), 100);
-        assert_eq!(BOTONES.len(), 17);
+        // mas baja que diecisiete botones (para probar el tope, no el caso
+        // de uso), asi que no sirve para comprobar que "cabe entera".
+        let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES_EDITOR);
+        assert_eq!(BOTONES_EDITOR.len(), 17);
         assert!(
             c.marco.arriba() >= area().arriba() && c.marco.abajo() <= area().abajo(),
             "se sale por arriba o por abajo: {c:?}"
@@ -313,7 +377,7 @@ mod pruebas {
             c.marco.izquierda() >= area().izquierda() && c.marco.derecha() <= area().derecha(),
             "se sale de lado: {c:?}"
         );
-        for i in 0..BOTONES.len() {
+        for i in 0..BOTONES_EDITOR.len() {
             let r = c.rect_de(i);
             assert!(
                 r.arriba() >= c.marco.arriba() && r.abajo() <= c.marco.abajo(),
