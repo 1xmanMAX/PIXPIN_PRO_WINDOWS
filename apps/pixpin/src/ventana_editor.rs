@@ -43,7 +43,7 @@ use pixpin_motor2d::vector::Punto2;
 use pixpin_motor2d::{ColorRgba, Elemento, Escala, EstiloTrazo};
 use pixpin_render::{CapaEstatica, Color, Estampa, MotorRender, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, FormaCursorWin, VentanaOverlay};
-use pixpin_ui::{BOTONES_EDITOR, BotonCaja, CajaHerramientas};
+use pixpin_ui::{BOTONES_EDITOR, BotonCaja, CajaHerramientas, DestinoClic};
 
 /// De la forma que pide el motor a la que entiende Windows.
 ///
@@ -232,24 +232,29 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
             // `CapaViva::raton` ya toma en `capa.rs`-. Se resuelve con las
             // coordenadas de pantalla tal cual llegan, ANTES de que
             // `a_evento` las convierta a mundo con la camara.
+            //
+            // La pregunta "de la caja o del lienzo" es `CajaHerramientas::
+            // destino`, pura: aqui solo queda el `match` sobre su resultado,
+            // asi que la decision en si esta bajo prueba sin ventana.
             if let EventoOverlay::BotonPulsado(p) = ev {
-                if let Some(boton) = caja.boton_en(p) {
-                    if !pulsar_boton(boton, &mut gesto, &mut escena) {
-                        break 'bucle;
+                match caja.destino(p) {
+                    DestinoClic::Boton(boton) => {
+                        if !pulsar_boton(boton, &mut gesto, &mut escena) {
+                            break 'bucle;
+                        }
+                        // El cursor se pone al vuelo con el siguiente
+                        // `RatonMovido`: no hace falta calcularlo aqui, y
+                        // `cursor_en` es privado de `gesto.rs` a proposito.
+                        ventana.invalidar();
+                        continue;
                     }
-                    // El cursor se pone al vuelo con el siguiente
-                    // `RatonMovido`: no hace falta calcularlo aqui, y
-                    // `cursor_en` es privado de `gesto.rs` a proposito.
-                    ventana.invalidar();
-                    continue;
-                }
-                if caja.contiene(p) {
                     // El hueco entre botones: de la caja, pero no un boton.
-                    continue;
+                    DestinoClic::Caja => continue,
+                    DestinoClic::Lienzo => {}
                 }
             }
             if let EventoOverlay::BotonSoltado(p) = ev {
-                if caja.contiene(p) {
+                if !matches!(caja.destino(p), DestinoClic::Lienzo) {
                     continue;
                 }
             }

@@ -180,6 +180,37 @@ impl CajaHerramientas {
     pub fn contiene(&self, p: Punto) -> bool {
         self.marco.contiene(p)
     }
+
+    /// A que le pertenece un punto del raton: a un boton concreto, al hueco
+    /// de la caja (entre botones o en su margen), o al lienzo de debajo.
+    ///
+    /// Junta `boton_en` y `contiene` en la UNICA pregunta que hace falta
+    /// antes de dejar pasar un clic al gesto: `ventana_editor::abrir` la
+    /// resolvia a mano con un `if`/`continue` dentro del bucle de eventos, un
+    /// sitio que no se puede probar sin ventana -y por eso un revisor pudo
+    /// apagar la guarda entera con un `if false` sin que ninguna de las 842
+    /// pruebas se enterara. Sacar la decision aqui, pura, es lo que la pone
+    /// bajo vigilancia.
+    pub fn destino(&self, p: Punto) -> DestinoClic {
+        match self.boton_en(p) {
+            Some(b) => DestinoClic::Boton(b),
+            None if self.contiene(p) => DestinoClic::Caja,
+            None => DestinoClic::Lienzo,
+        }
+    }
+}
+
+/// El resultado de `CajaHerramientas::destino`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DestinoClic {
+    /// Encima de un boton: el clic lo elige o dispara, no llega al lienzo.
+    Boton(BotonCaja),
+    /// Dentro del marco pero fuera de todo boton (el hueco o el margen):
+    /// sigue sin ser del lienzo, para no dejar un punto de tinta detras de
+    /// la barra.
+    Caja,
+    /// Fuera de la caja: le toca al gesto de siempre.
+    Lienzo,
 }
 
 #[cfg(test)]
@@ -354,6 +385,68 @@ mod pruebas {
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Deshacer));
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Rehacer));
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Salir));
+    }
+
+    #[test]
+    fn destino_de_un_punto_dentro_de_un_boton_es_ese_boton() {
+        let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES);
+        let r = c.rect_de(1); // el lapiz
+        let centro = Punto {
+            x: r.x + r.ancho as i32 / 2,
+            y: r.y + r.alto as i32 / 2,
+        };
+        assert_eq!(
+            c.destino(centro),
+            DestinoClic::Boton(BotonCaja::Elegir(Herramienta::Lapiz))
+        );
+    }
+
+    #[test]
+    fn destino_del_hueco_entre_botones_es_la_caja_no_el_lienzo() {
+        // El caso que protegia la guarda de `ventana_editor::abrir`: sin
+        // esto, un clic en el hueco caeria al lienzo y dejaria un trazo
+        // detras de la barra.
+        let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES);
+        let r0 = c.rect_de(0);
+        let hueco = Punto {
+            x: r0.x + 1,
+            y: r0.abajo() + 1,
+        };
+        assert_eq!(c.destino(hueco), DestinoClic::Caja);
+    }
+
+    #[test]
+    fn destino_justo_fuera_del_marco_es_el_lienzo() {
+        let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES);
+        let fuera = Punto {
+            x: c.marco.derecha() + 50,
+            y: c.marco.y,
+        };
+        assert_eq!(c.destino(fuera), DestinoClic::Lienzo);
+    }
+
+    #[test]
+    fn destino_en_los_bordes_del_marco() {
+        // Media apertura (`Rect::contiene`): el borde superior/izquierdo
+        // pertenece al marco, el primer pixel tras el inferior/derecho no.
+        let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES);
+        let esquina_dentro = Punto {
+            x: c.marco.izquierda(),
+            y: c.marco.arriba(),
+        };
+        assert_ne!(c.destino(esquina_dentro), DestinoClic::Lienzo);
+
+        let justo_fuera = Punto {
+            x: c.marco.derecha(),
+            y: c.marco.abajo() - 1,
+        };
+        assert_eq!(c.destino(justo_fuera), DestinoClic::Lienzo);
+
+        let tambien_fuera = Punto {
+            x: c.marco.derecha() - 1,
+            y: c.marco.abajo(),
+        };
+        assert_eq!(c.destino(tambien_fuera), DestinoClic::Lienzo);
     }
 
     #[test]
