@@ -84,11 +84,20 @@ pub fn longitud_de(e: &Elemento) -> f32 {
 ///
 /// La `y` crece hacia abajo, asi que bajar a la derecha son 45 grados
 /// positivos. Es la misma convencion que el resto del motor.
+///
+/// Los puntos de `e` estan en marco LOCAL: quien pinta (`pintado.rs:353`) y
+/// quien pica (`impacto.rs:28`) aplican `e.angulo` por su cuenta. Si esta
+/// funcion no hiciera lo mismo, girar una cota con el tirador la dibujaria y
+/// la tocaria en un sitio, pero el rotulo seguiria diciendo el angulo de
+/// antes de girar: una cota que miente sobre su propio angulo (D34).
+/// `e.angulo` esta en radianes -es lo que usa `Punto2::girar`- y esta
+/// funcion devuelve grados, asi que se convierte antes de sumar.
 pub fn angulo_de(e: &Elemento) -> f32 {
     match extremos(e) {
         Some((a, b)) => {
             let d = b.restar(a);
-            normalizar_grados(d.y.atan2(d.x).to_degrees())
+            let local = d.y.atan2(d.x).to_degrees();
+            normalizar_grados(local + e.angulo.to_degrees())
         }
         None => 0.0,
     }
@@ -126,8 +135,10 @@ pub(crate) fn formatear_valor(valor: f32, unidad: &str, decimales: u8, coma: cha
 
 /// Como se escribe una longitud en pixeles.
 ///
-/// Sin escala valida se escriben pixeles, que al menos no enganan. Quien lo
-/// pinta lo pone en gris, que es el aviso de que no es medida de plano (D35).
+/// Sin escala valida se escriben pixeles, que al menos no enganan. Es solo
+/// el texto: el gris que completa el aviso de D35 lo pone quien pinta
+/// (`pintado::ordenes_medibles`, con `COLOR_SIN_ESCALA`), porque esta
+/// funcion no sabe de colores.
 pub fn texto_de_medida(largo_px: f32, escala: Option<&Escala>, coma: char) -> String {
     let Some(e) = escala.filter(|e| e.valida()) else {
         return format!("{} px", largo_px.round() as i64);
@@ -346,6 +357,39 @@ mod pruebas {
         let t = texto_de_cota(&torcida, Some(&e), ',');
         assert!(t.contains("45"), "la torcida si lleva grados: {t}");
         assert!(t.contains('°'), "y su simbolo: {t}");
+    }
+
+    #[test]
+    fn el_rotulo_dice_el_angulo_aunque_se_gire_con_e_angulo_y_no_con_los_puntos() {
+        // El fallo real: `angulo_de` derivaba el angulo solo de los puntos,
+        // en marco local, e ignoraba `e.angulo`. Pintar (`pintado.rs:353`) y
+        // picar (`impacto.rs:28`) si lo aplican, asi que girar una cota con
+        // el tirador la dibujaba y la tocaba a otro angulo mientras el
+        // rotulo seguia diciendo el de antes de girar. El invariante de
+        // verdad: girar el elemento entero (`e.angulo`) y girar sus puntos
+        // a mano tienen que rotular exactamente igual.
+        let recta = cota(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0));
+        let mut girada_por_angulo = recta.clone();
+        girada_por_angulo.angulo = std::f32::consts::FRAC_PI_2;
+
+        let centro = Punto2::nuevo(50.0, 0.0);
+        let girada_por_puntos = cota(
+            Punto2::nuevo(0.0, 0.0).girar(centro, std::f32::consts::FRAC_PI_2),
+            Punto2::nuevo(100.0, 0.0).girar(centro, std::f32::consts::FRAC_PI_2),
+        );
+
+        let e = metros(0.01);
+        let t_angulo = texto_de_cota(&girada_por_angulo, Some(&e), ',');
+        let t_puntos = texto_de_cota(&girada_por_puntos, Some(&e), ',');
+        assert_eq!(
+            t_angulo, t_puntos,
+            "girar con e.angulo y girar los puntos tienen que rotular igual"
+        );
+        assert_ne!(
+            t_angulo,
+            texto_de_cota(&recta, Some(&e), ','),
+            "una cota girada 90 grados no puede rotular lo mismo que una recta"
+        );
     }
 
     #[test]

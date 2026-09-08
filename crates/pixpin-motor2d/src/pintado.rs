@@ -362,8 +362,21 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
 }
 
 /// Las ordenes de la escena entera, de abajo arriba.
+///
+/// Encadena `ordenes_medibles`: sin esto, una cota sale sin su rotulo y una
+/// barra de escala no sale en absoluto (D37, «sale en la exportacion»). Esta
+/// funcion la usan la capa de pantalla y la recarga de un pin, no solo el
+/// editor -y era justo ahi donde el rotulo desaparecia, invisible porque
+/// nada llamaba a esta ruta a comprobarlo en pantalla.
 pub fn ordenes_de_escena(escena: &Escena) -> Vec<Orden> {
-    escena.visibles().flat_map(ordenes).collect()
+    escena
+        .visibles()
+        .flat_map(|e| {
+            ordenes(e)
+                .into_iter()
+                .chain(ordenes_medibles(e, escena.escala.as_ref(), ','))
+        })
+        .collect()
 }
 
 /// Holgura que se acepta perder al simplificar, en pixeles de pantalla.
@@ -478,7 +491,11 @@ pub fn ordenes_de_escena_vista(
     alto_px: f32,
 ) -> Vec<Orden> {
     crate::camara::recortar(escena, camara.ventana(ancho_px, alto_px))
-        .flat_map(|e| ordenes_a_distancia(e, camara.zoom))
+        .flat_map(|e| {
+            ordenes_a_distancia(e, camara.zoom)
+                .into_iter()
+                .chain(ordenes_medibles(e, escena.escala.as_ref(), ','))
+        })
         .collect()
 }
 
@@ -492,6 +509,19 @@ pub const COLOR_SELECCION: ColorRgba = ColorRgba {
     r: 0.36,
     g: 0.42,
     b: 0.95,
+    a: 1.0,
+};
+
+/// El gris del rotulo de una cota sin escala valida (D35).
+///
+/// El gris es el aviso: es lo que dice que el numero es en pixeles y no es
+/// medida de plano, sin tener que leer el sufijo `px`. Un gris medio y no el
+/// trazo del elemento -que puede ser cualquier color de la paleta y no
+/// avisaria de nada.
+pub const COLOR_SIN_ESCALA: ColorRgba = ColorRgba {
+    r: 0.55,
+    g: 0.55,
+    b: 0.55,
     a: 1.0,
 };
 
@@ -536,15 +566,30 @@ pub fn ordenes_medibles(e: &Elemento, escala: Option<&Escala>, coma: char) -> Ve
             let medio = a.hacia(b, 0.5);
             // Un poco por encima de la raya, del lado que no la tapa.
             let alto = e.grosor.max(1.0) * 6.0;
-            let arriba = b.restar(a).unitario().perpendicular().escalar(alto);
+            let mut arriba = b.restar(a).unitario().perpendicular().escalar(alto);
+            // `rotulo_del_reves` (S5 del diseno): una cota que apunta "hacia
+            // atras" (de 90 a 270 grados) da la vuelta al perpendicular, o
+            // el rotulo saldria en el lado contrario de la raya de como sale
+            // en la de siempre -que es leerlo boca abajo cuando el resto del
+            // plano se lee del derecho.
+            if crate::medida::rotulo_del_reves(crate::medida::angulo_de(e)) {
+                arriba = arriba.escalar(-1.0);
+            }
             let p = medio.sumar(arriba);
+            // Con escala valida, el color del trazo, igual que el resto del
+            // elemento. Sin ella, gris (D35): es el aviso de que el numero
+            // es en pixeles y no es medida de plano.
+            let color_base = match escala.filter(|x| x.valida()) {
+                Some(_) => e.trazo,
+                None => COLOR_SIN_ESCALA,
+            };
             vec![Orden::Texto {
                 texto: crate::medida::texto_de_cota(e, escala, coma),
                 x: p.x,
                 y: p.y,
                 tam: alto * 2.0,
                 familia: "Segoe UI".to_string(),
-                color: con_opacidad(e.trazo, e.opacidad),
+                color: con_opacidad(color_base, e.opacidad),
                 ancho_max: a.distancia(b),
             }]
         }
@@ -1275,6 +1320,147 @@ mod pruebas {
         assert!(
             ordenes_medibles(&b, Some(&invalida), ',').is_empty(),
             "una barra que no puede decir cuanto mide cada cuadro no dibuja nada"
+        );
+    }
+
+    #[test]
+    fn una_escena_con_cota_y_barra_saca_texto_y_cuadros_por_los_dos_caminos() {
+        // El hallazgo 2 de la revision final: `ordenes_medibles` es la unica
+        // que produce el rotulo de una cota y los cuadros de una barra, y
+        // solo la llamaba la ventana del editor. La capa de pantalla, la
+        // recarga de un pin y la exportacion pasan por `ordenes_de_escena` o
+        // `ordenes_de_escena_vista`, que no la encadenaban: una escena con
+        // una barra calibrada salia sin un solo texto, y la barra sin sus
+        // cuadros era invisible del todo (D37: «sale en la exportacion»).
+        let mut escena = Escena::nueva();
+        escena.escala = Some(metros(0.01));
+        escena.anadir(cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)));
+        escena.anadir(Elemento {
+            figura: Figura::EscalaGrafica,
+            x: 200.0,
+            y: 0.0,
+            ancho: 400.0,
+            alto: 24.0,
+            ..base()
+        });
+
+        let de_escena = ordenes_de_escena(&escena);
+        assert!(
+            de_escena.iter().any(|o| matches!(o, Orden::Texto { .. })),
+            "el rotulo de la cota tiene que salir en ordenes_de_escena"
+        );
+        assert!(
+            de_escena
+                .iter()
+                .filter(|o| matches!(o, Orden::Relleno { .. }))
+                .count()
+                >= 2,
+            "los cuadros de la barra tienen que salir en ordenes_de_escena"
+        );
+
+        let camara = crate::camara::Camara {
+            x: 200.0,
+            y: 0.0,
+            zoom: 1.0,
+        };
+        let de_vista = ordenes_de_escena_vista(&escena, &camara, 2000.0, 2000.0);
+        assert!(
+            de_vista.iter().any(|o| matches!(o, Orden::Texto { .. })),
+            "el rotulo de la cota tiene que salir en ordenes_de_escena_vista"
+        );
+        assert!(
+            de_vista
+                .iter()
+                .filter(|o| matches!(o, Orden::Relleno { .. }))
+                .count()
+                >= 2,
+            "los cuadros de la barra tienen que salir en ordenes_de_escena_vista"
+        );
+
+        for o in de_escena.iter().chain(de_vista.iter()) {
+            if let Orden::Texto { texto, .. } = o {
+                assert!(
+                    texto.contains(','),
+                    "el separador decimal es la coma (D39): {texto}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn el_rotulo_sin_escala_valida_va_en_gris_y_con_escala_en_el_trazo() {
+        // D35: sin calibrar se mide en pixeles, y el gris es el aviso de que
+        // no es medida de plano. El comentario de `medida.rs:130` decia
+        // «quien lo pinta lo pone en gris» sin que nadie lo hiciera: nadie
+        // usaba otro color que `e.trazo`, calibrada o no.
+        let mut c = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0));
+        c.trazo = ColorRgba::opaco(1.0, 0.0, 0.0); // rojo, para distinguirlo del gris
+
+        let sin_escala = ordenes_medibles(&c, None, ',');
+        let Some(Orden::Texto { color, .. }) =
+            sin_escala.iter().find(|o| matches!(o, Orden::Texto { .. }))
+        else {
+            panic!("hay rotulo sin escala")
+        };
+        assert_eq!(
+            *color, COLOR_SIN_ESCALA,
+            "sin escala valida el rotulo tiene que ser gris, no {color:?}"
+        );
+
+        let con_escala = ordenes_medibles(&c, Some(&metros(0.01)), ',');
+        let Some(Orden::Texto { color, .. }) =
+            con_escala.iter().find(|o| matches!(o, Orden::Texto { .. }))
+        else {
+            panic!("hay rotulo con escala")
+        };
+        assert_eq!(
+            *color, c.trazo,
+            "con escala valida el rotulo va del color del trazo"
+        );
+
+        let invalida = Escala {
+            unidades_por_pixel: 0.0,
+            unidad: "m".to_string(),
+            decimales: 2,
+        };
+        let con_invalida = ordenes_medibles(&c, Some(&invalida), ',');
+        let Some(Orden::Texto { color, .. }) = con_invalida
+            .iter()
+            .find(|o| matches!(o, Orden::Texto { .. }))
+        else {
+            panic!("hay rotulo con escala invalida")
+        };
+        assert_eq!(
+            *color, COLOR_SIN_ESCALA,
+            "una escala invalida se trata como si no la hubiera"
+        );
+    }
+
+    #[test]
+    fn el_rotulo_no_sale_boca_abajo_en_una_cota_que_apunta_a_la_izquierda() {
+        // `rotulo_del_reves` estaba implementada, probada y sin conectar, ni
+        // reexportada (hallazgo 6). Sin usarla, una cota que apunta "hacia
+        // atras" (mas de 90 grados) pone el rotulo del lado contrario de la
+        // raya al de la misma cota apuntando "hacia adelante": ese cambio de
+        // lado es exactamente leerlo boca abajo cuando el resto del plano se
+        // lee del derecho.
+        let derecha = cota_de(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0));
+        let izquierda = cota_de(Punto2::nuevo(100.0, 0.0), Punto2::nuevo(0.0, 0.0));
+
+        let y_de = |e: &Elemento| -> f32 {
+            let o = ordenes_medibles(e, Some(&metros(0.01)), ',');
+            match o.iter().find(|o| matches!(o, Orden::Texto { .. })) {
+                Some(Orden::Texto { y, .. }) => *y,
+                _ => panic!("hay rotulo"),
+            }
+        };
+
+        assert!(
+            (y_de(&derecha) - y_de(&izquierda)).abs() < 1e-3,
+            "el rotulo tiene que quedar del mismo lado de la raya apunte hacia \
+             donde apunte: {} vs {}",
+            y_de(&derecha),
+            y_de(&izquierda)
         );
     }
 
