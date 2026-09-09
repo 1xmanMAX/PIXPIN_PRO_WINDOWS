@@ -342,9 +342,15 @@ pub fn pista(a: &Anclaje, zoom: f32) -> Orden {
         // elipse- es justo el centro de su circunferencia.
         TipoAnclaje::Centro => {
             let mut p = Vec::with_capacity(LADOS_DEL_CIRCULO + 1);
-            for i in 0..=LADOS_DEL_CIRCULO {
+            for i in 0..LADOS_DEL_CIRCULO {
                 let t = i as f32 / LADOS_DEL_CIRCULO as f32 * std::f32::consts::TAU;
                 p.push(Punto2::nuevo(cx + r * t.cos(), cy + r * t.sin()));
+            }
+            // Repite el primer punto en vez de calcular en TAU: sin(TAU) != 0
+            // en f32, asi que con ancla en origen el circulo no cierra de
+            // verdad. Literalmente el mismo punto garantiza cierre exacto.
+            if let Some(primero) = p.first() {
+                p.push(*primero);
             }
             p
         }
@@ -360,6 +366,10 @@ pub fn pista(a: &Anclaje, zoom: f32) -> Orden {
 
 /// El azul de lo que el editor senala: el iman es una ayuda, no tinta del
 /// dibujo, asi que no se pinta con el color del trazo.
+///
+/// Reutiliza COLOR_SELECCION del marco de seleccion: un color unico para la
+/// interfaz hace que sea coherente. Cambiar COLOR_SELECCION en pintado.rs
+/// afecta tanto al marco como a esta marca.
 fn color_pista() -> ColorRgba {
     crate::pintado::COLOR_SELECCION
 }
@@ -750,7 +760,29 @@ mod pruebas {
             let x1 = p.iter().map(|q| q.x).fold(f32::MIN, f32::max);
             x1 - x0
         };
+        let grosor_marca = |zoom: f32| match pista(&ancla(TipoAnclaje::Esquina), zoom) {
+            Orden::Polilinea { grosor, .. } => grosor,
+            _ => panic!("tiene que ser polilinea"),
+        };
         assert!((ancho(1.0) - LADO_PISTA_PX).abs() < 0.01);
         assert!((ancho(2.0) - LADO_PISTA_PX / 2.0).abs() < 0.01);
+        // El grosor tambien se divide por zoom: sin esto, al acercarse la
+        // marca engordaría como si fuese un elemento dibujado.
+        assert!((grosor_marca(1.0) - GROSOR_PISTA_PX).abs() < 0.01);
+        assert!((grosor_marca(2.0) - GROSOR_PISTA_PX / 2.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn el_circulo_cierra_incluso_con_ancla_en_origen() {
+        // Latente: con ancla en (100, 200) el circulo cierra por suerte
+        // (el residuo de sin(TAU) es menor que el ULP de 200). Con ancla en
+        // origen falla si calculas el ultimo punto en TAU.
+        let a = Anclaje {
+            punto: Punto2::nuevo(0.0, 0.0),
+            tipo: TipoAnclaje::Centro,
+            id: 1,
+        };
+        let p = puntos_de(&pista(&a, 1.0));
+        assert_eq!(p[0], p[p.len() - 1], "el circulo debe cerrar exacto");
     }
 }
