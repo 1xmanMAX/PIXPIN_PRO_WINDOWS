@@ -20,6 +20,7 @@ pub mod azar;
 pub mod cache;
 pub mod camara;
 pub mod elemento;
+pub mod enganche;
 pub mod escalabarra;
 pub mod escena;
 pub mod excalidraw;
