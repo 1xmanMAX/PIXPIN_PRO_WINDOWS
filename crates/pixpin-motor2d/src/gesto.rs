@@ -200,6 +200,13 @@ pub struct Gesto {
     pub herramienta: Herramienta,
     /// El trazo en curso. Se reserva una vez y se reutiliza con `clear()`.
     trazo: Vec<Punto2>,
+    /// A que se pega el cursor. Lo escribe la ventana desde los ajustes
+    /// guardados; por defecto, encendido con todas las clases de punto.
+    pub enganche: crate::enganche::Ajustes,
+    /// El ancla a la que se ha pegado el ultimo punto, para que la ventana
+    /// pinte la pista. Se apaga al soltar y al cancelar: una marca que
+    /// sobrevive al gesto es una marca mintiendo.
+    pub anclaje_activo: Option<crate::enganche::Anclaje>,
 }
 
 impl Default for Gesto {
@@ -209,6 +216,8 @@ impl Default for Gesto {
             seleccion: Seleccion::nueva(),
             herramienta: Herramienta::Lapiz,
             trazo: Vec::with_capacity(PUNTOS_RESERVADOS),
+            enganche: crate::enganche::Ajustes::default(),
+            anclaje_activo: None,
         }
     }
 }
@@ -237,13 +246,23 @@ impl Gesto {
 
     pub fn evento(&mut self, ev: EventoGesto, escena: &mut Escena, escala: f32) -> Respuesta {
         match ev {
-            EventoGesto::Pulsar { p, shift, alt } => self.pulsar(p, shift, alt, escena, escala),
-            EventoGesto::Mover { p, shift, alt } => self.mover(p, shift, alt, escena, escala),
-            EventoGesto::Soltar { p } => self.soltar(p, escena, escala),
+            EventoGesto::Pulsar { p, shift, alt } => {
+                let p = self.enganchar(p, escena, escala);
+                self.pulsar(p, shift, alt, escena, escala)
+            }
+            EventoGesto::Mover { p, shift, alt } => {
+                let p = self.enganchar(p, escena, escala);
+                self.mover(p, shift, alt, escena, escala)
+            }
+            EventoGesto::Soltar { p } => {
+                self.anclaje_activo = None;
+                self.soltar(p, escena, escala)
+            }
             EventoGesto::Escape => {
                 escena.cancelar_paso();
                 self.estado = Estado::Reposo;
                 self.seleccion.limpiar();
+                self.anclaje_activo = None;
                 Respuesta {
                     region: Region::Todo,
                     cursor: FormaCursor::Flecha,
@@ -294,6 +313,66 @@ impl Gesto {
                 }
             }
         }
+    }
+
+    /// Que se esta haciendo, para que el iman sepa a que debe pegarse.
+    ///
+    /// Sale de la maquina de estados y no de la herramienta puesta, que es
+    /// la idea entera de `Faena`: lo que decide el enganche es que esta
+    /// pasando, no que boton hay pulsado.
+    fn faena(&self) -> Option<crate::enganche::Faena> {
+        use crate::enganche::Faena;
+        match self.estado {
+            // El punto que hace nacer una figura.
+            Estado::Reposo => match self.herramienta {
+                Herramienta::Lapiz | Herramienta::Resaltador => Some(Faena::AMano),
+                // `Mano` selecciona y mueve; `Lupa` es una vista y no deja
+                // rastro; el `Borrador` quita, no coloca. Ninguna de las
+                // tres pone un punto que merezca engancharse.
+                Herramienta::Mano | Herramienta::Lupa | Herramienta::Borrador => None,
+                _ => Some(Faena::Trazando),
+            },
+            Estado::Dibujando { .. } => match self.herramienta {
+                Herramienta::Lapiz | Herramienta::Resaltador => Some(Faena::AMano),
+                _ => Some(Faena::Trazando),
+            },
+            // Calibrar es trazar una raya de dos puntos, y es donde mas
+            // falta hace: el error de picar a pulso entra directo en la
+            // escala y lo hereda todo lo que se mida despues.
+            Estado::Calibrando => Some(Faena::Trazando),
+            Estado::Moviendo { .. } => Some(Faena::Moviendo),
+            Estado::Escalando { .. } | Estado::Girando { .. } => Some(Faena::Afinando),
+            // Seleccionar no es dibujar: nada tira del cursor.
+            Estado::Marquesina { .. } => None,
+        }
+    }
+
+    /// El punto ya enganchado, y deja apuntado a que -para pintar la pista-.
+    fn enganchar(&mut self, p: Punto2, escena: &Escena, escala: f32) -> Punto2 {
+        let Some(faena) = self.faena() else {
+            self.anclaje_activo = None;
+            return p;
+        };
+        // `escala` son unidades de escena por pixel de pantalla -la ventana
+        // pasa `1.0 / camara.zoom`-, y `sitio` quiere el zoom. Sin esta
+        // vuelta el radio del iman sale invertido: acercarse lo haria
+        // agarrar mas lejos.
+        let zoom = 1.0 / escala.max(0.0001);
+        // Lo que se esta dibujando o moviendo no cuenta: se engancharia a si
+        // mismo en cuanto naciera.
+        let propios: [u64; 1];
+        let excluir: &[u64] = match self.estado {
+            Estado::Dibujando { id } => {
+                propios = [id];
+                &propios
+            }
+            Estado::Moviendo { .. } => self.seleccion.ids(),
+            _ => &[],
+        };
+        let encontrado =
+            crate::enganche::sitio(&escena.elementos, p, zoom, faena, &self.enganche, excluir);
+        self.anclaje_activo = encontrado;
+        encontrado.map_or(p, |a| a.punto)
     }
 
     /// Pone la escala del lienzo a partir de una medida real.
@@ -927,17 +1006,26 @@ mod pruebas {
         g.seleccion.poner(abajo);
 
         // Pulsar donde estan los dos: gana el ya elegido.
+        //
+        // El destino del arrastre se aleja hasta 175 -y no los 85
+        // originales- porque ahora `Estado::Moviendo` es `Faena::Afinando` a
+        // ojos del iman: (85,75) cae a 15 del lado derecho de "encima" y a
+        // 10 de su centro, dentro del radio de 21 (14 x 1,5) que usa
+        // `Faena::Moviendo`. El punto se pegaba al propio "encima" -que no
+        // esta en `excluir` porque no es el seleccionado- y el arrastre se
+        // quedaba en delta cero. A 175 no hay ningun ancla de "encima" a
+        // menos de 21.
         arrastrar(
             &mut g,
             &mut escena,
             Punto2::nuevo(75.0, 75.0),
-            Punto2::nuevo(85.0, 75.0),
+            Punto2::nuevo(175.0, 75.0),
         );
 
         assert_eq!(g.seleccion.ids(), &[abajo], "sigue el de antes");
         assert_eq!(
             escena.buscar(abajo).unwrap().x,
-            10.0,
+            100.0,
             "se movio el de antes"
         );
         assert_eq!(
@@ -1530,5 +1618,193 @@ mod pruebas {
         g.herramienta = Herramienta::Lapiz;
         let r = g.evento(pulsar(Punto2::nuevo(0.0, 0.0)), &mut escena, 1.0);
         assert!(r.pide.is_none());
+    }
+
+    /// Un rectangulo de 100x50 en (0,0) con el id que se pida.
+    ///
+    /// `Elemento` no tiene constructora: se monta con el literal entero,
+    /// igual que hacen las pruebas vecinas de este fichero.
+    fn rect_para_iman(id: u64) -> Elemento {
+        Elemento {
+            figura: Figura::Rectangulo,
+            id,
+            x: 0.0,
+            y: 0.0,
+            ancho: 100.0,
+            alto: 50.0,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: None,
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn trazar_una_figura_engancha_a_la_esquina_de_otra() {
+        let mut escena = Escena::nueva();
+        escena.elementos.push(rect_para_iman(7));
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Rectangulo;
+
+        // Se pulsa a 3 de escena de la esquina (100,50).
+        g.evento(pulsar(Punto2::nuevo(103.0, 53.0)), &mut escena, 1.0);
+
+        let a = g.anclaje_activo.expect("tenia que enganchar");
+        assert_eq!(a.punto, Punto2::nuevo(100.0, 50.0));
+        assert_eq!(a.id, 7);
+    }
+
+    #[test]
+    fn el_lapiz_no_engancha_aunque_pase_por_encima_de_un_vertice() {
+        // La guarda de `Faena::AMano`. Un trazo que salta a un vertice en
+        // mitad del recorrido no se corrige, se rompe.
+        let mut escena = Escena::nueva();
+        escena.elementos.push(rect_para_iman(7));
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Lapiz;
+
+        g.evento(pulsar(Punto2::nuevo(103.0, 53.0)), &mut escena, 1.0);
+        g.evento(mover(Punto2::nuevo(101.0, 51.0)), &mut escena, 1.0);
+
+        assert!(
+            g.anclaje_activo.is_none(),
+            "el lapiz no puede pegar tirones a mitad de trazo"
+        );
+    }
+
+    #[test]
+    fn la_figura_que_nace_no_se_engancha_a_si_misma() {
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Rectangulo;
+
+        g.evento(pulsar(Punto2::nuevo(0.0, 0.0)), &mut escena, 1.0);
+        // Al arrastrar, la esquina del propio rectangulo que esta naciendo
+        // queda justo bajo el cursor.
+        g.evento(mover(Punto2::nuevo(40.0, 40.0)), &mut escena, 1.0);
+
+        let nacido = escena.elementos.last().expect("nacio algo").id;
+        assert!(
+            g.anclaje_activo.is_none_or(|a| a.id != nacido),
+            "se ha pegado a su propia esquina"
+        );
+    }
+
+    #[test]
+    fn calibrar_engancha_a_los_extremos() {
+        // La fila que justifica la fase: picar los dos extremos de una pared
+        // de medida conocida deja de ser punteria.
+        let mut escena = Escena::nueva();
+        escena.elementos.push(rect_para_iman(7));
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Escalar;
+
+        g.evento(pulsar(Punto2::nuevo(2.0, 2.0)), &mut escena, 1.0);
+
+        let a = g.anclaje_activo.expect("calibrar tiene que enganchar");
+        assert_eq!(a.punto, Punto2::nuevo(0.0, 0.0));
+    }
+
+    #[test]
+    fn soltar_apaga_la_pista() {
+        let mut escena = Escena::nueva();
+        escena.elementos.push(rect_para_iman(7));
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Rectangulo;
+
+        g.evento(pulsar(Punto2::nuevo(103.0, 53.0)), &mut escena, 1.0);
+        assert!(g.anclaje_activo.is_some());
+        g.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(150.0, 90.0),
+            },
+            &mut escena,
+            1.0,
+        );
+        assert!(
+            g.anclaje_activo.is_none(),
+            "la marca se queda pintada despues de soltar"
+        );
+    }
+
+    #[test]
+    fn con_el_iman_apagado_el_punto_llega_intacto() {
+        let mut escena = Escena::nueva();
+        escena.elementos.push(rect_para_iman(7));
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Rectangulo;
+        g.enganche = crate::enganche::Ajustes::NINGUNO;
+
+        // Lejos del rectangulo, y a proposito: (103,53) -que usan las
+        // pruebas de enganche de aqui arriba- cae dentro del margen de
+        // picado normal de `impacto::toca` (grosor/2 + 6 = 7, y esa esquina
+        // esta a 4.24). Con el iman apagado ese clic seleccionaria el
+        // rectangulo 7 en vez de dibujar uno nuevo -es la regla de picado,
+        // no el iman- y la prueba dejaria de probar lo que dice probar.
+        g.evento(pulsar(Punto2::nuevo(300.0, 300.0)), &mut escena, 1.0);
+
+        assert!(g.anclaje_activo.is_none());
+        let nuevo = escena.elementos.last().expect("nacio un rectangulo");
+        assert_eq!(nuevo.x, 300.0, "el iman apagado no puede mover el punto");
+    }
+
+    #[test]
+    fn la_marquesina_no_engancha() {
+        let mut escena = Escena::nueva();
+        escena.elementos.push(rect_para_iman(7));
+        let mut g = Gesto::nuevo();
+        // `Mano` es la herramienta de seleccionar y mover: no hay variante
+        // `Seleccion` en el enum.
+        g.herramienta = Herramienta::Mano;
+
+        // Se pulsa en vacio, lejos del rectangulo, y se arrastra hacia su
+        // esquina: seleccionar no es trazar, no debe pegarse.
+        g.evento(pulsar(Punto2::nuevo(300.0, 300.0)), &mut escena, 1.0);
+        g.evento(mover(Punto2::nuevo(102.0, 52.0)), &mut escena, 1.0);
+
+        assert!(g.anclaje_activo.is_none());
+    }
+
+    #[test]
+    fn enganchar_convierte_la_escala_a_zoom_no_la_pasa_directa() {
+        // `evento` recibe `escala` -unidades de escena por pixel de
+        // pantalla, `1.0 / camara.zoom`-, y el iman quiere el zoom. Las
+        // pruebas de arriba usan todas escala 1.0, y el inverso de 1 es 1:
+        // si `enganchar` pasara `escala` directa a `sitio()` como si fuera
+        // el zoom, esta prueba es la unica que lo notaria.
+        //
+        // A escala 0.25 el zoom es 4 y el radio de escena queda en
+        // 14/4=3.5: un punto a 10 de la esquina no debe enganchar. Si se
+        // pasara la escala sin invertir, "zoom" seria 0.25 y el radio
+        // saldria en 14/0.25=56, y si engancharia.
+        let mut escena = Escena::nueva();
+        escena.elementos.push(rect_para_iman(7));
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Rectangulo;
+        g.evento(pulsar(Punto2::nuevo(10.0, 0.0)), &mut escena, 0.25);
+        assert!(
+            g.anclaje_activo.is_none(),
+            "a escala 0.25 (zoom 4, radio de escena 3.5) 10 no puede enganchar"
+        );
+
+        // El mismo punto, a escala 1.0 (zoom 1, radio de escena 14), si
+        // debe enganchar: confirma que la conversion no rompe el caso
+        // normal, solo el invertido.
+        let mut escena2 = Escena::nueva();
+        escena2.elementos.push(rect_para_iman(7));
+        let mut g2 = Gesto::nuevo();
+        g2.herramienta = Herramienta::Rectangulo;
+        g2.evento(pulsar(Punto2::nuevo(10.0, 0.0)), &mut escena2, 1.0);
+        assert!(
+            g2.anclaje_activo.is_some(),
+            "a escala 1.0 (zoom 1, radio de escena 14) 10 tiene que enganchar"
+        );
     }
 }

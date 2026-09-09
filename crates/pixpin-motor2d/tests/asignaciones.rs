@@ -240,3 +240,72 @@ fn encuadrar_sesenta_fotogramas_solo_calcula_la_geometria_una_vez() {
     assert_eq!(cache.fallos(), CUANTOS, "solo el primer fotograma calcula");
     assert_eq!(cache.aciertos(), CUANTOS * (FOTOGRAMAS - 1));
 }
+
+#[test]
+fn el_iman_no_asigna_en_el_camino_caliente() {
+    // El iman corre en cada movimiento del raton. Si monta una lista de
+    // anclajes por elemento -que es lo que hace el original en Kotlin- el
+    // presupuesto de cero asignaciones se va al suelo con un plano lleno.
+    use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+
+    let mut escena = Escena::nueva();
+    let mut gesto = Gesto::nuevo();
+    gesto.herramienta = Herramienta::Rectangulo;
+
+    // Cien rectangulos por los que pasar por encima. `Elemento` no tiene
+    // constructora: se monta con el literal, igual que hace
+    // `arrastrar_una_seleccion_tampoco_asigna` mas arriba en este fichero.
+    for i in 0..100u64 {
+        let mut e = Elemento {
+            id: 0,
+            figura: Figura::Rectangulo,
+            x: 0.0,
+            y: 0.0,
+            ancho: 40.0,
+            alto: 40.0,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: Some(ColorRgba::opaco(1.0, 0.0, 0.0)),
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+        };
+        e.id = i + 1;
+        e.x = (i % 10) as f32 * 40.0;
+        e.y = (i / 10) as f32 * 40.0;
+        e.ancho = 30.0;
+        e.alto = 30.0;
+        escena.elementos.push(e);
+    }
+
+    gesto.evento(
+        EventoGesto::Pulsar {
+            p: Punto2::nuevo(500.0, 500.0),
+            shift: false,
+            alt: false,
+        },
+        &mut escena,
+        1.0,
+    );
+
+    let (_, veces) = contando(|| {
+        for i in 1..400 {
+            gesto.evento(
+                EventoGesto::Mover {
+                    p: Punto2::nuevo((i % 400) as f32, (i % 400) as f32),
+                    shift: false,
+                    alt: false,
+                },
+                &mut escena,
+                1.0,
+            );
+        }
+    });
+
+    assert_eq!(veces, 0, "el iman asigno {veces} veces");
+}
