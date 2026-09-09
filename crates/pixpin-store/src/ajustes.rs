@@ -677,4 +677,57 @@ alto = 200
         assert_eq!(a.limite_scroll_px, 20000);
         assert_eq!(a.regiones.len(), 1);
     }
+
+    #[test]
+    fn el_iman_sobrevive_la_ida_y_vuelta_con_regiones_de_por_medio() {
+        // Esta prueba fija un supuesto del que dependemos sin haberlo
+        // escrito en ningun sitio: que `toml` coloca las TABLAS (una
+        // seccion `[tabla]`, o una tabla repetible `[[tabla]]`) despues de
+        // las claves sueltas del fichero de salida, sin importar en que
+        // orden aparecen los campos en el struct de Rust. Por eso
+        // `abrir_con` (booleano suelto) y `enganche` (tabla) pueden
+        // convivir con `regiones` (tabla repetible) sin que el fichero
+        // salga invalido, aunque `abrir_con` y `enganche` esten declarados
+        // DESPUES de `regiones` en el struct `Ajustes`.
+        //
+        // Las otras pruebas de ida-y-vuelta no lo cubren: las de `toml`
+        // puro (`sobrevive_la_ida_y_vuelta_por_toml`,
+        // `los_ajustes_del_iman_van_y_vuelven`) parten de `regiones`
+        // vacio, y la que si tiene `regiones` poblado
+        // (`ningun_ajuste_se_queda_sin_guardar`) pasa por
+        // `guardar_conservando` -> `toml_edit` -> `fusionar`, que asigna
+        // por nombre de clave y no tiene la restriccion de orden que aqui
+        // se comprueba. Esta prueba usa `toml::to_string_pretty` sobre el
+        // struct entero, que es lo que hace `guardar()`.
+        let original = Ajustes {
+            regiones: vec![crate::regiones::Region {
+                nombre: "panel".into(),
+                x: 1,
+                y: 2,
+                ancho: 300,
+                alto: 200,
+                atajo: Some("Ctrl+Alt+1".into()),
+            }],
+            enganche: pixpin_motor2d::enganche::Ajustes {
+                activo: false,
+                esquinas: false,
+                medios: false,
+                centros: false,
+                radio_px: 20.0,
+            },
+            ..Ajustes::default()
+        };
+
+        let texto = toml::to_string_pretty(&original).expect("serializa");
+        let vuelta: Ajustes = toml::from_str(&texto).expect("un fichero valido tiene que releerse");
+
+        assert_eq!(
+            vuelta.regiones, original.regiones,
+            "las regiones sobreviven a la ida y vuelta:\n{texto}"
+        );
+        assert_eq!(
+            vuelta.enganche, original.enganche,
+            "el iman sobrevive a la ida y vuelta con regiones de por medio:\n{texto}"
+        );
+    }
 }
