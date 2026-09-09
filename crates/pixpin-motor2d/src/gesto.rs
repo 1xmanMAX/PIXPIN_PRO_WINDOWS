@@ -1688,16 +1688,28 @@ mod pruebas {
         let mut g = Gesto::nuevo();
         g.herramienta = Herramienta::Lapiz;
 
-        g.evento(pulsar(Punto2::nuevo(103.0, 53.0)), &mut escena, 1.0);
-        // Aislada aqui: sin esta linea un fallo de la rama `Estado::Reposo`
-        // de `faena()` quedaria tapado por el `Mover` de abajo, que pasa por
-        // `Estado::Dibujando` -la rama que si esta bien-.
+        // A 10 de la esquina (100,50) y no a 4,24: dentro del margen de
+        // picado de `impacto::toca` (grosor/2 + 6 = 7) el clic selecciona el
+        // rectangulo y ni llega a la rama del lapiz, asi que la prueba
+        // pasaria sin ejercitar `Faena::AMano` -que es todo lo que aqui
+        // importa-.
+        g.evento(pulsar(Punto2::nuevo(110.0, 50.0)), &mut escena, 1.0);
+        assert!(
+            escena.elementos.len() == 2 && g.seleccion.ids().is_empty(),
+            "el clic tiene que hacer nacer un trazo, no seleccionar al vecino"
+        );
+        // Aislada aqui: cubre la rama `Estado::Reposo` de `faena()`, que el
+        // `Mover` de abajo ya no toca -ese pasa por `Estado::Dibujando`-.
         assert!(
             g.anclaje_activo.is_none(),
             "en reposo el lapiz tampoco engancha"
         );
-        g.evento(mover(Punto2::nuevo(101.0, 51.0)), &mut escena, 1.0);
 
+        // Y ahora dentro del trazo, con el cursor a 1,41 del vertice ajeno:
+        // esta es la rama `Estado::Dibujando`. El elemento que nace se
+        // excluye a si mismo, pero el rectangulo 7 no esta excluido, asi que
+        // lo unico que puede devolver `None` aqui es `Faena::AMano`.
+        g.evento(mover(Punto2::nuevo(101.0, 51.0)), &mut escena, 1.0);
         assert!(
             g.anclaje_activo.is_none(),
             "el lapiz no puede pegar tirones a mitad de trazo"
