@@ -101,6 +101,11 @@ enum Clave {
     LimiteScroll,
     GifRitmo,
     GifRetardo,
+    ImanActivo,
+    ImanEsquinas,
+    ImanMedios,
+    ImanCentros,
+    ImanRadio,
 }
 
 /// Abre la ventana y no vuelve hasta que se cierra.
@@ -144,6 +149,7 @@ pub fn abrir(
         textos.t("ajustes-pestana-atajos"),
         textos.t("ajustes-pestana-general"),
         textos.t("ajustes-pestana-captura"),
+        textos.t("ajustes-pestana-dibujo"),
     ];
     // Copia de trabajo: se toca esta y se guarda al cerrar. Tocar los
     // ajustes de verdad en cada clic obligaria a deshacer a mano si se
@@ -420,7 +426,7 @@ fn filas_de(pestana: usize, a: &Ajustes, enlaces: &Enlaces, t: &Catalogo) -> Vec
                 },
             ),
         ],
-        _ => vec![
+        2 => vec![
             (
                 Clave::RetardoCaptura,
                 Fila {
@@ -470,12 +476,63 @@ fn filas_de(pestana: usize, a: &Ajustes, enlaces: &Enlaces, t: &Catalogo) -> Vec
                 },
             ),
         ],
+        3 => vec![
+            (
+                Clave::ImanActivo,
+                Fila {
+                    etiqueta: t.t("ajustes-iman"),
+                    control: Control::Interruptor(a.enganche.activo),
+                },
+            ),
+            (
+                Clave::ImanEsquinas,
+                Fila {
+                    etiqueta: t.t("ajustes-iman-esquinas"),
+                    control: Control::Interruptor(a.enganche.esquinas),
+                },
+            ),
+            (
+                Clave::ImanMedios,
+                Fila {
+                    etiqueta: t.t("ajustes-iman-medios"),
+                    control: Control::Interruptor(a.enganche.medios),
+                },
+            ),
+            (
+                Clave::ImanCentros,
+                Fila {
+                    etiqueta: t.t("ajustes-iman-centros"),
+                    control: Control::Interruptor(a.enganche.centros),
+                },
+            ),
+            (
+                Clave::ImanRadio,
+                Fila {
+                    etiqueta: t.t("ajustes-iman-radio"),
+                    control: Control::Numero {
+                        valor: a.enganche.radio_px as u32,
+                        // Por debajo de 6 px el iman no llega a nada antes
+                        // de que el cursor este ya encima; por encima de 40
+                        // agarra cosas que no estabas mirando.
+                        minimo: 6,
+                        maximo: 40,
+                        paso: 2,
+                    },
+                },
+            ),
+        ],
+        _ => vec![],
     }
 }
 
 fn aplicar_interruptor(a: &mut Ajustes, clave: Clave) {
-    if clave == Clave::Arranque {
-        a.arranque_con_windows = !a.arranque_con_windows;
+    match clave {
+        Clave::Arranque => a.arranque_con_windows = !a.arranque_con_windows,
+        Clave::ImanActivo => a.enganche.activo = !a.enganche.activo,
+        Clave::ImanEsquinas => a.enganche.esquinas = !a.enganche.esquinas,
+        Clave::ImanMedios => a.enganche.medios = !a.enganche.medios,
+        Clave::ImanCentros => a.enganche.centros = !a.enganche.centros,
+        _ => {}
     }
 }
 
@@ -512,6 +569,7 @@ fn aplicar_numero(a: &mut Ajustes, clave: Clave, n: u32) {
         Clave::LimiteScroll => a.limite_scroll_px = n,
         Clave::GifRitmo => a.gif.por_segundo = n,
         Clave::GifRetardo => a.gif.retardo_s = n,
+        Clave::ImanRadio => a.enganche.radio_px = n as f32,
         _ => {}
     }
 }
@@ -762,4 +820,57 @@ fn pintar(
         }
     });
     let _ = superficie.presentar();
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+
+    #[test]
+    fn apagar_el_iman_desde_los_ajustes_lo_apaga_de_verdad() {
+        let mut a = Ajustes::default();
+        assert!(a.enganche.activo);
+        aplicar_interruptor(&mut a, Clave::ImanActivo);
+        assert!(!a.enganche.activo);
+
+        assert!(a.enganche.centros);
+        aplicar_interruptor(&mut a, Clave::ImanCentros);
+        assert!(!a.enganche.centros);
+
+        aplicar_numero(&mut a, Clave::ImanRadio, 22);
+        assert_eq!(a.enganche.radio_px, 22.0);
+    }
+
+    #[test]
+    fn el_arranque_sigue_funcionando_tras_pasar_el_if_a_match() {
+        // `aplicar_interruptor` era un `if` de un solo caso y pasa a ser un
+        // `match`: esta prueba es la red de esa conversion.
+        let mut a = Ajustes::default();
+        let antes = a.arranque_con_windows;
+        aplicar_interruptor(&mut a, Clave::Arranque);
+        assert_eq!(a.arranque_con_windows, !antes);
+    }
+
+    #[test]
+    fn la_pestana_de_dibujo_trae_las_cinco_filas_del_iman() {
+        // `Catalogo::nuevo` no toca disco: el .ftl esta embebido con
+        // `include_str!` en tiempo de compilacion, asi que construirlo aqui
+        // es barato y esta prueba puede vigilar `filas_de` de verdad.
+        let a = Ajustes::default();
+        let (enlaces, _) = Enlaces::de_ajustes(&a);
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+
+        let filas = filas_de(3, &a, &enlaces, &textos);
+        let claves: Vec<Clave> = filas.iter().map(|(c, _)| *c).collect();
+        assert_eq!(
+            claves,
+            vec![
+                Clave::ImanActivo,
+                Clave::ImanEsquinas,
+                Clave::ImanMedios,
+                Clave::ImanCentros,
+                Clave::ImanRadio,
+            ]
+        );
+    }
 }
