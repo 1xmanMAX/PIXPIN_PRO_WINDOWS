@@ -1671,6 +1671,13 @@ mod pruebas {
         g.herramienta = Herramienta::Lapiz;
 
         g.evento(pulsar(Punto2::nuevo(103.0, 53.0)), &mut escena, 1.0);
+        // Aislada aqui: sin esta linea un fallo de la rama `Estado::Reposo`
+        // de `faena()` quedaria tapado por el `Mover` de abajo, que pasa por
+        // `Estado::Dibujando` -la rama que si esta bien-.
+        assert!(
+            g.anclaje_activo.is_none(),
+            "en reposo el lapiz tampoco engancha"
+        );
         g.evento(mover(Punto2::nuevo(101.0, 51.0)), &mut escena, 1.0);
 
         assert!(
@@ -1742,17 +1749,18 @@ mod pruebas {
         g.herramienta = Herramienta::Rectangulo;
         g.enganche = crate::enganche::Ajustes::NINGUNO;
 
-        // Lejos del rectangulo, y a proposito: (103,53) -que usan las
-        // pruebas de enganche de aqui arriba- cae dentro del margen de
-        // picado normal de `impacto::toca` (grosor/2 + 6 = 7, y esa esquina
-        // esta a 4.24). Con el iman apagado ese clic seleccionaria el
-        // rectangulo 7 en vez de dibujar uno nuevo -es la regla de picado,
-        // no el iman- y la prueba dejaria de probar lo que dice probar.
-        g.evento(pulsar(Punto2::nuevo(300.0, 300.0)), &mut escena, 1.0);
+        // A distancia intermedia de la esquina (100,50): a 10, fuera del
+        // margen de picado normal de `impacto::toca` (grosor/2 + 6 = 7, asi
+        // que el clic no selecciona el rectangulo 7 en vez de dibujar uno
+        // nuevo) pero dentro del radio del iman (14 a esta escala). Un punto
+        // mas lejos -(300,300), por ejemplo- no distinguiria "iman apagado"
+        // de "no habia nada que enganchar": ahi tampoco engancharia con el
+        // iman encendido, y la prueba pasaria igual con `self.enganche` roto.
+        g.evento(pulsar(Punto2::nuevo(110.0, 50.0)), &mut escena, 1.0);
 
         assert!(g.anclaje_activo.is_none());
         let nuevo = escena.elementos.last().expect("nacio un rectangulo");
-        assert_eq!(nuevo.x, 300.0, "el iman apagado no puede mover el punto");
+        assert_eq!(nuevo.x, 110.0, "el iman apagado no puede mover el punto");
     }
 
     #[test]
