@@ -1252,7 +1252,7 @@ mod pruebas {
         }
     }
 
-    /// El cableado nuevo: `abrir` tiene que trasladar los ajustes de imán
+    /// El cableado nuevo: `abrir` tiene que trasladar los ajustes de iman
     /// guardados al `Gesto` que crea, no dejarlos siempre por defecto. Sin
     /// esto la pestana de ajustes seria decorativa -el usuario apaga el
     /// iman y el editor lo ignora-.
