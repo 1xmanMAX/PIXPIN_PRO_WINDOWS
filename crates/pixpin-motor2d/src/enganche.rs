@@ -767,7 +767,7 @@ mod pruebas {
         assert!((ancho(1.0) - LADO_PISTA_PX).abs() < 0.01);
         assert!((ancho(2.0) - LADO_PISTA_PX / 2.0).abs() < 0.01);
         // El grosor tambien se divide por zoom: sin esto, al acercarse la
-        // marca engordaría como si fuese un elemento dibujado.
+        // marca engordaria como si fuese un elemento dibujado.
         assert!((grosor_marca(1.0) - GROSOR_PISTA_PX).abs() < 0.01);
         assert!((grosor_marca(2.0) - GROSOR_PISTA_PX / 2.0).abs() < 0.01);
     }
