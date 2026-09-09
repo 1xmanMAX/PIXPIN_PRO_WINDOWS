@@ -179,6 +179,19 @@ fn pulsar_boton(boton: BotonCaja, gesto: &mut Gesto, escena: &mut Escena) -> boo
     }
 }
 
+/// El `Gesto` con el que arranca el editor, ya con los ajustes de iman
+/// guardados puestos.
+///
+/// Esta aparte de `abrir` porque `abrir` necesita GPU y una ventana, y este
+/// cableado -que la pestana de dibujo no sea decorativa- se puede comprobar
+/// sin nada de eso. Sin esta funcion la unica prueba posible seria
+/// asignarle el campo a mano y releerlo, que no comprueba nada.
+fn gesto_inicial(ajustes_iman: pixpin_motor2d::enganche::Ajustes) -> Gesto {
+    let mut gesto = Gesto::nuevo();
+    gesto.enganche = ajustes_iman;
+    gesto
+}
+
 /// Abre el editor y no vuelve hasta que se cierra la ventana.
 ///
 /// Devuelve la escena tal como quedo, compactada: los elementos borrados de
@@ -214,8 +227,7 @@ pub fn abrir(escena: Escena, ajustes_iman: pixpin_motor2d::enganche::Ajustes) ->
     ventana.enfocar();
 
     let mut escena = escena;
-    let mut gesto = Gesto::nuevo();
-    gesto.enganche = ajustes_iman;
+    let mut gesto = gesto_inicial(ajustes_iman);
     let camara = Camara::nueva();
     let mut cache = Cache::nueva();
     let mut rejilla = Rejilla::nueva();
@@ -1256,19 +1268,29 @@ mod pruebas {
     /// guardados al `Gesto` que crea, no dejarlos siempre por defecto. Sin
     /// esto la pestana de ajustes seria decorativa -el usuario apaga el
     /// iman y el editor lo ignora-.
+    ///
+    /// Se ejercita `gesto_inicial`, que es lo que `abrir` llama de verdad:
+    /// construir un `Gesto` aqui y releerle el campo solo comprobaria que
+    /// asignar campos en Rust funciona.
     #[test]
     fn los_ajustes_de_iman_llegan_al_gesto_recien_creado() {
-        let mut gesto = Gesto::nuevo();
-        let ajustes_imanes_apagado = pixpin_motor2d::enganche::Ajustes {
+        let apagado = pixpin_motor2d::enganche::Ajustes {
             activo: false,
+            medios: false,
+            radio_px: 3.0,
             ..Default::default()
         };
 
-        gesto.enganche = ajustes_imanes_apagado;
+        let gesto = gesto_inicial(apagado);
 
-        assert!(
-            !gesto.enganche.activo,
+        assert_eq!(
+            gesto.enganche, apagado,
             "el gesto tiene que llevar los ajustes que se le pasan, no los por defecto"
+        );
+        assert_ne!(
+            gesto.enganche,
+            pixpin_motor2d::enganche::Ajustes::default(),
+            "los ajustes de prueba tienen que diferir de los de fabrica o esto no mide nada"
         );
     }
 }

@@ -1,8 +1,8 @@
 //! La ventana de ajustes (P6).
 //!
 //! Hasta ahora todo se tocaba editando el TOML a mano y reiniciando. Esto
-//! ensena lo mismo en tres pestanas —atajos, general y captura— y lo
-//! guarda al cerrar SIN borrar los comentarios del fichero, que era la
+//! ensena lo mismo en cuatro pestanas —atajos, general, captura y dibujo—
+//! y lo guarda al cerrar SIN borrar los comentarios del fichero, que era la
 //! condicion para poder escribirlo desde el programa.
 //!
 //! La logica de donde cae cada cosa y que pasa al pulsarla vive en

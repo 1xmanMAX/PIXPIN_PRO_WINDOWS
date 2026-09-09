@@ -271,7 +271,26 @@ fn por_cada_anclaje(e: &Elemento, ajustes: &Ajustes, mut f: impl FnMut(Punto2, T
                 f(puntos[puntos.len() - 1], TipoAnclaje::Extremo);
             }
             if ajustes.medios {
-                f(puntos[puntos.len() / 2], TipoAnclaje::Medio);
+                // Con dos puntos -que es como nacen Linea y Flecha, y como
+                // se quedan- `puntos[len/2]` seria `puntos[1]`, o sea el
+                // extremo otra vez: el ancla mas util faltaria y ademas se
+                // colaria un extremo disfrazado de `Medio` a quien haya
+                // apagado «Esquinas y extremos». Con dos, el medio es el
+                // medio geometrico; con mas, el punto de en medio de la
+                // lista.
+                let medio = if puntos.len() == 2 {
+                    Punto2::nuevo(
+                        (puntos[0].x + puntos[1].x) / 2.0,
+                        (puntos[0].y + puntos[1].y) / 2.0,
+                    )
+                } else {
+                    puntos[puntos.len() / 2]
+                };
+                // Una polilinea de tres puntos con el primero repetido
+                // ofreceria su propio extremo como medio. No se emite.
+                if medio != puntos[0] && medio != puntos[puntos.len() - 1] {
+                    f(medio, TipoAnclaje::Medio);
+                }
             }
         }
 
@@ -403,6 +422,18 @@ mod pruebas {
         }
     }
 
+    /// Una linea de (0,0) a (100,0) con **dos** puntos: la forma que de
+    /// verdad produce la aplicacion (`gesto::nuevo_elemento` arranca Linea
+    /// y Flecha con dos puntos, y asi se quedan).
+    fn linea_de_dos(id: u64) -> Elemento {
+        Elemento {
+            figura: Figura::Linea {
+                puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
+            },
+            ..rectangulo(id)
+        }
+    }
+
     /// Una linea de (0,0) a (100,0), con un punto intermedio en (50,0).
     fn linea(id: u64) -> Elemento {
         Elemento {
@@ -505,6 +536,51 @@ mod pruebas {
         .expect("tenia que enganchar al medio");
         assert_eq!(m.tipo, TipoAnclaje::Medio);
         assert_eq!(m.punto, Punto2::nuevo(50.0, 0.0));
+    }
+
+    #[test]
+    fn una_linea_de_dos_puntos_da_su_medio_geometrico() {
+        // La forma que produce la aplicacion. Con `puntos[len/2]` el "medio"
+        // seria `puntos[1]`, o sea el extremo (100,0): el medio de verdad
+        // -(50,0)- no existiria y el extremo se colaria etiquetado `Medio`.
+        let es = [linea_de_dos(1)];
+        let m = sitio(
+            &es,
+            Punto2::nuevo(50.0, 2.0),
+            1.0,
+            Faena::Trazando,
+            &todo(),
+            &[],
+        )
+        .expect("el medio de un segmento recto es el ancla mas util que hay");
+        assert_eq!(m.tipo, TipoAnclaje::Medio);
+        assert_eq!(m.punto, Punto2::nuevo(50.0, 0.0));
+    }
+
+    #[test]
+    fn apagar_las_esquinas_apaga_los_extremos_de_una_linea_de_dos_puntos() {
+        // La fuga: quien apaga «Esquinas y extremos» y deja «Puntos medios»
+        // seguia teniendo los extremos de toda linea y flecha agarrandole el
+        // cursor, etiquetados `Medio`. Lo que el usuario apaga se queda
+        // apagado.
+        let es = [linea_de_dos(1)];
+        let solo_medios = Ajustes {
+            esquinas: false,
+            centros: false,
+            ..Ajustes::default()
+        };
+        assert!(
+            sitio(
+                &es,
+                Punto2::nuevo(98.0, 0.0),
+                1.0,
+                Faena::Trazando,
+                &solo_medios,
+                &[]
+            )
+            .is_none(),
+            "el extremo sigue enganchando con las esquinas apagadas"
+        );
     }
 
     #[test]
@@ -742,10 +818,18 @@ mod pruebas {
     fn la_pista_rodea_el_punto_del_ancla() {
         let a = ancla(TipoAnclaje::Esquina);
         let p = puntos_de(&pista(&a, 1.0));
-        let cx = p.iter().map(|q| q.x).sum::<f32>() / p.len() as f32;
-        let cy = p.iter().map(|q| q.y).sum::<f32>() / p.len() as f32;
+        // Caja minima/maxima y no promedio de puntos: la polilinea repite su
+        // primer punto para cerrar, asi que el promedio sale desplazado
+        // hacia esa esquina y la prueba pasaria por poco por un motivo que
+        // no tiene nada que ver con estar centrada.
+        let cx = (p.iter().map(|q| q.x).fold(f32::MAX, f32::min)
+            + p.iter().map(|q| q.x).fold(f32::MIN, f32::max))
+            / 2.0;
+        let cy = (p.iter().map(|q| q.y).fold(f32::MAX, f32::min)
+            + p.iter().map(|q| q.y).fold(f32::MIN, f32::max))
+            / 2.0;
         assert!(
-            (cx - a.punto.x).abs() < 1.0 && (cy - a.punto.y).abs() < 1.0,
+            (cx - a.punto.x).abs() < 0.01 && (cy - a.punto.y).abs() < 0.01,
             "la marca tiene que salir centrada en el ancla, no al lado"
         );
     }
