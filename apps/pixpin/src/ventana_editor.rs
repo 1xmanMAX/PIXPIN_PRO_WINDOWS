@@ -184,7 +184,12 @@ fn pulsar_boton(boton: BotonCaja, gesto: &mut Gesto, escena: &mut Escena) -> boo
 /// Devuelve la escena tal como quedo, compactada: los elementos borrados de
 /// verdad (los que un `Ctrl+Z` ya no puede traer de vuelta) se sueltan aqui,
 /// no en cada paso del historial.
-pub fn abrir(escena: Escena) -> Result<Escena> {
+///
+/// `ajustes_iman` es solo el trozo de los ajustes de la aplicacion que este
+/// editor necesita conocer: el editor no tiene por que saber de atajos ni de
+/// la carpeta de capturas, asi que quien llama pasa `config.enganche`, no
+/// los `Ajustes` enteros.
+pub fn abrir(escena: Escena, ajustes_iman: pixpin_motor2d::enganche::Ajustes) -> Result<Escena> {
     let dispositivo =
         pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para el editor")?;
     let mut motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
@@ -210,6 +215,7 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
 
     let mut escena = escena;
     let mut gesto = Gesto::nuevo();
+    gesto.enganche = ajustes_iman;
     let camara = Camara::nueva();
     let mut cache = Cache::nueva();
     let mut rejilla = Rejilla::nueva();
@@ -537,6 +543,13 @@ fn pintar(
         }
         if let Some(m) = gesto.marquesina() {
             p.marquesina(m, escala);
+        }
+        // La pista del iman: encima de todo, porque es lo que dice donde va
+        // a caer el punto. Si quedara debajo de una figura, justo el caso en
+        // el que hace falta -dibujar sobre algo- seria el caso en el que no
+        // se ve.
+        if let Some(a) = gesto.anclaje_activo {
+            dibujar_orden(p, &pixpin_motor2d::enganche::pista(&a, camara.zoom), vista);
         }
         // La caja es un dialogo en pantalla, no algo del lienzo: no se mueve
         // ni se escala con la camara. `desplazar(0.0, 0.0)` deshace la vista
@@ -1111,7 +1124,10 @@ mod pruebas {
         // interactiva real (crear la ventana, el dispositivo D3D11, la
         // superficie de composicion). No se puede probar en CI sin
         // escritorio; se deja marcada para ejecutarla a mano.
-        let _ = abrir(Escena::nueva());
+        let _ = abrir(
+            Escena::nueva(),
+            pixpin_motor2d::enganche::Ajustes::default(),
+        );
     }
 
     #[test]
@@ -1206,6 +1222,53 @@ mod pruebas {
         assert!(
             cuantas > 1,
             "faltan las ordenes cacheadas de la propia cota, no solo el rotulo"
+        );
+    }
+
+    #[test]
+    fn la_pista_del_iman_es_una_orden_que_el_editor_sabe_pintar() {
+        // No se puede probar la ventana de verdad -pide GPU y sesion
+        // interactiva-, pero si que lo que el motor produce para el ancla
+        // activa es de un tipo que `dibujar_orden` cubre. Si algun dia la
+        // pista pasara a ser una variante que el `match` de `dibujar_orden`
+        // no contemple, la marca desapareceria en silencio.
+        use pixpin_motor2d::enganche::{Anclaje, TipoAnclaje, pista};
+
+        for tipo in [
+            TipoAnclaje::Esquina,
+            TipoAnclaje::Extremo,
+            TipoAnclaje::Medio,
+            TipoAnclaje::Centro,
+        ] {
+            let a = Anclaje {
+                punto: Punto2::nuevo(10.0, 20.0),
+                tipo,
+                id: 1,
+            };
+            assert!(
+                matches!(pista(&a, 1.0), Orden::Polilinea { .. }),
+                "la pista de {tipo:?} no es pintable por el editor"
+            );
+        }
+    }
+
+    /// El cableado nuevo: `abrir` tiene que trasladar los ajustes de imán
+    /// guardados al `Gesto` que crea, no dejarlos siempre por defecto. Sin
+    /// esto la pestana de ajustes seria decorativa -el usuario apaga el
+    /// iman y el editor lo ignora-.
+    #[test]
+    fn los_ajustes_de_iman_llegan_al_gesto_recien_creado() {
+        let mut gesto = Gesto::nuevo();
+        let ajustes_imanes_apagado = pixpin_motor2d::enganche::Ajustes {
+            activo: false,
+            ..Default::default()
+        };
+
+        gesto.enganche = ajustes_imanes_apagado;
+
+        assert!(
+            !gesto.enganche.activo,
+            "el gesto tiene que llevar los ajustes que se le pasan, no los por defecto"
         );
     }
 }

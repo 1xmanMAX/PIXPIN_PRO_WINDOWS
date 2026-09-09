@@ -696,7 +696,7 @@ fn arrancar(
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_VENTANA_EDITOR => {
-                match ventana_editor::abrir(pixpin_motor2d::Escena::nueva()) {
+                match ventana_editor::abrir(pixpin_motor2d::Escena::nueva(), config.enganche) {
                     Ok(escena) => {
                         tracing::info!(elementos = escena.cuantos_visibles(), "editor cerrado")
                     }
