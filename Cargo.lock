@@ -523,6 +523,7 @@ name = "pixpin-store"
 version = "0.1.0"
 dependencies = [
  "fluent-bundle",
+ "pixpin-motor2d",
  "pixpin-shell",
  "serde",
  "serde_json",

@@ -147,7 +147,7 @@ impl Default for Gif {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Ajustes {
     pub idioma: PreferenciaIdioma,
@@ -189,6 +189,15 @@ pub struct Ajustes {
     /// por eso tiene interruptor: el modo portable promete no dejar rastro
     /// en el equipo. Apagarlo borra lo escrito, no solo deja de escribir.
     pub abrir_con: bool,
+    /// A que se pega el cursor al dibujar (fase B.6).
+    ///
+    /// El tipo vive en el motor y no aqui, aunque eso ate `pixpin-store` a
+    /// `pixpin-motor2d`: la alternativa era una copia del struct con los
+    /// mismos campos y una traduccion, o sea dos sitios que hay que
+    /// acordarse de tocar a la vez -y un campo que se olvide en la copia es
+    /// un ajuste que se guarda y no se lee-. La regla de capas lo permite:
+    /// store es capa 2 y motor2d es capa 1.
+    pub enganche: pixpin_motor2d::enganche::Ajustes,
 }
 
 impl Default for Ajustes {
@@ -207,6 +216,7 @@ impl Default for Ajustes {
             retardo_captura_s: 3,
             regiones: Vec::new(),
             abrir_con: true,
+            enganche: pixpin_motor2d::enganche::Ajustes::default(),
         }
     }
 }
@@ -356,6 +366,13 @@ mod pruebas {
                 alto: 200,
                 atajo: Some("Ctrl+Alt+1".into()),
             }],
+            enganche: pixpin_motor2d::enganche::Ajustes {
+                activo: false,
+                esquinas: false,
+                medios: false,
+                centros: false,
+                radio_px: 20.0,
+            },
             ..Ajustes::default()
         }
     }
@@ -600,5 +617,64 @@ arranque_con_windows = true
 
         assert!(u.fichero_ajustes().is_file());
         assert_eq!(cargar(&u).unwrap(), Ajustes::default());
+    }
+
+    #[test]
+    fn los_ajustes_del_iman_van_y_vuelven() {
+        let mut a = Ajustes::default();
+        a.enganche.centros = false;
+        a.enganche.radio_px = 20.0;
+
+        let texto = toml::to_string(&a).expect("serializa");
+        let vuelta: Ajustes = toml::from_str(&texto).expect("deserializa");
+
+        assert!(!vuelta.enganche.centros);
+        assert_eq!(vuelta.enganche.radio_px, 20.0);
+        assert!(vuelta.enganche.activo, "lo no tocado conserva su valor");
+    }
+
+    #[test]
+    fn un_fichero_viejo_sin_iman_sigue_abriendo() {
+        // Nadie tiene la seccion `[enganche]` en su fichero todavia. Si
+        // faltar la rompiera, la actualizacion le borraria los ajustes.
+        // El TOML de abajo se parece a un fichero real de hoy -claves
+        // sueltas, `[atajos]`, `[comandos]`, `[gif]`, `[rendimiento]` y una
+        // tabla repetible `[[regiones]]`- y no a un minimo artificial que
+        // no ejercite el caso.
+        let viejo = "arranque_con_windows = true
+limite_scroll_px = 20000
+retardo_captura_s = 5
+abrir_con = true
+
+[atajos]
+copiar = \"Ctrl+Alt+C\"
+scroll = \"Ctrl+Alt+S\"
+pin = \"Ctrl+Alt+F\"
+portapapeles = \"Ctrl+Alt+V\"
+anotar = \"Ctrl+Alt+A\"
+
+[comandos]
+capturar-y-copiar = \"Ctrl+Alt+C\"
+
+[gif]
+por_segundo = 15
+retardo_s = 2
+
+[rendimiento]
+nivel = \"auto\"
+
+[[regiones]]
+nombre = \"panel\"
+x = 1
+y = 2
+ancho = 300
+alto = 200
+";
+        let a: Ajustes = toml::from_str(viejo).expect("un fichero viejo tiene que abrir");
+        assert!(a.enganche.activo, "el iman nace encendido");
+        assert_eq!(a.enganche.radio_px, 14.0);
+        // Y el resto del fichero viejo se sigue leyendo tal cual.
+        assert_eq!(a.limite_scroll_px, 20000);
+        assert_eq!(a.regiones.len(), 1);
     }
 }
