@@ -320,17 +320,16 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
                             }
                             // Las dos llamadas -aqui y en `pintar`- tienen
                             // que usar la MISMA funcion: lo que no pase por
-                            // `ordenes_de_elemento` no entra en la capa, y
+                            // `por_cada_orden` no entra en la capa, y
                             // `pintar` ya no lo repinta mientras la capa
                             // valga (ve su comentario para el porque).
-                            for orden in ordenes_de_elemento(
+                            por_cada_orden(
                                 &mut cache,
                                 e,
                                 camara.zoom,
                                 escena.escala.as_ref(),
-                            ) {
-                                dibujar_orden(p, &orden, vista);
-                            }
+                                |orden| dibujar_orden(p, orden, vista),
+                            );
                         }
                     });
                 } else if !activo_ahora && capa.lista() {
@@ -412,15 +411,33 @@ pub fn abrir(escena: Escena) -> Result<Escena> {
 /// La coma va como separador decimal (D39), no el del sistema: si algun dia
 /// hay que respetar el idioma del usuario, sale de los ajustes y se pasa
 /// aqui, no se lee dentro del motor.
-fn ordenes_de_elemento(
+///
+/// Entrega las ordenes de una en una a `dibuja` en vez de devolver un `Vec`,
+/// y eso NO es un detalle de estilo: la version que devolvia `Vec` hacia
+/// `cache.ordenes(e, zoom).to_vec()`, o sea copiaba la geometria cacheada de
+/// cada elemento visible en CADA fotograma -medido: 6,6 MB por fotograma con
+/// 2.000 garabatos- dentro del unico camino donde el presupuesto de
+/// rendimiento se compromete a no pedir memoria. Prestando la rebanada no hay
+/// nada que copiar. El prestamo de `cache` muere al cerrar el primer bucle,
+/// asi que el segundo puede volver a mirar el elemento sin pelearse con el.
+///
+/// El sumidero es un cierre y no el `Pintor` para que la funcion siga siendo
+/// probable sin GPU: la prueba de aqui abajo le pasa un cierre que colecciona,
+/// y asi el invariante que costo la ronda 1 -que ningun camino se olvide del
+/// rotulo- conserva su prueba.
+fn por_cada_orden(
     cache: &mut Cache,
     e: &Elemento,
     zoom: f32,
     escala: Option<&Escala>,
-) -> Vec<Orden> {
-    let mut ordenes: Vec<Orden> = cache.ordenes(e, zoom).to_vec();
-    ordenes.extend(pixpin_motor2d::pintado::ordenes_medibles(e, escala, ','));
-    ordenes
+    mut dibuja: impl FnMut(&Orden),
+) {
+    for orden in cache.ordenes(e, zoom) {
+        dibuja(orden);
+    }
+    for orden in pixpin_motor2d::pintado::ordenes_medibles(e, escala, ',') {
+        dibuja(&orden);
+    }
 }
 
 /// Pinta un fotograma entero: lo que hay en pantalla, y encima el marco de
@@ -495,9 +512,9 @@ fn pintar(
             if e.borrado {
                 continue;
             }
-            for orden in ordenes_de_elemento(cache, e, camara.zoom, escena.escala.as_ref()) {
-                dibujar_orden(p, &orden, vista);
-            }
+            por_cada_orden(cache, e, camara.zoom, escena.escala.as_ref(), |orden| {
+                dibujar_orden(p, orden, vista)
+            });
         }
 
         // Encima de todo: el marco de la seleccion, sus tiradores y la
@@ -1132,7 +1149,7 @@ mod pruebas {
     }
 
     #[test]
-    fn ordenes_de_elemento_incluye_el_rotulo_de_una_cota() {
+    fn por_cada_orden_incluye_el_rotulo_de_una_cota() {
         // El fallo real (ronda 1 de la tarea 6): el cierre de
         // `capa.preparar` horneaba solo `cache.ordenes(e, ...)`, sin las
         // `ordenes_medibles`. Como `pintar` salta con `continue` todo lo que
@@ -1140,12 +1157,13 @@ mod pruebas {
         // desaparecia mientras se arrastraba OTRO elemento cualquiera -no
         // hacia falta tocar la cota, bastaba con que la capa se horneara-.
         //
-        // El arreglo es que los dos caminos llamen a `ordenes_de_elemento`
-        // en vez de a `cache.ordenes` a secas. Esta prueba fija lo que esa
-        // funcion compartida tiene que devolver para una cota: no puede
-        // probar la ventana de verdad (necesita GPU y sesion interactiva),
-        // pero si puede probar que la funcion de la que dependen los dos
-        // caminos no vuelve a "olvidarse" del rotulo.
+        // El arreglo es que los dos caminos llamen a `por_cada_orden` en vez
+        // de a `cache.ordenes` a secas. Esta prueba fija lo que esa funcion
+        // compartida tiene que entregar para una cota: no puede probar la
+        // ventana de verdad (necesita GPU y sesion interactiva), pero si
+        // puede probar que la funcion de la que dependen los dos caminos no
+        // vuelve a "olvidarse" del rotulo. Por eso el sumidero es un cierre
+        // y no el `Pintor`: pasarle el pintor habria matado esta prueba.
         let cota = Elemento {
             figura: Figura::Cota {
                 puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
@@ -1169,11 +1187,25 @@ mod pruebas {
         };
         let mut cache = Cache::nueva();
 
-        let ordenes = ordenes_de_elemento(&mut cache, &cota, 1.0, None);
+        let mut hay_rotulo = false;
+        let mut cuantas = 0usize;
+        por_cada_orden(&mut cache, &cota, 1.0, None, |o| {
+            cuantas += 1;
+            if matches!(o, Orden::Texto { .. }) {
+                hay_rotulo = true;
+            }
+        });
 
         assert!(
-            ordenes.iter().any(|o| matches!(o, Orden::Texto { .. })),
+            hay_rotulo,
             "una cota tiene que traer su rotulo, venga o no de la cache"
+        );
+        // Que ademas entregue la forma cacheada: si algun dia el primer bucle
+        // desapareciera, el rotulo solo seguiria estando y la asercion de
+        // arriba no se enteraria de que la cota se pinta sin su raya.
+        assert!(
+            cuantas > 1,
+            "faltan las ordenes cacheadas de la propia cota, no solo el rotulo"
         );
     }
 }
