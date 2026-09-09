@@ -80,7 +80,25 @@ use pixpin_ui::FormatoColorLupa;
 /// es lo minimo para poder probar el editor a mano) ni cae en el rango de
 /// las regiones guardadas (que empieza en `pixpin_store::regiones::PRIMER_ID`,
 /// 1000): un hueco propio evita chocar con cualquiera de los dos.
+///
+/// **Este comentario se olvidaba de un tercero, y salio caro.** Los grupos
+/// ocultos ocupaban «todo lo que pase de 200» sin tope, asi que el 900 caia
+/// dentro y cada clic en «Editor» se convertia en «muestra el grupo 700».
+/// No fallaba nada y no avisaba nadie: el editor era inalcanzable desde la
+/// bandeja y su brazo en el bucle nunca llego a ejecutarse. Ahora el tramo
+/// de los grupos tiene tope y la guarda de abajo lo comprueba al compilar.
 const ID_VENTANA_EDITOR: u32 = 900;
+
+/// Que el identificador del editor quede fuera del tramo de los grupos
+/// ocultos no puede depender de que alguien se acuerde: si algun dia se
+/// mueve cualquiera de los dos numeros, esto no compila. Una guarda en
+/// tiempo de compilacion, no una prueba, porque el coste es cero y el aviso
+/// llega antes.
+const _: () = assert!(
+    ID_VENTANA_EDITOR >= pixpin_shell::ventana::ID_MENU_GRUPO_TOPE,
+    "el identificador del Editor cae dentro del tramo de los grupos ocultos: \
+     el menu lo convertiria en MostrarGrupo y el editor no se abriria"
+);
 
 fn main() -> Result<()> {
     // Con panic = "abort" y sin consola, un panico moria MUDO: ni log ni

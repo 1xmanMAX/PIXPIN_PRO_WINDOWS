@@ -60,6 +60,23 @@ pub enum BotonGesto {
 /// identificadores de los comandos, que los reparte el catalogo.
 pub const ID_MENU_GRUPO_BASE: u32 = 200;
 
+/// Primer identificador que YA NO es de un grupo oculto.
+///
+/// **Existe porque su ausencia costo un fallo mudo.** El tramo de los grupos
+/// no tenia tope: era «todo lo que pase de [`ID_MENU_GRUPO_BASE`]». La
+/// aplicacion puso su entrada «Editor» en el 900 dando por hecho que un
+/// numero alto estaba libre, y cada clic se convertia en «muestra el grupo
+/// 700» -900 menos 200-, que no existe. No fallaba nada, no avisaba nadie:
+/// simplemente no pasaba nada al pulsar, y el brazo que abria el editor
+/// nunca llego a alcanzarse.
+///
+/// Con tope, los identificadores de arriba vuelven a ser `Menu` y quien
+/// quiera reservarse uno solo tiene que ponerlo aqui o mas arriba. Las
+/// regiones guardadas viven en el 1000 y estaban a un paso del mismo
+/// problema: hoy solo llegan por atajo -que no pasa por `WM_COMMAND`- pero
+/// el dia que salieran al menu se habrian comido el mismo silencio.
+pub const ID_MENU_GRUPO_TOPE: u32 = 900;
+
 /// Lo que le puede pasar a la aplicacion.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Evento {
@@ -259,11 +276,7 @@ extern "system" fn procedimiento(
                 return LRESULT(1);
             }
         }
-        WM_COMMAND => match (wparam.0 & 0xFFFF) as u32 {
-            c if c >= ID_MENU_GRUPO_BASE => Some(Evento::MostrarGrupo(c - ID_MENU_GRUPO_BASE)),
-            0 => None,
-            c => Some(Evento::Menu(c)),
-        },
+        WM_COMMAND => evento_de_menu((wparam.0 & 0xFFFF) as u32),
         // Esta comparacion asume la semantica "clasica" de Shell_NotifyIconW,
         // donde lParam es directamente el mensaje del raton (WM_LBUTTONUP,
         // etc). Si en el futuro el icono de la bandeja se registra con
@@ -317,6 +330,29 @@ extern "system" fn procedimiento(
 /// el overlay se atenderia y lo volveria a abrir. En vez de eso se le
 /// entrega al overlay, que decide (la capa viva alterna el modo pasante,
 /// D50; el overlay de captura lo ignora).
+/// Que evento produce elegir una entrada del menu, por su identificador.
+///
+/// El tramo `ID_MENU_GRUPO_BASE..ID_MENU_GRUPO_TOPE` es de los grupos
+/// ocultos; **todo lo demas es una entrada normal**, incluidos los numeros
+/// por encima del tope. Que el tramo tenga los dos extremos y no solo el de
+/// abajo es lo que impide que una entrada de arriba se convierta en silencio
+/// en «muestra un grupo que no existe»: ver [`ID_MENU_GRUPO_TOPE`].
+///
+/// El cero no es una entrada: Windows lo manda por otras razones.
+///
+/// Vive aparte de `procedimiento` por lo mismo que `evento_de_bandeja`:
+/// aquella pide un `HWND` de verdad y esta es una decision pura sobre un
+/// numero, asi que se puede probar sin escritorio.
+fn evento_de_menu(id: u32) -> Option<Evento> {
+    match id {
+        0 => None,
+        c if (ID_MENU_GRUPO_BASE..ID_MENU_GRUPO_TOPE).contains(&c) => {
+            Some(Evento::MostrarGrupo(c - ID_MENU_GRUPO_BASE))
+        }
+        c => Some(Evento::Menu(c)),
+    }
+}
+
 /// Que evento produce un clic sobre el icono de la bandeja.
 ///
 /// `mensaje_raton` es lo que Windows deja en `lParam` con la semantica
@@ -512,5 +548,35 @@ mod pruebas {
         // Pasar el raton por encima llega como mensaje igual que un clic, y
         // abrir el menu al pasar por encima seria peor que no abrirlo nunca.
         assert_eq!(evento_de_bandeja(WM_MOUSEMOVE), None);
+    }
+
+    /// El fallo que dejo el editor inalcanzable durante toda una fase.
+    ///
+    /// El tramo de los grupos ocultos no tenia tope -era «todo lo que pase
+    /// de 200»- asi que la entrada «Editor», que la aplicacion puso en el
+    /// 900, se convertia en `MostrarGrupo(700)`. El grupo 700 no existe, no
+    /// fallaba nada y no avisaba nadie: al pulsar simplemente no pasaba nada.
+    #[test]
+    fn una_entrada_por_encima_del_tramo_de_grupos_no_se_confunde_con_un_grupo() {
+        assert_eq!(
+            evento_de_menu(900),
+            Some(Evento::Menu(900)),
+            "900 esta por encima del tramo de grupos: es una entrada normal"
+        );
+        // Las regiones guardadas viven en el 1000 y estaban a un paso del
+        // mismo silencio: hoy solo llegan por atajo, pero el dia que salgan
+        // al menu tienen que llegar como entrada.
+        assert_eq!(evento_de_menu(1000), Some(Evento::Menu(1000)));
+    }
+
+    #[test]
+    fn el_tramo_de_los_grupos_sigue_siendo_suyo() {
+        assert_eq!(evento_de_menu(200), Some(Evento::MostrarGrupo(0)));
+        assert_eq!(evento_de_menu(899), Some(Evento::MostrarGrupo(699)));
+        // Justo por debajo del tramo estan los comandos del catalogo.
+        assert_eq!(evento_de_menu(199), Some(Evento::Menu(199)));
+        assert_eq!(evento_de_menu(3), Some(Evento::Menu(3)));
+        // El cero no es una entrada: Windows lo manda por otras razones.
+        assert_eq!(evento_de_menu(0), None);
     }
 }
