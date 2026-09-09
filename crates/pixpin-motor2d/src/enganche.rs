@@ -20,7 +20,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::elemento::{Elemento, Figura};
+use crate::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+use crate::pintado::Orden;
 use crate::vector::Punto2;
 
 /// Que clase de punto notable es. Sirve para pintar la pista de otra forma.
@@ -296,10 +297,78 @@ fn por_cada_anclaje(e: &Elemento, ajustes: &Ajustes, mut f: impl FnMut(Punto2, T
     }
 }
 
+/// Lado de la marca del iman, **en pixeles de pantalla**.
+pub const LADO_PISTA_PX: f32 = 9.0;
+
+/// Grosor de la marca, tambien en pixeles de pantalla.
+const GROSOR_PISTA_PX: f32 = 1.5;
+
+/// Cuantos lados aproximan el circulo del centro.
+const LADOS_DEL_CIRCULO: usize = 12;
+
+/// La marca que se pinta donde el iman ha agarrado.
+///
+/// Sin nada visible el iman es magia: el trazo se va dos pixeles y no hay
+/// forma de distinguir un enganche de un fallo de punteria. Y la marca
+/// cambia con el tipo para poder distinguir «me pego al centro» de «me pego
+/// a la esquina», que es la queja tipica cuando hace algo que no esperabas.
+///
+/// El tamano va en pixeles de pantalla -dividido por el zoom- para que la
+/// marca no crezca al acercarse, igual que el radio de captura y por el
+/// mismo motivo.
+pub fn pista(a: &Anclaje, zoom: f32) -> Orden {
+    let z = zoom.max(0.0001);
+    let r = LADO_PISTA_PX / z / 2.0;
+    let (cx, cy) = (a.punto.x, a.punto.y);
+
+    let puntos = match a.tipo {
+        // El vertice: un cuadrado. Es la marca de «aqui hay una punta».
+        TipoAnclaje::Esquina | TipoAnclaje::Extremo => vec![
+            Punto2::nuevo(cx - r, cy - r),
+            Punto2::nuevo(cx + r, cy - r),
+            Punto2::nuevo(cx + r, cy + r),
+            Punto2::nuevo(cx - r, cy + r),
+            Punto2::nuevo(cx - r, cy - r),
+        ],
+        // El medio: un triangulo, que es como se marca un punto medio en un
+        // plano de toda la vida.
+        TipoAnclaje::Medio => vec![
+            Punto2::nuevo(cx, cy - r),
+            Punto2::nuevo(cx + r, cy + r),
+            Punto2::nuevo(cx - r, cy + r),
+            Punto2::nuevo(cx, cy - r),
+        ],
+        // El centro: un circulo, porque de lo que suele ser centro -una
+        // elipse- es justo el centro de su circunferencia.
+        TipoAnclaje::Centro => {
+            let mut p = Vec::with_capacity(LADOS_DEL_CIRCULO + 1);
+            for i in 0..=LADOS_DEL_CIRCULO {
+                let t = i as f32 / LADOS_DEL_CIRCULO as f32 * std::f32::consts::TAU;
+                p.push(Punto2::nuevo(cx + r * t.cos(), cy + r * t.sin()));
+            }
+            p
+        }
+    };
+
+    Orden::Polilinea {
+        puntos,
+        color: color_pista(),
+        grosor: GROSOR_PISTA_PX / z,
+        estilo: EstiloTrazo::Solido,
+    }
+}
+
+/// El azul de lo que el editor senala: el iman es una ayuda, no tinta del
+/// dibujo, asi que no se pinta con el color del trazo.
+fn color_pista() -> ColorRgba {
+    crate::pintado::COLOR_SELECCION
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
     use crate::elemento::{ColorRgba, EstiloTrazo};
+    use crate::pintado::Orden;
 
     /// Un rectangulo de 100x50 en (0,0), sin girar.
     fn rectangulo(id: u64) -> Elemento {
@@ -611,5 +680,77 @@ mod pruebas {
         let p = Punto2::nuevo(-18.0, 0.0);
         assert!(sitio(&es, p, 1.0, Faena::Trazando, &todo(), &[]).is_none());
         assert!(sitio(&es, p, 1.0, Faena::Moviendo, &todo(), &[]).is_some());
+    }
+
+    fn puntos_de(o: &Orden) -> Vec<Punto2> {
+        match o {
+            Orden::Polilinea { puntos, .. } => puntos.clone(),
+            otro => panic!("la pista tiene que ser una polilinea, no {otro:?}"),
+        }
+    }
+
+    fn ancla(tipo: TipoAnclaje) -> Anclaje {
+        Anclaje {
+            punto: Punto2::nuevo(100.0, 200.0),
+            tipo,
+            id: 1,
+        }
+    }
+
+    #[test]
+    fn cada_tipo_de_ancla_tiene_su_forma() {
+        // Cerradas: el ultimo punto repite el primero, asi que un cuadrado
+        // son 5 puntos y un triangulo 4.
+        let cuadrado = puntos_de(&pista(&ancla(TipoAnclaje::Esquina), 1.0));
+        let triangulo = puntos_de(&pista(&ancla(TipoAnclaje::Medio), 1.0));
+        let circulo = puntos_de(&pista(&ancla(TipoAnclaje::Centro), 1.0));
+        assert_eq!(cuadrado.len(), 5);
+        assert_eq!(triangulo.len(), 4);
+        assert!(circulo.len() > 8, "el circulo se aproxima con varios lados");
+        // Y el extremo se pinta igual que la esquina: para quien dibuja son
+        // la misma idea, igual que comparten interruptor.
+        assert_eq!(
+            puntos_de(&pista(&ancla(TipoAnclaje::Extremo), 1.0)).len(),
+            5
+        );
+    }
+
+    #[test]
+    fn la_pista_se_cierra() {
+        for tipo in [
+            TipoAnclaje::Esquina,
+            TipoAnclaje::Extremo,
+            TipoAnclaje::Medio,
+            TipoAnclaje::Centro,
+        ] {
+            let p = puntos_de(&pista(&ancla(tipo), 1.0));
+            assert_eq!(p[0], p[p.len() - 1], "la marca de {tipo:?} queda abierta");
+        }
+    }
+
+    #[test]
+    fn la_pista_rodea_el_punto_del_ancla() {
+        let a = ancla(TipoAnclaje::Esquina);
+        let p = puntos_de(&pista(&a, 1.0));
+        let cx = p.iter().map(|q| q.x).sum::<f32>() / p.len() as f32;
+        let cy = p.iter().map(|q| q.y).sum::<f32>() / p.len() as f32;
+        assert!(
+            (cx - a.punto.x).abs() < 1.0 && (cy - a.punto.y).abs() < 1.0,
+            "la marca tiene que salir centrada en el ancla, no al lado"
+        );
+    }
+
+    #[test]
+    fn la_pista_no_crece_con_el_zoom() {
+        // Va en pixeles de pantalla, igual que el radio y por lo mismo: a
+        // doble zoom mide la mitad de escena, o sea lo mismo en pantalla.
+        let ancho = |zoom: f32| {
+            let p = puntos_de(&pista(&ancla(TipoAnclaje::Esquina), zoom));
+            let x0 = p.iter().map(|q| q.x).fold(f32::MAX, f32::min);
+            let x1 = p.iter().map(|q| q.x).fold(f32::MIN, f32::max);
+            x1 - x0
+        };
+        assert!((ancho(1.0) - LADO_PISTA_PX).abs() < 0.01);
+        assert!((ancho(2.0) - LADO_PISTA_PX / 2.0).abs() < 0.01);
     }
 }
