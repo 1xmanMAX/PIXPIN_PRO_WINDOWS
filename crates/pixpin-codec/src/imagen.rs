@@ -172,6 +172,36 @@ pub fn guardar(imagen: &ImagenRgba, ruta: &Path, formato: FormatoImagen) -> Resu
         })
 }
 
+/// La imagen a otro tamano, con filtro triangular (suave y rapido). Para el
+/// fondo del lienzo cuando la GPU no admite su tamano (D139). Consume la
+/// imagen para no duplicar sus bytes mientras se reduce.
+pub fn redimensionar(imagen: ImagenRgba, ancho: u32, alto: u32) -> Result<ImagenRgba, ErrorCodec> {
+    if imagen.ancho == 0 || imagen.alto == 0 || ancho == 0 || alto == 0 {
+        return Err(ErrorCodec::Vacia { ancho, alto });
+    }
+    let (a0, h0) = (imagen.ancho, imagen.alto);
+    let espera = imagen.bytes_esperados();
+    let tiene = imagen.pixeles.len();
+    let incoherente = ErrorCodec::TamanoIncoherente {
+        ancho: a0,
+        alto: h0,
+        tiene,
+        espera,
+    };
+    // `from_raw` acepta un buffer MAS largo de lo necesario: se exige el
+    // tamano justo aqui, como `validar_tamano_rgba` en el render.
+    if tiene != espera {
+        return Err(incoherente);
+    }
+    let origen = image::RgbaImage::from_raw(a0, h0, imagen.pixeles).ok_or(incoherente)?;
+    let r = image::imageops::resize(&origen, ancho, alto, image::imageops::FilterType::Triangle);
+    Ok(ImagenRgba {
+        ancho,
+        alto,
+        pixeles: r.into_raw(),
+    })
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -354,5 +384,38 @@ mod pruebas {
         );
         assert_eq!(FormatoImagen::por_extension("bmp"), None);
         assert_eq!(FormatoImagen::por_extension(""), None);
+    }
+
+    #[test]
+    fn redimensionar_da_el_tamano_pedido_con_sus_bytes() {
+        let img = ImagenRgba {
+            ancho: 4,
+            alto: 2,
+            pixeles: [10u8, 20, 30, 255].repeat(8),
+        };
+        let r = redimensionar(img, 2, 1).unwrap();
+        assert_eq!((r.ancho, r.alto), (2, 1));
+        assert_eq!(r.pixeles.len(), r.bytes_esperados());
+        assert_eq!(
+            &r.pixeles[0..4],
+            &[10, 20, 30, 255],
+            "un color liso sigue liso"
+        );
+    }
+
+    #[test]
+    fn redimensionar_a_cero_o_con_bytes_de_menos_falla() {
+        let buena = || ImagenRgba {
+            ancho: 2,
+            alto: 2,
+            pixeles: vec![0; 16],
+        };
+        assert!(redimensionar(buena(), 0, 5).is_err());
+        let corta = ImagenRgba {
+            ancho: 2,
+            alto: 2,
+            pixeles: vec![0; 15],
+        };
+        assert!(redimensionar(corta, 1, 1).is_err());
     }
 }
