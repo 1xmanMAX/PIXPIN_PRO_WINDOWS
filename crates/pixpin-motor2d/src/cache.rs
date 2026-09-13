@@ -156,6 +156,7 @@ mod pruebas {
             figura: Figura::Lapiz {
                 puntos,
                 presiones: Vec::new(),
+                opciones: None,
             },
             x: 0.0,
             y: 0.0,

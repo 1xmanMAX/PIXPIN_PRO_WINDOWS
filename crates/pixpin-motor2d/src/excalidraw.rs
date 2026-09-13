@@ -270,19 +270,34 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
             punta_inicio: v.get("startArrowhead").is_some_and(|a| !a.is_null()),
             punta_fin: v.get("endArrowhead").map(|a| !a.is_null()).unwrap_or(true),
         },
-        "freedraw" => Figura::Lapiz {
-            puntos: puntos_desde(v, x, y),
-            presiones: v
-                .get("pressures")
-                .and_then(|p| p.as_array())
-                .map(|l| {
-                    l.iter()
-                        .filter_map(|p| p.as_f64())
-                        .map(|p| p as f32)
-                        .collect()
-                })
-                .unwrap_or_default(),
-        },
+        "freedraw" => {
+            // `simulatePressure: true` manda sobre `pressures`: Excalidraw las
+            // ignora al pintar aunque vengan en el fichero.
+            let simulada = v.get("simulatePressure").and_then(|b| b.as_bool()) == Some(true);
+            Figura::Lapiz {
+                puntos: puntos_desde(v, x, y),
+                presiones: if simulada {
+                    Vec::new()
+                } else {
+                    v.get("pressures")
+                        .and_then(|p| p.as_array())
+                        .map(|l| {
+                            l.iter()
+                                .filter_map(|p| p.as_f64())
+                                .map(|p| p as f32)
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                },
+                // Todo freedraw de Excalidraw lleva el grosor en `strokeWidth`,
+                // con o sin `strokeOptions`: nunca es legado.
+                opciones: Some(
+                    v.get("strokeOptions")
+                        .and_then(|s| serde_json::from_value(s.clone()).ok())
+                        .unwrap_or_default(),
+                ),
+            }
+        }
         "text" => Figura::Texto {
             texto: v.get("text").and_then(|t| t.as_str()).unwrap_or("").into(),
             tam: num_o(v, "fontSize", 20.0),
@@ -402,12 +417,28 @@ fn elemento_hacia(e: &Elemento, original: &Value) -> Value {
         Value::Array(e.grupos.iter().map(|g| Value::String(g.clone())).collect()),
     );
     match &e.figura {
-        Figura::Lapiz { puntos, presiones } => {
+        Figura::Lapiz {
+            puntos,
+            presiones,
+            opciones,
+        } => {
             mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y));
-            if !presiones.is_empty() {
+            mapa.insert(
+                "pressures".into(),
+                Value::Array(presiones.iter().map(|p| Value::from(*p as f64)).collect()),
+            );
+            mapa.insert("simulatePressure".into(), Value::Bool(presiones.is_empty()));
+            let o = opciones.unwrap_or_default();
+            mapa.insert(
+                "strokeOptions".into(),
+                serde_json::to_value(o).unwrap_or(Value::Null),
+            );
+            // Un trazo legado se exporta con su grosor ya convertido, para
+            // que Excalidraw y el movil lo vean del mismo ancho que aqui.
+            if opciones.is_none() {
                 mapa.insert(
-                    "pressures".into(),
-                    Value::Array(presiones.iter().map(|p| Value::from(*p as f64)).collect()),
+                    "strokeWidth".into(),
+                    Value::from((e.grosor / crate::tinta::FACTOR_VARIABLE) as f64),
                 );
             }
         }
@@ -991,5 +1022,54 @@ mod pruebas {
         let vuelta = escribir(&l);
         assert!(vuelta.contains("pixpin-gantt"));
         assert!(vuelta.contains("periodos"));
+    }
+
+    #[test]
+    fn un_freedraw_de_excalidraw_trae_sus_opciones_de_pluma_y_vuelve_igual() {
+        use crate::tinta::{OpcionesTinta, Variabilidad};
+        let texto = r##"{"type":"excalidraw","version":2,"elements":[{"id":"a","type":"freedraw",
+            "x":0,"y":0,"width":10,"height":10,"angle":0,"strokeColor":"#1e1e1e",
+            "backgroundColor":"transparent","strokeWidth":2,"seed":1,
+            "points":[[0,0],[5,5],[10,10]],"pressures":[0.2,0.5,0.9],"simulatePressure":false,
+            "strokeOptions":{"variability":"constant","streamline":0.2}}]}"##;
+        let escena = leer(texto).expect("se lee");
+        let Figura::Lapiz {
+            presiones,
+            opciones,
+            ..
+        } = &escena.elementos()[0].figura
+        else {
+            panic!("tendria que ser un lapiz")
+        };
+        assert_eq!(presiones.len(), 3);
+        assert_eq!(
+            *opciones,
+            Some(OpcionesTinta {
+                variabilidad: Variabilidad::Constante,
+                streamline: 0.2
+            })
+        );
+        let vuelta = escribir(&escena);
+        // `escribir` usa `to_string_pretty`: hay un espacio tras los dos puntos.
+        assert!(vuelta.contains("\"variability\": \"constant\""), "{vuelta}");
+        assert!(vuelta.contains("\"simulatePressure\": false"), "{vuelta}");
+    }
+
+    #[test]
+    fn con_simulate_pressure_verdadero_se_ignoran_las_presiones_guardadas() {
+        let texto = r##"{"type":"excalidraw","version":2,"elements":[{"id":"a","type":"freedraw",
+            "x":0,"y":0,"width":10,"height":10,"strokeWidth":1,"seed":1,
+            "points":[[0,0],[5,5]],"pressures":[0.2,0.5],"simulatePressure":true}]}"##;
+        let escena = leer(texto).expect("se lee");
+        let Figura::Lapiz {
+            presiones,
+            opciones,
+            ..
+        } = &escena.elementos()[0].figura
+        else {
+            panic!()
+        };
+        assert!(presiones.is_empty());
+        assert_eq!(*opciones, Some(crate::tinta::OpcionesTinta::default()));
     }
 }

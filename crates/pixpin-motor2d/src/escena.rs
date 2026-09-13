@@ -872,6 +872,7 @@ mod pruebas {
             figura: Figura::Lapiz {
                 puntos,
                 presiones: Vec::new(),
+                opciones: None,
             },
             ..base()
         });
@@ -934,6 +935,7 @@ mod pruebas {
             figura: Figura::Lapiz {
                 puntos,
                 presiones: Vec::new(),
+                opciones: None,
             },
             ..base()
         });

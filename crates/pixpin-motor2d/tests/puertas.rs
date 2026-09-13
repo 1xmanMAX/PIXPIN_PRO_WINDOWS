@@ -150,6 +150,7 @@ fn el_dibujo_es_identico_al_reabrirlo() {
         figura: Figura::Lapiz {
             puntos: trazo_largo(80),
             presiones: vec![],
+            opciones: None,
         },
         ..elemento(99)
     });
@@ -188,6 +189,7 @@ fn dibujo_como_el_del_movil() -> Escena {
         e.figura = Figura::Lapiz {
             puntos,
             presiones: Vec::new(),
+            opciones: None,
         };
         escena.anadir(e);
     }

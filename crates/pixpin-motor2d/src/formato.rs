@@ -73,6 +73,7 @@ mod pruebas {
             figura: Figura::Lapiz {
                 puntos: vec![Punto2::nuevo(1.0, 2.0), Punto2::nuevo(30.0, 40.0)],
                 presiones: vec![],
+                opciones: None,
             },
             x: 0.0,
             y: 0.0,

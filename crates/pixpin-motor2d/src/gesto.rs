@@ -437,6 +437,7 @@ impl Gesto {
             Herramienta::Lapiz => Figura::Lapiz {
                 puntos: reservados(),
                 presiones: Vec::new(),
+                opciones: Some(crate::tinta::OpcionesTinta::default()),
             },
             Herramienta::Resaltador => Figura::Resaltador {
                 puntos: reservados(),

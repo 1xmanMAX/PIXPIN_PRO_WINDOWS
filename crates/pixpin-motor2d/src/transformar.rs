@@ -485,6 +485,7 @@ mod pruebas {
                     Punto2::nuevo(100.0, 50.0),
                 ],
                 presiones: Vec::new(),
+                opciones: None,
             },
             grosor: 4.0,
             ..rect()
@@ -541,6 +542,7 @@ mod pruebas {
                 figura: Figura::Lapiz {
                     puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 50.0)],
                     presiones: Vec::new(),
+                    opciones: None,
                 },
                 grosor: 0.0,
                 angulo,
@@ -670,6 +672,7 @@ mod pruebas {
             figura: Figura::Lapiz {
                 puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 50.0)],
                 presiones: Vec::new(),
+                opciones: None,
             },
             grosor: 0.0,
             angulo: FRAC_PI_2,
@@ -854,6 +857,7 @@ mod pruebas {
             figura: Figura::Lapiz {
                 puntos: vec![Punto2::nuevo(10.0, 0.0), Punto2::nuevo(20.0, 0.0)],
                 presiones: Vec::new(),
+                opciones: None,
             },
             grosor: 0.0,
             ..rect()

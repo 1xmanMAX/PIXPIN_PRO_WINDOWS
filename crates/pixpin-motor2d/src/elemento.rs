@@ -48,6 +48,10 @@ pub enum Figura {
         puntos: Vec<Punto2>,
         #[serde(default)]
         presiones: Vec<f32>,
+        /// La pluma de Excalidraw (`strokeOptions`). `None` = trazo de antes
+        /// de E1, cuyo grosor eran pixeles: ver `tinta::contorno_de_lapiz`.
+        #[serde(default)]
+        opciones: Option<crate::tinta::OpcionesTinta>,
     },
     /// Como el lapiz pero grueso, translucido y sin rugosidad: resaltar sobre
     /// texto tiene que dejarlo legible (D45).
@@ -245,9 +249,9 @@ impl Elemento {
     /// puntos son cuatro kilobytes que no apareceran en el techo.
     pub fn bytes(&self) -> usize {
         let dentro = match &self.figura {
-            Figura::Lapiz { puntos, presiones } => {
-                puntos.len() * size_of::<Punto2>() + presiones.len() * size_of::<f32>()
-            }
+            Figura::Lapiz {
+                puntos, presiones, ..
+            } => puntos.len() * size_of::<Punto2>() + presiones.len() * size_of::<f32>(),
             Figura::Resaltador { puntos }
             | Figura::Linea { puntos }
             | Figura::Flecha { puntos, .. }
@@ -274,6 +278,7 @@ mod pruebas {
                     Punto2::nuevo(20.0, 60.0),
                 ],
                 presiones: vec![],
+                opciones: None,
             },
             x: 0.0,
             y: 0.0,
@@ -347,6 +352,7 @@ mod pruebas {
         e.figura = Figura::Lapiz {
             puntos: vec![],
             presiones: vec![],
+            opciones: None,
         };
         let (x0, y0, x1, y1) = e.caja();
         assert!(x0.is_finite() && y0.is_finite() && x1.is_finite() && y1.is_finite());

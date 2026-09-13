@@ -337,6 +337,7 @@ mod pruebas {
             figura: Figura::Lapiz {
                 puntos: vec![Punto2::nuevo(50.0, 50.0)],
                 presiones: vec![],
+                opciones: None,
             },
             grosor: 10.0,
             ..base()

@@ -124,6 +124,7 @@ mod pruebas {
         let p = de_figura(&Figura::Lapiz {
             puntos: Vec::new(),
             presiones: Vec::new(),
+            opciones: None,
         });
         assert!(!p.contains(&Propiedad::Relleno));
         assert!(p.contains(&Propiedad::Grosor));

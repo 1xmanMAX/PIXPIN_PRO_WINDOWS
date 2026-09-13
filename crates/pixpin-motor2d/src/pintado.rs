@@ -978,6 +978,7 @@ mod pruebas {
             figura: Figura::Lapiz {
                 puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
                 presiones: Vec::new(),
+                opciones: None,
             },
             ..base()
         };
@@ -1005,6 +1006,7 @@ mod pruebas {
             figura: Figura::Lapiz {
                 puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(10.0, 0.0)],
                 presiones: Vec::new(),
+                opciones: None,
             },
             ..base()
         };

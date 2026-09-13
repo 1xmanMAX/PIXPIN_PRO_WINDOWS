@@ -511,6 +511,7 @@ impl Anotador {
             Herramienta::Lapiz => Figura::Lapiz {
                 puntos: g.puntos.clone(),
                 presiones: Vec::new(),
+                opciones: Some(pixpin_motor2d::tinta::OpcionesTinta::default()),
             },
             Herramienta::Resaltador => Figura::Resaltador {
                 puntos: g.puntos.clone(),
