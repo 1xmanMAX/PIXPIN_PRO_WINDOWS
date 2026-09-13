@@ -349,6 +349,16 @@ impl VentanaOverlay {
         }
     }
 
+    /// Da la ventana por pintada: quien acaba de presentar un fotograma
+    /// entero cancela asi el `WM_PAINT` que `invalidar` hubiera dejado
+    /// pendiente, y la tanda de muestras no se pinta dos veces.
+    pub fn validar(&self) {
+        // SAFETY: ValidateRect sobre ventana propia; None valida entera.
+        unsafe {
+            let _ = ValidateRect(Some(self.hwnd), None);
+        }
+    }
+
     /// Toma la captura del raton como si el boton se hubiera pulsado sobre
     /// el overlay. Para los gestos con Alt: el boton se pulso ANTES de que
     /// el overlay existiera, y sin captura el arrastre se perderia al soltar
@@ -501,6 +511,44 @@ pub fn bucle_modal(
     }
 }
 
+/// Presta el historial y el estado del lapiz de una ventana con entrada fina.
+/// `None` si la ventana no la pidio.
+fn con_entrada_fina<R>(
+    hwnd: HWND,
+    f: impl FnOnce(&mut crate::puntero::HistorialRaton, &mut crate::puntero::EstadoLapiz) -> R,
+) -> Option<R> {
+    ENTRADA_FINA.with(|e| {
+        e.borrow_mut()
+            .iter_mut()
+            .find(|(w, _, _)| *w == hwnd)
+            .map(|(_, h, estado)| f(h, estado))
+    })
+}
+
+/// Si este `WM_POINTER*` es de un contacto de borrador y hay que tragarlo
+/// (D107). Deja el estado de la ventana al dia. Solo se pregunta al lapiz
+/// al bajar: despues manda el estado, que es lo que decidio ese pulsado.
+fn tragar_goma(hwnd: HWND, mensaje: u32, wparam: WPARAM) -> bool {
+    use crate::puntero::FaseContacto;
+    let fase = match mensaje {
+        WM_POINTERDOWN => FaseContacto::Baja,
+        WM_POINTERUP => FaseContacto::Sube,
+        _ => FaseContacto::Actualiza,
+    };
+    let goma = fase == FaseContacto::Baja
+        && crate::puntero::indicadores_de_lapiz(wparam).is_some_and(crate::puntero::es_goma);
+    con_entrada_fina(hwnd, |h, estado| {
+        let nuevo = crate::puntero::decidir_goma(fase, goma, *estado)?;
+        *estado = nuevo;
+        // Nada del raton de antes o de durante el borrador vale para el
+        // trazo siguiente.
+        h.olvidar();
+        Some(())
+    })
+    .flatten()
+    .is_some()
+}
+
 fn registrar_clase() {
     // SAFETY: registro unico (Once) de una clase con WndProc propio; los
     // campos no usados quedan a cero, que es lo que la API espera.
@@ -571,36 +619,46 @@ extern "system" fn procedimiento_overlay(
                 // camino del lapiz (WM_POINTERUPDATE) ya lo cubre, o es su
                 // borrador y no debe reaparecer como tinta (D107).
                 let origen = crate::puntero::origen_actual();
-                let estado = ENTRADA_FINA.with(|e| {
-                    e.borrow()
-                        .iter()
-                        .find(|(h, _, _)| *h == hwnd)
-                        .map(|(_, _, estado)| *estado)
-                        .unwrap_or_default()
-                });
-                if crate::puntero::descartar_movimiento(boton, origen, estado) {
-                    return LRESULT(0);
-                }
                 // SAFETY: tiempo del mensaje que se esta atendiendo.
                 let tiempo = unsafe { GetMessageTime() } as u32;
-                let perdidos = ENTRADA_FINA.with(|e| {
-                    let mut e = e.borrow_mut();
-                    let Some((_, h, estado)) = e.iter_mut().find(|(w, _, _)| *w == hwnd) else {
-                        return Vec::new();
-                    };
-                    if boton {
-                        h.recuperar(p.x, p.y, tiempo)
-                    } else {
+                let (descartar, perdidos) = con_entrada_fina(hwnd, |h, estado| {
+                    if crate::puntero::descartar_movimiento(boton, origen, *estado) {
+                        // Tirado, pero no ignorado: si el historial no se
+                        // olvidara, el siguiente movimiento (un SinDatos a
+                        // mitad del trazo) recuperaria desde un punto viejo
+                        // y repetiria puntos ya entregados por el lapiz.
+                        h.olvidar();
+                        return (true, Vec::new());
+                    }
+                    if !boton {
                         // Se acabo el trazo (o nunca hubo boton): el
                         // siguiente no debe heredar el estado del lapiz de
                         // este, o un fallo puntual del historial del
                         // siguiente trazo se confundiria con un ConMuestras
-                        // viejo y le tiraria el primer movimiento.
+                        // viejo y le tiraria el primer movimiento. Un
+                        // contacto de borrador en curso se respeta: su
+                        // WM_POINTERUP es quien lo cierra.
                         h.olvidar();
-                        *estado = crate::puntero::EstadoLapiz::SinDatos;
-                        Vec::new()
+                        if *estado != crate::puntero::EstadoLapiz::ContactoDeGoma {
+                            *estado = crate::puntero::EstadoLapiz::SinDatos;
+                        }
+                        return (false, Vec::new());
                     }
-                });
+                    if !crate::puntero::usa_historial_raton(origen)
+                        || crate::puntero::olvida_historial_raton(*estado)
+                    {
+                        // Un movimiento del lapiz no se recupera del
+                        // historial del raton (M3): sus puntos buenos
+                        // vienen por WM_POINTERUPDATE.
+                        h.olvidar();
+                        return (false, Vec::new());
+                    }
+                    (false, h.recuperar(p.x, p.y, tiempo))
+                })
+                .unwrap_or_default();
+                if descartar {
+                    return LRESULT(0);
+                }
                 for m in perdidos {
                     encolar(EventoOverlay::Muestra(m));
                 }
@@ -621,7 +679,19 @@ extern "system" fn procedimiento_overlay(
             // SAFETY: SetCapture sobre ventana propia: el arrastre no se
             // pierde al salir del borde.
             unsafe { SetCapture(hwnd) };
-            encolar(EventoOverlay::BotonPulsado(punto(lparam)));
+            let p = punto(lparam);
+            // El pulsado es el "anterior" del primer movimiento: sin
+            // sembrarlo, ese movimiento no recupera los puntos fusionados
+            // mientras el editor gasta un fotograma en el pulsado, y cada
+            // trazo rapido empezaba con una cuerda recta. Un pulsado
+            // sintetizado por el lapiz no siembra: sus puntos buenos vienen
+            // por WM_POINTERUPDATE.
+            if crate::puntero::usa_historial_raton(crate::puntero::origen_actual()) {
+                // SAFETY: tiempo del mensaje que se esta atendiendo.
+                let tiempo = unsafe { GetMessageTime() } as u32;
+                con_entrada_fina(hwnd, |h, _| h.sembrar(p.x, p.y, tiempo));
+            }
+            encolar(EventoOverlay::BotonPulsado(p));
             LRESULT(0)
         }
         WM_LBUTTONUP | WM_RBUTTONUP => {
@@ -633,12 +703,9 @@ extern "system" fn procedimiento_overlay(
             // suelta el boton sin volver a mover (un simple clic), ningun
             // WM_MOUSEMOVE con boton=false llegaria a limpiarlo, y el
             // estado del lapiz de este trazo se colaria en el siguiente.
-            ENTRADA_FINA.with(|e| {
-                if let Some((_, h, estado)) = e.borrow_mut().iter_mut().find(|(w, _, _)| *w == hwnd)
-                {
-                    h.olvidar();
-                    *estado = crate::puntero::EstadoLapiz::SinDatos;
-                }
+            con_entrada_fina(hwnd, |h, estado| {
+                h.olvidar();
+                *estado = crate::puntero::EstadoLapiz::SinDatos;
             });
             encolar(EventoOverlay::BotonSoltado(punto(lparam)));
             LRESULT(0)
@@ -736,6 +803,16 @@ extern "system" fn procedimiento_overlay(
             encolar(EventoOverlay::Despierta);
             LRESULT(0)
         }
+        // El borrador del lapiz (D107): un contacto que empieza con el se
+        // traga entero, sin DefWindowProc, para que Windows no sintetice un
+        // WM_LBUTTONDOWN que el editor convertiria en un lapiz y la capa en
+        // un punto. `decidir_goma` (pura, con su tabla) dice cuando.
+        WM_POINTERDOWN | WM_POINTERUPDATE | WM_POINTERUP
+            if ENTRADA_FINA.with(|e| e.borrow().iter().any(|(h, _, _)| *h == hwnd))
+                && tragar_goma(hwnd, mensaje, wparam) =>
+        {
+            LRESULT(0)
+        }
         WM_POINTERUPDATE
             if ENTRADA_FINA.with(|e| e.borrow().iter().any(|(h, _, _)| *h == hwnd)) =>
         {
@@ -751,9 +828,12 @@ extern "system" fn procedimiento_overlay(
                     crate::puntero::EstadoLapiz::ConMuestras
                 }
             };
-            ENTRADA_FINA.with(|e| {
-                if let Some(entrada) = e.borrow_mut().iter_mut().find(|(w, _, _)| *w == hwnd) {
-                    entrada.2 = estado;
+            con_entrada_fina(hwnd, |h, e| {
+                *e = estado;
+                // El lapiz respondio: el ultimo punto del raton recordado ya
+                // no es el ultimo entregado (M3).
+                if crate::puntero::olvida_historial_raton(estado) {
+                    h.olvidar();
                 }
             });
             if let crate::puntero::MuestrasLapiz::Muestras(muestras) = muestras {

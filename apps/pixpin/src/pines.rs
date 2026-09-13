@@ -794,9 +794,36 @@ impl Pines {
             self.vivos.remove(&id);
         }
         let pedidos: Vec<(u64, CambioPin)> = self.pedidos.borrow_mut().drain(..).collect();
-        for (id, cambio) in pedidos {
-            if let Err(e) = self.atender(id, cambio) {
-                tracing::warn!(?e, id, ?cambio, "no se pudo atender la peticion del pin");
+        // Los punteros de la anotacion se procesan sin pintar y se pinta UNA
+        // vez por tanda (I1): un solo WM_MOUSEMOVE trae hasta 63 puntos
+        // recuperados, y repintar el pin con cada uno hacia el repintado
+        // lento, que a su vez fusionaba mas puntos: un circulo vicioso.
+        let mut sucio = false;
+        for paso in planificar_pedidos(&pedidos) {
+            match paso {
+                PasoPedido::Atender(n) => {
+                    let (id, cambio) = pedidos[n];
+                    if let Err(e) = self.atender(id, cambio) {
+                        tracing::warn!(?e, id, ?cambio, "no se pudo atender la peticion del pin");
+                    }
+                }
+                PasoPedido::Anotar(n) => {
+                    let (id, cambio) = pedidos[n];
+                    let Some(evento) = evento_de_puntero(cambio) else {
+                        continue;
+                    };
+                    match self.procesar_anotacion(id, evento) {
+                        Ok(pide) => sucio |= pide,
+                        Err(e) => {
+                            tracing::warn!(?e, id, ?cambio, "no se pudo anotar en el pin")
+                        }
+                    }
+                }
+                PasoPedido::Repintar(id) => {
+                    if std::mem::take(&mut sucio) {
+                        self.repintar_anotacion(id);
+                    }
+                }
             }
         }
     }
@@ -825,16 +852,15 @@ impl Pines {
             CambioPin::AbrirUbicacionPedido => self.abrir(id, true),
             CambioPin::GuardarComoPedido => self.guardar_como(id),
             CambioPin::AnotarPedido => self.entrar_a_anotar(id),
-            CambioPin::PunteroPulsado(p) => self.anotar(id, EventoAnotador::Pulsar(a_punto2(p))),
-            CambioPin::PunteroMovido(p) => self.anotar(id, EventoAnotador::Mover(a_punto2(p))),
-            CambioPin::PunteroSoltado(p) => self.anotar(id, EventoAnotador::Soltar(a_punto2(p))),
-            CambioPin::MuestraPuntero { x, y, presion } => self.anotar(
-                id,
-                EventoAnotador::Muestra {
-                    p: pixpin_motor2d::Punto2::nuevo(x, y),
-                    presion,
-                },
-            ),
+            // `purgar` los lleva por `procesar_anotacion` en tandas; esto
+            // queda para quien atienda un pedido suelto.
+            CambioPin::PunteroPulsado(_)
+            | CambioPin::PunteroMovido(_)
+            | CambioPin::PunteroSoltado(_)
+            | CambioPin::MuestraPuntero { .. } => match evento_de_puntero(cambio) {
+                Some(evento) => self.anotar(id, evento),
+                None => Ok(()),
+            },
             CambioPin::RuedaGirada { delta, cursor } => {
                 // Anotando, la rueda cambia el grosor; si no, hace zoom del
                 // pin, que es lo que pidio el usuario (D55).
@@ -1013,10 +1039,20 @@ impl Pines {
         Ok(())
     }
 
-    /// Un evento del puntero o del teclado mientras se anota.
+    /// Un evento del puntero o del teclado mientras se anota, y su repintado.
     fn anotar(&mut self, id: u64, evento: EventoAnotador) -> Result<()> {
+        if self.procesar_anotacion(id, evento)? {
+            self.repintar_anotacion(id);
+        }
+        Ok(())
+    }
+
+    /// Lleva un evento por la maquina de anotar y aplica su efecto a la
+    /// escena, SIN pintar. Devuelve si el pin necesita repintarse: `purgar`
+    /// junta asi una tanda de puntos en un solo repintado (I1).
+    fn procesar_anotacion(&mut self, id: u64, evento: EventoAnotador) -> Result<bool> {
         let Some(a) = self.anotacion.as_mut().filter(|a| a.id == id) else {
-            return Ok(());
+            return Ok(false);
         };
         if let EventoAnotador::Mover(p)
         | EventoAnotador::Pulsar(p)
@@ -1096,56 +1132,62 @@ impl Pines {
             EfectoAnotador::Salir => salir = true,
         }
 
-        if repintar && !salir {
-            let ordenes = a.ordenes();
-            let escribiendo = a.anotador.editando_texto();
-            let con_lupa = a.anotador.herramienta() == Herramienta::Lupa;
-            let aumento = a.anotador.lupa();
-            let cursor = a.ultimo_cursor;
-            let escala = a.escala_por_cien;
-            if let Some(pin) = self.vivos.get(&id) {
-                // Con un texto abierto, el IME compone al lado (D57).
-                if let Some(p) = escribiendo {
-                    pin.poner_posicion_ime(Punto {
-                        x: p.x as i32,
-                        y: p.y as i32,
-                    });
-                }
-                // La lupa (D52): la aritmetica aqui, los pixeles en el pin.
-                // Se coloca DENTRO del contenido, huyendo del cursor.
-                let r = pin.rect_contenido();
-                let l = Lupa::con_aumento(escala, aumento);
-                // En un pin mas pequeno que la lupa no cabe: sin lupa, en
-                // vez de una lupa que tape el pin entero.
-                let cabe = r.ancho > l.diametro && r.alto > l.diametro;
-                let lupa = if con_lupa && cabe {
-                    let local = Rect {
-                        x: 0,
-                        y: 0,
-                        ancho: r.ancho,
-                        alto: r.alto,
-                    };
-                    let pos = l.colocar(cursor, local);
-                    Some(LupaPin {
-                        fuente: l.region_fuente(cursor, local),
-                        destino: Rect {
-                            x: pos.x,
-                            y: pos.y,
-                            ancho: l.diametro,
-                            alto: l.diametro,
-                        },
-                    })
-                } else {
-                    None
-                };
-                pin.poner_lupa(lupa);
-                pin.poner_anotaciones(ordenes);
-            }
-        }
         if salir {
             self.salir_de_anotar()?;
+            return Ok(false);
         }
-        Ok(())
+        Ok(repintar)
+    }
+
+    /// Pinta en el pin lo que la anotacion tiene ahora: dibujo, lupa e IME.
+    fn repintar_anotacion(&self, id: u64) {
+        let Some(a) = self.anotacion.as_ref().filter(|a| a.id == id) else {
+            return;
+        };
+        let ordenes = a.ordenes();
+        let escribiendo = a.anotador.editando_texto();
+        let con_lupa = a.anotador.herramienta() == Herramienta::Lupa;
+        let aumento = a.anotador.lupa();
+        let cursor = a.ultimo_cursor;
+        let escala = a.escala_por_cien;
+        if let Some(pin) = self.vivos.get(&id) {
+            // Con un texto abierto, el IME compone al lado (D57).
+            if let Some(p) = escribiendo {
+                pin.poner_posicion_ime(Punto {
+                    x: p.x as i32,
+                    y: p.y as i32,
+                });
+            }
+            // La lupa (D52): la aritmetica aqui, los pixeles en el pin.
+            // Se coloca DENTRO del contenido, huyendo del cursor.
+            let r = pin.rect_contenido();
+            let l = Lupa::con_aumento(escala, aumento);
+            // En un pin mas pequeno que la lupa no cabe: sin lupa, en
+            // vez de una lupa que tape el pin entero.
+            let cabe = r.ancho > l.diametro && r.alto > l.diametro;
+            let lupa = if con_lupa && cabe {
+                let local = Rect {
+                    x: 0,
+                    y: 0,
+                    ancho: r.ancho,
+                    alto: r.alto,
+                };
+                let pos = l.colocar(cursor, local);
+                Some(LupaPin {
+                    fuente: l.region_fuente(cursor, local),
+                    destino: Rect {
+                        x: pos.x,
+                        y: pos.y,
+                        ancho: l.diametro,
+                        alto: l.diametro,
+                    },
+                })
+            } else {
+                None
+            };
+            pin.poner_lupa(lupa);
+            pin.poner_anotaciones(ordenes);
+        }
     }
 
     /// Rueda sobre un pin que no se esta anotando: agranda o encoge (D55).
@@ -1809,10 +1851,128 @@ fn a_punto2(p: pixpin_geom::Punto) -> pixpin_motor2d::Punto2 {
     pixpin_motor2d::Punto2::nuevo(p.x as f32, p.y as f32)
 }
 
+/// El evento de anotacion de un pedido del puntero; `None` si no lo es.
+fn evento_de_puntero(cambio: CambioPin) -> Option<EventoAnotador> {
+    match cambio {
+        CambioPin::PunteroPulsado(p) => Some(EventoAnotador::Pulsar(a_punto2(p))),
+        CambioPin::PunteroMovido(p) => Some(EventoAnotador::Mover(a_punto2(p))),
+        CambioPin::PunteroSoltado(p) => Some(EventoAnotador::Soltar(a_punto2(p))),
+        CambioPin::MuestraPuntero { x, y, presion } => Some(EventoAnotador::Muestra {
+            p: pixpin_motor2d::Punto2::nuevo(x, y),
+            presion,
+        }),
+        _ => None,
+    }
+}
+
+/// Un paso al drenar la cola de pedidos de los pines.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PasoPedido {
+    /// Atender el pedido `n` como siempre (menu, rueda, teclas...).
+    Atender(usize),
+    /// Llevar el pedido `n` del puntero por la maquina de anotar, sin pintar.
+    Anotar(usize),
+    /// Pintar una vez lo anotado desde el ultimo repintado de ese pin.
+    Repintar(u64),
+}
+
+/// El orden en que se drena la cola: los pedidos del puntero seguidos de un
+/// mismo pin se anotan sin pintar y se pintan una sola vez al final de la
+/// tanda (I1). Cualquier otro pedido, o un pin distinto, cierra la tanda
+/// ANTES de atenderse, para que nada vea el pin sin su ultimo dibujo.
+///
+/// Pura: la cuenta de repintados se prueba sin ventanas.
+fn planificar_pedidos(pedidos: &[(u64, CambioPin)]) -> Vec<PasoPedido> {
+    let mut pasos = Vec::with_capacity(pedidos.len() + 1);
+    let mut tanda: Option<u64> = None;
+    for (n, (id, cambio)) in pedidos.iter().enumerate() {
+        let es_puntero = evento_de_puntero(*cambio).is_some();
+        if let Some(abierta) = tanda {
+            if !es_puntero || abierta != *id {
+                pasos.push(PasoPedido::Repintar(abierta));
+                tanda = None;
+            }
+        }
+        if es_puntero {
+            pasos.push(PasoPedido::Anotar(n));
+            tanda = Some(*id);
+        } else {
+            pasos.push(PasoPedido::Atender(n));
+        }
+    }
+    if let Some(abierta) = tanda {
+        pasos.push(PasoPedido::Repintar(abierta));
+    }
+    pasos
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
     use pixpin_motor2d::{ColorRgba, Elemento, EstiloTrazo, Figura, Punto2};
+
+    #[test]
+    fn una_tanda_de_muestras_y_su_movimiento_se_pinta_una_sola_vez() {
+        // Lo que deja un WM_MOUSEMOVE rapido: 63 puntos recuperados y el
+        // movimiento. Antes eran 64 repintados del pin; ahora 64 anotaciones
+        // y un repintado al final.
+        let mut pedidos: Vec<(u64, CambioPin)> = (0..63)
+            .map(|k| {
+                (
+                    7,
+                    CambioPin::MuestraPuntero {
+                        x: k as f32,
+                        y: 0.0,
+                        presion: None,
+                    },
+                )
+            })
+            .collect();
+        pedidos.push((7, CambioPin::PunteroMovido(Punto { x: 63, y: 0 })));
+        let pasos = planificar_pedidos(&pedidos);
+        let anotar = pasos
+            .iter()
+            .filter(|p| matches!(p, PasoPedido::Anotar(_)))
+            .count();
+        assert_eq!(anotar, 64);
+        let repintados: Vec<&PasoPedido> = pasos
+            .iter()
+            .filter(|p| matches!(p, PasoPedido::Repintar(_)))
+            .collect();
+        assert_eq!(repintados, vec![&PasoPedido::Repintar(7)]);
+        assert_eq!(pasos.last(), Some(&PasoPedido::Repintar(7)));
+    }
+
+    #[test]
+    fn otro_pedido_o_otro_pin_cierra_la_tanda_antes_de_atenderse() {
+        // Caso negativo: un pedido que no es del puntero no puede ver el pin
+        // sin el dibujo que lleva delante en la cola.
+        let m = |x: f32| CambioPin::MuestraPuntero {
+            x,
+            y: 0.0,
+            presion: None,
+        };
+        let pedidos = [
+            (1, m(0.0)),
+            (1, m(1.0)),
+            (1, CambioPin::EscapeAnotando),
+            (1, m(2.0)),
+            (2, m(3.0)),
+        ];
+        assert_eq!(
+            planificar_pedidos(&pedidos),
+            vec![
+                PasoPedido::Anotar(0),
+                PasoPedido::Anotar(1),
+                PasoPedido::Repintar(1),
+                PasoPedido::Atender(2),
+                PasoPedido::Anotar(3),
+                PasoPedido::Repintar(1),
+                PasoPedido::Anotar(4),
+                PasoPedido::Repintar(2),
+            ]
+        );
+    }
 
     fn trazo(x1: f32, y1: f32, x2: f32, y2: f32) -> Elemento {
         Elemento {

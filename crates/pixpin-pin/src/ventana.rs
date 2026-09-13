@@ -2187,6 +2187,30 @@ fn aplicar(hwnd: HWND, efecto: EfectoPin) {
     }
 }
 
+/// Si este `WM_POINTER*` del pin que se anota es de un contacto de borrador
+/// y hay que tragarlo (D107). Misma regla que el overlay: se pregunta al
+/// lapiz solo al bajar, y despues manda el estado (`decidir_goma`).
+fn tragar_goma(mensaje: u32, wparam: WPARAM) -> bool {
+    use pixpin_shell::puntero::FaseContacto;
+    let fase = match mensaje {
+        WM_POINTERDOWN => FaseContacto::Baja,
+        WM_POINTERUP => FaseContacto::Sube,
+        _ => FaseContacto::Actualiza,
+    };
+    let goma = fase == FaseContacto::Baja
+        && pixpin_shell::puntero::indicadores_de_lapiz(wparam)
+            .is_some_and(pixpin_shell::puntero::es_goma);
+    let estado = ESTADO_LAPIZ.with(|e| e.get());
+    let Some(nuevo) = pixpin_shell::puntero::decidir_goma(fase, goma, estado) else {
+        return false;
+    };
+    ESTADO_LAPIZ.with(|e| e.set(nuevo));
+    // Nada del raton de antes o de durante el borrador vale para el trazo
+    // siguiente.
+    HISTORIAL.with(|h| h.borrow_mut().olvidar());
+    true
+}
+
 extern "system" fn procedimiento_pin(
     hwnd: HWND,
     mensaje: u32,
@@ -2297,6 +2321,19 @@ extern "system" fn procedimiento_pin(
             }
             if let Some(i) = interno_de(hwnd) {
                 if i.anotando {
+                    // El pulsado siembra el historial (I2): sin el, el primer
+                    // movimiento no recupera los puntos fusionados y cada
+                    // trazo rapido empieza con una cuerda recta. El pulsado
+                    // que sintetiza el lapiz no: sus puntos vienen por
+                    // WM_POINTERUPDATE.
+                    if pixpin_shell::puntero::usa_historial_raton(
+                        pixpin_shell::puntero::origen_actual(),
+                    ) {
+                        let p = punto(lparam);
+                        // SAFETY: tiempo del mensaje que se esta atendiendo.
+                        let tiempo = unsafe { GetMessageTime() } as u32;
+                        HISTORIAL.with(|h| h.borrow_mut().sembrar(p.x, p.y, tiempo));
+                    }
                     (i.al_cambiar)(CambioPin::PunteroPulsado(punto_contenido(i, lparam)));
                 } else {
                     // Ctrl + arrastrar: zoom (arriba agranda, abajo encoge).
@@ -2454,11 +2491,35 @@ extern "system" fn procedimiento_pin(
                     let origen = pixpin_shell::puntero::origen_actual();
                     let estado = ESTADO_LAPIZ.with(|e| e.get());
                     if pixpin_shell::puntero::descartar_movimiento(boton, origen, estado) {
+                        // Tirado, pero el historial se olvida (M3): si no, un
+                        // SinDatos a mitad del trazo recuperaria desde un
+                        // punto viejo y repetiria puntos ya entregados.
+                        HISTORIAL.with(|h| h.borrow_mut().olvidar());
                         return LRESULT(0);
                     }
                     // SAFETY: tiempo del mensaje que se esta atendiendo.
                     let tiempo = unsafe { GetMessageTime() } as u32;
-                    if boton {
+                    let mut muestras: Vec<(f32, f32)> = Vec::new();
+                    if !boton {
+                        // Se acabo el trazo (o nunca hubo boton): el
+                        // siguiente no debe heredar el estado del lapiz de
+                        // este, o un fallo puntual del historial del
+                        // siguiente trazo se confundiria con un ConMuestras
+                        // viejo y le tiraria el primer movimiento. Un
+                        // contacto de borrador en curso lo cierra su
+                        // WM_POINTERUP.
+                        HISTORIAL.with(|h| h.borrow_mut().olvidar());
+                        if estado != pixpin_shell::puntero::EstadoLapiz::ContactoDeGoma {
+                            ESTADO_LAPIZ
+                                .with(|e| e.set(pixpin_shell::puntero::EstadoLapiz::SinDatos));
+                        }
+                    } else if !pixpin_shell::puntero::usa_historial_raton(origen)
+                        || pixpin_shell::puntero::olvida_historial_raton(estado)
+                    {
+                        // Un movimiento del lapiz no se recupera del
+                        // historial del raton (M3).
+                        HISTORIAL.with(|h| h.borrow_mut().olvidar());
+                    } else {
                         let c = punto_contenido(i, lparam);
                         let mut r = RECT::default();
                         // SAFETY: GetWindowRect sobre la ventana propia.
@@ -2467,24 +2528,23 @@ extern "system" fn procedimiento_pin(
                             let (ox, oy) = origen_contenido(i.hwnd, i.estado.rect());
                             (r.left + ox + c.x, r.top + oy + c.y)
                         };
-                        for m in HISTORIAL.with(|h| h.borrow_mut().recuperar(x, y, tiempo)) {
-                            let (cx, cy) = muestra_a_contenido(i, m);
-                            (i.al_cambiar)(CambioPin::MuestraPuntero {
-                                x: cx,
-                                y: cy,
-                                presion: None,
-                            });
-                        }
-                    } else {
-                        // Se acabo el trazo (o nunca hubo boton): el
-                        // siguiente no debe heredar el estado del lapiz de
-                        // este, o un fallo puntual del historial del
-                        // siguiente trazo se confundiria con un ConMuestras
-                        // viejo y le tiraria el primer movimiento.
-                        HISTORIAL.with(|h| h.borrow_mut().olvidar());
-                        ESTADO_LAPIZ.with(|e| e.set(pixpin_shell::puntero::EstadoLapiz::SinDatos));
+                        // Todo a coordenadas del contenido ANTES de avisar:
+                        // el callback no vuelve a encontrarse `i` a medias.
+                        muestras = HISTORIAL
+                            .with(|h| h.borrow_mut().recuperar(x, y, tiempo))
+                            .into_iter()
+                            .map(|m| muestra_a_contenido(i, m))
+                            .collect();
                     }
-                    (i.al_cambiar)(CambioPin::PunteroMovido(punto_contenido(i, lparam)));
+                    let movido = punto_contenido(i, lparam);
+                    for (x, y) in muestras {
+                        (i.al_cambiar)(CambioPin::MuestraPuntero {
+                            x,
+                            y,
+                            presion: None,
+                        });
+                    }
+                    (i.al_cambiar)(CambioPin::PunteroMovido(movido));
                 } else {
                     let e = i.estado.procesar(EventoPin::RatonMovido(punto(lparam)));
                     aplicar(hwnd, e);
@@ -2527,6 +2587,14 @@ extern "system" fn procedimiento_pin(
         // el borrador (D107), del mismo mensaje que WM_MOUSEMOVE sintetiza
         // despues. Solo mientras se anota: fuera de ese modo el pin no
         // dibuja nada y no hay estado de lapiz que mantener.
+        // El borrador del lapiz (D107): un contacto que empieza con el se
+        // traga entero, sin DefWindowProc, para que Windows no sintetice un
+        // WM_LBUTTONDOWN que la anotacion convertiria en un punto.
+        WM_POINTERDOWN | WM_POINTERUPDATE | WM_POINTERUP
+            if interno_de(hwnd).is_some_and(|i| i.anotando) && tragar_goma(mensaje, wparam) =>
+        {
+            LRESULT(0)
+        }
         WM_POINTERUPDATE if interno_de(hwnd).is_some_and(|i| i.anotando) => {
             let muestras = pixpin_shell::puntero::muestras_de_lapiz(wparam);
             // Se recuerda el estado para que el WM_MOUSEMOVE que Windows
@@ -2545,16 +2613,24 @@ extern "system" fn procedimiento_pin(
                 }
             };
             ESTADO_LAPIZ.with(|e| e.set(estado));
+            // El lapiz respondio: el ultimo punto del raton recordado ya no
+            // es el ultimo entregado (M3).
+            if pixpin_shell::puntero::olvida_historial_raton(estado) {
+                HISTORIAL.with(|h| h.borrow_mut().olvidar());
+            }
             if let (Some(i), pixpin_shell::puntero::MuestrasLapiz::Muestras(muestras)) =
                 (interno_de(hwnd), muestras)
             {
-                for m in muestras {
-                    let (x, y) = muestra_a_contenido(i, m);
-                    (i.al_cambiar)(CambioPin::MuestraPuntero {
-                        x,
-                        y,
-                        presion: m.presion(),
-                    });
+                // Todo a coordenadas del contenido ANTES de avisar a nadie.
+                let convertidas: Vec<(f32, f32, Option<f32>)> = muestras
+                    .into_iter()
+                    .map(|m| {
+                        let (x, y) = muestra_a_contenido(i, m);
+                        (x, y, m.presion())
+                    })
+                    .collect();
+                for (x, y, presion) in convertidas {
+                    (i.al_cambiar)(CambioPin::MuestraPuntero { x, y, presion });
                 }
             }
             // Se deja pasar a DefWindowProc: asi Windows sigue sintetizando

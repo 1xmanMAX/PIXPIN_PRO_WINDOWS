@@ -20,8 +20,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GMMP_USE_DISPLAY_POINTS, GetMouseMovePointsEx, MOUSEMOVEPOINT,
 };
 use windows::Win32::UI::Input::Pointer::{
-    GetPointerDeviceRects, GetPointerPenInfoHistory, GetPointerType, POINTER_FLAG_INCONTACT,
-    POINTER_PEN_INFO,
+    GetPointerDeviceRects, GetPointerPenInfo, GetPointerPenInfoHistory, GetPointerType,
+    POINTER_FLAG_INCONTACT, POINTER_PEN_INFO,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetMessageExtraInfo, PEN_FLAG_ERASER, PEN_FLAG_INVERTED, PEN_MASK_PRESSURE, POINTER_INPUT_TYPE,
@@ -131,9 +131,21 @@ impl HistorialRaton {
         self.anterior = None;
     }
 
+    /// Al pulsar el boton: el punto y la hora del pulsado son el "anterior"
+    /// del primer movimiento. Sin esto, el primer `WM_MOUSEMOVE` no recupera
+    /// nada, y como el editor gasta un fotograma entero en el pulsado, una
+    /// letra rapida empezaba cada trazo con una cuerda recta.
+    ///
+    /// El punto del pulsado no tiene por que ser una entrada exacta del
+    /// historial: `perdidos_entre` para tambien por tiempo, asi que lo peor
+    /// es parar en el primer punto mas viejo que el pulsado.
+    pub fn sembrar(&mut self, x: i32, y: i32, tiempo: u32) {
+        self.anterior = Some((x, y, tiempo));
+    }
+
     /// Los puntos fusionados antes de `(x, y)` (escritorio virtual) y
-    /// `tiempo` (`GetMessageTime`). El primer movimiento de un trazo no
-    /// recupera nada: lo anterior es de antes de pulsar.
+    /// `tiempo` (`GetMessageTime`). Sin `sembrar` ni movimiento previo no
+    /// recupera nada: lo anterior seria de antes de pulsar.
     pub fn recuperar(&mut self, x: i32, y: i32, tiempo: u32) -> Vec<Muestra> {
         let Some(anterior) = self.anterior.replace((x, y, tiempo)) else {
             return Vec::new();
@@ -238,6 +250,12 @@ pub enum EstadoLapiz {
     /// fusionados (via `recuperar`) reintroducirian el trazo como tinta,
     /// justo lo que D107 pide evitar.
     Goma,
+    /// El contacto EMPEZO con el borrador (`WM_POINTERDOWN` de goma): sus
+    /// mensajes de puntero se tragan hasta el `WM_POINTERUP`, para que
+    /// Windows no sintetice ni pulsado, ni movimiento, ni soltado. Distinto
+    /// de `Goma`, que puede aparecer a mitad de un trazo de tinta cuyo
+    /// soltado SI tiene que llegar (ver `decidir_goma`).
+    ContactoDeGoma,
 }
 
 /// Si el `WM_MOUSEMOVE` sintetizado por Windows debe tirarse porque el
@@ -254,6 +272,76 @@ pub enum EstadoLapiz {
 /// unico que hay, y tirarlo lo perderia sin que nadie lo repusiera.
 pub fn descartar_movimiento(boton: bool, origen: OrigenRaton, estado: EstadoLapiz) -> bool {
     boton && origen == OrigenRaton::Lapiz && estado != EstadoLapiz::SinDatos
+}
+
+/// Si un `WM_MOUSEMOVE` (o su pulsado) puede usar el historial del raton.
+///
+/// Solo el raton de verdad y el tacto: un movimiento sintetizado por el
+/// lapiz no es un punto de `GetMouseMovePointsEx` fiable, y sus muestras
+/// buenas llegan por `WM_POINTERUPDATE`. Recuperar sobre el daba puntos ya
+/// entregados por el camino del lapiz (un salto hacia atras en el trazo).
+pub fn usa_historial_raton(origen: OrigenRaton) -> bool {
+    origen != OrigenRaton::Lapiz
+}
+
+/// Si el estado del lapiz obliga a olvidar el historial del raton: en
+/// cuanto el lapiz responde (tinta o borrador), el ultimo punto del raton
+/// recordado ya no es el ultimo entregado, y recuperar desde el colaria
+/// puntos viejos en el trazo.
+pub fn olvida_historial_raton(estado: EstadoLapiz) -> bool {
+    estado != EstadoLapiz::SinDatos
+}
+
+/// Si los indicadores `penFlags` de un lapiz dicen que lo que toca es el
+/// borrador o la punta al reves (D107).
+pub fn es_goma(pen_flags: u32) -> bool {
+    pen_flags & (PEN_FLAG_ERASER | PEN_FLAG_INVERTED) != 0
+}
+
+/// En que momento del contacto llega un mensaje de puntero.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FaseContacto {
+    /// `WM_POINTERDOWN`.
+    Baja,
+    /// `WM_POINTERUPDATE`.
+    Actualiza,
+    /// `WM_POINTERUP`.
+    Sube,
+}
+
+/// Si un mensaje de puntero se traga (sin `DefWindowProc`) porque es de un
+/// contacto de borrador, y con que estado queda la ventana. `None` = seguir
+/// como siempre.
+///
+/// Por que tragarlo: `DefWindowProc` sintetiza `WM_LBUTTONDOWN` a partir de
+/// `WM_POINTERDOWN`, y ese pulsado creaba un lapiz en el editor y un punto en
+/// la capa y el pin (D107 pide ignorar el borrador). Se decide al bajar y se
+/// mantiene hasta subir: si el lapiz cambiara a borrador A MITAD de un trazo
+/// de tinta, tragarse su `WM_POINTERUP` dejaria el boton sin soltar y la
+/// captura tomada para siempre.
+pub fn decidir_goma(fase: FaseContacto, goma: bool, estado: EstadoLapiz) -> Option<EstadoLapiz> {
+    match fase {
+        FaseContacto::Baja if goma => Some(EstadoLapiz::ContactoDeGoma),
+        FaseContacto::Actualiza if estado == EstadoLapiz::ContactoDeGoma => {
+            Some(EstadoLapiz::ContactoDeGoma)
+        }
+        FaseContacto::Sube if estado == EstadoLapiz::ContactoDeGoma => Some(EstadoLapiz::SinDatos),
+        _ => None,
+    }
+}
+
+/// Los `penFlags` del puntero de un mensaje `WM_POINTER*`, si es un lapiz.
+pub fn indicadores_de_lapiz(wparam: WPARAM) -> Option<u32> {
+    let id = (wparam.0 & 0xFFFF) as u32;
+    let mut tipo = POINTER_INPUT_TYPE::default();
+    // SAFETY: id del mensaje actual y salida local.
+    if unsafe { GetPointerType(id, &mut tipo) }.is_err() || tipo != PT_PEN {
+        return None;
+    }
+    let mut info = POINTER_PEN_INFO::default();
+    // SAFETY: id del mensaje actual y estructura de salida local.
+    unsafe { GetPointerPenInfo(id, &mut info) }.ok()?;
+    Some(info.penFlags)
 }
 
 /// Lo que devuelve leer el historial de puntero de un `WM_POINTERUPDATE`.
@@ -318,7 +406,7 @@ pub fn muestras_de_lapiz(wparam: WPARAM) -> MuestrasLapiz {
     // usa y el resto (si lo hubiera) se descarta en silencio.
     let tinta: Vec<Muestra> = en_contacto
         .iter()
-        .filter(|i| i.penFlags & (PEN_FLAG_ERASER | PEN_FLAG_INVERTED) == 0)
+        .filter(|i| !es_goma(i.penFlags))
         .map(|i| {
             let (x, y) = if con_rects {
                 himetric_a_pixel(
@@ -377,6 +465,117 @@ mod pruebas {
         // en el primero con tiempo menor, no se devuelve historia vieja.
         let recientes = [(40, 0, 204), (30, 0, 203), (20, 0, 150), (10, 0, 90)];
         assert_eq!(perdidos_entre(&recientes, (0, 0, 180)), vec![(30, 0)]);
+    }
+
+    #[test]
+    fn un_anterior_que_no_esta_en_el_historial_para_por_tiempo_y_da_los_mas_nuevos() {
+        // Es el caso de `sembrar`: el punto del pulsado no tiene por que ser
+        // una entrada exacta del historial. No se encuentra por igualdad, asi
+        // que se para en el primero mas viejo que el y devuelve lo posterior.
+        let recientes = [
+            (40, 5, 110),
+            (30, 5, 108),
+            (20, 5, 106),
+            (12, 3, 104),
+            (0, 0, 99),
+        ];
+        let pulsado = (7, 1, 103);
+        assert_eq!(
+            perdidos_entre(&recientes, pulsado),
+            vec![(12, 3), (20, 5), (30, 5)]
+        );
+    }
+
+    #[test]
+    fn el_borrador_o_la_punta_al_reves_son_goma_y_la_punta_normal_no() {
+        assert!(!es_goma(0), "sin indicadores es la punta normal");
+        assert!(es_goma(PEN_FLAG_ERASER));
+        assert!(es_goma(PEN_FLAG_INVERTED));
+        assert!(es_goma(PEN_FLAG_ERASER | PEN_FLAG_INVERTED));
+        // El boton del cilindro (PEN_FLAG_BARREL = 1) no es borrar.
+        assert!(!es_goma(1));
+    }
+
+    #[test]
+    fn el_contacto_de_goma_se_traga_de_bajar_a_subir_y_luego_se_olvida() {
+        use EstadoLapiz::{ConMuestras, ContactoDeGoma, Goma, SinDatos};
+        use FaseContacto::{Actualiza, Baja, Sube};
+        let casos = [
+            // (fase, es_goma, estado, decision, motivo)
+            (
+                Baja,
+                true,
+                SinDatos,
+                Some(ContactoDeGoma),
+                "bajar con el borrador se traga: no nace un pulsado",
+            ),
+            (
+                Baja,
+                false,
+                SinDatos,
+                None,
+                "bajar con la punta sigue por DefWindowProc",
+            ),
+            (
+                Actualiza,
+                true,
+                ContactoDeGoma,
+                Some(ContactoDeGoma),
+                "mover el borrador tampoco sintetiza movimientos",
+            ),
+            (
+                Sube,
+                true,
+                ContactoDeGoma,
+                Some(SinDatos),
+                "subir el borrador se traga y deja el estado limpio",
+            ),
+            (
+                Actualiza,
+                true,
+                ConMuestras,
+                None,
+                "un trazo de tinta que pasa a borrador sigue su camino",
+            ),
+            (
+                Sube,
+                true,
+                Goma,
+                None,
+                "su soltado tiene que llegar, o la captura se queda tomada",
+            ),
+        ];
+        for (fase, goma, estado, decision, motivo) in casos {
+            assert_eq!(decidir_goma(fase, goma, estado), decision, "{motivo}");
+        }
+    }
+
+    #[test]
+    fn el_movimiento_del_lapiz_no_usa_el_historial_del_raton() {
+        assert!(usa_historial_raton(OrigenRaton::Raton));
+        assert!(usa_historial_raton(OrigenRaton::Tacto));
+        assert!(!usa_historial_raton(OrigenRaton::Lapiz));
+    }
+
+    #[test]
+    fn en_cuanto_el_lapiz_responde_se_olvida_el_historial_del_raton() {
+        assert!(!olvida_historial_raton(EstadoLapiz::SinDatos));
+        assert!(olvida_historial_raton(EstadoLapiz::ConMuestras));
+        assert!(olvida_historial_raton(EstadoLapiz::Goma));
+        assert!(olvida_historial_raton(EstadoLapiz::ContactoDeGoma));
+    }
+
+    #[test]
+    fn sembrar_da_un_anterior_al_primer_movimiento() {
+        // Sin sembrar, el primer movimiento no tiene anterior y no recupera.
+        // Con la semilla, el anterior es el pulsado (se comprueba el estado,
+        // no la llamada a Win32, que necesita una sesion de escritorio).
+        let mut h = HistorialRaton::nuevo();
+        assert_eq!(h.anterior, None);
+        h.sembrar(3, -4, 77);
+        assert_eq!(h.anterior, Some((3, -4, 77)));
+        h.olvidar();
+        assert_eq!(h.anterior, None);
     }
 
     #[test]

@@ -297,6 +297,7 @@ impl CapaViva {
     }
 
     fn anotar(&mut self, evento: EventoAnotador) {
+        let pintado = pintado_de(&evento);
         // El anotador es puro y no lee el teclado: se le dicen los
         // modificadores justo antes de cada gesto del puntero.
         if matches!(
@@ -310,7 +311,7 @@ impl CapaViva {
             self.anotador.poner_modificadores(shift, alt);
         }
         let efecto = self.anotador.procesar(evento);
-        self.aplicar(efecto);
+        self.aplicar_con(efecto, pintado);
         // El cursor sigue a la herramienta (lo pidio el usuario): cruz para
         // dibujar, barra para el texto, flecha para la mano.
         self.ventana
@@ -319,6 +320,11 @@ impl CapaViva {
 
     /// Aplica un efecto de la maquina. Devuelve `false` si pide salir.
     fn aplicar(&mut self, efecto: EfectoAnotador) -> bool {
+        self.aplicar_con(efecto, Pintado::Ahora)
+    }
+
+    /// Como `aplicar`, eligiendo cuando se pinta el resultado.
+    fn aplicar_con(&mut self, efecto: EfectoAnotador, pintado: Pintado) -> bool {
         match efecto {
             EfectoAnotador::Nada => return true,
             EfectoAnotador::Repintar => self.en_curso = None,
@@ -379,7 +385,14 @@ impl CapaViva {
                 y: p.y as i32,
             });
         }
-        self.pintar();
+        match pintado {
+            Pintado::Ahora => self.pintar(),
+            // Solo se marca: el WM_PAINT llega cuando la cola se vacia, es
+            // decir, una vez despues de toda la tanda. Si antes pinta otro
+            // (el RatonMovido que sigue a los puntos recuperados), `pintar`
+            // valida la ventana y ese WM_PAINT ya no llega.
+            Pintado::Diferido => self.ventana.invalidar(),
+        }
         true
     }
 
@@ -445,6 +458,8 @@ impl CapaViva {
             }
         });
         let _ = self.superficie.presentar();
+        // Lo que habia pendiente de pintar ya esta en pantalla.
+        self.ventana.validar();
     }
 
     /// La lupa (D52): amplia lo ultimo muestreado alrededor del cursor y se
@@ -560,6 +575,25 @@ pub enum EventoRaton {
     Mover(Punto),
     Soltar(Punto),
     Rueda(i32),
+}
+
+/// Cuando se pinta lo que deja un evento de anotacion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pintado {
+    /// En cuanto se aplica: un gesto suelto (pulsar, mover, soltar, tecla).
+    Ahora,
+    /// Una vez por tanda (I1): un solo WM_MOUSEMOVE trae hasta 63 puntos
+    /// recuperados, y el lapiz su historial entero. Pintar la escena con
+    /// cada uno volvia lento el repintado, lo que fusionaba mas puntos y
+    /// pedia mas repintados.
+    Diferido,
+}
+
+fn pintado_de(evento: &EventoAnotador) -> Pintado {
+    match evento {
+        EventoAnotador::Muestra { .. } => Pintado::Diferido,
+        _ => Pintado::Ahora,
+    }
 }
 
 fn a_punto2(p: Punto) -> Punto2 {
@@ -743,4 +777,32 @@ fn capturar_con_dibujo(
         .context("no se pudo capturar la pantalla anotada")?;
     pixpin_capture::a_imagen(recursos.dispositivo(), &instantanea)
         .context("no se pudo bajar la captura a memoria")
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+
+    #[test]
+    fn solo_las_muestras_esperan_a_pintarse_una_vez_por_tanda() {
+        // Un punto de la entrada fina no pinta por si solo: lo pinta el
+        // WM_PAINT de la tanda o el RatonMovido que la cierra. Los gestos
+        // sueltos se siguen pintando al momento.
+        let p = Punto2::nuevo(1.0, 2.0);
+        assert_eq!(
+            pintado_de(&EventoAnotador::Muestra {
+                p,
+                presion: Some(0.5)
+            }),
+            Pintado::Diferido
+        );
+        for ev in [
+            EventoAnotador::Pulsar(p),
+            EventoAnotador::Mover(p),
+            EventoAnotador::Soltar(p),
+            EventoAnotador::Rueda(120),
+        ] {
+            assert_eq!(pintado_de(&ev), Pintado::Ahora, "{ev:?}");
+        }
+    }
 }
