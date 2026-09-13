@@ -125,13 +125,13 @@ thread_local! {
     /// Hueco por ventana, en coordenadas del escritorio virtual. Los clics
     /// que caen dentro atraviesan la ventana y llegan a lo que hay debajo.
     static HUECO: RefCell<Vec<(HWND, Rect)>> = const { RefCell::new(Vec::new()) };
-    /// Ventanas que quieren todos los puntos: su historial de raton y si el
-    /// ultimo WM_POINTERUPDATE de lapiz entrego muestras de verdad (el
-    /// tercer campo). Sin ese tercer campo, un WM_MOUSEMOVE sintetizado por
-    /// el tacto (misma firma que el lapiz salvo un bit) o por un lapiz cuyo
-    /// GetPointerPenInfoHistory fallo se tiraria sin que nadie lo
-    /// reemplazara: ni RatonMovido ni Muestra, es decir, sin dibujar nada.
-    static ENTRADA_FINA: RefCell<Vec<(HWND, crate::puntero::HistorialRaton, bool)>> =
+    /// Ventanas que quieren todos los puntos: su historial de raton y el
+    /// estado del ultimo WM_POINTERUPDATE de lapiz (el tercer campo). Sin
+    /// ese tercer campo, un WM_MOUSEMOVE sintetizado por el tacto (misma
+    /// firma que el lapiz salvo un bit), por un lapiz cuyo
+    /// GetPointerPenInfoHistory fallo, o por el borrador del lapiz (D107) no
+    /// se distinguiria de uno que el camino del lapiz ya cubrio de verdad.
+    static ENTRADA_FINA: RefCell<Vec<(HWND, crate::puntero::HistorialRaton, crate::puntero::EstadoLapiz)>> =
         const { RefCell::new(Vec::new()) };
 }
 
@@ -375,7 +375,11 @@ impl VentanaOverlay {
         ENTRADA_FINA.with(|e| {
             let mut e = e.borrow_mut();
             if !e.iter().any(|(h, _, _)| *h == self.hwnd) {
-                e.push((self.hwnd, crate::puntero::HistorialRaton::nuevo(), false));
+                e.push((
+                    self.hwnd,
+                    crate::puntero::HistorialRaton::nuevo(),
+                    crate::puntero::EstadoLapiz::SinDatos,
+                ));
             }
         });
     }
@@ -539,33 +543,38 @@ extern "system" fn procedimiento_overlay(
             let boton = wparam.0 & MK_LBUTTON != 0;
             let fina = ENTRADA_FINA.with(|e| e.borrow().iter().any(|(h, _, _)| *h == hwnd));
             if fina {
-                // El lapiz solo entrega muestras por WM_POINTERUPDATE; este
-                // WM_MOUSEMOVE sintetizado se tira SOLO si ese camino
-                // acaba de entregar algo de verdad. Si no (tacto, que
-                // comparte firma con el lapiz salvo un bit — ver
-                // origen_del_raton —, o un lapiz cuyo
-                // GetPointerPenInfoHistory fallo), este es el UNICO punto
-                // que hay y no se puede perder.
-                let lapiz_con_muestras = ENTRADA_FINA.with(|e| {
+                // `descartar_movimiento` (pura, con su propia tabla de
+                // pruebas) decide si este WM_MOUSEMOVE sintetizado sobra: el
+                // camino del lapiz (WM_POINTERUPDATE) ya lo cubre, o es su
+                // borrador y no debe reaparecer como tinta (D107).
+                let origen = crate::puntero::origen_actual();
+                let estado = ENTRADA_FINA.with(|e| {
                     e.borrow()
                         .iter()
                         .find(|(h, _, _)| *h == hwnd)
-                        .is_some_and(|(_, _, entrego)| *entrego)
+                        .map(|(_, _, estado)| *estado)
+                        .unwrap_or_default()
                 });
-                if boton && crate::puntero::es_raton_de_lapiz() && lapiz_con_muestras {
+                if crate::puntero::descartar_movimiento(boton, origen, estado) {
                     return LRESULT(0);
                 }
                 // SAFETY: tiempo del mensaje que se esta atendiendo.
                 let tiempo = unsafe { GetMessageTime() } as u32;
                 let perdidos = ENTRADA_FINA.with(|e| {
                     let mut e = e.borrow_mut();
-                    let Some((_, h, _)) = e.iter_mut().find(|(w, _, _)| *w == hwnd) else {
+                    let Some((_, h, estado)) = e.iter_mut().find(|(w, _, _)| *w == hwnd) else {
                         return Vec::new();
                     };
                     if boton {
                         h.recuperar(p.x, p.y, tiempo)
                     } else {
+                        // Se acabo el trazo (o nunca hubo boton): el
+                        // siguiente no debe heredar el estado del lapiz de
+                        // este, o un fallo puntual del historial del
+                        // siguiente trazo se confundiria con un ConMuestras
+                        // viejo y le tiraria el primer movimiento.
                         h.olvidar();
+                        *estado = crate::puntero::EstadoLapiz::SinDatos;
                         Vec::new()
                     }
                 });
@@ -597,6 +606,17 @@ extern "system" fn procedimiento_overlay(
             unsafe {
                 let _ = ReleaseCapture();
             }
+            // Se olvida aqui, no solo en el siguiente WM_MOUSEMOVE: si se
+            // suelta el boton sin volver a mover (un simple clic), ningun
+            // WM_MOUSEMOVE con boton=false llegaria a limpiarlo, y el
+            // estado del lapiz de este trazo se colaria en el siguiente.
+            ENTRADA_FINA.with(|e| {
+                if let Some((_, h, estado)) = e.borrow_mut().iter_mut().find(|(w, _, _)| *w == hwnd)
+                {
+                    h.olvidar();
+                    *estado = crate::puntero::EstadoLapiz::SinDatos;
+                }
+            });
             encolar(EventoOverlay::BotonSoltado(punto(lparam)));
             LRESULT(0)
         }
@@ -697,16 +717,23 @@ extern "system" fn procedimiento_overlay(
             if ENTRADA_FINA.with(|e| e.borrow().iter().any(|(h, _, _)| *h == hwnd)) =>
         {
             let muestras = crate::puntero::muestras_de_lapiz(wparam);
-            // Se recuerda si este WM_POINTERUPDATE entrego algo de verdad:
-            // el WM_MOUSEMOVE sintetizado que lo precede solo se tira si lo
-            // hizo (ver el comentario en WM_MOUSEMOVE).
-            let entrego = muestras.as_ref().is_some_and(|v| !v.is_empty());
+            // Se recuerda el estado (no un simple bool: Goma y SinDatos
+            // llegaban antes como el mismo "vector vacio", y sin
+            // distinguirlos el borrador colaba su WM_MOUSEMOVE como si
+            // fuera tinta de verdad — ver descartar_movimiento).
+            let estado = match &muestras {
+                crate::puntero::MuestrasLapiz::SinDatos => crate::puntero::EstadoLapiz::SinDatos,
+                crate::puntero::MuestrasLapiz::Goma => crate::puntero::EstadoLapiz::Goma,
+                crate::puntero::MuestrasLapiz::Muestras(_) => {
+                    crate::puntero::EstadoLapiz::ConMuestras
+                }
+            };
             ENTRADA_FINA.with(|e| {
                 if let Some(entrada) = e.borrow_mut().iter_mut().find(|(w, _, _)| *w == hwnd) {
-                    entrada.2 = entrego;
+                    entrada.2 = estado;
                 }
             });
-            if let Some(muestras) = muestras {
+            if let crate::puntero::MuestrasLapiz::Muestras(muestras) = muestras {
                 for m in muestras {
                     encolar(EventoOverlay::Muestra(m));
                 }

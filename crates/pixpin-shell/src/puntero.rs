@@ -204,75 +204,147 @@ pub fn origen_del_raton(extra: usize) -> OrigenRaton {
     }
 }
 
+/// El origen del `WM_MOUSEMOVE` que se esta atendiendo en este momento.
+pub fn origen_actual() -> OrigenRaton {
+    // SAFETY: lee un valor del mensaje actual del hilo; sin precondiciones.
+    let extra = unsafe { GetMessageExtraInfo() }.0 as usize;
+    origen_del_raton(extra)
+}
+
 /// Si el `WM_MOUSEMOVE` que se esta atendiendo lo sintetizo Windows a partir
 /// de un lapiz (no del tacto: ver `origen_del_raton`).
 ///
-/// Esto por si solo NO basta para tirar el movimiento: si el lapiz real no
-/// entrego muestras por `WM_POINTERUPDATE` (API caida, o el propio lapiz
-/// fallo la firma por algun motivo), el llamante debe quedarse con el punto
-/// del mensaje en vez de perderlo.
+/// Esto por si solo NO basta para tirar el movimiento: hace falta ademas el
+/// estado del ultimo `WM_POINTERUPDATE` (`EstadoLapiz`) y `descartar_movimiento`.
 pub fn es_raton_de_lapiz() -> bool {
-    // SAFETY: lee un valor del mensaje actual del hilo; sin precondiciones.
-    let extra = unsafe { GetMessageExtraInfo() }.0 as usize;
-    origen_del_raton(extra) == OrigenRaton::Lapiz
+    origen_actual() == OrigenRaton::Lapiz
 }
 
-/// Las muestras de un `WM_POINTERUPDATE` de lapiz en contacto, de la mas
-/// vieja a la mas nueva. `None` si no es un lapiz o si falla la API.
-pub fn muestras_de_lapiz(wparam: WPARAM) -> Option<Vec<Muestra>> {
+/// Lo que el ultimo `WM_POINTERUPDATE` de una ventana dejo saber sobre el
+/// lapiz, para decidir si el `WM_MOUSEMOVE` que Windows sintetiza a partir
+/// de el se puede tirar sin perder nada.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EstadoLapiz {
+    /// Aun no llego ningun `WM_POINTERUPDATE` de lapiz para este trazo, o el
+    /// ultimo no trajo nada fiable (no es un lapiz, o fallo la API). El
+    /// `WM_MOUSEMOVE` sintetizado es lo UNICO que hay: no se tira.
+    #[default]
+    SinDatos,
+    /// El ultimo `WM_POINTERUPDATE` trajo tinta de verdad.
+    ConMuestras,
+    /// El ultimo `WM_POINTERUPDATE` fue el borrador o el lapiz invertido
+    /// (D107): no hay tinta que dibujar, pero el lapiz SI respondio. El
+    /// `WM_MOUSEMOVE` sintetizado se tira igual: si no, sus puntos
+    /// fusionados (via `recuperar`) reintroducirian el trazo como tinta,
+    /// justo lo que D107 pide evitar.
+    Goma,
+}
+
+/// Si el `WM_MOUSEMOVE` sintetizado por Windows debe tirarse porque el
+/// camino del lapiz ya lo cubre (o, en el caso del borrador, porque no debe
+/// dibujar nada).
+///
+/// Pura: nada de esto toca Win32, para poder probarla con una tabla.
+/// Solo el lapiz sintetiza un movimiento que otro camino sustituye mejor: el
+/// raton no tiene sustituto, y el tacto (misma firma que el lapiz salvo un
+/// bit, ver `origen_del_raton`) tampoco trae historial propio en esta
+/// entrega. Y dentro del lapiz, `SinDatos` dice que el camino bueno no dio
+/// nada esta vez (API caida, o el primer movimiento de un trazo antes de
+/// que llegue su primer `WM_POINTERUPDATE`): ahi el punto del mensaje es lo
+/// unico que hay, y tirarlo lo perderia sin que nadie lo repusiera.
+pub fn descartar_movimiento(boton: bool, origen: OrigenRaton, estado: EstadoLapiz) -> bool {
+    boton && origen == OrigenRaton::Lapiz && estado != EstadoLapiz::SinDatos
+}
+
+/// Lo que devuelve leer el historial de puntero de un `WM_POINTERUPDATE`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum MuestrasLapiz {
+    /// No es un lapiz, o fallo la API: nada fiable que usar.
+    SinDatos,
+    /// La punta en contacto es el borrador o el lapiz esta invertido (D107):
+    /// no hay tinta, pero el lapiz SI respondio.
+    Goma,
+    /// Tinta de verdad, de la mas vieja a la mas nueva.
+    Muestras(Vec<Muestra>),
+}
+
+/// Las muestras de un `WM_POINTERUPDATE` de lapiz en contacto.
+///
+/// Distingue "no hay nada fiable" (`SinDatos`) de "el lapiz respondio pero
+/// es el borrador" (`Goma`): antes de esta distincion, las dos llegaban como
+/// un vector vacio, y el llamante no podia saber si el punto del mensaje
+/// debia quedarse (fallback) o tirarse igual (borrador, D107).
+pub fn muestras_de_lapiz(wparam: WPARAM) -> MuestrasLapiz {
     let id = (wparam.0 & 0xFFFF) as u32;
     let mut tipo = POINTER_INPUT_TYPE::default();
     // SAFETY: id del mensaje actual y salida local.
-    unsafe { GetPointerType(id, &mut tipo).ok()? };
+    if unsafe { GetPointerType(id, &mut tipo) }.is_err() {
+        return MuestrasLapiz::SinDatos;
+    }
     if tipo != PT_PEN {
-        return None;
+        return MuestrasLapiz::SinDatos;
     }
     let mut cuantos = 0u32;
     // SAFETY: primera llamada solo para saber cuantas entradas hay.
     if unsafe { GetPointerPenInfoHistory(id, &mut cuantos, None) }.is_err() {
         avisar_una_vez("GetPointerPenInfoHistory");
-        return None;
+        return MuestrasLapiz::SinDatos;
     }
     let mut buf = vec![POINTER_PEN_INFO::default(); cuantos.max(1) as usize];
     // SAFETY: bufer local del tamano pedido; `cuantos` sale con lo escrito.
-    unsafe { GetPointerPenInfoHistory(id, &mut cuantos, Some(buf.as_mut_ptr())).ok()? };
+    if unsafe { GetPointerPenInfoHistory(id, &mut cuantos, Some(buf.as_mut_ptr())) }.is_err() {
+        return MuestrasLapiz::SinDatos;
+    }
     buf.truncate(cuantos as usize);
-    let dispositivo = buf.first()?.pointerInfo.sourceDevice;
+    let Some(primero) = buf.first() else {
+        return MuestrasLapiz::SinDatos;
+    };
+    let dispositivo = primero.pointerInfo.sourceDevice;
     let (mut rd, mut rp) = (RECT::default(), RECT::default());
     // SAFETY: dispositivo del propio mensaje; salidas locales.
     let con_rects = unsafe { GetPointerDeviceRects(dispositivo, &mut rd, &mut rp) }.is_ok();
-    Some(
-        buf.iter()
-            .rev()
-            .filter(|i| i.pointerInfo.pointerFlags.contains(POINTER_FLAG_INCONTACT))
-            // D107: el borrador del lapiz (o la punta usada al reves) se
-            // detecta y se ignora hasta E4, que es donde se implementa
-            // borrar con el. Sin este filtro, dar la vuelta al lapiz
-            // dibujaria con el en vez de no hacer nada.
-            .filter(|i| i.penFlags & (PEN_FLAG_ERASER | PEN_FLAG_INVERTED) == 0)
-            .map(|i| {
-                let (x, y) = if con_rects {
-                    himetric_a_pixel(
-                        (
-                            i.pointerInfo.ptHimetricLocation.x,
-                            i.pointerInfo.ptHimetricLocation.y,
-                        ),
-                        (rd.left, rd.top, rd.right, rd.bottom),
-                        (rp.left, rp.top, rp.right, rp.bottom),
-                    )
-                } else {
+    let en_contacto: Vec<&POINTER_PEN_INFO> = buf
+        .iter()
+        .rev()
+        .filter(|i| i.pointerInfo.pointerFlags.contains(POINTER_FLAG_INCONTACT))
+        .collect();
+    if en_contacto.is_empty() {
+        return MuestrasLapiz::SinDatos;
+    }
+    // D107: el borrador del lapiz (o la punta usada al reves) se detecta y
+    // se ignora hasta E4, que es donde se implementa borrar con el. Si TODO
+    // lo que hay en contacto es borrador, es Goma (el lapiz SI respondio,
+    // pero no hay tinta); si hay alguna muestra de tinta de verdad, esa se
+    // usa y el resto (si lo hubiera) se descarta en silencio.
+    let tinta: Vec<Muestra> = en_contacto
+        .iter()
+        .filter(|i| i.penFlags & (PEN_FLAG_ERASER | PEN_FLAG_INVERTED) == 0)
+        .map(|i| {
+            let (x, y) = if con_rects {
+                himetric_a_pixel(
                     (
-                        i.pointerInfo.ptPixelLocation.x as f32,
-                        i.pointerInfo.ptPixelLocation.y as f32,
-                    )
-                };
-                // penMask es un u32 de bits crudo, no un tipo con .contains().
-                let presion =
-                    (i.penMask & PEN_MASK_PRESSURE != 0).then(|| i.pressure as f32 / 1024.0);
-                Muestra::nueva(x, y, presion)
-            })
-            .collect(),
-    )
+                        i.pointerInfo.ptHimetricLocation.x,
+                        i.pointerInfo.ptHimetricLocation.y,
+                    ),
+                    (rd.left, rd.top, rd.right, rd.bottom),
+                    (rp.left, rp.top, rp.right, rp.bottom),
+                )
+            } else {
+                (
+                    i.pointerInfo.ptPixelLocation.x as f32,
+                    i.pointerInfo.ptPixelLocation.y as f32,
+                )
+            };
+            // penMask es un u32 de bits crudo, no un tipo con .contains().
+            let presion = (i.penMask & PEN_MASK_PRESSURE != 0).then(|| i.pressure as f32 / 1024.0);
+            Muestra::nueva(x, y, presion)
+        })
+        .collect();
+    if tinta.is_empty() {
+        MuestrasLapiz::Goma
+    } else {
+        MuestrasLapiz::Muestras(tinta)
+    }
 }
 
 #[cfg(test)]
@@ -332,6 +404,58 @@ mod pruebas {
         // origen_del_raton, esto se confundia con un lapiz y el arrastre
         // con el dedo se tiraba sin dejar ni RatonMovido ni Muestra.
         assert_eq!(origen_del_raton(0xFF51_5780), OrigenRaton::Tacto);
+    }
+
+    #[test]
+    fn solo_se_tira_el_movimiento_del_lapiz_que_ya_respondio() {
+        use EstadoLapiz::{ConMuestras, Goma, SinDatos};
+        use OrigenRaton::{Lapiz, Raton, Tacto};
+        let casos = [
+            // (boton, origen, estado, se_tira, motivo)
+            (true, Raton, ConMuestras, false, "un raton nunca se tira"),
+            (
+                true,
+                Tacto,
+                ConMuestras,
+                false,
+                "el tacto no tiene sustituto",
+            ),
+            (
+                true,
+                Lapiz,
+                SinDatos,
+                false,
+                "sin datos del lapiz, el punto del mensaje es lo unico que hay",
+            ),
+            (
+                true,
+                Lapiz,
+                ConMuestras,
+                true,
+                "con tinta de verdad, el WM_POINTERUPDATE ya lo cubre",
+            ),
+            (
+                true,
+                Lapiz,
+                Goma,
+                true,
+                "el borrador se tira igual: si no, reaparece como tinta (D107)",
+            ),
+            (
+                false,
+                Lapiz,
+                ConMuestras,
+                false,
+                "sin el boton pulsado no hay trazo que sustituir",
+            ),
+        ];
+        for (boton, origen, estado, se_tira, motivo) in casos {
+            assert_eq!(
+                descartar_movimiento(boton, origen, estado),
+                se_tira,
+                "{motivo}"
+            );
+        }
     }
 
     #[test]
