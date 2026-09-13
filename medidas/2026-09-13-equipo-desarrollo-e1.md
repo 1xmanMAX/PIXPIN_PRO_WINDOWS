@@ -23,18 +23,25 @@ Las 11 pruebas de `puertas.rs` en release: **PASS** (0 fallos, ejecutadas en 0,0
 
 `cargo test -p pixpin-render --release --test puerta_tinta -- --ignored --test-threads=1`
 
-| Prueba | Tope (spec E1 §5) | Medido |
-|---|---|---|
-| `mil_trazos_realizados_se_pintan_en_menos_de_tres_milisegundos` | < 3 000 µs | **4,05 ms – 4,97 ms (dos corridas), NO CUMPLE en este equipo** |
+La primera versión de esta puerta (Tarea 12, antes de la revisión) medía repintar los 1.000
+trazos completos y le puso el tope de 3 ms de la spec §5. Eso mide el escenario equivocado: la
+spec habla del fotograma **mientras se dibuja** (D120), donde los 1.000 trazos ya realizados
+viven en `CapaEstatica` y el fotograma es un volcado (blit) más pintar SOLO el trazo en curso, sin
+cache. La revisión partió esa puerta en dos:
 
-**Nota honesta:** esta puerta sale roja en esta máquina de desarrollo. El adaptador que toma
-`D3D11CreateDevice(D3D_DRIVER_TYPE_HARDWARE, ...)` por defecto puede ser la Intel UHD integrada en
-vez de la NVIDIA MX250, y ninguna de las dos es representativa de una GPU de escritorio moderna.
-No se ha tocado el tope de 3 ms (es el de la spec, no un número inventado para que la prueba
-salga verde) ni el código de pintado para maquillar el número: la prueba queda escrita, marcada
-`#[ignore]` como pide el Step 2, y roja en este hardware concreto. Hay que repetirla en el equipo
-del usuario (o en uno con una GPU dedicada de gama media) antes de dar la puerta por buena de
-verdad.
+| Prueba | Escenario | Tope | Medido (5 corridas en release) |
+|---|---|---|---|
+| `un_fotograma_dibujando_con_mil_trazos_en_escena_cuesta_menos_de_tres_milisegundos` | mientras se dibuja (D120): `CapaEstatica::volcar` + `Pintor::tinta` del trazo en curso, sin cache | spec §5, < 3 000 µs | **2,41 – 2,70 ms** en 4 de 5 corridas; **3,05 ms** en una corrida suelta (falló esa vez, justo en el borde) |
+| `repintar_mil_trazos_realizados_cabe_en_un_fotograma_de_60_hz` (la puerta original, renombrada) | repintar los 1.000 trazos completos (p.ej. al reconstruir la capa estatica) — la spec no le pone 3 ms | 60 Hz, < 16 666 µs | **3,13 – 4,61 ms** en las mismas 5 corridas |
+
+**Nota honesta:** la puerta del escenario correcto (mientras se dibuja) queda cerca del tope de
+3 ms en esta máquina — pasa la mayoría de las veces (2,4-2,7 ms) pero se vio una corrida en 3,05 ms
+que la hace fallar. No se ha tocado el tope de 3 ms (es el de la spec) ni el código de pintado
+para maquillar el número. El repintado completo tampoco tiene margen sobrado frente a los 16,6 ms
+de un fotograma a 60 Hz (hasta 4,61 ms de los 16,6 ms, con la misma GPU débil de esta máquina).
+Ambas puertas quedan escritas y marcadas `#[ignore]`; hay que repetirlas en el equipo del usuario
+o en hardware con una GPU dedicada real antes de dar cualquiera de las dos por buena de verdad —
+el escenario que manda (mientras se dibuja) sigue siendo el más ajustado.
 
 ## Binario (Step 6)
 
