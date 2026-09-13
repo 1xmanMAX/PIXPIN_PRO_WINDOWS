@@ -189,7 +189,17 @@ impl Elemento {
                 if puntos.is_empty() {
                     return (self.x, self.y, self.x, self.y);
                 }
-                let mitad = self.grosor / 2.0;
+                // Un lapiz de E1 (con `opciones`) guarda el `strokeWidth` de
+                // Excalidraw, no pixeles: su tinta llega a `grosor *
+                // FACTOR_VARIABLE` de ancho (ver `tinta::contorno_de_lapiz`).
+                // Con la mitad del grosor a secas, el recorte de lo que no se
+                // ve hacia saltar el trazo y el marco de seleccion lo cortaba.
+                let mitad = match &self.figura {
+                    Figura::Lapiz {
+                        opciones: Some(_), ..
+                    } => self.grosor * crate::tinta::FACTOR_VARIABLE / 2.0,
+                    _ => self.grosor / 2.0,
+                };
                 (
                     puntos.iter().map(|p| p.x).fold(f32::MAX, f32::min) - mitad,
                     puntos.iter().map(|p| p.y).fold(f32::MAX, f32::min) - mitad,
@@ -315,6 +325,25 @@ mod pruebas {
         // y al borrar la zona quedarian restos de tinta.
         let (x0, y0, x1, y1) = lapiz().caja();
         assert_eq!((x0, y0, x1, y1), (8.0, 8.0, 52.0, 62.0));
+    }
+
+    #[test]
+    fn la_caja_de_un_lapiz_de_e1_cubre_la_tinta_ancha_de_excalidraw() {
+        // Con opciones, el grosor es un strokeWidth y la tinta mide grosor *
+        // FACTOR_VARIABLE: la caja crece la mitad de eso a cada lado. El
+        // trazo viejo (sin opciones) conserva la mitad del grosor.
+        let mut e = lapiz();
+        e.figura = Figura::Lapiz {
+            puntos: vec![Punto2::nuevo(10.0, 10.0), Punto2::nuevo(50.0, 60.0)],
+            presiones: vec![],
+            opciones: Some(crate::tinta::OpcionesTinta::default()),
+        };
+        e.grosor = 2.0;
+        let margen = 2.0 * crate::tinta::FACTOR_VARIABLE / 2.0;
+        assert_eq!(
+            e.caja(),
+            (10.0 - margen, 10.0 - margen, 50.0 + margen, 60.0 + margen)
+        );
     }
 
     #[test]

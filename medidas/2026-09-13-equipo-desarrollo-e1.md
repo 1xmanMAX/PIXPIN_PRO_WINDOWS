@@ -66,4 +66,4 @@ ratón, dejarlo en reposo, abrir un dibujo grande). El agente no sintetiza esta 
 | CPU en reposo con el editor abierto | 0 % | |
 | RAM privada antes de abrir el editor | — | |
 | RAM privada con un dibujo grande abierto | — | |
-| Diferencia de RAM privada (fila anterior − esta) | ≤ 40 MB | |
+| Diferencia de RAM privada (con el dibujo abierto − antes de abrir el editor) | ≤ 40 MB | |
