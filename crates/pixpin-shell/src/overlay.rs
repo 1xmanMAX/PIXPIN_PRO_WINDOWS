@@ -125,8 +125,13 @@ thread_local! {
     /// Hueco por ventana, en coordenadas del escritorio virtual. Los clics
     /// que caen dentro atraviesan la ventana y llegan a lo que hay debajo.
     static HUECO: RefCell<Vec<(HWND, Rect)>> = const { RefCell::new(Vec::new()) };
-    /// Ventanas que quieren todos los puntos, con su historial de raton.
-    static ENTRADA_FINA: RefCell<Vec<(HWND, crate::puntero::HistorialRaton)>> =
+    /// Ventanas que quieren todos los puntos: su historial de raton y si el
+    /// ultimo WM_POINTERUPDATE de lapiz entrego muestras de verdad (el
+    /// tercer campo). Sin ese tercer campo, un WM_MOUSEMOVE sintetizado por
+    /// el tacto (misma firma que el lapiz salvo un bit) o por un lapiz cuyo
+    /// GetPointerPenInfoHistory fallo se tiraria sin que nadie lo
+    /// reemplazara: ni RatonMovido ni Muestra, es decir, sin dibujar nada.
+    static ENTRADA_FINA: RefCell<Vec<(HWND, crate::puntero::HistorialRaton, bool)>> =
         const { RefCell::new(Vec::new()) };
 }
 
@@ -369,8 +374,8 @@ impl VentanaOverlay {
     pub fn pedir_entrada_fina(&self) {
         ENTRADA_FINA.with(|e| {
             let mut e = e.borrow_mut();
-            if !e.iter().any(|(h, _)| *h == self.hwnd) {
-                e.push((self.hwnd, crate::puntero::HistorialRaton::nuevo()));
+            if !e.iter().any(|(h, _, _)| *h == self.hwnd) {
+                e.push((self.hwnd, crate::puntero::HistorialRaton::nuevo(), false));
             }
         });
     }
@@ -381,7 +386,7 @@ impl Drop for VentanaOverlay {
         CURSOR.with(|c| c.borrow_mut().retain(|(h, _)| *h != self.hwnd));
         HUECO.with(|h| h.borrow_mut().retain(|(w, _)| *w != self.hwnd));
         PENDIENTES_OVERLAY.with(|p| p.borrow_mut().retain(|(h, _)| *h != self.hwnd));
-        ENTRADA_FINA.with(|e| e.borrow_mut().retain(|(h, _)| *h != self.hwnd));
+        ENTRADA_FINA.with(|e| e.borrow_mut().retain(|(h, _, _)| *h != self.hwnd));
         // SAFETY: destruir una ventana propia desde su hilo es valido; si ya
         // fue destruida por el sistema, DestroyWindow falla y se ignora.
         unsafe {
@@ -532,18 +537,29 @@ extern "system" fn procedimiento_overlay(
             let p = punto(lparam);
             const MK_LBUTTON: usize = 0x0001;
             let boton = wparam.0 & MK_LBUTTON != 0;
-            let fina = ENTRADA_FINA.with(|e| e.borrow().iter().any(|(h, _)| *h == hwnd));
+            let fina = ENTRADA_FINA.with(|e| e.borrow().iter().any(|(h, _, _)| *h == hwnd));
             if fina {
-                if boton && crate::puntero::es_raton_de_lapiz() {
-                    // Con el lapiz apoyado, sus muestras llegan por
-                    // WM_POINTERUPDATE; este movimiento sintetizado se tira.
+                // El lapiz solo entrega muestras por WM_POINTERUPDATE; este
+                // WM_MOUSEMOVE sintetizado se tira SOLO si ese camino
+                // acaba de entregar algo de verdad. Si no (tacto, que
+                // comparte firma con el lapiz salvo un bit — ver
+                // origen_del_raton —, o un lapiz cuyo
+                // GetPointerPenInfoHistory fallo), este es el UNICO punto
+                // que hay y no se puede perder.
+                let lapiz_con_muestras = ENTRADA_FINA.with(|e| {
+                    e.borrow()
+                        .iter()
+                        .find(|(h, _, _)| *h == hwnd)
+                        .is_some_and(|(_, _, entrego)| *entrego)
+                });
+                if boton && crate::puntero::es_raton_de_lapiz() && lapiz_con_muestras {
                     return LRESULT(0);
                 }
                 // SAFETY: tiempo del mensaje que se esta atendiendo.
                 let tiempo = unsafe { GetMessageTime() } as u32;
                 let perdidos = ENTRADA_FINA.with(|e| {
                     let mut e = e.borrow_mut();
-                    let Some((_, h)) = e.iter_mut().find(|(w, _)| *w == hwnd) else {
+                    let Some((_, h, _)) = e.iter_mut().find(|(w, _, _)| *w == hwnd) else {
                         return Vec::new();
                     };
                     if boton {
@@ -677,8 +693,20 @@ extern "system" fn procedimiento_overlay(
             encolar(EventoOverlay::Despierta);
             LRESULT(0)
         }
-        WM_POINTERUPDATE if ENTRADA_FINA.with(|e| e.borrow().iter().any(|(h, _)| *h == hwnd)) => {
-            if let Some(muestras) = crate::puntero::muestras_de_lapiz(wparam) {
+        WM_POINTERUPDATE
+            if ENTRADA_FINA.with(|e| e.borrow().iter().any(|(h, _, _)| *h == hwnd)) =>
+        {
+            let muestras = crate::puntero::muestras_de_lapiz(wparam);
+            // Se recuerda si este WM_POINTERUPDATE entrego algo de verdad:
+            // el WM_MOUSEMOVE sintetizado que lo precede solo se tira si lo
+            // hizo (ver el comentario en WM_MOUSEMOVE).
+            let entrego = muestras.as_ref().is_some_and(|v| !v.is_empty());
+            ENTRADA_FINA.with(|e| {
+                if let Some(entrada) = e.borrow_mut().iter_mut().find(|(w, _, _)| *w == hwnd) {
+                    entrada.2 = entrego;
+                }
+            });
+            if let Some(muestras) = muestras {
                 for m in muestras {
                     encolar(EventoOverlay::Muestra(m));
                 }

@@ -24,7 +24,8 @@ use windows::Win32::UI::Input::Pointer::{
     POINTER_PEN_INFO,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetMessageExtraInfo, PEN_MASK_PRESSURE, POINTER_INPUT_TYPE, PT_PEN,
+    GetMessageExtraInfo, PEN_FLAG_ERASER, PEN_FLAG_INVERTED, PEN_MASK_PRESSURE, POINTER_INPUT_TYPE,
+    PT_PEN,
 };
 
 /// Una muestra del puntero en el escritorio virtual.
@@ -169,14 +170,51 @@ impl HistorialRaton {
     }
 }
 
+/// De donde vino un `WM_MOUSEMOVE`, segun la firma que Windows deja en
+/// `GetMessageExtraInfo` cuando lo sintetiza a partir de otro dispositivo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrigenRaton {
+    /// Un raton de verdad (o cualquier firma que no reconocemos).
+    Raton,
+    /// Sintetizado a partir de un lapiz. Sus muestras buenas llegan por
+    /// `WM_POINTERUPDATE`.
+    Lapiz,
+    /// Sintetizado a partir del tacto. El tacto no trae historial de
+    /// puntero propio en esta entrega: este movimiento es lo unico que hay,
+    /// y no debe tirarse.
+    Tacto,
+}
+
+/// Clasifica la firma de `GetMessageExtraInfo` de un `WM_MOUSEMOVE`.
+///
+/// La firma documentada de lapiz y tacto comparten los tres bytes altos
+/// (`0xFF5157xx`); el bit `0x80` del byte bajo es el que distingue tacto
+/// (puesto) de lapiz (a cero). Antes de esta funcion, `es_raton_de_lapiz`
+/// trataba ambos como lapiz y tiraba el movimiento sintetizado del tacto:
+/// como `muestras_de_lapiz` devuelve `None` para `PT_TOUCH`, un arrastre con
+/// el dedo se quedaba sin `RatonMovido` y sin `Muestra`, es decir, sin
+/// dibujar nada.
+pub fn origen_del_raton(extra: usize) -> OrigenRaton {
+    if extra & 0xFFFF_FF00 != 0xFF51_5700 {
+        OrigenRaton::Raton
+    } else if extra & 0x80 != 0 {
+        OrigenRaton::Tacto
+    } else {
+        OrigenRaton::Lapiz
+    }
+}
+
 /// Si el `WM_MOUSEMOVE` que se esta atendiendo lo sintetizo Windows a partir
-/// de un lapiz o del tacto (firma documentada `0xFF515700`). Sus muestras
-/// buenas llegan por `WM_POINTERUPDATE`; este se descarta para no mezclar
-/// puntos enteros sin presion en medio del trazo.
+/// de un lapiz (no del tacto: ver `origen_del_raton`).
+///
+/// Esto por si solo NO basta para tirar el movimiento: si el lapiz real no
+/// entrego muestras por `WM_POINTERUPDATE` (API caida, o el propio lapiz
+/// fallo la firma por algun motivo), el llamante debe quedarse con el punto
+/// del mensaje en vez de perderlo.
 pub fn es_raton_de_lapiz() -> bool {
     // SAFETY: lee un valor del mensaje actual del hilo; sin precondiciones.
     let extra = unsafe { GetMessageExtraInfo() }.0 as usize;
-    extra & 0xFFFF_FF00 == 0xFF51_5700
+    origen_del_raton(extra) == OrigenRaton::Lapiz
 }
 
 /// Las muestras de un `WM_POINTERUPDATE` de lapiz en contacto, de la mas
@@ -207,6 +245,11 @@ pub fn muestras_de_lapiz(wparam: WPARAM) -> Option<Vec<Muestra>> {
         buf.iter()
             .rev()
             .filter(|i| i.pointerInfo.pointerFlags.contains(POINTER_FLAG_INCONTACT))
+            // D107: el borrador del lapiz (o la punta usada al reves) se
+            // detecta y se ignora hasta E4, que es donde se implementa
+            // borrar con el. Sin este filtro, dar la vuelta al lapiz
+            // dibujaria con el en vez de no hacer nada.
+            .filter(|i| i.penFlags & (PEN_FLAG_ERASER | PEN_FLAG_INVERTED) == 0)
             .map(|i| {
                 let (x, y) = if con_rects {
                     himetric_a_pixel(
@@ -277,6 +320,18 @@ mod pruebas {
     fn un_dispositivo_de_tamano_cero_no_divide_por_cero() {
         let (x, y) = himetric_a_pixel((5, 5), (0, 0, 0, 0), (0, 0, 100, 100));
         assert!(x.is_finite() && y.is_finite());
+    }
+
+    #[test]
+    fn la_firma_distingue_raton_lapiz_y_tacto() {
+        // Un raton de verdad no lleva ninguna firma.
+        assert_eq!(origen_del_raton(0), OrigenRaton::Raton);
+        // El lapiz: los tres bytes altos de la firma, con el bit 0x80 a cero.
+        assert_eq!(origen_del_raton(0xFF51_5700), OrigenRaton::Lapiz);
+        // El tacto: la misma firma, pero con el bit 0x80 puesto. Antes de
+        // origen_del_raton, esto se confundia con un lapiz y el arrastre
+        // con el dedo se tiraba sin dejar ni RatonMovido ni Muestra.
+        assert_eq!(origen_del_raton(0xFF51_5780), OrigenRaton::Tacto);
     }
 
     #[test]
