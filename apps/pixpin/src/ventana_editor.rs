@@ -514,7 +514,11 @@ pub fn abrir(
         // Windows guarda los movimientos y la Tarea 7 los recupera.
         if hay_que_pintar {
             rejilla.sincronizar(&escena);
-            let zona = if todo_sucio || !capa.lista() {
+            // La decision de si la capa congelada vale para ESTE fotograma
+            // (`capa_vale`, dentro de `pintar`) es la que manda sobre si la
+            // zona parcial es segura: `capa.lista()` solo dice que hay una
+            // capa horneada, no que `volcar` la vaya a usar ahora mismo.
+            let zona = if todo_sucio {
                 None
             } else {
                 sucio.map(|(x0, y0, x1, y1)| {
@@ -526,7 +530,7 @@ pub fn abrir(
                     )
                 })
             };
-            pintar(
+            let pintado = pintar(
                 &mut motor,
                 &superficie,
                 &escena,
@@ -542,9 +546,18 @@ pub fn abrir(
                 zona,
                 |_| {},
             );
-            hay_que_pintar = false;
-            sucio = None;
-            todo_sucio = false;
+            if pintado {
+                hay_que_pintar = false;
+                sucio = None;
+                todo_sucio = false;
+            } else {
+                // `superficie.empezar` fallo: el fotograma se salto. La
+                // zona sucia acumulada NO se puede dar por pintada -si se
+                // limpiara aqui, el proximo present parcial se quedaria sin
+                // el trozo que este fotograma no llego a cubrir-, asi que
+                // se fuerza el fotograma que si llegue a ser completo.
+                todo_sucio = true;
+            }
         }
         // Dormir hasta que llegue algo. Sin `sleep` fijo: con el `sleep` de
         // 5 ms (15,6 ms reales sin `timeBeginPeriod`) el bucle perdia la
@@ -614,6 +627,12 @@ fn por_cada_orden(
 /// mismo -no via `encima`- para que salga en los dos caminos que llaman a
 /// `pintar` (el bucle principal y `pedir_medida`) sin que ninguno tenga que
 /// acordarse de repetirla.
+///
+/// Devuelve si de verdad pinto y presento un fotograma. `false` solo pasa si
+/// `superficie.empezar` fallo (el backbuffer no estaba listo): quien llama
+/// no puede dar la zona sucia por cubierta ni la pantalla por al dia si esto
+/// devuelve `false`, o el proximo present parcial se dejaria un trozo sin
+/// pintar creyendo que ya se habia pintado en este fotograma que se saltó.
 #[allow(clippy::too_many_arguments)]
 fn pintar(
     motor: &mut MotorRender,
@@ -630,9 +649,9 @@ fn pintar(
     alto_px: f32,
     zona: Option<(i32, i32, i32, i32)>,
     encima: impl FnOnce(&pixpin_render::Pintor<'_>),
-) {
+) -> bool {
     let Ok(destino) = superficie.empezar(motor) else {
-        return;
+        return false;
     };
     // La rejilla dice que PUEDE verse; la camara filtra lo que de verdad se
     // ve. Sin la rejilla, esto recorreria los ocho mil elementos.
@@ -652,6 +671,12 @@ fn pintar(
         excluidos: ahora_excluidos.clone(),
     };
     let capa_vale = capa.volcar(motor, &destino, &ahora);
+    // Lo que de verdad importa para presentar solo un trozo es si la capa
+    // congelada SE USO en este fotograma (`capa_vale`), no si `capa.lista()`
+    // dice que hay una capa horneada: si no vale, `destino` se limpia y se
+    // pinta entero mas abajo, y presentar con una zona pequena dejaria el
+    // resto de la pantalla con lo que hubiera antes.
+    let zona = if capa_vale { zona } else { None };
 
     let _ = motor.dibujar(&destino, |p| {
         // El mundo se dibuja en sus propias coordenadas; la matriz activa es
@@ -723,6 +748,7 @@ fn pintar(
         encima(p);
     });
     let _ = superficie.presentar_sincronizado(zona);
+    true
 }
 
 /// Lo que el usuario teclea al calibrar, convertido a numero.

@@ -753,6 +753,13 @@ impl Gesto {
                     self.trazo.push(p);
                 }
                 let grosor = escena.buscar(id).map_or(3.0, |e| e.grosor);
+                // Lapiz y Resaltador pintan mucho mas ancho que su `grosor`
+                // (el contorno de `freehand` llega a `grosor * FACTOR_VARIABLE`
+                // para el Lapiz y a `grosor * 3.0` para el Resaltador), y el
+                // streamline atrasa los puntos ya suavizados: la caja
+                // anterior->p con margen `grosor/2` dejaba fuera casi todo el
+                // contorno que de verdad cambia, y el trazo dejaba estela.
+                let mut margen_ancho: Option<f32> = None;
                 if let Some(e) = escena.buscar_mut(id) {
                     match &mut e.figura {
                         Figura::Lapiz {
@@ -761,11 +768,13 @@ impl Gesto {
                             opciones,
                         } => {
                             anadir_a_lapiz(puntos, presiones, opciones, p, presion);
+                            margen_ancho = Some(grosor * crate::tinta::FACTOR_VARIABLE + 2.0);
                         }
                         Figura::Resaltador { puntos } => {
                             if puntos.last() != Some(&p) {
                                 puntos.push(p);
                             }
+                            margen_ancho = Some(grosor * 3.0 + 2.0);
                         }
                         Figura::Linea { puntos } | Figura::Flecha { puntos, .. } => {
                             // Linea y flecha son dos puntos: el segundo sigue
@@ -798,14 +807,28 @@ impl Gesto {
                     }
                     e.tocar();
                 }
-                let m = grosor / 2.0 + 1.0;
+                let region = match margen_ancho {
+                    // El contorno de un punto nuevo se apoya en varios
+                    // puntos anteriores (streamline y suavizado), y el
+                    // extremo del trazo se recalcula entero: la caja tiene
+                    // que cubrir la cola de puntos EN BRUTO, no solo el
+                    // tramo anterior->p.
+                    Some(margen) => {
+                        let (x0, y0, x1, y1) = caja_de_cola(&self.trazo, 6);
+                        Region::Caja(x0 - margen, y0 - margen, x1 + margen, y1 + margen)
+                    }
+                    None => {
+                        let m = grosor / 2.0 + 1.0;
+                        Region::Caja(
+                            anterior.x.min(p.x) - m,
+                            anterior.y.min(p.y) - m,
+                            anterior.x.max(p.x) + m,
+                            anterior.y.max(p.y) + m,
+                        )
+                    }
+                };
                 Respuesta {
-                    region: Region::Caja(
-                        anterior.x.min(p.x) - m,
-                        anterior.y.min(p.y) - m,
-                        anterior.x.max(p.x) + m,
-                        anterior.y.max(p.y) + m,
-                    ),
+                    region,
                     cursor: FormaCursor::Cruz,
                     pide: None,
                 }
@@ -967,6 +990,31 @@ pub fn direccion_del_tirador(t: Tirador, angulo: f32) -> f32 {
     base + angulo
 }
 
+/// La caja que envuelve los ultimos `n` puntos EN BRUTO de un trazo (o todos
+/// si hay menos). Sin asignar: solo recorre la cola del `Vec` ya reservado
+/// -es el camino caliente de `mover` mientras se dibuja a mano-.
+fn caja_de_cola(trazo: &[Punto2], n: usize) -> (f32, f32, f32, f32) {
+    let inicio = trazo.len().saturating_sub(n);
+    let cola = &trazo[inicio..];
+    let mut caja = (
+        f32::INFINITY,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+    );
+    for p in cola {
+        caja.0 = caja.0.min(p.x);
+        caja.1 = caja.1.min(p.y);
+        caja.2 = caja.2.max(p.x);
+        caja.3 = caja.3.max(p.y);
+    }
+    if cola.is_empty() {
+        (0.0, 0.0, 0.0, 0.0)
+    } else {
+        caja
+    }
+}
+
 /// Anade un punto a un trazo de lapiz respetando sus presiones.
 ///
 /// - Solo se descartan duplicados exactos (D109), como Excalidraw.
@@ -1123,6 +1171,114 @@ mod pruebas {
         assert_eq!(puntos.len(), presiones.len());
         assert_eq!(presiones, vec![0.7, 0.7, 0.9]);
         assert_eq!(opciones.unwrap().streamline, crate::tinta::STREAMLINE_LAPIZ);
+    }
+
+    /// El hallazgo critico de la revision de la Tarea 9: `Region::Caja`
+    /// solo cubria el tramo anterior->p con margen `grosor/2`, pero el
+    /// contorno de `freehand` es mucho mas ancho que eso (`grosor *
+    /// FACTOR_VARIABLE`) y el streamline mueve puntos YA pintados varias
+    /// muestras atras -sin contar que el remate del trazo se recalcula
+    /// entero en cada punto nuevo-. Con la caja vieja, dibujar a mano
+    /// dejaba estela en pantalla.
+    ///
+    /// La prueba compara el contorno con diecinueve puntos contra el de
+    /// veinte y comprueba que CUALQUIER punto que no tenga pareja casi
+    /// exacta en el otro contorno -es decir, cualquier punto que de verdad
+    /// cambio de sitio entre un fotograma y el siguiente- cae dentro de la
+    /// `Region::Caja` que devuelve el ultimo `mover`.
+    ///
+    /// No se uso la receta literal de la revision ("los ultimos ~40 puntos
+    /// del contorno viejo son su remate"): en `tinta::freehand::contorno`,
+    /// el orden real del `Vec` que se devuelve es `izquierda ++ tapa_fin ++
+    /// derecha.rev() ++ tapa_inicio` (ver `freehand.rs`), asi que los
+    /// ULTIMOS puntos del array son `tapa_inicio` -la tapa del PRINCIPIO
+    /// del trazo, junto al primer clic-, no el remate del extremo que
+    /// crece. Esos puntos no cambian de un fotograma a otro (dependen solo
+    /// de los primeros puntos en bruto, que no se tocan al anadir uno
+    /// nuevo al final), así que exigir que caigan en la caja sucia habria
+    /// forzado una caja mas grande de lo necesario sin detectar ningun
+    /// pixel que de verdad cambie. La comparacion punto a punto contra el
+    /// OTRO contorno mide lo que realmente hay que repintar, sin asumir en
+    /// que posicion del array cae el remate.
+    #[test]
+    fn la_region_sucia_de_dibujar_a_mano_cubre_todo_lo_que_cambia_en_el_contorno() {
+        let (mut g, mut e) = (Gesto::nuevo(), Escena::nueva());
+        g.herramienta = Herramienta::Lapiz;
+        g.grosor_tinta = crate::tinta::GROSOR_GRUESO;
+
+        pulsar_con_gesto(&mut g, &mut e, 0.0, 0.0, None);
+        // 18 movimientos mas: 19 puntos en total antes del ultimo, un
+        // zigzag para que el contorno de verdad cambie de forma con cada
+        // punto nuevo (una recta apenas mueve nada al alargarse).
+        for i in 1..19 {
+            let x = i as f32 * 3.0;
+            let y = if i % 2 == 0 { 0.0 } else { 6.0 };
+            mover_con_gesto(&mut g, &mut e, x, y, None);
+        }
+        let (puntos_antes, presiones_antes, opciones, grosor) = lapiz_de(&e);
+        assert_eq!(puntos_antes.len(), 19);
+
+        // El punto 20, con su Respuesta de verdad (la que se comprueba).
+        let r = g.evento(
+            EventoGesto::Mover {
+                p: Punto2::nuevo(19.0 * 3.0, 6.0),
+                shift: false,
+                alt: false,
+                presion: None,
+            },
+            &mut e,
+            1.0,
+        );
+        let Region::Caja(cx0, cy0, cx1, cy1) = r.region else {
+            panic!("dibujar a mano tiene que ensuciar una caja")
+        };
+
+        let (puntos_despues, presiones_despues, _, _) = lapiz_de(&e);
+        assert_eq!(puntos_despues.len(), 20);
+
+        let contorno_antes =
+            crate::tinta::contorno_de_lapiz(&puntos_antes, &presiones_antes, grosor, opciones);
+        let contorno_despues =
+            crate::tinta::contorno_de_lapiz(&puntos_despues, &presiones_despues, grosor, opciones);
+
+        let dentro = |x: f32, y: f32| x >= cx0 && x <= cx1 && y >= cy0 && y <= cy1;
+        // Casi exacta: la misma entrada por el mismo camino de codigo da el
+        // mismo `f64` bit a bit, pero un margen pequeno cubre por si algun
+        // punto se reordena sin desplazarse de verdad.
+        let tiene_pareja = |p: Punto2, otro: &[Punto2]| {
+            otro.iter()
+                .any(|q| (p.x - q.x).abs() < 0.01 && (p.y - q.y).abs() < 0.01)
+        };
+
+        // Todo punto que aparece en un contorno y no en el otro es, por
+        // definicion, un pixel que cambio entre los dos fotogramas.
+        let mut algo_cambio = false;
+        for p in &contorno_despues {
+            if !tiene_pareja(*p, &contorno_antes) {
+                algo_cambio = true;
+                assert!(
+                    dentro(p.x, p.y),
+                    "el contorno nuevo en ({}, {}) no estaba antes y cae fuera de la region sucia",
+                    p.x,
+                    p.y
+                );
+            }
+        }
+        for p in &contorno_antes {
+            if !tiene_pareja(*p, &contorno_despues) {
+                algo_cambio = true;
+                assert!(
+                    dentro(p.x, p.y),
+                    "el contorno viejo en ({}, {}) desaparece y cae fuera de la region sucia",
+                    p.x,
+                    p.y
+                );
+            }
+        }
+        assert!(
+            algo_cambio,
+            "el trazo de prueba tiene que hacer cambiar el contorno, o esto no mide nada"
+        );
     }
 
     #[test]
