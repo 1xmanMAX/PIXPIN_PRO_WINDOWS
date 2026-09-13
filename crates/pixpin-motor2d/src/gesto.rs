@@ -759,7 +759,14 @@ impl Gesto {
                 // streamline atrasa los puntos ya suavizados: la caja
                 // anterior->p con margen `grosor/2` dejaba fuera casi todo el
                 // contorno que de verdad cambia, y el trazo dejaba estela.
-                let mut margen_ancho: Option<f32> = None;
+                //
+                // La caja se calcula sobre los puntos de la FIGURA
+                // (`puntos`, ya sin duplicados exactos), no sobre
+                // `self.trazo`: ese buffer deja de crecer a partir de
+                // `PUNTOS_RESERVADOS` (512) para no asignar, asi que un
+                // trazo mas largo lo dejaria congelado en un tramo viejo y
+                // la tinta nueva quedaria fuera de la zona presentada.
+                let mut caja_ancha: Option<(f32, f32, f32, f32)> = None;
                 if let Some(e) = escena.buscar_mut(id) {
                     match &mut e.figura {
                         Figura::Lapiz {
@@ -768,13 +775,15 @@ impl Gesto {
                             opciones,
                         } => {
                             anadir_a_lapiz(puntos, presiones, opciones, p, presion);
-                            margen_ancho = Some(grosor * crate::tinta::FACTOR_VARIABLE + 2.0);
+                            let margen = grosor * crate::tinta::FACTOR_VARIABLE + 2.0;
+                            caja_ancha = Some(caja_ancha_de(puntos, p, margen));
                         }
                         Figura::Resaltador { puntos } => {
                             if puntos.last() != Some(&p) {
                                 puntos.push(p);
                             }
-                            margen_ancho = Some(grosor * 3.0 + 2.0);
+                            let margen = grosor * 3.0 + 2.0;
+                            caja_ancha = Some(caja_ancha_de(puntos, p, margen));
                         }
                         Figura::Linea { puntos } | Figura::Flecha { puntos, .. } => {
                             // Linea y flecha son dos puntos: el segundo sigue
@@ -807,16 +816,13 @@ impl Gesto {
                     }
                     e.tocar();
                 }
-                let region = match margen_ancho {
+                let region = match caja_ancha {
                     // El contorno de un punto nuevo se apoya en varios
                     // puntos anteriores (streamline y suavizado), y el
                     // extremo del trazo se recalcula entero: la caja tiene
-                    // que cubrir la cola de puntos EN BRUTO, no solo el
+                    // que cubrir la cola de puntos de la figura, no solo el
                     // tramo anterior->p.
-                    Some(margen) => {
-                        let (x0, y0, x1, y1) = caja_de_cola(&self.trazo, 6);
-                        Region::Caja(x0 - margen, y0 - margen, x1 + margen, y1 + margen)
-                    }
+                    Some((x0, y0, x1, y1)) => Region::Caja(x0, y0, x1, y1),
                     None => {
                         let m = grosor / 2.0 + 1.0;
                         Region::Caja(
@@ -990,12 +996,12 @@ pub fn direccion_del_tirador(t: Tirador, angulo: f32) -> f32 {
     base + angulo
 }
 
-/// La caja que envuelve los ultimos `n` puntos EN BRUTO de un trazo (o todos
-/// si hay menos). Sin asignar: solo recorre la cola del `Vec` ya reservado
-/// -es el camino caliente de `mover` mientras se dibuja a mano-.
-fn caja_de_cola(trazo: &[Punto2], n: usize) -> (f32, f32, f32, f32) {
-    let inicio = trazo.len().saturating_sub(n);
-    let cola = &trazo[inicio..];
+/// La caja que envuelve los ultimos `n` puntos de una cola de puntos (o
+/// todos si hay menos). Sin asignar: solo recorre la cola de un slice ya
+/// reservado -es el camino caliente de `mover` mientras se dibuja a mano-.
+fn caja_de_cola(puntos: &[Punto2], n: usize) -> (f32, f32, f32, f32) {
+    let inicio = puntos.len().saturating_sub(n);
+    let cola = &puntos[inicio..];
     let mut caja = (
         f32::INFINITY,
         f32::INFINITY,
@@ -1013,6 +1019,22 @@ fn caja_de_cola(trazo: &[Punto2], n: usize) -> (f32, f32, f32, f32) {
     } else {
         caja
     }
+}
+
+/// La caja sucia de Lapiz/Resaltador mientras se dibuja: la cola de los
+/// ultimos 6 puntos DE LA FIGURA (no de `self.trazo`, que deja de crecer a
+/// los 512 puntos para no asignar y por eso no vale como referencia de un
+/// trazo largo), con el punto nuevo `p` metido en el minimo/maximo por si
+/// se dedujo como duplicado exacto y no llego a entrar en `puntos`, y
+/// expandida por `margen` (el radio maximo que puede alcanzar el contorno
+/// de `freehand` para ese grosor).
+fn caja_ancha_de(puntos: &[Punto2], p: Punto2, margen: f32) -> (f32, f32, f32, f32) {
+    let (mut x0, mut y0, mut x1, mut y1) = caja_de_cola(puntos, 6);
+    x0 = x0.min(p.x);
+    y0 = y0.min(p.y);
+    x1 = x1.max(p.x);
+    y1 = y1.max(p.y);
+    (x0 - margen, y0 - margen, x1 + margen, y1 + margen)
 }
 
 /// Anade un punto a un trazo de lapiz respetando sus presiones.
@@ -1279,6 +1301,76 @@ mod pruebas {
             algo_cambio,
             "el trazo de prueba tiene que hacer cambiar el contorno, o esto no mide nada"
         );
+    }
+
+    /// La regresion de la ronda 2: `self.trazo` deja de crecer a partir de
+    /// `PUNTOS_RESERVADOS` (512 puntos) para no asignar, pero la caja ancha
+    /// se calculaba sobre `self.trazo` -asi que un trazo mas largo que eso
+    /// se quedaba congelado en el tramo 507-512 y la Region::Caja nunca
+    /// volvia a contener el punto nuevo `p`. Con la capa congelada valida,
+    /// esa tinta quedaba invisible hasta el siguiente present completo (y
+    /// con la Tarea 7 recuperando cada punto fusionado, 512 movimientos son
+    /// entre medio segundo y varios segundos de trazo real).
+    ///
+    /// Esta prueba dibuja 600 puntos DISTINTOS (bien separados: nada de
+    /// duplicados que el propio `puntos` de la figura deduplique) y
+    /// comprueba que la `Region::Caja` del ultimo movimiento contiene el
+    /// punto nuevo y los cinco anteriores de la FIGURA (no de `self.trazo`,
+    /// que para entonces ya esta congelado).
+    #[test]
+    fn un_trazo_de_mas_de_quinientos_puntos_sigue_ensuciando_la_punta_que_crece() {
+        let (mut g, mut e) = (Gesto::nuevo(), Escena::nueva());
+        g.herramienta = Herramienta::Lapiz;
+        g.grosor_tinta = crate::tinta::GROSOR_GRUESO;
+
+        pulsar_con_gesto(&mut g, &mut e, 0.0, 0.0, None);
+        // 599 movimientos mas: 600 puntos en total, todos distintos entre
+        // si (avanzan siempre en x) para que ninguno se deduplique.
+        for i in 1..600 {
+            mover_con_gesto(&mut g, &mut e, i as f32, 0.0, None);
+        }
+        let (puntos, ..) = lapiz_de(&e);
+        assert_eq!(
+            puntos.len(),
+            600,
+            "ninguno de los 600 puntos era un duplicado"
+        );
+
+        // El punto 601, con su Respuesta de verdad.
+        let ultimo = Punto2::nuevo(600.0, 0.0);
+        let r = g.evento(
+            EventoGesto::Mover {
+                p: ultimo,
+                shift: false,
+                alt: false,
+                presion: None,
+            },
+            &mut e,
+            1.0,
+        );
+        let Region::Caja(cx0, cy0, cx1, cy1) = r.region else {
+            panic!("dibujar a mano tiene que ensuciar una caja")
+        };
+        let dentro = |x: f32, y: f32| x >= cx0 && x <= cx1 && y >= cy0 && y <= cy1;
+
+        assert!(
+            dentro(ultimo.x, ultimo.y),
+            "el punto nuevo ({}, {}) tiene que estar dentro de la region sucia",
+            ultimo.x,
+            ultimo.y
+        );
+
+        let (puntos_despues, ..) = lapiz_de(&e);
+        assert_eq!(puntos_despues.len(), 601);
+        for p in puntos_despues.iter().rev().take(6) {
+            assert!(
+                dentro(p.x, p.y),
+                "el punto de la figura ({}, {}) -de la cola reciente- tiene que \
+                 estar dentro de la region sucia",
+                p.x,
+                p.y
+            );
+        }
     }
 
     #[test]
