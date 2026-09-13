@@ -55,6 +55,7 @@ mod cuenta_atras;
 mod editor;
 mod gif;
 mod grabador;
+mod medir_fotogramas;
 mod navegacion;
 mod overlay;
 mod pines;
@@ -719,6 +720,7 @@ fn arrancar(
                     pixpin_motor2d::Escena::nueva(),
                     config.enganche,
                     decision.nivel,
+                    config.rendimiento.medir_fotogramas,
                 ) {
                     Ok(escena) => {
                         tracing::info!(elementos = escena.cuantos_visibles(), "editor cerrado")

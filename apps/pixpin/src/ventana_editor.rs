@@ -349,10 +349,15 @@ fn decidir_zoom(
 /// `nivel` decide cuanto tiene que estar quieto el zoom antes de rehacer la
 /// tinta nitida (`retardo_nitido`, D122): en `Ligero` el retardo es mayor
 /// porque teselar cuesta mas en ese equipo.
+///
+/// `medir_fotogramas` enciende el registro de D129: una linea de `tracing`
+/// cada 60 fotogramas con cuanto se tarda en vaciar la cola, pintar,
+/// presentar y esperar.
 pub fn abrir(
     escena: Escena,
     ajustes_iman: pixpin_motor2d::enganche::Ajustes,
     nivel: pixpin_nivel::Nivel,
+    medir_fotogramas: bool,
 ) -> Result<Escena> {
     let dispositivo =
         pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para el editor")?;
@@ -407,12 +412,23 @@ pub fn abrir(
     let mut hay_que_pintar = false;
     let mut sucio: Option<(f32, f32, f32, f32)> = None;
     let mut todo_sucio = false;
+    let mut medidor = crate::medir_fotogramas::MedidorFotogramas::nuevo(medir_fotogramas);
 
     'bucle: loop {
+        // D129: se mide siempre (unos nanosegundos por `Instant::now`); solo
+        // se acumula y registra con la opcion encendida.
+        let t_vuelta = std::time::Instant::now();
+        let mut puntos = 0u32;
         pixpin_shell::overlay::bombear_pendientes();
         for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if hwnd != ventana.handle() {
                 continue;
+            }
+            if matches!(
+                ev,
+                EventoOverlay::RatonMovido(_) | EventoOverlay::Muestra(_)
+            ) {
+                puntos += 1;
             }
             // D127: con el editor abierto se puede cambiar la escala de
             // Windows. La tinta tiene que seguir del tamano de Excalidraw, y
@@ -629,6 +645,8 @@ pub fn abrir(
                 break 'bucle;
             }
         }
+        let vaciar = t_vuelta.elapsed();
+        let mut pintado_medido = None;
         // Un solo fotograma por vuelta, despues de haber pasado TODOS los
         // puntos al gesto: pintar a mitad de la cola era lo que hacia perder
         // puntos. Presentar con vsync bloquea hasta el refresco; mientras,
@@ -651,6 +669,7 @@ pub fn abrir(
                     )
                 })
             };
+            let t_pintar = std::time::Instant::now();
             let pintado = pintar(
                 &mut motor,
                 &superficie,
@@ -668,17 +687,24 @@ pub fn abrir(
                 zona,
                 |_| {},
             );
-            if pintado {
-                hay_que_pintar = false;
-                sucio = None;
-                todo_sucio = false;
-            } else {
-                // `superficie.empezar` fallo: el fotograma se salto. La
-                // zona sucia acumulada NO se puede dar por pintada -si se
-                // limpiara aqui, el proximo present parcial se quedaria sin
-                // el trozo que este fotograma no llego a cubrir-, asi que
-                // se fuerza el fotograma que si llegue a ser completo.
-                todo_sucio = true;
+            match pintado {
+                Some(presentar) => {
+                    pintado_medido = Some(crate::medir_fotogramas::Pintado {
+                        pintar: t_pintar.elapsed().saturating_sub(presentar),
+                        presentar,
+                    });
+                    hay_que_pintar = false;
+                    sucio = None;
+                    todo_sucio = false;
+                }
+                None => {
+                    // `superficie.empezar` fallo: el fotograma se salto. La
+                    // zona sucia acumulada NO se puede dar por pintada -si se
+                    // limpiara aqui, el proximo present parcial se quedaria sin
+                    // el trozo que este fotograma no llego a cubrir-, asi que
+                    // se fuerza el fotograma que si llegue a ser completo.
+                    todo_sucio = true;
+                }
             }
         }
         // Zoom quieto durante `retardo`: se rehace la tinta nitida a esa
@@ -710,7 +736,16 @@ pub fn abrir(
         // mitad de los puntos de un trazo rapido, y en reposo no gana nada.
         // `decision.tope_ms` es `None` en cuanto no hay nada pendiente -y
         // solo entonces-, asi que nunca gira en vacio con un tope de 0 ms.
+        let t_esperar = std::time::Instant::now();
         pixpin_shell::overlay::esperar_eventos(decision.tope_ms);
+        if let Some(linea) = medidor.anotar(crate::medir_fotogramas::Vuelta {
+            puntos,
+            vaciar,
+            pintado: pintado_medido,
+            esperar: t_esperar.elapsed(),
+        }) {
+            linea.registrar();
+        }
     }
 
     ventana.ocultar();
@@ -776,11 +811,12 @@ fn por_cada_orden(
 /// `pintar` (el bucle principal y `pedir_medida`) sin que ninguno tenga que
 /// acordarse de repetirla.
 ///
-/// Devuelve si de verdad pinto y presento un fotograma. `false` solo pasa si
-/// `superficie.empezar` fallo (el backbuffer no estaba listo): quien llama
-/// no puede dar la zona sucia por cubierta ni la pantalla por al dia si esto
-/// devuelve `false`, o el proximo present parcial se dejaria un trozo sin
-/// pintar creyendo que ya se habia pintado en este fotograma que se saltó.
+/// Devuelve `None` si `superficie.empezar` fallo (el backbuffer no estaba
+/// listo): quien llama no puede dar la zona sucia por cubierta ni la
+/// pantalla por al dia en ese caso, o el proximo present parcial se dejaria
+/// un trozo sin pintar creyendo que ya se habia pintado en este fotograma
+/// que se saltó. Si pinto, `Some(d)` es cuanto tardo presentar (D129):
+/// con vsync, ahi se nota la espera al refresco.
 #[allow(clippy::too_many_arguments)]
 fn pintar(
     motor: &mut MotorRender,
@@ -798,9 +834,9 @@ fn pintar(
     alto_px: f32,
     zona: Option<(i32, i32, i32, i32)>,
     encima: impl FnOnce(&pixpin_render::Pintor<'_>),
-) -> bool {
+) -> Option<std::time::Duration> {
     let Ok(destino) = superficie.empezar(motor) else {
-        return false;
+        return None;
     };
     // La rejilla dice que PUEDE verse; la camara filtra lo que de verdad se
     // ve. Sin la rejilla, esto recorreria los ocho mil elementos.
@@ -915,8 +951,9 @@ fn pintar(
         // viejo y ya no valen (D2D las rechazaria en el siguiente fotograma).
         cache_tinta.vaciar();
     }
+    let t_presentar = std::time::Instant::now();
     let _ = superficie.presentar_sincronizado(zona);
-    true
+    Some(t_presentar.elapsed())
 }
 
 /// Lo que el usuario teclea al calibrar, convertido a numero.
@@ -1676,6 +1713,7 @@ mod pruebas {
             Escena::nueva(),
             pixpin_motor2d::enganche::Ajustes::default(),
             pixpin_nivel::Nivel::Completo,
+            false,
         );
     }
 

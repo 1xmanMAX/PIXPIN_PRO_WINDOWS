@@ -69,6 +69,10 @@ pub struct Rendimiento {
     /// nivel. Forzar `ligero` en una maquina potente es legitimo y util:
     /// es como se prueba la ruta ligera sin tener hardware flojo delante.
     pub nivel: PreferenciaNivel,
+    /// Registrar cada 60 fotogramas del editor cuanto se tarda en vaciar la
+    /// cola, pintar, presentar y esperar (D129). Es para diagnosticar en el
+    /// equipo del usuario sin entrada sintetizada; apagado no registra nada.
+    pub medir_fotogramas: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -373,6 +377,10 @@ mod pruebas {
                 centros: false,
                 radio_px: 20.0,
             },
+            rendimiento: Rendimiento {
+                nivel: PreferenciaNivel::Ligero,
+                medir_fotogramas: true,
+            },
             ..Ajustes::default()
         }
     }
@@ -605,6 +613,20 @@ arranque_con_windows = true
         // porque el usuario cree haber forzado algo que no esta pasando.
         let resultado = toml::from_str::<Ajustes>("[rendimiento]\nnivel = \"turbo\"");
         assert!(resultado.is_err());
+    }
+
+    #[test]
+    fn medir_fotogramas_se_lee_y_por_defecto_esta_apagado() {
+        let a: Ajustes = toml::from_str("[rendimiento]\nmedir_fotogramas = true").unwrap();
+        assert!(a.rendimiento.medir_fotogramas);
+        assert_eq!(
+            a.rendimiento.nivel,
+            PreferenciaNivel::Auto,
+            "lo que no se nombra conserva su valor"
+        );
+        // Caso negativo: un fichero de antes no tiene la clave y no mide nada.
+        let viejo: Ajustes = toml::from_str("[rendimiento]\nnivel = \"ligero\"").unwrap();
+        assert!(!viejo.rendimiento.medir_fotogramas);
     }
 
     #[test]
