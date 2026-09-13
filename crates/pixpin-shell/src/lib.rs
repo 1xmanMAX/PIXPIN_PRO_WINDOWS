@@ -22,6 +22,7 @@ pub mod instancia;
 pub mod mensajero;
 pub mod overlay;
 pub mod primer_plano;
+pub mod puntero;
 pub mod uia;
 pub mod ventana;
 

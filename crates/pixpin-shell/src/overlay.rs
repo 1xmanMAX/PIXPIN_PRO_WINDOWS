@@ -80,6 +80,11 @@ pub enum EventoOverlay {
     /// en vez de quedarse en la cola de la ventana principal, donde se
     /// atenderia al cerrar y volveria a abrir el overlay.
     Atajo(u32),
+    /// Un punto del trazo que no es el del `WM_MOUSEMOVE`: uno que Windows
+    /// fusiono, o uno del lapiz con presion. Llega ANTES del `RatonMovido`
+    /// al que precede, y solo a ventanas que llamaron a
+    /// `pedir_entrada_fina`. Coordenadas del escritorio virtual.
+    Muestra(crate::puntero::Muestra),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,6 +125,9 @@ thread_local! {
     /// Hueco por ventana, en coordenadas del escritorio virtual. Los clics
     /// que caen dentro atraviesan la ventana y llegan a lo que hay debajo.
     static HUECO: RefCell<Vec<(HWND, Rect)>> = const { RefCell::new(Vec::new()) };
+    /// Ventanas que quieren todos los puntos, con su historial de raton.
+    static ENTRADA_FINA: RefCell<Vec<(HWND, crate::puntero::HistorialRaton)>> =
+        const { RefCell::new(Vec::new()) };
 }
 
 static REGISTRO: Once = Once::new();
@@ -354,6 +362,18 @@ impl VentanaOverlay {
             }
         });
     }
+
+    /// Pide todos los puntos del trazo (`EventoOverlay::Muestra`). Solo para
+    /// las ventanas de dibujo: el resto sigue recibiendo un movimiento por
+    /// mensaje, que es lo que esperan.
+    pub fn pedir_entrada_fina(&self) {
+        ENTRADA_FINA.with(|e| {
+            let mut e = e.borrow_mut();
+            if !e.iter().any(|(h, _)| *h == self.hwnd) {
+                e.push((self.hwnd, crate::puntero::HistorialRaton::nuevo()));
+            }
+        });
+    }
 }
 
 impl Drop for VentanaOverlay {
@@ -361,6 +381,7 @@ impl Drop for VentanaOverlay {
         CURSOR.with(|c| c.borrow_mut().retain(|(h, _)| *h != self.hwnd));
         HUECO.with(|h| h.borrow_mut().retain(|(w, _)| *w != self.hwnd));
         PENDIENTES_OVERLAY.with(|p| p.borrow_mut().retain(|(h, _)| *h != self.hwnd));
+        ENTRADA_FINA.with(|e| e.borrow_mut().retain(|(h, _)| *h != self.hwnd));
         // SAFETY: destruir una ventana propia desde su hilo es valido; si ya
         // fue destruida por el sistema, DestroyWindow falla y se ignora.
         unsafe {
@@ -508,7 +529,35 @@ extern "system" fn procedimiento_overlay(
             }
         }
         WM_MOUSEMOVE => {
-            encolar(EventoOverlay::RatonMovido(punto(lparam)));
+            let p = punto(lparam);
+            const MK_LBUTTON: usize = 0x0001;
+            let boton = wparam.0 & MK_LBUTTON != 0;
+            let fina = ENTRADA_FINA.with(|e| e.borrow().iter().any(|(h, _)| *h == hwnd));
+            if fina {
+                if boton && crate::puntero::es_raton_de_lapiz() {
+                    // Con el lapiz apoyado, sus muestras llegan por
+                    // WM_POINTERUPDATE; este movimiento sintetizado se tira.
+                    return LRESULT(0);
+                }
+                // SAFETY: tiempo del mensaje que se esta atendiendo.
+                let tiempo = unsafe { GetMessageTime() } as u32;
+                let perdidos = ENTRADA_FINA.with(|e| {
+                    let mut e = e.borrow_mut();
+                    let Some((_, h)) = e.iter_mut().find(|(w, _)| *w == hwnd) else {
+                        return Vec::new();
+                    };
+                    if boton {
+                        h.recuperar(p.x, p.y, tiempo)
+                    } else {
+                        h.olvidar();
+                        Vec::new()
+                    }
+                });
+                for m in perdidos {
+                    encolar(EventoOverlay::Muestra(m));
+                }
+            }
+            encolar(EventoOverlay::RatonMovido(p));
             LRESULT(0)
         }
         WM_MOUSEWHEEL => {
@@ -627,6 +676,17 @@ extern "system" fn procedimiento_overlay(
         m if m == MSG_DESPIERTA => {
             encolar(EventoOverlay::Despierta);
             LRESULT(0)
+        }
+        WM_POINTERUPDATE if ENTRADA_FINA.with(|e| e.borrow().iter().any(|(h, _)| *h == hwnd)) => {
+            if let Some(muestras) = crate::puntero::muestras_de_lapiz(wparam) {
+                for m in muestras {
+                    encolar(EventoOverlay::Muestra(m));
+                }
+            }
+            // Se deja pasar a DefWindowProc: asi Windows sigue sintetizando
+            // los clics del lapiz, que es como se pulsa y se suelta.
+            // SAFETY: reenvio estandar del mensaje recibido.
+            unsafe { DefWindowProcW(hwnd, mensaje, wparam, lparam) }
         }
         // NUNCA PostQuitMessage aqui: ver el comentario de modulo.
         _ => {

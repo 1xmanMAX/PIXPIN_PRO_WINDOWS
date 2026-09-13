@@ -720,10 +720,13 @@ fn procesar_evento(
         // reacciona a las teclas soltadas; la capa de anotacion de S3-C si.
         // Un atajo global pulsado con el overlay abierto se descarta: si
         // volviera a la cola principal, reabriria el overlay al cerrarlo.
+        // Esta ventana no pidio entrada fina (D106): no deberia llegar
+        // Muestra, pero si llegara no hay nada que hacer con ella aqui.
         EventoOverlay::Rueda(_)
         | EventoOverlay::Caracter(_)
         | EventoOverlay::TeclaSoltada(_)
-        | EventoOverlay::Atajo(_) => Continuar::Si,
+        | EventoOverlay::Atajo(_)
+        | EventoOverlay::Muestra(_) => Continuar::Si,
     }
 }
 
