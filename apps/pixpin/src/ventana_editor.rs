@@ -263,15 +263,14 @@ fn excluidos_de(gesto: &Gesto) -> Vec<u64> {
 /// la carpeta de capturas, asi que quien llama pasa `config.enganche`, no
 /// los `Ajustes` enteros.
 ///
-/// `nivel` todavia no se usa aqui: se guarda para la Tarea 10, que lo pasara
-/// a la cache de tinta.
+/// `nivel` decide cuanto tiene que estar quieto el zoom antes de rehacer la
+/// tinta nitida (`retardo_nitido`, D122): en `Ligero` el retardo es mayor
+/// porque teselar cuesta mas en ese equipo.
 pub fn abrir(
     escena: Escena,
     ajustes_iman: pixpin_motor2d::enganche::Ajustes,
     nivel: pixpin_nivel::Nivel,
 ) -> Result<Escena> {
-    // Todavia no se usa: la Tarea 10 lo pasa a la cache de tinta.
-    let _ = nivel;
     let dispositivo =
         pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para el editor")?;
     let mut motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
@@ -300,6 +299,11 @@ pub fn abrir(
     let mut gesto = gesto_inicial(ajustes_iman);
     let camara = Camara::nueva();
     let mut cache = Cache::nueva();
+    let mut cache_tinta = pixpin_render::CacheTinta::nueva();
+    let retardo = pixpin_render::retardo_nitido(nivel);
+    // Cuando cambio el zoom por ultima vez. La camara del editor aun no hace
+    // zoom (E4), pero el mecanismo queda puesto y probado.
+    let mut zoom_cambiado: Option<std::time::Instant> = None;
     let mut rejilla = Rejilla::nueva();
     let mut capa = CapaEstatica::nueva();
     let (ancho_px, alto_px) = (area.ancho as f32, area.alto as f32);
@@ -457,12 +461,21 @@ pub fn abrir(
                             // `por_cada_orden` no entra en la capa, y
                             // `pintar` ya no lo repinta mientras la capa
                             // valga (ve su comentario para el porque).
+                            let mut indice = 0u32;
                             por_cada_orden(
                                 &mut cache,
                                 e,
                                 camara.zoom,
                                 escena.escala.as_ref(),
-                                |orden| dibujar_orden(p, orden, vista),
+                                |orden| {
+                                    dibujar_orden(
+                                        p,
+                                        orden,
+                                        vista,
+                                        Some((&mut cache_tinta, (e.id, e.version, indice))),
+                                    );
+                                    indice += 1;
+                                },
                             );
                         }
                     });
@@ -484,6 +497,7 @@ pub fn abrir(
                         &camara,
                         &gesto,
                         &mut cache,
+                        &mut cache_tinta,
                         &rejilla,
                         &capa,
                         &caja,
@@ -537,6 +551,7 @@ pub fn abrir(
                 &camara,
                 &gesto,
                 &mut cache,
+                &mut cache_tinta,
                 &rejilla,
                 &capa,
                 &caja,
@@ -559,10 +574,27 @@ pub fn abrir(
                 todo_sucio = true;
             }
         }
-        // Dormir hasta que llegue algo. Sin `sleep` fijo: con el `sleep` de
-        // 5 ms (15,6 ms reales sin `timeBeginPeriod`) el bucle perdia la
+        // Zoom quieto durante `retardo`: se rehace la tinta nitida a esa
+        // escala y se suelta la capa (sus copias venian de la escala vieja).
+        // La camara del editor aun no hace zoom (E4); el mecanismo queda
+        // puesto y probado para cuando lo haga.
+        if camara.zoom != cache_tinta.escala() {
+            let desde = *zoom_cambiado.get_or_insert_with(std::time::Instant::now);
+            if desde.elapsed() >= retardo {
+                cache_tinta.fijar_escala(camara.zoom);
+                capa.soltar();
+                zoom_cambiado = None;
+                ventana.invalidar();
+            }
+        }
+        // Dormir hasta que llegue algo, pero no mas de lo que falta para que
+        // el zoom cumpla el retardo: si no, `esperar_eventos(None)` dormiria
+        // hasta el siguiente evento y la tinta nitida nunca llegaria a
+        // rehacerse en reposo. Sin `sleep` fijo aqui tampoco: con el `sleep`
+        // de 5 ms (15,6 ms reales sin `timeBeginPeriod`) el bucle perdia la
         // mitad de los puntos de un trazo rapido, y en reposo no gana nada.
-        pixpin_shell::overlay::esperar_eventos(None);
+        let tope = zoom_cambiado.map(|d| retardo.saturating_sub(d.elapsed()).as_millis() as u32);
+        pixpin_shell::overlay::esperar_eventos(tope);
     }
 
     ventana.ocultar();
@@ -641,6 +673,7 @@ fn pintar(
     camara: &Camara,
     gesto: &Gesto,
     cache: &mut Cache,
+    cache_tinta: &mut pixpin_render::CacheTinta,
     rejilla: &Rejilla,
     capa: &CapaEstatica,
     caja_herramientas: &CajaHerramientas,
@@ -678,7 +711,7 @@ fn pintar(
     // resto de la pantalla con lo que hubiera antes.
     let zona = if capa_vale { zona } else { None };
 
-    let _ = motor.dibujar(&destino, |p| {
+    let error = motor.dibujar(&destino, |p| {
         // El mundo se dibuja en sus propias coordenadas; la matriz activa es
         // lo unico que cambia al encuadrar o acercar (camara.rs lo explica:
         // "la geometria se calcula UNA VEZ en coordenadas del mundo").
@@ -700,8 +733,15 @@ fn pintar(
             if e.borrado {
                 continue;
             }
+            let mut indice = 0u32;
             por_cada_orden(cache, e, camara.zoom, escena.escala.as_ref(), |orden| {
-                dibujar_orden(p, orden, vista)
+                dibujar_orden(
+                    p,
+                    orden,
+                    vista,
+                    Some((&mut *cache_tinta, (e.id, e.version, indice))),
+                );
+                indice += 1;
             });
         }
 
@@ -719,7 +759,7 @@ fn pintar(
             p.marco(caja, angulo, escala);
             if let Some(tiradores) = tiradores {
                 for orden in tiradores.ordenes(escala) {
-                    dibujar_orden(p, &orden, vista);
+                    dibujar_orden(p, &orden, vista, None);
                 }
             }
         }
@@ -731,7 +771,12 @@ fn pintar(
         // el que hace falta -dibujar sobre algo- seria el caso en el que no
         // se ve.
         if let Some(a) = gesto.anclaje_activo {
-            dibujar_orden(p, &pixpin_motor2d::enganche::pista(&a, camara.zoom), vista);
+            dibujar_orden(
+                p,
+                &pixpin_motor2d::enganche::pista(&a, camara.zoom),
+                vista,
+                None,
+            );
         }
         // La caja es un dialogo en pantalla, no algo del lienzo: no se mueve
         // ni se escala con la camara. `desplazar(0.0, 0.0)` deshace la vista
@@ -747,6 +792,11 @@ fn pintar(
         );
         encima(p);
     });
+    if error.is_err() {
+        // Dispositivo perdido: las realizaciones de tinta son del dispositivo
+        // viejo y ya no valen (D2D las rechazaria en el siguiente fotograma).
+        cache_tinta.vaciar();
+    }
     let _ = superficie.presentar_sincronizado(zona);
     true
 }
@@ -786,6 +836,7 @@ fn pedir_medida(
     camara: &Camara,
     gesto: &Gesto,
     cache: &mut Cache,
+    cache_tinta: &mut pixpin_render::CacheTinta,
     rejilla: &Rejilla,
     capa: &CapaEstatica,
     caja: &CajaHerramientas,
@@ -836,6 +887,7 @@ fn pedir_medida(
                         camara,
                         gesto,
                         cache,
+                        cache_tinta,
                         rejilla,
                         capa,
                         caja,
@@ -907,12 +959,20 @@ fn dibujar_cajetin(
 /// `vista` es la caja del mundo que se ve (en las mismas coordenadas que
 /// `Orden`), y hace falta para `Orden::Velo`: el motor no sabe cuanto mide
 /// el lienzo (lo dice `pintado.rs`), asi que quien pinta pone el marco.
-fn dibujar_orden(p: &pixpin_render::Pintor<'_>, orden: &Orden, vista: (f32, f32, f32, f32)) {
+fn dibujar_orden(
+    p: &pixpin_render::Pintor<'_>,
+    orden: &Orden,
+    vista: (f32, f32, f32, f32),
+    tinta: Option<(&mut pixpin_render::CacheTinta, (u64, u32, u32))>,
+) {
     match orden {
         Orden::Poligono { puntos, color } | Orden::Relleno { puntos, color } => {
             p.poligono(&a_tuplas(puntos), a_color(*color));
         }
-        Orden::Tinta { contorno, color } => p.tinta(&a_tuplas(contorno), a_color(*color)),
+        Orden::Tinta { contorno, color } => match tinta {
+            Some((c, clave)) => p.tinta_cacheada(c, clave, &a_tuplas(contorno), a_color(*color)),
+            None => p.tinta(&a_tuplas(contorno), a_color(*color)),
+        },
         Orden::Polilinea {
             puntos,
             color,

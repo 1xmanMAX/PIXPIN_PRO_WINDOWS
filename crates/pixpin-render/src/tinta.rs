@@ -13,6 +13,73 @@
 //! SI necesita la alternada para su hueco, por eso esto es una geometria
 //! aparte y no un cambio en `Pintor::geometria`.
 
+use std::collections::HashMap;
+use std::time::Duration;
+
+use windows::Win32::Graphics::Direct2D::ID2D1GeometryRealization;
+
+/// Cuanto tiene que estar quieto el zoom para rehacer la tinta nitida (D122,
+/// el `shouldCacheIgnoreZoom` de Excalidraw). Mientras tanto se estira lo
+/// realizado: algo borroso y casi gratis.
+pub fn retardo_nitido(nivel: pixpin_nivel::Nivel) -> Duration {
+    match nivel {
+        pixpin_nivel::Nivel::Ligero => Duration::from_millis(500),
+        _ => Duration::from_millis(300),
+    }
+}
+
+pub(crate) struct Realizada {
+    pub(crate) version: u32,
+    pub(crate) realizacion: ID2D1GeometryRealization,
+}
+
+/// La tinta ya teselada por Direct2D, por elemento y orden.
+///
+/// Una realizacion es la geometria convertida en triangulos a una escala:
+/// pintarla no recalcula nada en el procesador. Se rehace solo si cambia la
+/// version del elemento o si se fija otra escala.
+pub struct CacheTinta {
+    pub(crate) mapa: HashMap<(u64, u32), Realizada>,
+    pub(crate) escala: f32,
+}
+
+impl CacheTinta {
+    pub fn nueva() -> Self {
+        Self {
+            mapa: HashMap::new(),
+            escala: 1.0,
+        }
+    }
+
+    /// Dispositivo perdido o documento nuevo: las realizaciones son del
+    /// dispositivo viejo y no valen.
+    pub fn vaciar(&mut self) {
+        self.mapa.clear();
+    }
+
+    pub fn escala(&self) -> f32 {
+        self.escala
+    }
+
+    /// Se llama cuando el zoom lleva `retardo_nitido` quieto.
+    pub fn fijar_escala(&mut self, escala: f32) {
+        if escala != self.escala {
+            self.escala = escala;
+            self.mapa.clear();
+        }
+    }
+
+    pub fn cuantas(&self) -> usize {
+        self.mapa.len()
+    }
+}
+
+impl Default for CacheTinta {
+    fn default() -> Self {
+        Self::nueva()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PasoTrayecto {
     Mover((f32, f32)),
@@ -48,6 +115,112 @@ pub fn pasos_de_tinta(contorno: &[(f32, f32)]) -> Vec<PasoTrayecto> {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    use crate::motor::Color;
+
+    #[test]
+    fn el_retardo_nitido_es_mas_largo_en_ligero() {
+        use pixpin_nivel::Nivel;
+        assert_eq!(retardo_nitido(Nivel::Completo).as_millis(), 300);
+        assert_eq!(retardo_nitido(Nivel::Ligero).as_millis(), 500);
+    }
+
+    #[test]
+    fn fijar_otra_escala_tira_lo_realizado_y_la_misma_no() {
+        let mut c = CacheTinta::nueva();
+        assert_eq!(c.escala(), 1.0);
+        c.fijar_escala(1.0);
+        assert_eq!(c.escala(), 1.0);
+        c.fijar_escala(2.0);
+        assert_eq!(c.escala(), 2.0);
+        assert_eq!(c.cuantas(), 0);
+    }
+
+    /// Motor y un destino de `ancho x alto` sobre un D3D11 hardware propio.
+    fn motor_y_destino_de_prueba(
+        ancho: u32,
+        alto: u32,
+    ) -> (
+        crate::MotorRender,
+        windows::Win32::Graphics::Direct2D::ID2D1Bitmap1,
+    ) {
+        use windows::Win32::Foundation::HMODULE;
+        use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
+        use windows::Win32::Graphics::Direct3D11::{
+            D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            D3D11_SDK_VERSION, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11CreateDevice,
+        };
+        use windows::Win32::Graphics::Dxgi::Common::{
+            DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC,
+        };
+        let mut d3d = None;
+        // SAFETY: salidas locales; sin adaptador concreto ni capas de depuracion.
+        unsafe {
+            D3D11CreateDevice(
+                None,
+                D3D_DRIVER_TYPE_HARDWARE,
+                HMODULE::default(),
+                D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                None,
+                D3D11_SDK_VERSION,
+                Some(&mut d3d),
+                None,
+                None,
+            )
+            .expect("sin D3D11 hardware");
+        }
+        let d3d = d3d.expect("dispositivo");
+        let motor = crate::MotorRender::nuevo(&d3d).expect("motor");
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: ancho,
+            Height: alto,
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Usage: D3D11_USAGE_DEFAULT,
+            BindFlags: (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
+            ..Default::default()
+        };
+        let mut textura = None;
+        // SAFETY: descripcion local valida; salida local.
+        unsafe {
+            d3d.CreateTexture2D(&desc, None, Some(&mut textura))
+                .expect("textura")
+        };
+        let destino = motor
+            .destino_desde_textura(&textura.expect("textura"))
+            .expect("destino");
+        (motor, destino)
+    }
+
+    #[test]
+    #[ignore = "necesita GPU y sesion de escritorio"]
+    fn pintar_dos_veces_la_misma_clave_realiza_una_sola_vez() {
+        let (motor, destino) = motor_y_destino_de_prueba(64, 64);
+        let mut cache = CacheTinta::nueva();
+        let contorno = [(10.0, 10.0), (50.0, 10.0), (50.0, 50.0), (10.0, 50.0)];
+        for _ in 0..2 {
+            motor
+                .dibujar(&destino, |p| {
+                    p.tinta_cacheada(&mut cache, (7, 1, 0), &contorno, Color::NEGRO)
+                })
+                .unwrap();
+        }
+        assert_eq!(cache.cuantas(), 1);
+        motor
+            .dibujar(&destino, |p| {
+                p.tinta_cacheada(&mut cache, (7, 2, 0), &contorno, Color::NEGRO)
+            })
+            .unwrap();
+        assert_eq!(
+            cache.cuantas(),
+            1,
+            "una version nueva sustituye, no acumula"
+        );
+    }
 
     #[test]
     fn un_contorno_vacio_no_da_ningun_paso() {

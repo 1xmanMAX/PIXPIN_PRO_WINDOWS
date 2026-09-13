@@ -570,6 +570,59 @@ impl Pintor<'_> {
         }
     }
 
+    /// Como `tinta`, pero reutilizando la teselacion de fotogramas
+    /// anteriores. `clave` = (id del elemento, version, indice de la orden).
+    /// Si la realizacion no se puede crear (contexto sin D2D 1.1 o
+    /// dispositivo raro), se pinta sin cache: se ve igual, cuesta mas.
+    pub fn tinta_cacheada(
+        &self,
+        cache: &mut crate::tinta::CacheTinta,
+        clave: (u64, u32, u32),
+        contorno: &[(f32, f32)],
+        color: Color,
+    ) {
+        use windows::Win32::Graphics::Direct2D::{
+            D2D1_DEFAULT_FLATTENING_TOLERANCE, ID2D1DeviceContext1,
+        };
+        if contorno.len() < 3 {
+            return;
+        }
+        let Ok(ctx1) = self.motor.contexto().cast::<ID2D1DeviceContext1>() else {
+            return self.tinta(contorno, color);
+        };
+        let (id, version, indice) = clave;
+        let vale = cache
+            .mapa
+            .get(&(id, indice))
+            .is_some_and(|r| r.version == version);
+        if !vale {
+            let Some(geometria) = self.geometria_tinta(contorno) else {
+                return;
+            };
+            // La tolerancia se divide por la escala: a 200 % hacen falta el
+            // doble de triangulos para que la curva no se vea poligonal.
+            let tolerancia = D2D1_DEFAULT_FLATTENING_TOLERANCE / cache.escala.max(0.01);
+            // SAFETY: geometria recien creada y contexto vivo.
+            let Ok(r) = (unsafe { ctx1.CreateFilledGeometryRealization(&geometria, tolerancia) })
+            else {
+                return self.tinta(contorno, color);
+            };
+            cache.mapa.insert(
+                (id, indice),
+                crate::tinta::Realizada {
+                    version,
+                    realizacion: r,
+                },
+            );
+        }
+        let Some(pincel) = self.pincel(color) else {
+            return;
+        };
+        let r = &cache.mapa[&(id, indice)].realizacion;
+        // SAFETY: dentro del fotograma; realizacion y pincel vivos.
+        unsafe { ctx1.DrawGeometryRealization(r, &pincel) };
+    }
+
     /// Rellena `marco` dejando sin pintar el poligono `hueco`: es el foco
     /// de D51. Dos figuras cerradas en una misma geometria y la regla de
     /// relleno alternada de Direct2D hacen el agujero sin recortes ni

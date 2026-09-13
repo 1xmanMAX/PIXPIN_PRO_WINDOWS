@@ -19,4 +19,4 @@ pub use superficie::Superficie;
 
 pub use capa_estatica::{CapaEstatica, Estampa, sigue_valiendo};
 pub use lienzo::{EstiloTexto, Pintor, RectF, Tramo};
-pub use tinta::{PasoTrayecto, pasos_de_tinta};
+pub use tinta::{CacheTinta, PasoTrayecto, pasos_de_tinta, retardo_nitido};
