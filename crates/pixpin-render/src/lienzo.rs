@@ -591,11 +591,7 @@ impl Pintor<'_> {
             return self.tinta(contorno, color);
         };
         let (id, version, indice) = clave;
-        let vale = cache
-            .mapa
-            .get(&(id, indice))
-            .is_some_and(|r| r.version == version);
-        if !vale {
+        if !cache.vale(clave) {
             let Some(geometria) = self.geometria_tinta(contorno) else {
                 return;
             };
@@ -621,6 +617,34 @@ impl Pintor<'_> {
         let r = &cache.mapa[&(id, indice)].realizacion;
         // SAFETY: dentro del fotograma; realizacion y pincel vivos.
         unsafe { ctx1.DrawGeometryRealization(r, &pincel) };
+    }
+
+    /// Pinta la realizacion ya cacheada de `clave` SIN mirar el contorno:
+    /// para cuando quien llama todavia no lo ha convertido a `Vec<(f32,
+    /// f32)>` y quiere evitar esa reserva si de todos modos hay un acierto
+    /// (`CacheTinta::vale`). Devuelve `false` si no hay nada cacheado -o el
+    /// contexto no da D2D 1.1- para que el llamante caiga entonces a
+    /// `tinta_cacheada` con el contorno construido.
+    pub fn pintar_realizada(
+        &self,
+        cache: &crate::tinta::CacheTinta,
+        clave: (u64, u32, u32),
+        color: Color,
+    ) -> bool {
+        use windows::Win32::Graphics::Direct2D::ID2D1DeviceContext1;
+        if !cache.vale(clave) {
+            return false;
+        }
+        let Ok(ctx1) = self.motor.contexto().cast::<ID2D1DeviceContext1>() else {
+            return false;
+        };
+        let (id, _version, indice) = clave;
+        if let Some(pincel) = self.pincel(color) {
+            let r = &cache.mapa[&(id, indice)].realizacion;
+            // SAFETY: dentro del fotograma; realizacion y pincel vivos.
+            unsafe { ctx1.DrawGeometryRealization(r, &pincel) };
+        }
+        true
     }
 
     /// Rellena `marco` dejando sin pintar el poligono `hueco`: es el foco

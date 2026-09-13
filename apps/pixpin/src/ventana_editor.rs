@@ -252,6 +252,88 @@ fn excluidos_de(gesto: &Gesto) -> Vec<u64> {
     }
 }
 
+/// Lo que decide `decidir_zoom` para esta vuelta del bucle.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct DecisionZoom {
+    /// El zoom lleva `retardo` QUIETO (no solo "ha pasado `retardo` desde el
+    /// primer cambio", D122): hay que rehacer la tinta nitida a esta escala.
+    rehacer: bool,
+    /// El zoom que se vio esta vuelta, para comparar con el de la siguiente.
+    visto: f32,
+    /// Cuando empezo a estar quieto en el valor `visto` (si sigue pendiente
+    /// de rehacer). `None` significa "nada pendiente": ni hay que
+    /// programar un tope de espera, ni girar en vacio.
+    desde: Option<std::time::Instant>,
+    /// Cuanto darle a `esperar_eventos` para no dormir mas de lo que falta
+    /// hasta que el zoom cumpla el retardo. `None` si no hay nada pendiente.
+    tope_ms: Option<u32>,
+}
+
+/// Pura, sin `&mut` ni reloj propio (recibe `ahora`): decide si hay que
+/// rehacer la tinta nitida y cuanto dormir como mucho, a partir del zoom de
+/// este fotograma y de lo que se sabia hasta ahora.
+///
+/// Dos fallos que esto corrige de la primera version (revision de la Tarea
+/// 10):
+///
+/// 1. Girar en vacio: si el zoom vuelve a `escala` (la ya realizada) ANTES
+///    de que se cumpla el retardo, aqui se limpia `desde` a `None`. Sin
+///    esto, `tope_ms` se quedaria fijo en el resultado de restar un
+///    instante ya pasado -0 ms para siempre-, y `esperar_eventos(Some(0))`
+///    gira un nucleo entero en reposo: justo lo que el bucle dirigido por
+///    eventos existe para evitar.
+/// 2. "Quieto" no es "desde el primer cambio": si el zoom sigue cambiando
+///    (rueda del raton sin soltar), cada cambio REINICIA `desde`. Sin esto,
+///    un zoom continuo rehacia la tinta cada `retardo`, en vez de una vez
+///    sola cuando por fin se para (D122: el `shouldCacheIgnoreZoom` de
+///    Excalidraw mide quietud, no antiguedad del primer cambio).
+fn decidir_zoom(
+    zoom: f32,
+    visto: f32,
+    escala: f32,
+    desde: Option<std::time::Instant>,
+    ahora: std::time::Instant,
+    retardo: std::time::Duration,
+) -> DecisionZoom {
+    let (visto, desde) = if zoom != visto {
+        (zoom, Some(ahora))
+    } else {
+        (visto, desde)
+    };
+    if zoom == escala {
+        // Ya esta a la escala realizada: nada pendiente.
+        return DecisionZoom {
+            rehacer: false,
+            visto,
+            desde: None,
+            tope_ms: None,
+        };
+    }
+    match desde {
+        Some(d) if ahora.duration_since(d) >= retardo => DecisionZoom {
+            rehacer: true,
+            visto,
+            desde: None,
+            tope_ms: None,
+        },
+        Some(d) => DecisionZoom {
+            rehacer: false,
+            visto,
+            desde: Some(d),
+            tope_ms: Some(retardo.saturating_sub(ahora.duration_since(d)).as_millis() as u32),
+        },
+        // No deberia pasar en la practica (si `zoom != escala` y no se
+        // acaba de mover, `desde` ya deberia venir puesto), pero si pasa no
+        // hay que girar en vacio: se arranca el reloj ahora.
+        None => DecisionZoom {
+            rehacer: false,
+            visto,
+            desde: Some(ahora),
+            tope_ms: Some(retardo.as_millis() as u32),
+        },
+    }
+}
+
 /// Abre el editor y no vuelve hasta que se cierra la ventana.
 ///
 /// Devuelve la escena tal como quedo, compactada: los elementos borrados de
@@ -301,9 +383,11 @@ pub fn abrir(
     let mut cache = Cache::nueva();
     let mut cache_tinta = pixpin_render::CacheTinta::nueva();
     let retardo = pixpin_render::retardo_nitido(nivel);
-    // Cuando cambio el zoom por ultima vez. La camara del editor aun no hace
-    // zoom (E4), pero el mecanismo queda puesto y probado.
-    let mut zoom_cambiado: Option<std::time::Instant> = None;
+    // El ultimo zoom visto y desde cuando esta ahi, para `decidir_zoom`. La
+    // camara del editor aun no hace zoom (E4), pero el mecanismo queda
+    // puesto y probado.
+    let mut zoom_visto = camara.zoom;
+    let mut zoom_desde: Option<std::time::Instant> = None;
     let mut rejilla = Rejilla::nueva();
     let mut capa = CapaEstatica::nueva();
     let (ancho_px, alto_px) = (area.ancho as f32, area.alto as f32);
@@ -576,16 +660,24 @@ pub fn abrir(
         }
         // Zoom quieto durante `retardo`: se rehace la tinta nitida a esa
         // escala y se suelta la capa (sus copias venian de la escala vieja).
-        // La camara del editor aun no hace zoom (E4); el mecanismo queda
-        // puesto y probado para cuando lo haga.
-        if camara.zoom != cache_tinta.escala() {
-            let desde = *zoom_cambiado.get_or_insert_with(std::time::Instant::now);
-            if desde.elapsed() >= retardo {
-                cache_tinta.fijar_escala(camara.zoom);
-                capa.soltar();
-                zoom_cambiado = None;
-                ventana.invalidar();
-            }
+        // La decision (y el tope de espera de mas abajo) sale de
+        // `decidir_zoom`, pura: aqui solo se aplican sus efectos. La camara
+        // del editor aun no hace zoom (E4); el mecanismo queda puesto y
+        // probado para cuando lo haga.
+        let decision = decidir_zoom(
+            camara.zoom,
+            zoom_visto,
+            cache_tinta.escala(),
+            zoom_desde,
+            std::time::Instant::now(),
+            retardo,
+        );
+        zoom_visto = decision.visto;
+        zoom_desde = decision.desde;
+        if decision.rehacer {
+            cache_tinta.fijar_escala(camara.zoom);
+            capa.soltar();
+            ventana.invalidar();
         }
         // Dormir hasta que llegue algo, pero no mas de lo que falta para que
         // el zoom cumpla el retardo: si no, `esperar_eventos(None)` dormiria
@@ -593,8 +685,9 @@ pub fn abrir(
         // rehacerse en reposo. Sin `sleep` fijo aqui tampoco: con el `sleep`
         // de 5 ms (15,6 ms reales sin `timeBeginPeriod`) el bucle perdia la
         // mitad de los puntos de un trazo rapido, y en reposo no gana nada.
-        let tope = zoom_cambiado.map(|d| retardo.saturating_sub(d.elapsed()).as_millis() as u32);
-        pixpin_shell::overlay::esperar_eventos(tope);
+        // `decision.tope_ms` es `None` en cuanto no hay nada pendiente -y
+        // solo entonces-, asi que nunca gira en vacio con un tope de 0 ms.
+        pixpin_shell::overlay::esperar_eventos(decision.tope_ms);
     }
 
     ventana.ocultar();
@@ -733,14 +826,16 @@ fn pintar(
             if e.borrado {
                 continue;
             }
+            // Lo excluido es lo que se arrastra o el trazo en curso: su
+            // version sube en CADA fotograma, asi que cachear su tinta
+            // seria teselar de nuevo cada vez sin acertar nunca -pagar la
+            // realizacion sin cobrar el ahorro-. Se pinta sin cache, como
+            // antes de esta tarea.
             let mut indice = 0u32;
+            let clave_tinta = !ahora_excluidos.contains(&e.id);
             por_cada_orden(cache, e, camara.zoom, escena.escala.as_ref(), |orden| {
-                dibujar_orden(
-                    p,
-                    orden,
-                    vista,
-                    Some((&mut *cache_tinta, (e.id, e.version, indice))),
-                );
+                let tinta = clave_tinta.then_some((&mut *cache_tinta, (e.id, e.version, indice)));
+                dibujar_orden(p, orden, vista, tinta);
                 indice += 1;
             });
         }
@@ -970,7 +1065,17 @@ fn dibujar_orden(
             p.poligono(&a_tuplas(puntos), a_color(*color));
         }
         Orden::Tinta { contorno, color } => match tinta {
-            Some((c, clave)) => p.tinta_cacheada(c, clave, &a_tuplas(contorno), a_color(*color)),
+            Some((c, clave)) => {
+                // Acierto: se pinta con la realizacion ya cacheada sin
+                // volver a convertir `contorno` en `Vec<(f32, f32)>` -esa
+                // reserva es la que se pagaba cada fotograma sin usarla
+                // para nada en cuanto habia acierto de cache-. Solo si
+                // `pintar_realizada` no encuentra nada (o falla) se paga la
+                // conversion y se rehace.
+                if !p.pintar_realizada(c, clave, a_color(*color)) {
+                    p.tinta_cacheada(c, clave, &a_tuplas(contorno), a_color(*color));
+                }
+            }
             None => p.tinta(&a_tuplas(contorno), a_color(*color)),
         },
         Orden::Polilinea {
@@ -1046,6 +1151,87 @@ mod pruebas {
     use pixpin_motor2d::escena::Escena;
     use pixpin_motor2d::gesto::{EventoGesto, Gesto};
     use std::f32::consts::{FRAC_PI_2, PI};
+
+    /// Revision de la Tarea 10, hallazgo 1a: sin zoom pendiente
+    /// (`zoom == escala`), no hay que dormir con un tope -y mucho menos
+    /// `Some(0)`, que giraria un nucleo entero en reposo-.
+    #[test]
+    fn sin_zoom_pendiente_no_hay_tope_ni_hay_que_rehacer() {
+        let ahora = std::time::Instant::now();
+        let retardo = std::time::Duration::from_millis(300);
+        let d = decidir_zoom(1.0, 1.0, 1.0, None, ahora, retardo);
+        assert!(!d.rehacer);
+        assert_eq!(d.tope_ms, None);
+        assert_eq!(d.desde, None);
+    }
+
+    #[test]
+    fn un_cambio_de_zoom_pone_el_tope_al_retardo_completo() {
+        let ahora = std::time::Instant::now();
+        let retardo = std::time::Duration::from_millis(300);
+        let d = decidir_zoom(2.0, 1.0, 1.0, None, ahora, retardo);
+        assert!(!d.rehacer);
+        assert_eq!(d.visto, 2.0);
+        assert_eq!(d.tope_ms, Some(300));
+    }
+
+    /// Hallazgo 1a: si el zoom vuelve a la escala YA realizada antes de que
+    /// se cumpla el retardo, no puede quedar un tope fijo -eso era el giro
+    /// en vacio que violaba el 0% de CPU en reposo-.
+    #[test]
+    fn volver_a_la_escala_realizada_antes_del_retardo_no_deja_tope_pendiente() {
+        let t0 = std::time::Instant::now();
+        let retardo = std::time::Duration::from_millis(300);
+        let d1 = decidir_zoom(2.0, 1.0, 1.0, None, t0, retardo);
+        assert_eq!(d1.tope_ms, Some(300));
+        let t1 = t0 + std::time::Duration::from_millis(50);
+        let d2 = decidir_zoom(1.0, d1.visto, 1.0, d1.desde, t1, retardo);
+        assert!(!d2.rehacer);
+        assert_eq!(
+            d2.tope_ms, None,
+            "no puede quedar un tope fijo (giraria un nucleo en reposo)"
+        );
+        assert_eq!(d2.desde, None);
+    }
+
+    /// Hallazgo 1b: "quieto" cuenta desde el ULTIMO cambio, no desde el
+    /// primero. Un zoom que sigue cambiando cada 100 ms durante 1 s no
+    /// tiene que rehacer nunca; solo cuando por fin se para, 300 ms
+    /// despues de su ultimo cambio.
+    #[test]
+    fn el_zoom_continuo_no_rehace_hasta_que_se_queda_quieto_300_ms() {
+        let t0 = std::time::Instant::now();
+        let retardo = std::time::Duration::from_millis(300);
+        let mut visto = 1.0f32;
+        let mut desde = None;
+        let mut zoom = 1.0f32;
+        for i in 1..=10u64 {
+            zoom += 0.1;
+            let ahora = t0 + std::time::Duration::from_millis(i * 100);
+            let d = decidir_zoom(zoom, visto, 1.0, desde, ahora, retardo);
+            assert!(
+                !d.rehacer,
+                "no debe rehacer mientras el zoom sigue cambiando (vuelta {i})"
+            );
+            visto = d.visto;
+            desde = d.desde;
+        }
+        // El ultimo cambio fue en t = 1000 ms; a los 300 ms de quietud
+        // (t = 1300 ms) toca rehacer, con el tope ya a None.
+        let quieto_pero_no_del_todo = t0 + std::time::Duration::from_millis(1299);
+        let d = decidir_zoom(zoom, visto, 1.0, desde, quieto_pero_no_del_todo, retardo);
+        assert!(!d.rehacer, "todavia no han pasado los 300 ms completos");
+        let d = decidir_zoom(
+            zoom,
+            d.visto,
+            1.0,
+            d.desde,
+            t0 + std::time::Duration::from_millis(1300),
+            retardo,
+        );
+        assert!(d.rehacer);
+        assert_eq!(d.tope_ms, None);
+    }
 
     /// El hallazgo 3 de la revision final: las tres herramientas de medir
     /// estaban implementadas y probadas, pero no habia forma de elegirlas

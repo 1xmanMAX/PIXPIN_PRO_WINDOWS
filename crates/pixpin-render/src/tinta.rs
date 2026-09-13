@@ -72,6 +72,18 @@ impl CacheTinta {
     pub fn cuantas(&self) -> usize {
         self.mapa.len()
     }
+
+    /// Si ya hay una realizacion valida para `clave` (mismo elemento, mismo
+    /// indice de orden, misma version). Quien pinta la usa para decidir SI
+    /// hace falta reconstruir el contorno en `Vec<(f32, f32)>` -en un
+    /// acierto no hace falta, y esa reconstruccion es la que se paga cada
+    /// fotograma para nada si no se consulta antes-.
+    pub fn vale(&self, clave: (u64, u32, u32)) -> bool {
+        let (id, version, indice) = clave;
+        self.mapa
+            .get(&(id, indice))
+            .is_some_and(|r| r.version == version)
+    }
 }
 
 impl Default for CacheTinta {
@@ -133,6 +145,12 @@ mod pruebas {
         c.fijar_escala(2.0);
         assert_eq!(c.escala(), 2.0);
         assert_eq!(c.cuantas(), 0);
+    }
+
+    #[test]
+    fn una_cache_vacia_no_vale_para_ninguna_clave() {
+        let c = CacheTinta::nueva();
+        assert!(!c.vale((1, 1, 0)));
     }
 
     /// Motor y un destino de `ancho x alto` sobre un D3D11 hardware propio.
@@ -202,6 +220,7 @@ mod pruebas {
         let (motor, destino) = motor_y_destino_de_prueba(64, 64);
         let mut cache = CacheTinta::nueva();
         let contorno = [(10.0, 10.0), (50.0, 10.0), (50.0, 50.0), (10.0, 50.0)];
+        assert!(!cache.vale((7, 1, 0)), "todavia no se ha pintado nada");
         for _ in 0..2 {
             motor
                 .dibujar(&destino, |p| {
@@ -210,6 +229,8 @@ mod pruebas {
                 .unwrap();
         }
         assert_eq!(cache.cuantas(), 1);
+        assert!(cache.vale((7, 1, 0)), "la version 1 quedo realizada");
+        assert!(!cache.vale((7, 2, 0)), "la version 2 no se ha pintado aun");
         motor
             .dibujar(&destino, |p| {
                 p.tinta_cacheada(&mut cache, (7, 2, 0), &contorno, Color::NEGRO)
