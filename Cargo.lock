@@ -501,6 +501,7 @@ dependencies = [
 name = "pixpin-render"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "thiserror",
  "windows",
  "windows-numerics",

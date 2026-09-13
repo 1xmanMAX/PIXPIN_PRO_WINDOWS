@@ -184,14 +184,7 @@ pub(crate) fn disposicion_dwrite(
 
 impl Pintor<'_> {
     fn pincel(&self, color: Color) -> Option<ID2D1SolidColorBrush> {
-        // SAFETY: crear un pincel sobre el contexto vivo no tiene mas
-        // precondiciones; se usa y se suelta dentro del fotograma.
-        unsafe {
-            self.motor
-                .contexto()
-                .CreateSolidColorBrush(&color.a_d2d(), None)
-                .ok()
-        }
+        self.motor.pincel(color)
     }
 
     pub fn limpiar(&self, color: Color) {
@@ -521,6 +514,59 @@ impl Pintor<'_> {
         if let Some(p) = self.pincel(color) {
             // SAFETY: dentro del fotograma; geometria y pincel vivos.
             unsafe { self.motor.contexto().FillGeometry(&geometria, &p, None) };
+        }
+    }
+
+    /// Rellena el contorno de un trazo de tinta (ver `crate::tinta`).
+    pub fn tinta(&self, contorno: &[(f32, f32)], color: Color) {
+        if contorno.len() < 3 {
+            return;
+        }
+        let Some(geometria) = self.geometria_tinta(contorno) else {
+            return;
+        };
+        if let Some(p) = self.pincel(color) {
+            // SAFETY: dentro del fotograma; geometria y pincel vivos.
+            unsafe { self.motor.contexto().FillGeometry(&geometria, &p, None) };
+        }
+    }
+
+    pub(crate) fn geometria_tinta(&self, contorno: &[(f32, f32)]) -> Option<ID2D1PathGeometry1> {
+        use crate::tinta::{PasoTrayecto, pasos_de_tinta};
+        use windows::Win32::Graphics::Direct2D::Common::{
+            D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_END_CLOSED, D2D1_FILL_MODE_WINDING,
+        };
+        use windows::Win32::Graphics::Direct2D::D2D1_QUADRATIC_BEZIER_SEGMENT;
+        let v = |p: (f32, f32)| Vector2 { X: p.0, Y: p.1 };
+
+        // SAFETY: la geometria se abre, se rellena y se cierra aqui mismo;
+        // si algo falla a mitad se descarta sin dibujarla.
+        unsafe {
+            let geometria = self.motor.fabrica().CreatePathGeometry().ok()?;
+            let sumidero = geometria.Open().ok()?;
+            sumidero.SetFillMode(D2D1_FILL_MODE_WINDING);
+            // Las cuadraticas seguidas se mandan en bloque: una llamada COM
+            // por tramo seria buena parte del coste de un trazo largo.
+            let mut tanda: Vec<D2D1_QUADRATIC_BEZIER_SEGMENT> = Vec::new();
+            for paso in pasos_de_tinta(contorno) {
+                if !matches!(paso, PasoTrayecto::Cuadratica { .. }) && !tanda.is_empty() {
+                    sumidero.AddQuadraticBeziers(&tanda);
+                    tanda.clear();
+                }
+                match paso {
+                    PasoTrayecto::Mover(p) => sumidero.BeginFigure(v(p), D2D1_FIGURE_BEGIN_FILLED),
+                    PasoTrayecto::Cuadratica { control, fin } => {
+                        tanda.push(D2D1_QUADRATIC_BEZIER_SEGMENT {
+                            point1: v(control),
+                            point2: v(fin),
+                        })
+                    }
+                    PasoTrayecto::Linea(p) => sumidero.AddLine(v(p)),
+                    PasoTrayecto::Cerrar => sumidero.EndFigure(D2D1_FIGURE_END_CLOSED),
+                }
+            }
+            sumidero.Close().ok()?;
+            Some(geometria)
         }
     }
 

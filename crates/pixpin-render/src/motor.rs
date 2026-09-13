@@ -17,7 +17,7 @@ use windows::Win32::Graphics::Direct2D::{
     D2D1_BITMAP_OPTIONS, D2D1_BITMAP_OPTIONS_CANNOT_DRAW, D2D1_BITMAP_OPTIONS_NONE,
     D2D1_BITMAP_OPTIONS_TARGET, D2D1_BITMAP_PROPERTIES1, D2D1_DEVICE_CONTEXT_OPTIONS_NONE,
     D2D1_FACTORY_TYPE_SINGLE_THREADED, D2D1CreateFactory, ID2D1Bitmap1, ID2D1Device,
-    ID2D1DeviceContext, ID2D1Factory1,
+    ID2D1DeviceContext, ID2D1Factory1, ID2D1SolidColorBrush,
 };
 use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11Texture2D};
 use windows::Win32::Graphics::DirectWrite::{
@@ -113,6 +113,11 @@ pub struct MotorRender {
     _dispositivo: ID2D1Device,
     contexto: ID2D1DeviceContext,
     dwrite: IDWriteFactory,
+    /// Pinceles ya creados, por color. Crear uno por primitiva costaba casi
+    /// tanto como la geometria (diagnostico de E1). Uno por color y no uno
+    /// solo con `SetColor`: hay primitivas que piden dos pinceles a la vez y
+    /// el segundo pisaria el color del primero.
+    pinceles: std::cell::RefCell<Vec<([u32; 4], ID2D1SolidColorBrush)>>,
 }
 
 impl MotorRender {
@@ -136,6 +141,7 @@ impl MotorRender {
             _dispositivo: dispositivo,
             contexto,
             dwrite,
+            pinceles: std::cell::RefCell::new(Vec::new()),
         })
     }
 
@@ -149,6 +155,35 @@ impl MotorRender {
 
     pub fn dwrite(&self) -> &IDWriteFactory {
         &self.dwrite
+    }
+
+    /// Tope pequeno: un dibujo real usa pocos colores, y el tope evita que un
+    /// degradado pintado a mano llene la memoria de pinceles.
+    const MAX_PINCELES: usize = 32;
+
+    pub(crate) fn pincel(&self, color: Color) -> Option<ID2D1SolidColorBrush> {
+        let clave = [
+            color.r.to_bits(),
+            color.g.to_bits(),
+            color.b.to_bits(),
+            color.a.to_bits(),
+        ];
+        let mut lista = self.pinceles.borrow_mut();
+        if let Some((_, p)) = lista.iter().find(|(c, _)| *c == clave) {
+            return Some(p.clone());
+        }
+        // SAFETY: crear un pincel sobre el contexto vivo no tiene mas
+        // precondiciones.
+        let p = unsafe {
+            self.contexto
+                .CreateSolidColorBrush(&color.a_d2d(), None)
+                .ok()?
+        };
+        if lista.len() >= Self::MAX_PINCELES {
+            lista.remove(0);
+        }
+        lista.push((clave, p.clone()));
+        Some(p)
     }
 
     /// Mide un texto ajustado a un ancho maximo, **fuera** de un fotograma.
