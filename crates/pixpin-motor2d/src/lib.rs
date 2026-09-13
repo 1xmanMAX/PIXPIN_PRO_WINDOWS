@@ -33,6 +33,7 @@ pub mod medida;
 pub mod organizar;
 pub mod pintado;
 pub mod seleccion;
+pub mod tinta;
 pub mod tiradores;
 pub mod transformar;
 pub mod trazo;
