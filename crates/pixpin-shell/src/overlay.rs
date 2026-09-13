@@ -53,6 +53,11 @@ pub enum EventoOverlay {
     RatonMovido(Punto),
     BotonPulsado(Punto),
     BotonSoltado(Punto),
+    /// Boton central (WM_MBUTTONDOWN / WM_MBUTTONUP). El editor lo usa para
+    /// desplazar el lienzo como Excalidraw (D136). Escritorio virtual, como
+    /// `BotonPulsado`.
+    BotonCentralPulsado(Punto),
+    BotonCentralSoltado(Punto),
     Tecla {
         vk: u32,
         shift: bool,
@@ -192,6 +197,25 @@ impl VentanaOverlay {
             );
         }
         self.area = area;
+    }
+
+    /// La pone por delante de las demas ventanas TOPMOST sin activarla ni
+    /// moverla (D145). Crearla despues suele bastar, pero un pin que se
+    /// reordene (su paleta, un clic) quedaria encima del lienzo.
+    pub fn traer_encima(&self) {
+        // SAFETY: SetWindowPos sobre la ventana propia y viva; solo cambia el
+        // orden Z (sin mover, sin redimensionar, sin robar el foco).
+        unsafe {
+            let _ = SetWindowPos(
+                self.hwnd,
+                Some(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+            );
+        }
     }
 
     pub fn handle(&self) -> HWND {
@@ -710,6 +734,21 @@ extern "system" fn procedimiento_overlay(
             encolar(EventoOverlay::BotonSoltado(punto(lparam)));
             LRESULT(0)
         }
+        WM_MBUTTONDOWN => {
+            // SAFETY: SetCapture sobre ventana propia: arrastrar el lienzo
+            // con el boton central no se pierde al salir del borde.
+            unsafe { SetCapture(hwnd) };
+            encolar(EventoOverlay::BotonCentralPulsado(punto(lparam)));
+            LRESULT(0)
+        }
+        WM_MBUTTONUP => {
+            // SAFETY: libera la captura tomada arriba.
+            unsafe {
+                let _ = ReleaseCapture();
+            }
+            encolar(EventoOverlay::BotonCentralSoltado(punto(lparam)));
+            LRESULT(0)
+        }
         // Las dos: con Alt mantenido, Windows manda WM_SYSKEYDOWN en vez de
         // WM_KEYDOWN. Sin atender el segundo, la ventana de ajustes no
         // podria grabar ningun atajo con Alt, que son la mitad de los que
@@ -1003,5 +1042,50 @@ mod pruebas {
             FormaCursorWin::Giro,
         ];
         assert_eq!(formas.len(), 9);
+    }
+
+    #[test]
+    fn el_boton_central_viaja_como_evento_copiable_y_comparable() {
+        // `EventoOverlay` cruza colas por valor y se compara en las pruebas
+        // del editor: las variantes nuevas no pueden quitarle Copy ni Eq.
+        fn copiable<T: Copy + Eq>(_: T) {}
+        let p = EventoOverlay::BotonCentralPulsado(Punto { x: 3, y: 4 });
+        copiable(p);
+        assert_ne!(p, EventoOverlay::BotonCentralSoltado(Punto { x: 3, y: 4 }));
+        assert_ne!(p, EventoOverlay::BotonPulsado(Punto { x: 3, y: 4 }));
+    }
+
+    #[test]
+    #[ignore = "necesita sesion de escritorio; ejecutar con --ignored"]
+    fn traer_encima_pone_la_ventana_sobre_otra_topmost_creada_despues() {
+        // D145: el lienzo tiene que quedar por encima de los pines, que
+        // tambien son TOPMOST. Se crea `b` despues (queda encima) y se
+        // comprueba que `traer_encima` pone `a` por delante.
+        use windows::Win32::UI::WindowsAndMessaging::{GW_HWNDPREV, GetWindow};
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            ancho: 100,
+            alto: 100,
+        };
+        let a = VentanaOverlay::nueva(rect).unwrap();
+        let b = VentanaOverlay::nueva(rect).unwrap();
+        a.traer_encima();
+        let mut actual = b.handle();
+        let mut a_por_encima = false;
+        for _ in 0..10_000 {
+            // SAFETY: consulta del orden Z; si la cadena se corta, se para.
+            match unsafe { GetWindow(actual, GW_HWNDPREV) } {
+                Ok(h) if !h.is_invalid() => {
+                    if h == a.handle() {
+                        a_por_encima = true;
+                        break;
+                    }
+                    actual = h;
+                }
+                _ => break,
+            }
+        }
+        assert!(a_por_encima, "la ventana traida encima sigue debajo");
     }
 }

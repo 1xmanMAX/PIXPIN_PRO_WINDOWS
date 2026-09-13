@@ -726,7 +726,9 @@ fn procesar_evento(
         | EventoOverlay::Caracter(_)
         | EventoOverlay::TeclaSoltada(_)
         | EventoOverlay::Atajo(_)
-        | EventoOverlay::Muestra(_) => Continuar::Si,
+        | EventoOverlay::Muestra(_)
+        | EventoOverlay::BotonCentralPulsado(_)
+        | EventoOverlay::BotonCentralSoltado(_) => Continuar::Si,
     }
 }
 

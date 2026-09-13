@@ -380,6 +380,8 @@ pub fn abrir(
     )
     .context("sin superficie para el editor")?;
     ventana.mostrar();
+    // D145: el lienzo que se abre desde un pin tiene que taparlo.
+    ventana.traer_encima();
     ventana.enfocar();
     ventana.pedir_entrada_fina();
 
