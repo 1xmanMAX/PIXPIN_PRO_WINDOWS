@@ -92,6 +92,13 @@ pub struct Modificadores {
 /// esta constante sigue significando "el principal"-, asi que no hace falta
 /// distinguir zurdo de diestro aqui.
 const VK_BOTON_PRINCIPAL: u32 = 0x01;
+/// VK_RBUTTON: boton secundario del raton. Hace falta porque `overlay.rs`
+/// traduce `WM_LBUTTONDOWN` Y `WM_RBUTTONDOWN` al mismo
+/// `EventoOverlay::BotonPulsado` ("el boton derecho vale lo mismo que el
+/// izquierdo"): un arrastre por espacio puede haberlo sujetado el derecho, y
+/// sondear solo el izquierdo lo daria por soltado en el primer
+/// `RatonMovido` (revision 2, hallazgo HIGH).
+const VK_BOTON_SECUNDARIO: u32 = 0x02;
 /// VK_MBUTTON: boton central (la rueda pulsada) del raton.
 const VK_BOTON_CENTRAL: u32 = 0x04;
 
@@ -117,9 +124,10 @@ pub struct EnVivo {
     /// Si la barra espaciadora sigue pulsada AHORA. Solo importa al llegar
     /// `BotonPulsado` con `self.espacio` ya puesto.
     pub espacio: bool,
-    /// Si el boton que empezo el arrastre en curso sigue pulsado AHORA. Solo
-    /// importa mientras `arrastrando()` es `true`; `vk_boton_en_arrastre`
-    /// dice cual sondear.
+    /// Si ALGUNO de los botones que pudo empezar el arrastre en curso sigue
+    /// pulsado AHORA (para `Principal`, izquierdo O derecho: ver
+    /// `botones_en_arrastre`). Solo importa mientras `arrastrando()` es
+    /// `true`.
     pub boton_arrastre: bool,
 }
 
@@ -189,15 +197,21 @@ impl Navegador {
         self.arrastre.is_some()
     }
 
-    /// El codigo virtual del boton que esta arrastrando el lienzo ahora
-    /// mismo, si hay alguno: `None` si no hay arrastre en curso. Quien llama
-    /// lo sondea con `pixpin_shell::entrada::tecla_pulsada_ahora` para saber
-    /// si sigue pulsado antes de mandar un `RatonMovido`/`Muestra` (fix 2).
-    pub fn vk_boton_en_arrastre(&self) -> Option<u32> {
-        self.arrastre.map(|a| match a.boton {
-            BotonArrastre::Principal => VK_BOTON_PRINCIPAL,
-            BotonArrastre::Central => VK_BOTON_CENTRAL,
-        })
+    /// Los codigos virtuales que pueden estar sujetando el arrastre en
+    /// curso: vacio si no hay arrastre. `Principal` da DOS codigos -el
+    /// izquierdo y el derecho-, porque `overlay.rs` traduce ambos botones al
+    /// mismo `BotonPulsado` (revision 2): quien llama tiene que mirar si
+    /// CUALQUIERA de los dos sigue pulsado, no solo el primero, o un
+    /// arrastre sujeto con el derecho se daria por soltado de mentira en el
+    /// primer `RatonMovido`. `Central` da uno solo. Quien llama sondea cada
+    /// codigo con `pixpin_shell::entrada::tecla_pulsada_ahora` antes de
+    /// mandar un `RatonMovido`/`Muestra` (fix 2).
+    pub fn botones_en_arrastre(&self) -> &'static [u32] {
+        match self.arrastre.map(|a| a.boton) {
+            Some(BotonArrastre::Principal) => &[VK_BOTON_PRINCIPAL, VK_BOTON_SECUNDARIO],
+            Some(BotonArrastre::Central) => &[VK_BOTON_CENTRAL],
+            None => &[],
+        }
     }
 
     /// `en_reposo` es `Gesto::en_reposo`: con un trazo o un arrastre en curso
@@ -357,6 +371,19 @@ pub fn aplicar(camara: &mut Camara, accion: Accion) -> bool {
             camara.acercar_en(foco, nuevo / camara.zoom)
         }
     }
+}
+
+/// Si ALGUNO de `botones` esta pulsado, segun `pulsado`. Separada de
+/// `Navegador::evento` para poder probar el "o" sin Windows: quien la llama
+/// de verdad (`ventana_editor.rs`) pasa
+/// `pixpin_shell::entrada::tecla_pulsada_ahora`; las pruebas de aqui abajo
+/// inyectan una funcion de mentira. Hace falta el "o" y no basta con mirar
+/// un solo codigo porque `overlay.rs` traduce el clic derecho al mismo
+/// `EventoOverlay::BotonPulsado` que el izquierdo (revision 2, hallazgo
+/// HIGH): un espacio+arrastre sujeto con el derecho no puede darse por
+/// soltado solo porque el izquierdo no lo este.
+pub fn algun_boton_pulsado(botones: &[u32], pulsado: impl Fn(u32) -> bool) -> bool {
+    botones.iter().any(|vk| pulsado(*vk))
 }
 
 #[cfg(test)]
@@ -656,7 +683,7 @@ mod pruebas {
             SIEMPRE,
         );
         assert!(n.arrastrando());
-        assert_eq!(n.vk_boton_en_arrastre(), Some(0x04));
+        assert_eq!(n.botones_en_arrastre(), &[0x04]);
         let vivo = EnVivo {
             espacio: true,
             boton_arrastre: false,
@@ -673,9 +700,9 @@ mod pruebas {
     }
 
     #[test]
-    fn el_vk_en_arrastre_es_el_del_boton_que_lo_empezo() {
+    fn los_botones_en_arrastre_son_los_del_boton_que_lo_empezo() {
         let mut n = Navegador::nuevo();
-        assert_eq!(n.vk_boton_en_arrastre(), None);
+        assert_eq!(n.botones_en_arrastre(), &[] as &[u32]);
         let espacio = EventoOverlay::Tecla {
             vk: VK_ESPACIO,
             shift: false,
@@ -691,7 +718,53 @@ mod pruebas {
             true,
             SIEMPRE,
         );
-        assert_eq!(n.vk_boton_en_arrastre(), Some(0x01));
+        // Principal da los DOS codigos: overlay.rs traduce el clic derecho
+        // al mismo `BotonPulsado` que el izquierdo (revision 2).
+        assert_eq!(n.botones_en_arrastre(), &[0x01, 0x02]);
+    }
+
+    #[test]
+    fn algun_boton_pulsado_es_un_o_no_un_y() {
+        // Revision 2, hallazgo HIGH: `overlay.rs` traduce WM_RBUTTONDOWN al
+        // mismo `BotonPulsado` que el izquierdo, asi que un espacio+arrastre
+        // puede estar sujeto por CUALQUIERA de los dos. `algun_boton_pulsado`
+        // es la funcion pura que hace ese "o" -inyectando `pulsado` en vez de
+        // llamar a Windows- para poder probarla sin sesion de escritorio.
+        let principal = Navegador {
+            arrastre: Some(Arrastre {
+                boton: BotonArrastre::Principal,
+                anterior: ORIGEN,
+            }),
+            ..Navegador::nuevo()
+        };
+        // Solo el derecho pulsado: el arrastre sigue vivo.
+        assert!(algun_boton_pulsado(
+            principal.botones_en_arrastre(),
+            |vk| vk == VK_BOTON_SECUNDARIO
+        ));
+        // Solo el izquierdo pulsado: tambien.
+        assert!(algun_boton_pulsado(
+            principal.botones_en_arrastre(),
+            |vk| vk == VK_BOTON_PRINCIPAL
+        ));
+        // Ninguno de los dos: se acabo.
+        assert!(!algun_boton_pulsado(
+            principal.botones_en_arrastre(),
+            |_| false
+        ));
+
+        let central = Navegador {
+            arrastre: Some(Arrastre {
+                boton: BotonArrastre::Central,
+                anterior: ORIGEN,
+            }),
+            ..Navegador::nuevo()
+        };
+        // El central no cambia: un solo codigo, sin "o" que valga.
+        assert!(algun_boton_pulsado(central.botones_en_arrastre(), |vk| vk == VK_BOTON_CENTRAL));
+        assert!(!algun_boton_pulsado(central.botones_en_arrastre(), |_| {
+            false
+        }));
     }
 
     #[test]

@@ -473,6 +473,14 @@ pub fn abrir(
             // Windows-: aqui se sondea el estado en vivo, y solo para los
             // dos eventos donde `Navegador::evento` lo necesita, no en cada
             // muestra del lapiz.
+            //
+            // Revision 2: `botones_en_arrastre` puede dar DOS codigos para
+            // el arrastre principal -`overlay.rs` traduce el clic derecho al
+            // mismo `BotonPulsado` que el izquierdo-, y hace falta que
+            // CUALQUIERA de los dos siga pulsado (`algun_boton_pulsado`), no
+            // solo el primero: mirar solo el izquierdo cortaria un
+            // espacio+arrastre sujeto con el derecho en el primer
+            // `RatonMovido`.
             let vivo = navegacion::EnVivo {
                 espacio: if matches!(ev, EventoOverlay::BotonPulsado(_)) {
                     pixpin_shell::entrada::tecla_pulsada_ahora(navegacion::VK_ESPACIO)
@@ -484,10 +492,10 @@ pub fn abrir(
                         ev,
                         EventoOverlay::RatonMovido(_) | EventoOverlay::Muestra(_)
                     ) {
-                    navegador
-                        .vk_boton_en_arrastre()
-                        .map(pixpin_shell::entrada::tecla_pulsada_ahora)
-                        .unwrap_or(true)
+                    navegacion::algun_boton_pulsado(
+                        navegador.botones_en_arrastre(),
+                        pixpin_shell::entrada::tecla_pulsada_ahora,
+                    )
                 } else {
                     true
                 },
