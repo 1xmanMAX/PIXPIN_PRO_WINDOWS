@@ -85,3 +85,17 @@ fn la_pluma_variable_coincide_con_excalidraw_en_todos_los_casos() {
         comparar(&c.nombre, &c.contorno, &freehand::contorno(&entrada, &o));
     }
 }
+
+#[test]
+fn la_pluma_constante_coincide_con_excalidraw_en_todos_los_casos() {
+    let casos = casos("constant");
+    assert!(
+        casos.len() >= 8,
+        "el oraculo tiene que traer casos constantes"
+    );
+    for c in casos {
+        let obtenido =
+            pixpin_motor2d::tinta::laser::contorno(&c.puntos, c.grosor * 1.4, c.streamline);
+        comparar(&c.nombre, &c.contorno, &obtenido);
+    }
+}
