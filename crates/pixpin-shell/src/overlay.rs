@@ -439,6 +439,29 @@ pub fn tomar_eventos_pendientes() -> Vec<(HWND, EventoOverlay)> {
     PENDIENTES_OVERLAY.with(|p| p.borrow_mut().drain(..).collect())
 }
 
+/// Duerme el hilo hasta que llegue un mensaje o pase `tope_ms`.
+///
+/// Es el sustituto de un `sleep` fijo en los bucles que bombean a mano:
+/// en reposo cuesta 0 % de CPU y, en cuanto llega un movimiento, vuelve sin
+/// esperar a que termine ningun turno. `MWMO_INPUTAVAILABLE` hace que vuelva
+/// tambien si ya habia mensajes en la cola que `bombear_pendientes` dejo sin
+/// sacar (tope de 64 por vuelta).
+pub fn esperar_eventos(tope_ms: Option<u32>) {
+    use windows::Win32::System::Threading::INFINITE;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        MWMO_INPUTAVAILABLE, MsgWaitForMultipleObjectsEx, QS_ALLINPUT,
+    };
+    // SAFETY: sin handles; solo espera a la cola de mensajes del hilo.
+    unsafe {
+        MsgWaitForMultipleObjectsEx(
+            None,
+            tope_ms.unwrap_or(INFINITE),
+            QS_ALLINPUT,
+            MWMO_INPUTAVAILABLE,
+        );
+    }
+}
+
 pub fn bucle_modal(
     ventanas: &[VentanaOverlay],
     mut callback: impl FnMut(HWND, EventoOverlay) -> crate::ventana::Continuar,

@@ -232,6 +232,48 @@ impl Superficie {
         unsafe { self.swapchain.Present(0, Default::default()).ok()? };
         Ok(())
     }
+
+    /// Presenta sincronizado con el refresco y, si se sabe, diciendo que
+    /// rectangulo cambio (D125). Solo lo usan las ventanas de dibujo: el pin
+    /// sigue con `presentar`, que no bloquea su hilo.
+    ///
+    /// La zona sucia no ahorra pintar (el fotograma se pinta entero sobre la
+    /// capa congelada), ahorra componer: DWM solo recompone ese trozo.
+    pub fn presentar_sincronizado(
+        &self,
+        sucio: Option<(i32, i32, i32, i32)>,
+    ) -> Result<(), ErrorRender> {
+        use windows::Win32::Foundation::RECT;
+        use windows::Win32::Graphics::Dxgi::{DXGI_PRESENT, DXGI_PRESENT_PARAMETERS};
+        let (ancho, alto) = self.asignado.get();
+        let mut rect = sucio.map(|(l, t, r, b)| RECT {
+            left: l.clamp(0, ancho as i32),
+            top: t.clamp(0, alto as i32),
+            right: r.clamp(0, ancho as i32),
+            bottom: b.clamp(0, alto as i32),
+        });
+        // Un rectangulo vacio tras recortar no es "nada cambio", es "no se
+        // sabe": se presenta entero.
+        if rect.is_some_and(|r| r.right <= r.left || r.bottom <= r.top) {
+            rect = None;
+        }
+        let parametros = DXGI_PRESENT_PARAMETERS {
+            DirtyRectsCount: u32::from(rect.is_some()),
+            pDirtyRects: rect
+                .as_mut()
+                .map_or(std::ptr::null_mut(), |r| r as *mut RECT),
+            pScrollRect: std::ptr::null_mut(),
+            pScrollOffset: std::ptr::null_mut(),
+        };
+        // SAFETY: `parametros` y el rectangulo viven hasta el final de la
+        // llamada; la swapchain es de modelo flip, que admite zonas sucias.
+        unsafe {
+            self.swapchain
+                .Present1(1, DXGI_PRESENT(0), &parametros)
+                .ok()?
+        };
+        Ok(())
+    }
 }
 
 #[cfg(test)]

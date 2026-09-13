@@ -84,24 +84,41 @@ pub fn forma_de(cursor: FormaCursor) -> FormaCursorWin {
 /// llama los sobreescribe con `con_modificadores` justo antes de pasarselo a
 /// la maquina, leyendolos con `pixpin_shell::entrada::modificadores` en el
 /// momento de traducir.
-pub fn a_evento(ev: &EventoOverlay, camara: &Camara) -> Option<EventoGesto> {
+///
+/// `origen` es la esquina de la ventana en coordenadas del escritorio
+/// virtual: los mensajes de Windows traen esas coordenadas, pero el lienzo
+/// empieza en la esquina de la ventana. Con la barra de tareas arriba o a la
+/// izquierda el area de trabajo no empieza en (0,0), y sin restar el origen
+/// la tinta salia desplazada del cursor.
+pub fn a_evento(ev: &EventoOverlay, camara: &Camara, origen: Punto) -> Option<EventoGesto> {
+    let (ox, oy) = (origen.x as f32, origen.y as f32);
     // `a_mundo` convierte un punto. NO `en_mundo`, que existe y convierte una
     // LONGITUD: compila igual y da otra cosa.
-    let al_mundo = |p: &Punto| camara.a_mundo(Punto2::nuevo(p.x as f32, p.y as f32));
+    let al_mundo = |x: f32, y: f32| camara.a_mundo(Punto2::nuevo(x - ox, y - oy));
+    let entero = |p: &Punto| al_mundo(p.x as f32, p.y as f32);
     match ev {
         EventoOverlay::BotonPulsado(p) => Some(EventoGesto::Pulsar {
-            p: al_mundo(p),
+            p: entero(p),
             shift: false,
             alt: false,
             presion: None,
         }),
         EventoOverlay::RatonMovido(p) => Some(EventoGesto::Mover {
-            p: al_mundo(p),
+            p: entero(p),
             shift: false,
             alt: false,
             presion: None,
         }),
-        EventoOverlay::BotonSoltado(p) => Some(EventoGesto::Soltar { p: al_mundo(p) }),
+        // Con lapiz, `Muestra` puede llegar ANTES de `BotonPulsado` y un
+        // trazo puede no traer `RatonMovido` de cola: cada muestra se
+        // traduce sola, con su subpixel y su presion, como `Mover`.
+        EventoOverlay::Muestra(m) => Some(EventoGesto::Mover {
+            p: al_mundo(m.x(), m.y()),
+            shift: false,
+            alt: false,
+            presion: m.presion(),
+        }),
+        EventoOverlay::BotonSoltado(p) => Some(EventoGesto::Soltar { p: entero(p) }),
         EventoOverlay::Tecla { vk, ctrl, .. } => {
             const VK_ESCAPE: u32 = 0x1B;
             const VK_DELETE: u32 = 0x2E;
@@ -167,6 +184,26 @@ fn tecla_a_herramienta(c: char) -> Option<Herramienta> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum CambioPluma {
+    Grosor(f32),
+    AlternarVariabilidad,
+}
+
+/// Las plumas de Excalidraw sin interfaz nueva (la barra es E5): 1, 2 y 3
+/// son sus tres grosores; V alterna variable y constante. Ninguna choca con
+/// `tecla_a_herramienta`, y la prueba lo vigila.
+fn tecla_a_pluma(c: char) -> Option<CambioPluma> {
+    use pixpin_motor2d::tinta::{GROSOR_FINO, GROSOR_GRUESO, GROSOR_MEDIO};
+    match c.to_ascii_uppercase() {
+        '1' => Some(CambioPluma::Grosor(GROSOR_FINO)),
+        '2' => Some(CambioPluma::Grosor(GROSOR_MEDIO)),
+        '3' => Some(CambioPluma::Grosor(GROSOR_GRUESO)),
+        'V' => Some(CambioPluma::AlternarVariabilidad),
+        _ => None,
+    }
+}
+
 /// Que hacer al pulsar un boton de la caja del editor. Pura -no toca la
 /// ventana ni pinta nada-, asi se prueba sin GPU ni sesion de escritorio.
 /// Mismo contrato que `CapaViva::pulsar_boton` en `capa.rs`: devuelve
@@ -204,6 +241,17 @@ fn gesto_inicial(ajustes_iman: pixpin_motor2d::enganche::Ajustes) -> Gesto {
     gesto
 }
 
+/// Lo que NO entra en la capa congelada: lo que cambia en cada fotograma.
+/// Una sola funcion para `abrir` y `pintar`: si cada una calculara su lista,
+/// la capa se daria por invalida en cada fotograma (la `Estampa` no casaria)
+/// o, peor, valdria sin contener lo que hay que pintar encima.
+fn excluidos_de(gesto: &Gesto) -> Vec<u64> {
+    match gesto.trazo_en_curso() {
+        Some(id) => vec![id],
+        None => gesto.seleccion.ids().to_vec(),
+    }
+}
+
 /// Abre el editor y no vuelve hasta que se cierra la ventana.
 ///
 /// Devuelve la escena tal como quedo, compactada: los elementos borrados de
@@ -214,7 +262,16 @@ fn gesto_inicial(ajustes_iman: pixpin_motor2d::enganche::Ajustes) -> Gesto {
 /// editor necesita conocer: el editor no tiene por que saber de atajos ni de
 /// la carpeta de capturas, asi que quien llama pasa `config.enganche`, no
 /// los `Ajustes` enteros.
-pub fn abrir(escena: Escena, ajustes_iman: pixpin_motor2d::enganche::Ajustes) -> Result<Escena> {
+///
+/// `nivel` todavia no se usa aqui: se guarda para la Tarea 10, que lo pasara
+/// a la cache de tinta.
+pub fn abrir(
+    escena: Escena,
+    ajustes_iman: pixpin_motor2d::enganche::Ajustes,
+    nivel: pixpin_nivel::Nivel,
+) -> Result<Escena> {
+    // Todavia no se usa: la Tarea 10 lo pasa a la cache de tinta.
+    let _ = nivel;
     let dispositivo =
         pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para el editor")?;
     let mut motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
@@ -237,6 +294,7 @@ pub fn abrir(escena: Escena, ajustes_iman: pixpin_motor2d::enganche::Ajustes) ->
     .context("sin superficie para el editor")?;
     ventana.mostrar();
     ventana.enfocar();
+    ventana.pedir_entrada_fina();
 
     let mut escena = escena;
     let mut gesto = gesto_inicial(ajustes_iman);
@@ -249,6 +307,13 @@ pub fn abrir(escena: Escena, ajustes_iman: pixpin_motor2d::enganche::Ajustes) ->
     // `CapaViva::nueva` (`capa.rs`): aqui el contenido ES la pantalla
     // entera, no hay un pin ni una ventana mas pequena de referencia.
     let caja = CajaHerramientas::colocar(area, area, monitor.escala_por_cien, &BOTONES_EDITOR);
+
+    // Zona sucia acumulada durante la vuelta: se pinta un solo fotograma
+    // DESPUES de vaciar la cola de eventos, no uno por evento (pintar a
+    // mitad de la cola era lo que hacia perder puntos del lapiz).
+    let mut hay_que_pintar = false;
+    let mut sucio: Option<(f32, f32, f32, f32)> = None;
+    let mut todo_sucio = false;
 
     'bucle: loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -276,6 +341,7 @@ pub fn abrir(escena: Escena, ajustes_iman: pixpin_motor2d::enganche::Ajustes) ->
                         // `RatonMovido`: no hace falta calcularlo aqui, y
                         // `cursor_en` es privado de `gesto.rs` a proposito.
                         ventana.invalidar();
+                        todo_sucio = true;
                         continue;
                     }
                     // El hueco entre botones: de la caja, pero no un boton.
@@ -299,36 +365,74 @@ pub fn abrir(escena: Escena, ajustes_iman: pixpin_motor2d::enganche::Ajustes) ->
                 if let Some(h) = tecla_a_herramienta(c) {
                     gesto.herramienta = h;
                     ventana.invalidar();
+                    todo_sucio = true;
+                    continue;
+                }
+                if let Some(cambio) = tecla_a_pluma(c) {
+                    match cambio {
+                        CambioPluma::Grosor(g) => gesto.grosor_tinta = g,
+                        CambioPluma::AlternarVariabilidad => {
+                            use pixpin_motor2d::tinta::Variabilidad;
+                            gesto.variabilidad = match gesto.variabilidad {
+                                Variabilidad::Variable => Variabilidad::Constante,
+                                Variabilidad::Constante => Variabilidad::Variable,
+                            };
+                        }
+                    }
+                    tracing::info!(grosor = gesto.grosor_tinta, variabilidad = ?gesto.variabilidad, "pluma del editor");
                     continue;
                 }
             }
             // 1. Traducir y, si le toca al motor, pasarselo.
-            if let Some(g) = a_evento(&ev, &camara) {
+            if let Some(g) = a_evento(
+                &ev,
+                &camara,
+                Punto {
+                    x: area.x,
+                    y: area.y,
+                },
+            ) {
                 let g = con_modificadores(g);
                 let en_reposo_antes = gesto.en_reposo();
                 let r = gesto.evento(g, &mut escena, 1.0 / camara.zoom);
                 ventana.poner_cursor(forma_de(r.cursor));
                 // `VentanaOverlay::invalidar` no toma una region: invalida
-                // la ventana entera. `Region::Caja` pide menos que eso, pero
-                // repintar de mas aqui es correcto, solo mas caro; no hay
-                // API de region parcial que inventar sin salirse del alcance
-                // de esta tarea (esta en pixpin-shell, no en pixpin-render).
+                // la ventana entera para que Windows mande `WM_PAINT`, pero
+                // la zona que de verdad hay que pintar la lleva `sucio`
+                // (D125): es lo que reduce a `Superficie::
+                // presentar_sincronizado` cuanto tiene que recomponer DWM.
                 match r.region {
                     Region::Nada => {}
-                    Region::Caja(..) | Region::Todo => ventana.invalidar(),
+                    Region::Caja(x0, y0, x1, y1) => {
+                        let a = camara.a_pantalla(Punto2::nuevo(x0, y0));
+                        let b = camara.a_pantalla(Punto2::nuevo(x1, y1));
+                        let caja = (a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
+                        sucio = Some(match sucio {
+                            None => caja,
+                            Some(s) => (
+                                s.0.min(caja.0),
+                                s.1.min(caja.1),
+                                s.2.max(caja.2),
+                                s.3.max(caja.3),
+                            ),
+                        });
+                        ventana.invalidar();
+                    }
+                    Region::Todo => {
+                        todo_sucio = true;
+                        ventana.invalidar();
+                    }
                 }
-                // La capa estatica solo vive durante un gesto de mover,
-                // escalar o girar algo seleccionado: en `gesto.rs`, entrar
-                // en `Dibujando` o `Marquesina` limpia la seleccion antes,
-                // asi que "seleccion no vacia y no en reposo" identifica
-                // exactamente esos tres estados sin que este fichero tenga
-                // que conocer el `Estado` privado del motor.
-                let activo_ahora = !gesto.en_reposo() && !gesto.seleccion.esta_vacia();
+                // La capa estatica vive mientras algo cambia en cada
+                // fotograma: mover, escalar o girar la seleccion (como
+                // antes) y, desde E1, dibujar a mano (D120). Lo excluido se
+                // repinta encima; lo demas se copia de la capa.
+                let excluidos = excluidos_de(&gesto);
+                let activo_ahora = !gesto.en_reposo() && !excluidos.is_empty();
                 if activo_ahora && en_reposo_antes {
                     rejilla.sincronizar(&escena);
                     let vista = camara.ventana(ancho_px, alto_px);
                     let candidatos = rejilla.candidatos(vista);
-                    let excluidos = gesto.seleccion.ids().to_vec();
                     let estampa = Estampa {
                         camara: (camara.x, camara.y, camara.zoom),
                         tamano: (ancho_px as u32, alto_px as u32),
@@ -391,34 +495,61 @@ pub fn abrir(escena: Escena, ajustes_iman: pixpin_motor2d::enganche::Ajustes) ->
                         gesto.calibrar(&mut escena, largo_px, valor, &unidad);
                     }
                     ventana.invalidar();
+                    todo_sucio = true;
                 }
             }
-            // 2. Pintar solo cuando lo pide la ventana.
+            // 2. Pintar solo cuando lo pide la ventana: marca que hace falta
+            // un fotograma, no pinta aqui mismo. Pintar a mitad de la cola
+            // era lo que hacia perder puntos de un trazo rapido.
             if matches!(ev, EventoOverlay::Pintar) {
-                rejilla.sincronizar(&escena);
-                pintar(
-                    &mut motor,
-                    &superficie,
-                    &escena,
-                    &camara,
-                    &gesto,
-                    &mut cache,
-                    &rejilla,
-                    &capa,
-                    &caja,
-                    monitor.escala_por_cien,
-                    ancho_px,
-                    alto_px,
-                    |_| {},
-                );
+                hay_que_pintar = true;
             }
             if matches!(ev, EventoOverlay::Cerrar) {
                 break 'bucle;
             }
         }
-        // Late corto: el raton responde al instante y en reposo el bucle no
-        // quema CPU (el overlay ya no entrega eventos si no pasa nada).
-        std::thread::sleep(std::time::Duration::from_millis(5));
+        // Un solo fotograma por vuelta, despues de haber pasado TODOS los
+        // puntos al gesto: pintar a mitad de la cola era lo que hacia perder
+        // puntos. Presentar con vsync bloquea hasta el refresco; mientras,
+        // Windows guarda los movimientos y la Tarea 7 los recupera.
+        if hay_que_pintar {
+            rejilla.sincronizar(&escena);
+            let zona = if todo_sucio || !capa.lista() {
+                None
+            } else {
+                sucio.map(|(x0, y0, x1, y1)| {
+                    (
+                        x0.floor() as i32 - 2,
+                        y0.floor() as i32 - 2,
+                        x1.ceil() as i32 + 2,
+                        y1.ceil() as i32 + 2,
+                    )
+                })
+            };
+            pintar(
+                &mut motor,
+                &superficie,
+                &escena,
+                &camara,
+                &gesto,
+                &mut cache,
+                &rejilla,
+                &capa,
+                &caja,
+                monitor.escala_por_cien,
+                ancho_px,
+                alto_px,
+                zona,
+                |_| {},
+            );
+            hay_que_pintar = false;
+            sucio = None;
+            todo_sucio = false;
+        }
+        // Dormir hasta que llegue algo. Sin `sleep` fijo: con el `sleep` de
+        // 5 ms (15,6 ms reales sin `timeBeginPeriod`) el bucle perdia la
+        // mitad de los puntos de un trazo rapido, y en reposo no gana nada.
+        pixpin_shell::overlay::esperar_eventos(None);
     }
 
     ventana.ocultar();
@@ -497,6 +628,7 @@ fn pintar(
     escala_por_cien: u32,
     ancho_px: f32,
     alto_px: f32,
+    zona: Option<(i32, i32, i32, i32)>,
     encima: impl FnOnce(&pixpin_render::Pintor<'_>),
 ) {
     let Ok(destino) = superficie.empezar(motor) else {
@@ -513,10 +645,11 @@ fn pintar(
     // pintar encima lo excluido (lo seleccionado, que es lo que se arrastra)
     // y el marco. Si no vale, se pinta todo como siempre, y `volcar` no
     // habra tocado `destino`.
+    let ahora_excluidos = excluidos_de(gesto);
     let ahora = Estampa {
         camara: (camara.x, camara.y, camara.zoom),
         tamano: (ancho_px as u32, alto_px as u32),
-        excluidos: gesto.seleccion.ids().to_vec(),
+        excluidos: ahora_excluidos.clone(),
     };
     let capa_vale = capa.volcar(motor, &destino, &ahora);
 
@@ -531,9 +664,9 @@ fn pintar(
         p.poner_vista((0.0, 0.0), camara.zoom, (origen.x, origen.y));
 
         for id in candidatos {
-            // Con la capa valida, lo que no esta seleccionado ya esta
-            // copiado en `destino`: repintarlo aqui seria pagar dos veces.
-            if capa_vale && !gesto.seleccion.contiene(id) {
+            // Con la capa valida, lo que no esta excluido ya esta copiado
+            // en `destino`: repintarlo aqui seria pagar dos veces.
+            if capa_vale && !ahora_excluidos.contains(&id) {
                 continue;
             }
             let Some(e) = escena.buscar(id) else {
@@ -589,7 +722,7 @@ fn pintar(
         );
         encima(p);
     });
-    let _ = superficie.presentar();
+    let _ = superficie.presentar_sincronizado(zona);
 }
 
 /// Lo que el usuario teclea al calibrar, convertido a numero.
@@ -683,6 +816,7 @@ fn pedir_medida(
                         escala_por_cien,
                         ancho_px,
                         alto_px,
+                        None,
                         |p| dibujar_cajetin(p, ancho_px, alto_px, largo_px, &texto, unidad),
                     );
                 }
@@ -1094,10 +1228,80 @@ mod pruebas {
         };
         let ev = EventoOverlay::BotonPulsado(Punto { x: 20, y: 10 });
 
-        let Some(EventoGesto::Pulsar { p, .. }) = a_evento(&ev, &camara) else {
+        let Some(EventoGesto::Pulsar { p, .. }) = a_evento(&ev, &camara, Punto { x: 0, y: 0 })
+        else {
             panic!("un boton pulsado es un Pulsar");
         };
         assert_eq!(p, camara.a_mundo(Punto2::nuevo(20.0, 10.0)));
+    }
+
+    #[test]
+    fn el_origen_de_la_ventana_se_resta_antes_de_pasar_al_mundo() {
+        // Con la barra de tareas arriba o a la izquierda, el area de trabajo no
+        // empieza en (0,0) y la tinta salia desplazada del cursor.
+        let camara = Camara::nueva();
+        let ev = EventoOverlay::BotonPulsado(Punto { x: 110, y: 60 });
+        let Some(EventoGesto::Pulsar { p, presion, .. }) =
+            a_evento(&ev, &camara, Punto { x: 100, y: 50 })
+        else {
+            panic!("tendria que ser Pulsar")
+        };
+        assert_eq!((p.x, p.y), (10.0, 10.0));
+        assert_eq!(presion, None);
+    }
+
+    #[test]
+    fn una_muestra_del_lapiz_llega_al_gesto_con_su_presion_y_su_subpixel() {
+        let camara = Camara::nueva();
+        let m = pixpin_shell::puntero::Muestra::nueva(12.5, 7.25, Some(0.75));
+        let Some(EventoGesto::Mover { p, presion, .. }) =
+            a_evento(&EventoOverlay::Muestra(m), &camara, Punto { x: 0, y: 0 })
+        else {
+            panic!("tendria que ser Mover")
+        };
+        assert_eq!((p.x, p.y), (12.5, 7.25));
+        assert_eq!(presion, Some(0.75));
+    }
+
+    #[test]
+    fn las_teclas_uno_dos_tres_eligen_grosor_y_v_alterna_la_pluma() {
+        assert_eq!(
+            tecla_a_pluma('1'),
+            Some(CambioPluma::Grosor(pixpin_motor2d::tinta::GROSOR_FINO))
+        );
+        assert_eq!(
+            tecla_a_pluma('2'),
+            Some(CambioPluma::Grosor(pixpin_motor2d::tinta::GROSOR_MEDIO))
+        );
+        assert_eq!(
+            tecla_a_pluma('3'),
+            Some(CambioPluma::Grosor(pixpin_motor2d::tinta::GROSOR_GRUESO))
+        );
+        assert_eq!(tecla_a_pluma('v'), Some(CambioPluma::AlternarVariabilidad));
+        assert_eq!(tecla_a_pluma('L'), None, "L sigue siendo el lapiz");
+        // Ninguna de las nuevas pisa una herramienta.
+        for c in ['1', '2', '3', 'V'] {
+            assert_eq!(tecla_a_herramienta(c), None, "{c}");
+        }
+    }
+
+    #[test]
+    fn dibujando_se_excluye_el_trazo_y_moviendo_la_seleccion() {
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Lapiz;
+        assert!(excluidos_de(&g).is_empty());
+        g.evento(
+            EventoGesto::Pulsar {
+                p: Punto2::nuevo(1.0, 1.0),
+                shift: false,
+                alt: false,
+                presion: None,
+            },
+            &mut escena,
+            1.0,
+        );
+        assert_eq!(excluidos_de(&g), vec![g.trazo_en_curso().unwrap()]);
     }
 
     #[test]
@@ -1111,15 +1315,15 @@ mod pruebas {
         };
 
         assert_eq!(
-            a_evento(&ctrl(b'Z' as u32), &camara),
+            a_evento(&ctrl(b'Z' as u32), &camara, Punto { x: 0, y: 0 }),
             Some(EventoGesto::Deshacer)
         );
         assert_eq!(
-            a_evento(&ctrl(b'Y' as u32), &camara),
+            a_evento(&ctrl(b'Y' as u32), &camara, Punto { x: 0, y: 0 }),
             Some(EventoGesto::Rehacer)
         );
         assert_eq!(
-            a_evento(&ctrl(b'A' as u32), &camara),
+            a_evento(&ctrl(b'A' as u32), &camara, Punto { x: 0, y: 0 }),
             Some(EventoGesto::SeleccionarTodo)
         );
     }
@@ -1134,14 +1338,23 @@ mod pruebas {
             ctrl: false,
             alt: false,
         };
-        assert_ne!(a_evento(&sola, &camara), Some(EventoGesto::Deshacer));
+        assert_ne!(
+            a_evento(&sola, &camara, Punto { x: 0, y: 0 }),
+            Some(EventoGesto::Deshacer)
+        );
     }
 
     #[test]
     fn lo_que_no_le_toca_al_motor_no_llega_al_motor() {
         let camara = Camara::nueva();
-        assert_eq!(a_evento(&EventoOverlay::Pintar, &camara), None);
-        assert_eq!(a_evento(&EventoOverlay::CambioDpi, &camara), None);
+        assert_eq!(
+            a_evento(&EventoOverlay::Pintar, &camara, Punto { x: 0, y: 0 }),
+            None
+        );
+        assert_eq!(
+            a_evento(&EventoOverlay::CambioDpi, &camara, Punto { x: 0, y: 0 }),
+            None
+        );
     }
 
     #[test]
@@ -1154,6 +1367,7 @@ mod pruebas {
         let _ = abrir(
             Escena::nueva(),
             pixpin_motor2d::enganche::Ajustes::default(),
+            pixpin_nivel::Nivel::Completo,
         );
     }
 
