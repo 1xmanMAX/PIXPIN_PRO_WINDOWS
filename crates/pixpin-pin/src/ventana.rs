@@ -60,7 +60,8 @@ pub struct Colocacion {
     pub brillo: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// Sin Eq: MuestraPuntero lleva f32 (subpixel), que no lo implementa.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CambioPin {
     /// Lo que el gestor persiste cuando el pin se mueve o cambia de tamano.
     Movido(Colocacion),
@@ -105,6 +106,13 @@ pub enum CambioPin {
     PunteroPulsado(Punto),
     PunteroMovido(Punto),
     PunteroSoltado(Punto),
+    /// Un punto de la entrada fina mientras se anota (E1): uno que Windows
+    /// fusiono o uno del lapiz. En coordenadas del contenido, con subpixel.
+    MuestraPuntero {
+        x: f32,
+        y: f32,
+        presion: Option<f32>,
+    },
     /// Rueda del raton. Positivo hacia arriba (D55).
     /// La rueda, con el punto de pantalla donde estaba el cursor: el zoom
     /// se ancla ahi, no en el centro del pin.
@@ -548,6 +556,16 @@ thread_local! {
     /// La mitad alta de un par subrogado UTF-16 a la espera de su mitad
     /// baja: WM_CHAR entrega un emoji en dos mensajes.
     static MITAD_ALTA: Cell<Option<u16>> = const { Cell::new(None) };
+    /// Historial del raton del pin que se esta anotando. Uno basta: solo se
+    /// anota un pin a la vez.
+    static HISTORIAL: std::cell::RefCell<pixpin_shell::puntero::HistorialRaton> =
+        const { std::cell::RefCell::new(pixpin_shell::puntero::HistorialRaton::nuevo()) };
+    /// Lo que el ultimo WM_POINTERUPDATE de este pin dejo saber sobre el
+    /// lapiz (Tarea 11): igual que ENTRADA_FINA en el overlay, para que
+    /// `descartar_movimiento` distinga el WM_MOUSEMOVE que el lapiz ya
+    /// cubrio de uno que es lo unico que hay.
+    static ESTADO_LAPIZ: Cell<pixpin_shell::puntero::EstadoLapiz> =
+        const { Cell::new(pixpin_shell::puntero::EstadoLapiz::SinDatos) };
 }
 
 impl Pin {
@@ -2201,6 +2219,21 @@ extern "system" fn procedimiento_pin(
         }
     }
 
+    /// Como `punto_contenido`, desde coordenadas del escritorio virtual y
+    /// sin redondear: las muestras traen subpixel.
+    fn muestra_a_contenido(i: &PinInterno, m: pixpin_shell::puntero::Muestra) -> (f32, f32) {
+        let mut r = RECT::default();
+        // SAFETY: GetWindowRect sobre la ventana del propio pin.
+        unsafe {
+            let _ = GetWindowRect(i.hwnd, &mut r);
+        }
+        let (ox, oy) = origen_contenido(i.hwnd, i.estado.rect());
+        (
+            m.x() - r.left as f32 - ox as f32,
+            m.y() - r.top as f32 - oy as f32,
+        )
+    }
+
     match mensaje {
         WM_LBUTTONDOWN => {
             // `Ctrl` + arrastrar saca el contenido del pin hacia OTRA
@@ -2411,6 +2444,46 @@ extern "system" fn procedimiento_pin(
                     return LRESULT(0);
                 }
                 if i.anotando {
+                    const MK_LBUTTON: usize = 0x0001;
+                    let boton = wparam.0 & MK_LBUTTON != 0;
+                    // Mismas reglas que el overlay (Tareas 7 y 11):
+                    // `descartar_movimiento` (pura, con su propia tabla de
+                    // pruebas) dice si este WM_MOUSEMOVE sintetizado sobra
+                    // porque el lapiz (WM_POINTERUPDATE) ya lo cubrio, o es
+                    // su borrador y no debe reaparecer como tinta (D107).
+                    let origen = pixpin_shell::puntero::origen_actual();
+                    let estado = ESTADO_LAPIZ.with(|e| e.get());
+                    if pixpin_shell::puntero::descartar_movimiento(boton, origen, estado) {
+                        return LRESULT(0);
+                    }
+                    // SAFETY: tiempo del mensaje que se esta atendiendo.
+                    let tiempo = unsafe { GetMessageTime() } as u32;
+                    if boton {
+                        let c = punto_contenido(i, lparam);
+                        let mut r = RECT::default();
+                        // SAFETY: GetWindowRect sobre la ventana propia.
+                        let (x, y) = unsafe {
+                            let _ = GetWindowRect(hwnd, &mut r);
+                            let (ox, oy) = origen_contenido(i.hwnd, i.estado.rect());
+                            (r.left + ox + c.x, r.top + oy + c.y)
+                        };
+                        for m in HISTORIAL.with(|h| h.borrow_mut().recuperar(x, y, tiempo)) {
+                            let (cx, cy) = muestra_a_contenido(i, m);
+                            (i.al_cambiar)(CambioPin::MuestraPuntero {
+                                x: cx,
+                                y: cy,
+                                presion: None,
+                            });
+                        }
+                    } else {
+                        // Se acabo el trazo (o nunca hubo boton): el
+                        // siguiente no debe heredar el estado del lapiz de
+                        // este, o un fallo puntual del historial del
+                        // siguiente trazo se confundiria con un ConMuestras
+                        // viejo y le tiraria el primer movimiento.
+                        HISTORIAL.with(|h| h.borrow_mut().olvidar());
+                        ESTADO_LAPIZ.with(|e| e.set(pixpin_shell::puntero::EstadoLapiz::SinDatos));
+                    }
                     (i.al_cambiar)(CambioPin::PunteroMovido(punto_contenido(i, lparam)));
                 } else {
                     let e = i.estado.procesar(EventoPin::RatonMovido(punto(lparam)));
@@ -2436,6 +2509,12 @@ extern "system" fn procedimiento_pin(
             }
             if let Some(i) = interno_de(hwnd) {
                 if i.anotando {
+                    // Se olvida aqui, no solo en el siguiente WM_MOUSEMOVE:
+                    // un simple clic (pulsar y soltar sin mover) no pasa por
+                    // ahi, y el estado del lapiz de este trazo se colaria
+                    // en el siguiente.
+                    HISTORIAL.with(|h| h.borrow_mut().olvidar());
+                    ESTADO_LAPIZ.with(|e| e.set(pixpin_shell::puntero::EstadoLapiz::SinDatos));
                     (i.al_cambiar)(CambioPin::PunteroSoltado(punto_contenido(i, lparam)));
                 } else {
                     let e = i.estado.procesar(EventoPin::BotonSoltado);
@@ -2443,6 +2522,45 @@ extern "system" fn procedimiento_pin(
                 }
             }
             LRESULT(0)
+        }
+        // Las muestras buenas del lapiz (E1): tinta de verdad con presion, o
+        // el borrador (D107), del mismo mensaje que WM_MOUSEMOVE sintetiza
+        // despues. Solo mientras se anota: fuera de ese modo el pin no
+        // dibuja nada y no hay estado de lapiz que mantener.
+        WM_POINTERUPDATE if interno_de(hwnd).is_some_and(|i| i.anotando) => {
+            let muestras = pixpin_shell::puntero::muestras_de_lapiz(wparam);
+            // Se recuerda el estado para que el WM_MOUSEMOVE que Windows
+            // sintetiza a partir de este mismo mensaje pueda distinguir
+            // "el lapiz ya respondio" (tinta o borrador) de "sin datos"
+            // (ver descartar_movimiento).
+            let estado = match &muestras {
+                pixpin_shell::puntero::MuestrasLapiz::SinDatos => {
+                    pixpin_shell::puntero::EstadoLapiz::SinDatos
+                }
+                pixpin_shell::puntero::MuestrasLapiz::Goma => {
+                    pixpin_shell::puntero::EstadoLapiz::Goma
+                }
+                pixpin_shell::puntero::MuestrasLapiz::Muestras(_) => {
+                    pixpin_shell::puntero::EstadoLapiz::ConMuestras
+                }
+            };
+            ESTADO_LAPIZ.with(|e| e.set(estado));
+            if let (Some(i), pixpin_shell::puntero::MuestrasLapiz::Muestras(muestras)) =
+                (interno_de(hwnd), muestras)
+            {
+                for m in muestras {
+                    let (x, y) = muestra_a_contenido(i, m);
+                    (i.al_cambiar)(CambioPin::MuestraPuntero {
+                        x,
+                        y,
+                        presion: m.presion(),
+                    });
+                }
+            }
+            // Se deja pasar a DefWindowProc: asi Windows sigue sintetizando
+            // los clics del lapiz, que es como se pulsa y se suelta.
+            // SAFETY: reenvio estandar del mensaje recibido.
+            unsafe { DefWindowProcW(hwnd, mensaje, wparam, lparam) }
         }
         WM_LBUTTONDBLCLK => {
             if let Some(i) = interno_de(hwnd) {

@@ -10,6 +10,9 @@ pixpin-codec = { version = "0.1.0", path = "../pixpin-codec" }
 pixpin-geom = { version = "0.1.0", path = "../pixpin-geom" }
 pixpin-motor2d = { version = "0.1.0", path = "../pixpin-motor2d" }
 pixpin-render = { version = "0.1.0", path = "../pixpin-render" }
+# La entrada fina del lapiz (Muestra, HistorialRaton) vive en pixpin-shell,
+# capa L1: el pin (L2) la consume igual que el overlay (Tarea 11).
+pixpin-shell = { version = "0.1.0", path = "../pixpin-shell" }
 thiserror = "2.0.20"
 windows-core = "0.62.2"
 tracing = "0.1.41"

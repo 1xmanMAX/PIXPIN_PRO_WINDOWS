@@ -45,6 +45,12 @@ pub enum TeclaAnotador {
 pub enum EventoAnotador {
     Pulsar(Punto2),
     Mover(Punto2),
+    /// Como `Mover`, pero con un punto de la entrada fina: uno que Windows
+    /// fusiono o uno del lapiz con presion (E1).
+    Muestra {
+        p: Punto2,
+        presion: Option<f32>,
+    },
     Soltar(Punto2),
     /// Positivo hacia arriba, como manda Windows.
     Rueda(i32),
@@ -149,6 +155,10 @@ fn restringir(inicio: Punto2, fin: Punto2, herramienta: Herramienta) -> Punto2 {
 struct Gesto {
     inicio: Punto2,
     puntos: Vec<Punto2>,
+    /// Una presion por punto, si algo trajo alguna (E1): lo que el lapiz
+    /// entrega en `EventoAnotador::Muestra`. Vacio con el raton, que no
+    /// mide presion.
+    presiones: Vec<f32>,
     /// Si ya se paso del umbral: un clic y un arrastre no son lo mismo.
     arrastrando: bool,
     /// El ultimo punto entregado, para dar el desplazamiento de este paso y
@@ -156,6 +166,29 @@ struct Gesto {
     ultimo: Punto2,
     /// Con Alt ya se hizo la copia: solo una por arrastre.
     duplicado: bool,
+}
+
+/// Mismo contrato que `gesto::anadir_a_lapiz` del motor: duplicados exactos
+/// fuera, relleno hacia atras con la primera presion real, y listas siempre
+/// de la misma longitud.
+fn anadir_punto(g: &mut Gesto, p: Punto2, presion: Option<f32>) {
+    if g.puntos.last() == Some(&p) {
+        return;
+    }
+    g.puntos.push(p);
+    match presion {
+        Some(pr) => {
+            if g.presiones.is_empty() {
+                g.presiones.resize(g.puntos.len() - 1, pr);
+            }
+            g.presiones.push(pr);
+        }
+        None => {
+            if let Some(&u) = g.presiones.last() {
+                g.presiones.push(u);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -225,7 +258,18 @@ impl Anotador {
     }
 
     pub fn procesar(&mut self, evento: EventoAnotador) -> EfectoAnotador {
+        // `Muestra` viaja igual que `Mover` (mismo camino de gesto), pero
+        // trae ademas la presion que Windows dio para ESTE punto.
+        let (evento, presion) = match evento {
+            EventoAnotador::Muestra { p, presion } => (EventoAnotador::Mover(p), presion),
+            otro => (otro, None),
+        };
         match evento {
+            // Ya se convirtio en `Mover` arriba: esta rama nunca se alcanza,
+            // pero el match debe ser exhaustivo sobre el tipo del enum.
+            EventoAnotador::Muestra { .. } => {
+                unreachable!("EventoAnotador::Muestra se convierte en Mover antes de este match")
+            }
             EventoAnotador::CambiarHerramienta(h) => {
                 // Cambiar de herramienta a media raya ABANDONA el trazo: si
                 // se terminara, saldria medio lapiz y medio rectangulo. El
@@ -337,6 +381,7 @@ impl Anotador {
                         self.gesto = Some(Gesto {
                             inicio: p,
                             puntos: vec![p],
+                            presiones: Vec::new(),
                             arrastrando: false,
                             ultimo: p,
                             duplicado: false,
@@ -348,6 +393,7 @@ impl Anotador {
                 self.gesto = Some(Gesto {
                     inicio: p,
                     puntos: vec![p],
+                    presiones: Vec::new(),
                     arrastrando: false,
                     ultimo: p,
                     duplicado: false,
@@ -383,7 +429,7 @@ impl Anotador {
                     g.ultimo = p;
                     return EfectoAnotador::MoverSeleccion { dx, dy };
                 }
-                g.puntos.push(p);
+                anadir_punto(g, p, presion);
                 match self.construir(false) {
                     Some(e) => EfectoAnotador::EnCurso(Box::new(e)),
                     None => EfectoAnotador::Nada,
@@ -410,7 +456,7 @@ impl Anotador {
                         dy: p.y - inicio.y,
                     };
                 }
-                g.puntos.push(p);
+                anadir_punto(g, p, None);
                 let arrastrado = g.arrastrando;
                 let elemento = self.construir(true);
                 self.gesto = None;
@@ -510,8 +556,19 @@ impl Anotador {
         let figura = match self.herramienta {
             Herramienta::Lapiz => Figura::Lapiz {
                 puntos: g.puntos.clone(),
-                presiones: Vec::new(),
-                opciones: Some(pixpin_motor2d::tinta::OpcionesTinta::default()),
+                presiones: if g.presiones.len() == g.puntos.len() {
+                    g.presiones.clone()
+                } else {
+                    Vec::new()
+                },
+                opciones: Some(pixpin_motor2d::tinta::OpcionesTinta {
+                    variabilidad: pixpin_motor2d::tinta::Variabilidad::Variable,
+                    streamline: if g.presiones.is_empty() {
+                        pixpin_motor2d::tinta::STREAMLINE_RATON
+                    } else {
+                        pixpin_motor2d::tinta::STREAMLINE_LAPIZ
+                    },
+                }),
             },
             Herramienta::Resaltador => Figura::Resaltador {
                 puntos: g.puntos.clone(),
@@ -562,7 +619,13 @@ impl Anotador {
             angulo: 0.0,
             trazo: color,
             relleno,
-            grosor: self.grosor,
+            // La capa y el pin miden el grosor en pixeles (la rueda lo
+            // cambia asi); la tinta de Excalidraw lo quiere como strokeWidth.
+            grosor: if self.herramienta == Herramienta::Lapiz {
+                self.grosor / pixpin_motor2d::tinta::FACTOR_VARIABLE
+            } else {
+                self.grosor
+            },
             estilo: EstiloTrazo::Solido,
             // El resaltador nunca tiembla: sobre texto se leeria peor (D45).
             rugosidad: if self.herramienta == Herramienta::Resaltador {
@@ -742,11 +805,17 @@ mod pruebas {
 
     #[test]
     fn arrastrar_con_el_lapiz_produce_un_trazo_terminado() {
+        // El grosor exacto (dividido por FACTOR_VARIABLE) lo comprueba
+        // `con_raton_el_trazo_conserva_el_grosor_visual_de_antes`; aqui solo
+        // importa que salga la figura correcta.
         let mut a = Anotador::nuevo(1);
         match arrastrar(&mut a, p(0.0, 0.0), p(100.0, 50.0)) {
             EfectoAnotador::Terminado(e) => {
                 assert!(matches!(e.figura, Figura::Lapiz { .. }));
-                assert_eq!(e.grosor, GROSOR_POR_DEFECTO);
+                assert!(
+                    (e.grosor - GROSOR_POR_DEFECTO / pixpin_motor2d::tinta::FACTOR_VARIABLE).abs()
+                        < 1e-6
+                );
             }
             otro => panic!("se esperaba un trazo terminado, llego {otro:?}"),
         }
@@ -1052,6 +1121,55 @@ mod pruebas {
                 "{h:?} no puede crear elementos, llego {e:?}"
             );
         }
+    }
+
+    #[test]
+    fn las_muestras_con_presion_llegan_al_trazo_terminado() {
+        let mut a = Anotador::nuevo(1);
+        a.procesar(EventoAnotador::CambiarHerramienta(Herramienta::Lapiz));
+        a.procesar(EventoAnotador::Pulsar(p(0.0, 0.0)));
+        a.procesar(EventoAnotador::Muestra {
+            p: p(10.0, 0.0),
+            presion: Some(0.4),
+        });
+        a.procesar(EventoAnotador::Muestra {
+            p: p(20.0, 0.0),
+            presion: Some(0.8),
+        });
+        let EfectoAnotador::Terminado(e) = a.procesar(EventoAnotador::Soltar(p(20.0, 0.0))) else {
+            panic!("tendria que terminar")
+        };
+        let Figura::Lapiz {
+            puntos,
+            presiones,
+            opciones,
+        } = &e.figura
+        else {
+            panic!()
+        };
+        assert_eq!(puntos.len(), presiones.len());
+        let o = opciones.expect("un trazo nuevo nunca es legado");
+        assert_eq!(o.streamline, pixpin_motor2d::tinta::STREAMLINE_LAPIZ);
+    }
+
+    #[test]
+    fn con_raton_el_trazo_conserva_el_grosor_visual_de_antes() {
+        // La rueda de la capa sigue moviendo `grosor` en pixeles; el elemento
+        // guarda un strokeWidth, asi que se divide por el factor.
+        let mut a = Anotador::nuevo(1);
+        a.procesar(EventoAnotador::CambiarHerramienta(Herramienta::Lapiz));
+        a.procesar(EventoAnotador::Pulsar(p(0.0, 0.0)));
+        a.procesar(EventoAnotador::Mover(p(30.0, 0.0)));
+        let EfectoAnotador::Terminado(e) = a.procesar(EventoAnotador::Soltar(p(30.0, 0.0))) else {
+            panic!()
+        };
+        assert!(
+            (e.grosor - GROSOR_POR_DEFECTO / pixpin_motor2d::tinta::FACTOR_VARIABLE).abs() < 1e-6
+        );
+        let Figura::Lapiz { presiones, .. } = &e.figura else {
+            panic!()
+        };
+        assert!(presiones.is_empty());
     }
 
     #[test]

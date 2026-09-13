@@ -467,6 +467,7 @@ dependencies = [
  "pixpin-geom",
  "pixpin-motor2d",
  "pixpin-render",
+ "pixpin-shell",
  "thiserror",
  "tracing",
  "windows",

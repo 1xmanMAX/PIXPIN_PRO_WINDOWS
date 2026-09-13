@@ -828,6 +828,13 @@ impl Pines {
             CambioPin::PunteroPulsado(p) => self.anotar(id, EventoAnotador::Pulsar(a_punto2(p))),
             CambioPin::PunteroMovido(p) => self.anotar(id, EventoAnotador::Mover(a_punto2(p))),
             CambioPin::PunteroSoltado(p) => self.anotar(id, EventoAnotador::Soltar(a_punto2(p))),
+            CambioPin::MuestraPuntero { x, y, presion } => self.anotar(
+                id,
+                EventoAnotador::Muestra {
+                    p: pixpin_motor2d::Punto2::nuevo(x, y),
+                    presion,
+                },
+            ),
             CambioPin::RuedaGirada { delta, cursor } => {
                 // Anotando, la rueda cambia el grosor; si no, hace zoom del
                 // pin, que es lo que pidio el usuario (D55).
@@ -1011,7 +1018,10 @@ impl Pines {
         let Some(a) = self.anotacion.as_mut().filter(|a| a.id == id) else {
             return Ok(());
         };
-        if let EventoAnotador::Mover(p) | EventoAnotador::Pulsar(p) = &evento {
+        if let EventoAnotador::Mover(p)
+        | EventoAnotador::Pulsar(p)
+        | EventoAnotador::Muestra { p, .. } = &evento
+        {
             a.ultimo_cursor = Punto {
                 x: p.x as i32,
                 y: p.y as i32,
@@ -1021,7 +1031,10 @@ impl Pines {
         // modificadores justo antes de cada gesto del puntero.
         if matches!(
             evento,
-            EventoAnotador::Pulsar(_) | EventoAnotador::Mover(_) | EventoAnotador::Soltar(_)
+            EventoAnotador::Pulsar(_)
+                | EventoAnotador::Mover(_)
+                | EventoAnotador::Soltar(_)
+                | EventoAnotador::Muestra { .. }
         ) {
             let (shift, alt) = pixpin_shell::modificadores();
             a.anotador.poner_modificadores(shift, alt);

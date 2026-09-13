@@ -81,6 +81,9 @@ impl CapaViva {
     ) -> Result<CapaViva> {
         let ventana =
             VentanaOverlay::nueva(monitor.area).context("no se pudo crear la capa viva")?;
+        // Todos los puntos del trazo (E1): los que Windows fusiona y los del
+        // lapiz, con presion.
+        ventana.pedir_entrada_fina();
         let fondo = match fondo {
             Some(instantanea) => Some(Fondo {
                 bitmap: motor
@@ -245,6 +248,21 @@ impl CapaViva {
         true
     }
 
+    /// Un punto de la entrada fina, en coordenadas del escritorio virtual.
+    pub fn muestra(&mut self, m: pixpin_shell::puntero::Muestra) {
+        let (x, y) = (m.x() - self.area.x as f32, m.y() - self.area.y as f32);
+        if self.caja.contiene(Punto {
+            x: x as i32,
+            y: y as i32,
+        }) {
+            return;
+        }
+        self.anotar(EventoAnotador::Muestra {
+            p: Punto2::nuevo(x, y),
+            presion: m.presion(),
+        });
+    }
+
     /// Una tecla. Devuelve `false` si la capa pide cerrarse.
     pub fn tecla(&mut self, tecla: TeclaAnotador) -> bool {
         let efecto = self.anotador.procesar(EventoAnotador::Tecla(tecla));
@@ -283,7 +301,10 @@ impl CapaViva {
         // modificadores justo antes de cada gesto del puntero.
         if matches!(
             evento,
-            EventoAnotador::Pulsar(_) | EventoAnotador::Mover(_) | EventoAnotador::Soltar(_)
+            EventoAnotador::Pulsar(_)
+                | EventoAnotador::Mover(_)
+                | EventoAnotador::Soltar(_)
+                | EventoAnotador::Muestra { .. }
         ) {
             let (shift, alt) = pixpin_shell::modificadores();
             self.anotador.poner_modificadores(shift, alt);
@@ -615,6 +636,14 @@ pub fn ejecutar_capa(
         let seguir = match evento {
             EventoOverlay::BotonPulsado(p) => capa.raton(EventoRaton::Pulsar(p)),
             EventoOverlay::RatonMovido(p) => capa.raton(EventoRaton::Mover(p)),
+            // Un punto de la entrada fina: llega ANTES del RatonMovido al
+            // que precede (Tarea 7). Se anota directamente, sin pasar por
+            // EventoRaton, porque ya trae presion y sus coordenadas son del
+            // escritorio virtual, no de la caja de herramientas de un clic.
+            EventoOverlay::Muestra(m) => {
+                capa.muestra(m);
+                true
+            }
             // Un fotograma nuevo de la sesion de la lupa: repintar con el.
             EventoOverlay::Despierta => {
                 capa.pintar();
