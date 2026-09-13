@@ -397,9 +397,8 @@ pub fn abrir(
     let mut cache = Cache::nueva();
     let mut cache_tinta = pixpin_render::CacheTinta::nueva();
     let retardo = pixpin_render::retardo_nitido(nivel);
-    // El ultimo zoom visto y desde cuando esta ahi, para `decidir_zoom`. La
-    // camara del editor aun no hace zoom (E4), pero el mecanismo queda
-    // puesto y probado.
+    // El ultimo zoom visto y desde cuando esta ahi, para `decidir_zoom`
+    // (D136: Ctrl+rueda ya cambia el zoom de la camara del usuario).
     let mut zoom_visto = efectiva.zoom;
     let mut zoom_desde: Option<std::time::Instant> = None;
     let mut rejilla = Rejilla::nueva();
@@ -467,6 +466,32 @@ pub fn abrir(
             } else {
                 navegacion::Modificadores::default()
             };
+            // Revision 1: el evento que cerraria el gesto a veces no llega
+            // (Alt+Tab suelta el espacio sin `TeclaSoltada`; Windows le
+            // quita la captura al raton a mitad de un arrastre sin mandar
+            // el boton-arriba). `Navegador` sigue puro -no llama a
+            // Windows-: aqui se sondea el estado en vivo, y solo para los
+            // dos eventos donde `Navegador::evento` lo necesita, no en cada
+            // muestra del lapiz.
+            let vivo = navegacion::EnVivo {
+                espacio: if matches!(ev, EventoOverlay::BotonPulsado(_)) {
+                    pixpin_shell::entrada::tecla_pulsada_ahora(navegacion::VK_ESPACIO)
+                } else {
+                    true
+                },
+                boton_arrastre: if navegador.arrastrando()
+                    && matches!(
+                        ev,
+                        EventoOverlay::RatonMovido(_) | EventoOverlay::Muestra(_)
+                    ) {
+                    navegador
+                        .vk_boton_en_arrastre()
+                        .map(pixpin_shell::entrada::tecla_pulsada_ahora)
+                        .unwrap_or(true)
+                } else {
+                    true
+                },
+            };
             let nav = navegador.evento(
                 &ev,
                 Punto {
@@ -476,6 +501,7 @@ pub fn abrir(
                 escala_por_cien,
                 mods,
                 gesto.en_reposo(),
+                vivo,
             );
             if let Some(accion) = nav.accion {
                 if navegacion::aplicar(&mut camara, accion) {
@@ -760,9 +786,9 @@ pub fn abrir(
         // Zoom quieto durante `retardo`: se rehace la tinta nitida a esa
         // escala y se suelta la capa (sus copias venian de la escala vieja).
         // La decision (y el tope de espera de mas abajo) sale de
-        // `decidir_zoom`, pura: aqui solo se aplican sus efectos. La camara
-        // del editor aun no hace zoom (E4); el mecanismo queda puesto y
-        // probado para cuando lo haga.
+        // `decidir_zoom`, pura: aqui solo se aplican sus efectos. Ctrl+rueda
+        // (D136) es lo que hace que `efectiva.zoom` cambie de una vuelta a
+        // la siguiente.
         let decision = decidir_zoom(
             efectiva.zoom,
             zoom_visto,

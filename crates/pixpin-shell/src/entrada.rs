@@ -69,6 +69,19 @@ pub fn escape_pulsado() -> bool {
     unsafe { (GetAsyncKeyState(VK_ESCAPE.0 as i32) as u16 & 0x8000) != 0 }
 }
 
+/// Si la tecla o el boton de raton con este codigo virtual esta pulsado
+/// AHORA MISMO, no en el ultimo evento que llego a la ventana.
+///
+/// Generaliza `modificadores_pulsados` y `boton_del_raton_pulsado` a
+/// cualquier codigo: hacen falta dos casos donde el evento que cerraria un
+/// gesto nunca llega (D136, editor avanzado): el espacio se suelta con un
+/// Alt+Tab sin mandar `WM_KEYUP` a esta ventana, o Windows le quita la
+/// captura al raton a mitad de un arrastre y el boton-arriba tampoco llega.
+pub fn tecla_pulsada_ahora(vk: u32) -> bool {
+    // SAFETY: consulta pura del estado del teclado o del raton.
+    unsafe { (GetAsyncKeyState(vk as i32) as u16 & 0x8000) != 0 }
+}
+
 /// Si algun boton principal del raton esta pulsado ahora mismo. El gancho
 /// de gestos se traga la pulsacion, pero el estado asincrono del sistema si
 /// la refleja, asi que sirve de segunda opinion cuando la bandera del

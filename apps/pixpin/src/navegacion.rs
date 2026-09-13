@@ -87,6 +87,42 @@ pub struct Modificadores {
     pub shift: bool,
 }
 
+/// VK_LBUTTON: boton principal del raton. Windows ya compensa el intercambio
+/// de botones para zurdos -la documentacion de `GetAsyncKeyState` dice que
+/// esta constante sigue significando "el principal"-, asi que no hace falta
+/// distinguir zurdo de diestro aqui.
+const VK_BOTON_PRINCIPAL: u32 = 0x01;
+/// VK_MBUTTON: boton central (la rueda pulsada) del raton.
+const VK_BOTON_CENTRAL: u32 = 0x04;
+
+/// Lo que hay que sondear del sistema AHORA MISMO para dos casos donde el
+/// evento de Windows que cerraria el gesto nunca llega (revision 1 de esta
+/// tarea):
+///
+/// 1. Se suelta el espacio con un Alt+Tab, o dentro del bucle propio de
+///    `pedir_medida`: `TeclaSoltada(VK_ESPACIO)` no se manda a esta ventana,
+///    y sin comprobarlo el arrastre se activaria con una tecla que ya no
+///    esta pulsada -el editor se quedaria pegado en "mover" para siempre-.
+/// 2. Windows le quita la captura al raton a mitad de un arrastre: el
+///    `BotonSoltado`/`BotonCentralSoltado` tampoco llega, y sin esto cada
+///    `RatonMovido` seguiria moviendo el lienzo con el boton ya levantado.
+///
+/// `Navegador` sigue siendo puro -no llama a Windows-: quien lo rodea
+/// rellena estos dos campos con `pixpin_shell::entrada::tecla_pulsada_ahora`,
+/// y solo para los eventos donde hace falta (un `BotonPulsado` con el
+/// espacio puesto, o un `RatonMovido`/`Muestra` mientras `arrastrando()`),
+/// no en cada muestra del lapiz.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EnVivo {
+    /// Si la barra espaciadora sigue pulsada AHORA. Solo importa al llegar
+    /// `BotonPulsado` con `self.espacio` ya puesto.
+    pub espacio: bool,
+    /// Si el boton que empezo el arrastre en curso sigue pulsado AHORA. Solo
+    /// importa mientras `arrastrando()` es `true`; `vk_boton_en_arrastre`
+    /// dice cual sondear.
+    pub boton_arrastre: bool,
+}
+
 /// Lo que hay que hacerle a la camara del usuario.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Accion {
@@ -153,8 +189,21 @@ impl Navegador {
         self.arrastre.is_some()
     }
 
+    /// El codigo virtual del boton que esta arrastrando el lienzo ahora
+    /// mismo, si hay alguno: `None` si no hay arrastre en curso. Quien llama
+    /// lo sondea con `pixpin_shell::entrada::tecla_pulsada_ahora` para saber
+    /// si sigue pulsado antes de mandar un `RatonMovido`/`Muestra` (fix 2).
+    pub fn vk_boton_en_arrastre(&self) -> Option<u32> {
+        self.arrastre.map(|a| match a.boton {
+            BotonArrastre::Principal => VK_BOTON_PRINCIPAL,
+            BotonArrastre::Central => VK_BOTON_CENTRAL,
+        })
+    }
+
     /// `en_reposo` es `Gesto::en_reposo`: con un trazo o un arrastre en curso
-    /// no se empieza a mover el lienzo (el clic es del gesto).
+    /// no se empieza a mover el lienzo (el clic es del gesto). `vivo` es el
+    /// sondeo en vivo que documenta `EnVivo`: solo se mira en los dos casos
+    /// donde hace falta.
     pub fn evento(
         &mut self,
         ev: &EventoOverlay,
@@ -162,6 +211,7 @@ impl Navegador {
         escala_por_cien: u32,
         m: Modificadores,
         en_reposo: bool,
+        vivo: EnVivo,
     ) -> Respuesta {
         let escala = escala_de(escala_por_cien);
         let consumido = Respuesta {
@@ -178,6 +228,15 @@ impl Navegador {
                 consumido
             }
             EventoOverlay::BotonPulsado(p) if self.espacio && en_reposo => {
+                if !vivo.espacio {
+                    // Fix 1 (revision 1): el espacio ya no esta pulsado de
+                    // verdad -Alt+Tab, o se solto dentro del bucle propio de
+                    // `pedir_medida`-, aunque nunca llegara su
+                    // `TeclaSoltada`. Sin este sondeo el clic habria
+                    // arrancado un arrastre con una tecla ya levantada.
+                    self.espacio = false;
+                    return Respuesta::default();
+                }
                 self.arrastre = Some(Arrastre {
                     boton: BotonArrastre::Principal,
                     anterior: p,
@@ -200,6 +259,16 @@ impl Navegador {
                 );
                 match &mut self.arrastre {
                     Some(a) => {
+                        if !vivo.boton_arrastre {
+                            // Fix 2 (revision 1): el boton que arrastraba ya
+                            // no esta pulsado -Windows le quito la captura al
+                            // raton a mitad de camino- y su evento de soltar
+                            // nunca va a llegar. No se consume: el
+                            // movimiento vuelve a ser del gesto, para que el
+                            // cursor lo refleje.
+                            self.arrastre = None;
+                            return Respuesta::default();
+                        }
                         let dx = (p.x - a.anterior.x) as f32 / escala;
                         let dy = (p.y - a.anterior.y) as f32 / escala;
                         a.anterior = p;
@@ -212,8 +281,14 @@ impl Navegador {
                 }
             }
             // Mientras se arrastra el lienzo, los puntos finos tampoco son
-            // tinta.
-            EventoOverlay::Muestra(_) if self.arrastre.is_some() => consumido,
+            // tinta -salvo que el boton ya se soltara sin avisar (fix 2)-.
+            EventoOverlay::Muestra(_) if self.arrastre.is_some() => {
+                if !vivo.boton_arrastre {
+                    self.arrastre = None;
+                    return Respuesta::default();
+                }
+                consumido
+            }
             EventoOverlay::BotonSoltado(_)
                 if matches!(
                     self.arrastre,
@@ -293,6 +368,13 @@ mod pruebas {
         ctrl: false,
         shift: false,
     };
+    /// El sondeo en vivo cuando no hace falta desmentir a nadie: la tecla o
+    /// el boton siguen pulsados, como asumian las pruebas de antes de la
+    /// revision 1.
+    const SIEMPRE: EnVivo = EnVivo {
+        espacio: true,
+        boton_arrastre: true,
+    };
 
     #[test]
     fn el_paso_de_zoom_de_la_rueda_es_el_de_excalidraw() {
@@ -311,7 +393,14 @@ mod pruebas {
     #[test]
     fn la_rueda_sola_desplaza_en_vertical_como_excalidraw() {
         let mut n = Navegador::nuevo();
-        let r = n.evento(&EventoOverlay::Rueda(-MUESCA), ORIGEN, 100, NADA, true);
+        let r = n.evento(
+            &EventoOverlay::Rueda(-MUESCA),
+            ORIGEN,
+            100,
+            NADA,
+            true,
+            SIEMPRE,
+        );
         assert!(r.consumido);
         assert_eq!(
             r.accion,
@@ -332,7 +421,14 @@ mod pruebas {
             ctrl: false,
             shift: true,
         };
-        let r = n.evento(&EventoOverlay::Rueda(-MUESCA), ORIGEN, 100, shift, true);
+        let r = n.evento(
+            &EventoOverlay::Rueda(-MUESCA),
+            ORIGEN,
+            100,
+            shift,
+            true,
+            SIEMPRE,
+        );
         assert_eq!(
             r.accion,
             Some(Accion::Desplazar {
@@ -351,12 +447,20 @@ mod pruebas {
             100,
             NADA,
             true,
+            SIEMPRE,
         );
         let ctrl = Modificadores {
             ctrl: true,
             shift: false,
         };
-        let r = n.evento(&EventoOverlay::Rueda(MUESCA), ORIGEN, 100, ctrl, true);
+        let r = n.evento(
+            &EventoOverlay::Rueda(MUESCA),
+            ORIGEN,
+            100,
+            ctrl,
+            true,
+            SIEMPRE,
+        );
         let Some(accion @ Accion::ZoomRueda { foco, .. }) = r.accion else {
             panic!("Ctrl+rueda es zoom, dio {:?}", r.accion);
         };
@@ -377,13 +481,17 @@ mod pruebas {
             ctrl: false,
             alt: false,
         };
-        assert!(n.evento(&espacio, ORIGEN, 100, NADA, true).consumido);
+        assert!(
+            n.evento(&espacio, ORIGEN, 100, NADA, true, SIEMPRE)
+                .consumido
+        );
         let p = n.evento(
             &EventoOverlay::BotonPulsado(Punto { x: 100, y: 100 }),
             ORIGEN,
             100,
             NADA,
             true,
+            SIEMPRE,
         );
         assert!(p.consumido && n.arrastrando());
         let m = n.evento(
@@ -392,6 +500,7 @@ mod pruebas {
             100,
             NADA,
             true,
+            SIEMPRE,
         );
         assert!(m.consumido);
         assert_eq!(m.accion, Some(Accion::Desplazar { dx: 30.0, dy: 10.0 }));
@@ -401,6 +510,7 @@ mod pruebas {
             100,
             NADA,
             true,
+            SIEMPRE,
         );
         assert!(s.consumido && !n.arrastrando());
         let _ = n.evento(
@@ -409,6 +519,7 @@ mod pruebas {
             100,
             NADA,
             true,
+            SIEMPRE,
         );
         // Soltado el espacio, el siguiente clic vuelve a ser del gesto.
         let otro = n.evento(
@@ -417,6 +528,7 @@ mod pruebas {
             100,
             NADA,
             true,
+            SIEMPRE,
         );
         assert!(!otro.consumido);
     }
@@ -430,6 +542,7 @@ mod pruebas {
             100,
             NADA,
             true,
+            SIEMPRE,
         );
         let m = n.evento(
             &EventoOverlay::RatonMovido(Punto { x: 4, y: 30 }),
@@ -437,6 +550,7 @@ mod pruebas {
             100,
             NADA,
             true,
+            SIEMPRE,
         );
         assert_eq!(m.accion, Some(Accion::Desplazar { dx: -6.0, dy: 20.0 }));
         let s = n.evento(
@@ -445,6 +559,7 @@ mod pruebas {
             100,
             NADA,
             true,
+            SIEMPRE,
         );
         assert!(s.consumido && !n.arrastrando());
     }
@@ -457,7 +572,7 @@ mod pruebas {
             EventoOverlay::RatonMovido(Punto { x: 9, y: 9 }),
             EventoOverlay::BotonSoltado(Punto { x: 9, y: 9 }),
         ] {
-            let r = n.evento(&ev, ORIGEN, 100, NADA, true);
+            let r = n.evento(&ev, ORIGEN, 100, NADA, true, SIEMPRE);
             assert!(!r.consumido, "{ev:?} no es del navegador");
             assert_eq!(r.accion, None);
         }
@@ -474,15 +589,109 @@ mod pruebas {
             ctrl: false,
             alt: false,
         };
-        let _ = n.evento(&espacio, ORIGEN, 100, NADA, false);
+        let _ = n.evento(&espacio, ORIGEN, 100, NADA, false, SIEMPRE);
         let p = n.evento(
             &EventoOverlay::BotonPulsado(Punto { x: 1, y: 1 }),
             ORIGEN,
             100,
             NADA,
             false,
+            SIEMPRE,
         );
         assert!(!p.consumido && !n.arrastrando());
+    }
+
+    #[test]
+    fn el_espacio_soltado_sin_evento_no_roba_el_clic() {
+        // Revision 1, fix 1: Alt+Tab (o el bucle propio de `pedir_medida`)
+        // suelta el espacio sin mandar `TeclaSoltada`. El sondeo en vivo
+        // tiene que desmentir a `self.espacio` en el siguiente clic.
+        let mut n = Navegador::nuevo();
+        let espacio = EventoOverlay::Tecla {
+            vk: VK_ESPACIO,
+            shift: false,
+            ctrl: false,
+            alt: false,
+        };
+        let _ = n.evento(&espacio, ORIGEN, 100, NADA, true, SIEMPRE);
+        let vivo = EnVivo {
+            espacio: false,
+            boton_arrastre: true,
+        };
+        let r = n.evento(
+            &EventoOverlay::BotonPulsado(Punto { x: 1, y: 1 }),
+            ORIGEN,
+            100,
+            NADA,
+            true,
+            vivo,
+        );
+        assert!(!r.consumido && !n.arrastrando());
+        // Y queda limpio de verdad: un clic posterior con SIEMPRE tampoco
+        // arrastra (si `self.espacio` no se hubiera limpiado, este si).
+        let otro = n.evento(
+            &EventoOverlay::BotonPulsado(Punto { x: 2, y: 2 }),
+            ORIGEN,
+            100,
+            NADA,
+            true,
+            SIEMPRE,
+        );
+        assert!(!otro.consumido && !n.arrastrando());
+    }
+
+    #[test]
+    fn el_boton_soltado_sin_evento_termina_el_arrastre_sin_consumir() {
+        // Revision 1, fix 2: Windows le quita la captura al raton a mitad de
+        // un arrastre y el `BotonCentralSoltado` nunca llega. El sondeo en
+        // vivo tiene que cerrar el arrastre solo, y devolver el movimiento
+        // al gesto (no consumirlo) para que el cursor lo refleje.
+        let mut n = Navegador::nuevo();
+        let _ = n.evento(
+            &EventoOverlay::BotonCentralPulsado(Punto { x: 10, y: 10 }),
+            ORIGEN,
+            100,
+            NADA,
+            true,
+            SIEMPRE,
+        );
+        assert!(n.arrastrando());
+        assert_eq!(n.vk_boton_en_arrastre(), Some(0x04));
+        let vivo = EnVivo {
+            espacio: true,
+            boton_arrastre: false,
+        };
+        let m = n.evento(
+            &EventoOverlay::RatonMovido(Punto { x: 40, y: 40 }),
+            ORIGEN,
+            100,
+            NADA,
+            true,
+            vivo,
+        );
+        assert!(!m.consumido && m.accion.is_none() && !n.arrastrando());
+    }
+
+    #[test]
+    fn el_vk_en_arrastre_es_el_del_boton_que_lo_empezo() {
+        let mut n = Navegador::nuevo();
+        assert_eq!(n.vk_boton_en_arrastre(), None);
+        let espacio = EventoOverlay::Tecla {
+            vk: VK_ESPACIO,
+            shift: false,
+            ctrl: false,
+            alt: false,
+        };
+        let _ = n.evento(&espacio, ORIGEN, 100, NADA, true, SIEMPRE);
+        let _ = n.evento(
+            &EventoOverlay::BotonPulsado(Punto { x: 1, y: 1 }),
+            ORIGEN,
+            100,
+            NADA,
+            true,
+            SIEMPRE,
+        );
+        assert_eq!(n.vk_boton_en_arrastre(), Some(0x01));
     }
 
     #[test]
@@ -494,6 +703,7 @@ mod pruebas {
             150,
             NADA,
             true,
+            SIEMPRE,
         );
         let m = n.evento(
             &EventoOverlay::RatonMovido(Punto { x: 150, y: 0 }),
@@ -501,6 +711,7 @@ mod pruebas {
             150,
             NADA,
             true,
+            SIEMPRE,
         );
         let mut c = Camara::nueva();
         let punto = Punto2::nuevo(40.0, 0.0);
