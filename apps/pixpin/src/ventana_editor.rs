@@ -93,11 +93,13 @@ pub fn a_evento(ev: &EventoOverlay, camara: &Camara) -> Option<EventoGesto> {
             p: al_mundo(p),
             shift: false,
             alt: false,
+            presion: None,
         }),
         EventoOverlay::RatonMovido(p) => Some(EventoGesto::Mover {
             p: al_mundo(p),
             shift: false,
             alt: false,
+            presion: None,
         }),
         EventoOverlay::BotonSoltado(p) => Some(EventoGesto::Soltar { p: al_mundo(p) }),
         EventoOverlay::Tecla { vk, ctrl, .. } => {
@@ -121,13 +123,23 @@ pub fn a_evento(ev: &EventoOverlay, camara: &Camara) -> Option<EventoGesto> {
 /// que necesita preguntarle al sistema, y solo para dos campos.
 fn con_modificadores(g: EventoGesto) -> EventoGesto {
     match g {
-        EventoGesto::Pulsar { p, .. } => {
+        EventoGesto::Pulsar { p, presion, .. } => {
             let (shift, alt) = pixpin_shell::entrada::modificadores();
-            EventoGesto::Pulsar { p, shift, alt }
+            EventoGesto::Pulsar {
+                p,
+                shift,
+                alt,
+                presion,
+            }
         }
-        EventoGesto::Mover { p, .. } => {
+        EventoGesto::Mover { p, presion, .. } => {
             let (shift, alt) = pixpin_shell::entrada::modificadores();
-            EventoGesto::Mover { p, shift, alt }
+            EventoGesto::Mover {
+                p,
+                shift,
+                alt,
+                presion,
+            }
         }
         otro => otro,
     }
@@ -891,6 +903,7 @@ mod pruebas {
                 p: Punto2::nuevo(0.0, 0.0),
                 shift: false,
                 alt: false,
+                presion: None,
             },
             &mut escena,
             1.0,
@@ -983,6 +996,7 @@ mod pruebas {
                 p: punto,
                 shift: false,
                 alt: false,
+                presion: None,
             },
             &mut escena,
             escala,

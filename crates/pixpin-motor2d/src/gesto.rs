@@ -118,9 +118,22 @@ impl Herramienta {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum EventoGesto {
-    Pulsar { p: Punto2, shift: bool, alt: bool },
-    Mover { p: Punto2, shift: bool, alt: bool },
-    Soltar { p: Punto2 },
+    /// `presion` es la del lapiz (0-1) o `None` con raton.
+    Pulsar {
+        p: Punto2,
+        shift: bool,
+        alt: bool,
+        presion: Option<f32>,
+    },
+    Mover {
+        p: Punto2,
+        shift: bool,
+        alt: bool,
+        presion: Option<f32>,
+    },
+    Soltar {
+        p: Punto2,
+    },
     Escape,
     Suprimir,
     Deshacer,
@@ -207,6 +220,10 @@ pub struct Gesto {
     /// pinte la pista. Se apaga al soltar y al cancelar: una marca que
     /// sobrevive al gesto es una marca mintiendo.
     pub anclaje_activo: Option<crate::enganche::Anclaje>,
+    /// El `strokeWidth` de Excalidraw para el lapiz: 0,5 / 1 / 2.
+    pub grosor_tinta: f32,
+    /// Pluma variable o constante para los trazos nuevos.
+    pub variabilidad: crate::tinta::Variabilidad,
 }
 
 impl Default for Gesto {
@@ -218,6 +235,8 @@ impl Default for Gesto {
             trazo: Vec::with_capacity(PUNTOS_RESERVADOS),
             enganche: crate::enganche::Ajustes::default(),
             anclaje_activo: None,
+            grosor_tinta: crate::tinta::GROSOR_MEDIO,
+            variabilidad: crate::tinta::Variabilidad::Variable,
         }
     }
 }
@@ -229,6 +248,22 @@ impl Gesto {
 
     pub fn en_reposo(&self) -> bool {
         matches!(self.estado, Estado::Reposo)
+    }
+
+    /// El trazo a mano que se esta dibujando ahora. La ventana lo excluye de
+    /// la capa congelada (D120): es lo unico que cambia en cada fotograma.
+    pub fn trazo_en_curso(&self) -> Option<u64> {
+        match self.estado {
+            Estado::Dibujando { id }
+                if matches!(
+                    self.herramienta,
+                    Herramienta::Lapiz | Herramienta::Resaltador
+                ) =>
+            {
+                Some(id)
+            }
+            _ => None,
+        }
     }
 
     /// La marquesina en curso, para que la ventana la pinte.
@@ -253,10 +288,20 @@ impl Gesto {
             // geometria del vecino- haria que el paso 3 de `pulsar`
             // (`elemento_en`) diera positivo, y el clic se convertiria en
             // «seleccionar el vecino» en vez de dibujar o calibrar.
-            EventoGesto::Pulsar { p, shift, alt } => self.pulsar(p, shift, alt, escena, escala),
-            EventoGesto::Mover { p, shift, alt } => {
+            EventoGesto::Pulsar {
+                p,
+                shift,
+                alt,
+                presion,
+            } => self.pulsar(p, shift, alt, presion, escena, escala),
+            EventoGesto::Mover {
+                p,
+                shift,
+                alt,
+                presion,
+            } => {
                 let p = self.enganchar(p, escena, escala);
-                self.mover(p, shift, alt, escena, escala)
+                self.mover(p, shift, alt, presion, escena, escala)
             }
             EventoGesto::Soltar { p } => {
                 self.anclaje_activo = None;
@@ -436,8 +481,13 @@ impl Gesto {
         let figura = match self.herramienta {
             Herramienta::Lapiz => Figura::Lapiz {
                 puntos: reservados(),
-                presiones: Vec::new(),
-                opciones: Some(crate::tinta::OpcionesTinta::default()),
+                // Reservadas igual que los puntos: la primera presion real no
+                // puede pedir memoria en el camino caliente.
+                presiones: Vec::with_capacity(PUNTOS_RESERVADOS),
+                opciones: Some(crate::tinta::OpcionesTinta {
+                    variabilidad: self.variabilidad,
+                    streamline: crate::tinta::STREAMLINE_RATON,
+                }),
             },
             Herramienta::Resaltador => Figura::Resaltador {
                 puntos: reservados(),
@@ -467,7 +517,11 @@ impl Gesto {
             angulo: 0.0,
             trazo: crate::elemento::ColorRgba::opaco(0.0, 0.0, 0.0),
             relleno: None,
-            grosor: 3.0,
+            grosor: if self.herramienta == Herramienta::Lapiz {
+                self.grosor_tinta
+            } else {
+                3.0
+            },
             estilo: crate::elemento::EstiloTrazo::Solido,
             rugosidad: 1.0,
             opacidad: 1.0,
@@ -512,6 +566,7 @@ impl Gesto {
         p: Punto2,
         shift: bool,
         _alt: bool,
+        presion: Option<f32>,
         escena: &mut Escena,
         escala: f32,
     ) -> Respuesta {
@@ -640,7 +695,26 @@ impl Gesto {
             self.seleccion.limpiar();
             self.trazo.clear();
             self.trazo.push(p);
-            let id = escena.anadir(self.nuevo_elemento(p));
+            let mut e = self.nuevo_elemento(p);
+            // Con lapiz, la muestra de presion puede llegar en el mismo
+            // mensaje que el clic. Sin raton no hay presion: el trazo
+            // arranca sin ella y `anadir_a_lapiz` la rellena hacia atras en
+            // cuanto llegue la primera de verdad.
+            if let (
+                Some(pr),
+                Figura::Lapiz {
+                    presiones,
+                    opciones,
+                    ..
+                },
+            ) = (presion, &mut e.figura)
+            {
+                presiones.push(pr);
+                if let Some(o) = opciones {
+                    o.streamline = crate::tinta::STREAMLINE_LAPIZ;
+                }
+            }
+            let id = escena.anadir(e);
             self.estado = Estado::Dibujando { id };
             return Respuesta {
                 region: Region::Todo,
@@ -660,6 +734,7 @@ impl Gesto {
         p: Punto2,
         shift: bool,
         alt: bool,
+        presion: Option<f32>,
         escena: &mut Escena,
         escala: f32,
     ) -> Respuesta {
@@ -680,8 +755,17 @@ impl Gesto {
                 let grosor = escena.buscar(id).map_or(3.0, |e| e.grosor);
                 if let Some(e) = escena.buscar_mut(id) {
                     match &mut e.figura {
-                        Figura::Lapiz { puntos, .. } | Figura::Resaltador { puntos } => {
-                            puntos.push(p);
+                        Figura::Lapiz {
+                            puntos,
+                            presiones,
+                            opciones,
+                        } => {
+                            anadir_a_lapiz(puntos, presiones, opciones, p, presion);
+                        }
+                        Figura::Resaltador { puntos } => {
+                            if puntos.last() != Some(&p) {
+                                puntos.push(p);
+                            }
                         }
                         Figura::Linea { puntos } | Figura::Flecha { puntos, .. } => {
                             // Linea y flecha son dos puntos: el segundo sigue
@@ -883,6 +967,43 @@ pub fn direccion_del_tirador(t: Tirador, angulo: f32) -> f32 {
     base + angulo
 }
 
+/// Anade un punto a un trazo de lapiz respetando sus presiones.
+///
+/// - Solo se descartan duplicados exactos (D109), como Excalidraw.
+/// - La primera presion real rellena hacia atras los puntos que llegaron sin
+///   ella (el clic lo entrega un mensaje de raton, la presion llega despues)
+///   y cambia el suavizado al del lapiz.
+/// - Un punto sin presion en un trazo que ya la tiene repite la ultima, para
+///   que las dos listas no se desalineen.
+fn anadir_a_lapiz(
+    puntos: &mut Vec<Punto2>,
+    presiones: &mut Vec<f32>,
+    opciones: &mut Option<crate::tinta::OpcionesTinta>,
+    p: Punto2,
+    presion: Option<f32>,
+) {
+    if puntos.last() == Some(&p) {
+        return;
+    }
+    puntos.push(p);
+    match presion {
+        Some(pr) => {
+            if presiones.is_empty() {
+                presiones.resize(puntos.len() - 1, pr);
+                if let Some(o) = opciones {
+                    o.streamline = crate::tinta::STREAMLINE_LAPIZ;
+                }
+            }
+            presiones.push(pr);
+        }
+        None => {
+            if let Some(&ultima) = presiones.last() {
+                presiones.push(ultima);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -916,6 +1037,7 @@ mod pruebas {
             p,
             shift: false,
             alt: false,
+            presion: None,
         }
     }
     fn mover(p: Punto2) -> EventoGesto {
@@ -923,7 +1045,111 @@ mod pruebas {
             p,
             shift: false,
             alt: false,
+            presion: None,
         }
+    }
+
+    /// Igual que `pulsar`/`mover`, pero llevando la presion del lapiz.
+    fn pulsar_con_gesto(g: &mut Gesto, e: &mut Escena, x: f32, y: f32, presion: Option<f32>) {
+        g.evento(
+            EventoGesto::Pulsar {
+                p: Punto2::nuevo(x, y),
+                shift: false,
+                alt: false,
+                presion,
+            },
+            e,
+            1.0,
+        );
+    }
+    fn mover_con_gesto(g: &mut Gesto, e: &mut Escena, x: f32, y: f32, presion: Option<f32>) {
+        g.evento(
+            EventoGesto::Mover {
+                p: Punto2::nuevo(x, y),
+                shift: false,
+                alt: false,
+                presion,
+            },
+            e,
+            1.0,
+        );
+    }
+    fn lapiz_de(
+        e: &Escena,
+    ) -> (
+        Vec<Punto2>,
+        Vec<f32>,
+        Option<crate::tinta::OpcionesTinta>,
+        f32,
+    ) {
+        let el = e.visibles().last().expect("hay un trazo");
+        let Figura::Lapiz {
+            puntos,
+            presiones,
+            opciones,
+        } = &el.figura
+        else {
+            panic!("no es lapiz")
+        };
+        (puntos.clone(), presiones.clone(), *opciones, el.grosor)
+    }
+
+    #[test]
+    fn con_raton_el_trazo_nace_con_la_pluma_elegida_y_sin_presiones() {
+        let (mut g, mut e) = (Gesto::nuevo(), Escena::nueva());
+        g.herramienta = Herramienta::Lapiz;
+        g.variabilidad = crate::tinta::Variabilidad::Constante;
+        g.grosor_tinta = crate::tinta::GROSOR_GRUESO;
+        pulsar_con_gesto(&mut g, &mut e, 0.0, 0.0, None);
+        mover_con_gesto(&mut g, &mut e, 5.0, 0.0, None);
+        let (_, presiones, opciones, grosor) = lapiz_de(&e);
+        assert!(presiones.is_empty());
+        assert_eq!(grosor, crate::tinta::GROSOR_GRUESO);
+        let o = opciones.expect("un trazo nuevo nunca es legado");
+        assert_eq!(o.variabilidad, crate::tinta::Variabilidad::Constante);
+        assert_eq!(o.streamline, crate::tinta::STREAMLINE_RATON);
+    }
+
+    #[test]
+    fn la_primera_presion_real_rellena_hacia_atras_y_afina_el_suavizado() {
+        // El boton lo pulsa un mensaje de raton sin presion; la presion
+        // llega con la primera muestra del lapiz.
+        let (mut g, mut e) = (Gesto::nuevo(), Escena::nueva());
+        g.herramienta = Herramienta::Lapiz;
+        pulsar_con_gesto(&mut g, &mut e, 0.0, 0.0, None);
+        mover_con_gesto(&mut g, &mut e, 5.0, 0.0, Some(0.7));
+        mover_con_gesto(&mut g, &mut e, 9.0, 0.0, Some(0.9));
+        let (puntos, presiones, opciones, _) = lapiz_de(&e);
+        assert_eq!(puntos.len(), presiones.len());
+        assert_eq!(presiones, vec![0.7, 0.7, 0.9]);
+        assert_eq!(opciones.unwrap().streamline, crate::tinta::STREAMLINE_LAPIZ);
+    }
+
+    #[test]
+    fn un_punto_repetido_exacto_no_se_guarda() {
+        let (mut g, mut e) = (Gesto::nuevo(), Escena::nueva());
+        g.herramienta = Herramienta::Lapiz;
+        pulsar_con_gesto(&mut g, &mut e, 0.0, 0.0, None);
+        mover_con_gesto(&mut g, &mut e, 5.0, 0.0, None);
+        mover_con_gesto(&mut g, &mut e, 5.0, 0.0, None);
+        assert_eq!(lapiz_de(&e).0.len(), 2);
+    }
+
+    #[test]
+    fn trazo_en_curso_solo_existe_mientras_se_dibuja_a_mano() {
+        let (mut g, mut e) = (Gesto::nuevo(), Escena::nueva());
+        g.herramienta = Herramienta::Lapiz;
+        assert_eq!(g.trazo_en_curso(), None);
+        pulsar_con_gesto(&mut g, &mut e, 0.0, 0.0, None);
+        assert!(g.trazo_en_curso().is_some());
+        g.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(1.0, 0.0),
+            },
+            &mut e,
+            1.0,
+        );
+        assert_eq!(g.trazo_en_curso(), None);
     }
 
     /// Un arrastre entero: pulsar, mover y soltar.
@@ -1096,6 +1322,7 @@ mod pruebas {
                 p: Punto2::nuevo(125.0, 25.0),
                 shift: true,
                 alt: false,
+                presion: None,
             },
             &mut escena,
             1.0,
@@ -1365,6 +1592,7 @@ mod pruebas {
                 p: Punto2::nuevo(100.0, 10.0),
                 shift: true,
                 alt: false,
+                presion: None,
             },
             &mut escena,
             1.0,

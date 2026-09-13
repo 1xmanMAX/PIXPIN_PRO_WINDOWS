@@ -82,6 +82,7 @@ fn mover_el_raton_dibujando_no_asigna_memoria() {
             p: Punto2::nuevo(0.0, 0.0),
             shift: false,
             alt: false,
+            presion: None,
         },
         &mut escena,
         1.0,
@@ -94,6 +95,7 @@ fn mover_el_raton_dibujando_no_asigna_memoria() {
                     p: Punto2::nuevo(i as f32, (i % 7) as f32),
                     shift: false,
                     alt: false,
+                    presion: None,
                 },
                 &mut escena,
                 1.0,
@@ -102,6 +104,47 @@ fn mover_el_raton_dibujando_no_asigna_memoria() {
     });
 
     assert_eq!(veces, 0, "el camino caliente asigno {veces} veces");
+}
+
+#[test]
+fn mover_el_raton_dibujando_con_presion_tampoco_asigna_memoria() {
+    // Igual que la prueba de arriba, pero con un lapiz de verdad mandando
+    // presion en cada muestra: `anadir_a_lapiz` tambien tiene que vivir sin
+    // pedir memoria en el camino caliente.
+    let mut escena = Escena::nueva();
+    let mut gesto = Gesto::nuevo();
+    gesto.herramienta = Herramienta::Lapiz;
+
+    gesto.evento(
+        EventoGesto::Pulsar {
+            p: Punto2::nuevo(0.0, 0.0),
+            shift: false,
+            alt: false,
+            presion: Some(0.5),
+        },
+        &mut escena,
+        1.0,
+    );
+
+    let (_, veces) = contando(|| {
+        for i in 1..400 {
+            gesto.evento(
+                EventoGesto::Mover {
+                    p: Punto2::nuevo(i as f32, (i % 7) as f32),
+                    shift: false,
+                    alt: false,
+                    presion: Some(0.5),
+                },
+                &mut escena,
+                1.0,
+            );
+        }
+    });
+
+    assert_eq!(
+        veces, 0,
+        "el camino caliente con presion asigno {veces} veces"
+    );
 }
 
 #[test]
@@ -146,6 +189,7 @@ fn arrastrar_una_seleccion_tampoco_asigna() {
             p: Punto2::nuevo(10.0, 10.0),
             shift: false,
             alt: false,
+            presion: None,
         },
         &mut escena,
         1.0,
@@ -158,6 +202,7 @@ fn arrastrar_una_seleccion_tampoco_asigna() {
                     p: Punto2::nuevo(10.0 + i as f32, 10.0),
                     shift: false,
                     alt: false,
+                    presion: None,
                 },
                 &mut escena,
                 1.0,
@@ -183,6 +228,7 @@ fn mover_el_raton_en_reposo_tampoco_asigna() {
                     p: Punto2::nuevo(i as f32, 0.0),
                     shift: false,
                     alt: false,
+                    presion: None,
                 },
                 &mut escena,
                 1.0,
@@ -288,6 +334,7 @@ fn el_iman_no_asigna_en_el_camino_caliente() {
             p: Punto2::nuevo(500.0, 500.0),
             shift: false,
             alt: false,
+            presion: None,
         },
         &mut escena,
         1.0,
@@ -300,6 +347,7 @@ fn el_iman_no_asigna_en_el_camino_caliente() {
                     p: Punto2::nuevo((i % 400) as f32, (i % 400) as f32),
                     shift: false,
                     alt: false,
+                    presion: None,
                 },
                 &mut escena,
                 1.0,
