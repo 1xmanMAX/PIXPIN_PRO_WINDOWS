@@ -57,9 +57,10 @@ fn comparar(nombre: &str, esperado: &[[f64; 2]], obtenido: &[[f64; 2]]) {
 #[test]
 fn la_pluma_variable_coincide_con_excalidraw_en_todos_los_casos() {
     let casos = casos("variable");
-    assert!(
-        casos.len() >= 10,
-        "el oraculo tiene que traer casos variables"
+    assert_eq!(
+        casos.len(),
+        12,
+        "el oraculo tiene que traer los 12 casos variables"
     );
     for c in casos {
         let simular = c.presiones.is_empty();
@@ -89,9 +90,10 @@ fn la_pluma_variable_coincide_con_excalidraw_en_todos_los_casos() {
 #[test]
 fn la_pluma_constante_coincide_con_excalidraw_en_todos_los_casos() {
     let casos = casos("constant");
-    assert!(
-        casos.len() >= 8,
-        "el oraculo tiene que traer casos constantes"
+    assert_eq!(
+        casos.len(),
+        9,
+        "el oraculo tiene que traer los 9 casos constantes"
     );
     for c in casos {
         let obtenido =

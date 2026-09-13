@@ -10,6 +10,12 @@
 //!
 //! Los bucles de angulo suman `PI / 16` en f64, como el original: ver
 //! `freehand.rs` para por que eso importa.
+//!
+//! La rama de `state.ts` que trata `cSize === 0` y calcula `visibleStartIndex`
+//! no se porta: ese camino existe para el trazo que se desvanece con el
+//! tiempo (`fadeOutTime`), donde el tamano visible del rastro puede llegar a
+//! cero puntos; aqui el tamano es constante y siempre mayor que cero, asi que
+//! esa rama nunca se toma.
 
 use std::f64::consts::PI;
 

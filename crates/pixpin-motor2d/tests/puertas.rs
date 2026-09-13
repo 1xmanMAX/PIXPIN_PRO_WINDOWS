@@ -46,7 +46,30 @@ fn elemento(i: u64) -> Elemento {
 }
 
 #[test]
-fn un_trazo_de_500_puntos_se_convierte_en_poligono_en_menos_de_2_ms() {
+fn un_trazo_de_cinco_mil_puntos_se_calcula_en_menos_de_dos_milisegundos() {
+    // Spec E1 §4: mientras se dibuja se recalcula el trazo entero en cada
+    // fotograma (como Excalidraw). Si esto se pone rojo, el arreglo es
+    // recalcular solo la cola, no subir el tope.
+    let trazo = trazo_largo(5_000);
+    let o = Some(pixpin_motor2d::tinta::OpcionesTinta::default());
+    // Calentar: la primera vuelta paga paginas y cache del procesador.
+    let _ = pixpin_motor2d::tinta::contorno_de_lapiz(&trazo, &[], 1.0, o);
+    let mut mejor = std::time::Duration::MAX;
+    for _ in 0..5 {
+        let t = Instant::now();
+        let c = pixpin_motor2d::tinta::contorno_de_lapiz(&trazo, &[], 1.0, o);
+        mejor = mejor.min(t.elapsed());
+        assert!(!c.is_empty());
+    }
+    assert!(
+        mejor.as_micros() < 2_000 * FACTOR as u128,
+        "5.000 puntos en {mejor:?}"
+    );
+    println!("trazo de 5.000 puntos: {mejor:?}");
+}
+
+#[test]
+fn un_trazo_de_500_puntos_se_convierte_en_contorno_en_menos_de_2_ms() {
     let puntos = trazo_largo(500);
     let contorno =
         || pixpin_motor2d::tinta::contorno_de_lapiz(&puntos, &[], 1.0, Some(Default::default()));
