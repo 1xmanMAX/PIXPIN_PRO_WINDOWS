@@ -127,7 +127,7 @@ impl MedidorFotogramas {
     ///
     /// Las vueltas que no pintan acumulan sus puntos, su vaciado y su espera
     /// en el fotograma siguiente: con un raton de 1000 Hz hay muchas, y
-    /// contarlas como fotogramas escondería justo la sospecha S2.
+    /// contarlas como fotogramas esconderia justo la sospecha S2.
     pub fn anotar(&mut self, v: Vuelta) -> Option<Resumen> {
         if !self.activo {
             return None;

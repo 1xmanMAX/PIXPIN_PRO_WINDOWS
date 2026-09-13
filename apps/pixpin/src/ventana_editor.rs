@@ -652,6 +652,12 @@ pub fn abrir(
         // puntos. Presentar con vsync bloquea hasta el refresco; mientras,
         // Windows guarda los movimientos y la Tarea 7 los recupera.
         if hay_que_pintar {
+            // D129: `t_pintar` empieza AQUI, antes de `rejilla.sincronizar`,
+            // no despues: sincronizar la rejilla es coste de este fotograma
+            // (recorre la escena, O(su tamano)) y si quedara fuera de toda
+            // fase, los numeros de D129 estarian mintiendo justo en lo que
+            // se quiere diagnosticar.
+            let t_pintar = std::time::Instant::now();
             rejilla.sincronizar(&escena);
             // La decision de si la capa congelada vale para ESTE fotograma
             // (`capa_vale`, dentro de `pintar`) es la que manda sobre si la
@@ -669,7 +675,6 @@ pub fn abrir(
                     )
                 })
             };
-            let t_pintar = std::time::Instant::now();
             let pintado = pintar(
                 &mut motor,
                 &superficie,
