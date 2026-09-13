@@ -55,6 +55,7 @@ mod cuenta_atras;
 mod editor;
 mod gif;
 mod grabador;
+mod navegacion;
 mod overlay;
 mod pines;
 mod reproductor;

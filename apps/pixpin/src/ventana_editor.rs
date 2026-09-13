@@ -29,6 +29,7 @@
 //! `dibujar_orden`. No es geometria: es la misma clase de traduccion mecanica
 //! que `a_evento`, solo que de salida en vez de entrada.
 
+use crate::navegacion::vista_efectiva;
 use anyhow::{Context, Result};
 use pixpin_geom::Punto;
 use pixpin_motor2d::cache::Cache;
@@ -380,13 +381,17 @@ pub fn abrir(
     let mut escena = escena;
     let mut gesto = gesto_inicial(ajustes_iman);
     let camara = Camara::nueva();
+    // D127: la camara del usuario va en pixeles logicos; `efectiva` es la
+    // que pinta y traduce el raton. Se recalcula si cambia la escala.
+    let mut escala_por_cien = monitor.escala_por_cien;
+    let mut efectiva = vista_efectiva(&camara, escala_por_cien);
     let mut cache = Cache::nueva();
     let mut cache_tinta = pixpin_render::CacheTinta::nueva();
     let retardo = pixpin_render::retardo_nitido(nivel);
     // El ultimo zoom visto y desde cuando esta ahi, para `decidir_zoom`. La
     // camara del editor aun no hace zoom (E4), pero el mecanismo queda
     // puesto y probado.
-    let mut zoom_visto = camara.zoom;
+    let mut zoom_visto = efectiva.zoom;
     let mut zoom_desde: Option<std::time::Instant> = None;
     let mut rejilla = Rejilla::nueva();
     let mut capa = CapaEstatica::nueva();
@@ -394,7 +399,7 @@ pub fn abrir(
     // "Contenido" y area de trabajo son el mismo rectangulo, como en
     // `CapaViva::nueva` (`capa.rs`): aqui el contenido ES la pantalla
     // entera, no hay un pin ni una ventana mas pequena de referencia.
-    let caja = CajaHerramientas::colocar(area, area, monitor.escala_por_cien, &BOTONES_EDITOR);
+    let mut caja = CajaHerramientas::colocar(area, area, escala_por_cien, &BOTONES_EDITOR);
 
     // Zona sucia acumulada durante la vuelta: se pinta un solo fotograma
     // DESPUES de vaciar la cola de eventos, no uno por evento (pintar a
@@ -407,6 +412,24 @@ pub fn abrir(
         pixpin_shell::overlay::bombear_pendientes();
         for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if hwnd != ventana.handle() {
+                continue;
+            }
+            // D127: con el editor abierto se puede cambiar la escala de
+            // Windows. La tinta tiene que seguir del tamano de Excalidraw, y
+            // la caja de herramientas, del de sus botones.
+            if matches!(ev, EventoOverlay::CambioDpi) {
+                if let Some(m) = pixpin_capture::enumerar_monitores()
+                    .ok()
+                    .and_then(|d| d.principal().copied())
+                {
+                    escala_por_cien = m.escala_por_cien;
+                    efectiva = vista_efectiva(&camara, escala_por_cien);
+                    caja = CajaHerramientas::colocar(area, area, escala_por_cien, &BOTONES_EDITOR);
+                    // La capa congelada se horneo a la escala vieja.
+                    capa.soltar();
+                    todo_sucio = true;
+                    ventana.invalidar();
+                }
                 continue;
             }
             // 0. La caja de herramientas es un dialogo en pantalla: un clic
@@ -474,7 +497,7 @@ pub fn abrir(
             // 1. Traducir y, si le toca al motor, pasarselo.
             if let Some(g) = a_evento(
                 &ev,
-                &camara,
+                &efectiva,
                 Punto {
                     x: area.x,
                     y: area.y,
@@ -482,7 +505,7 @@ pub fn abrir(
             ) {
                 let g = con_modificadores(g);
                 let en_reposo_antes = gesto.en_reposo();
-                let r = gesto.evento(g, &mut escena, 1.0 / camara.zoom);
+                let r = gesto.evento(g, &mut escena, 1.0 / efectiva.zoom);
                 ventana.poner_cursor(forma_de(r.cursor));
                 // `VentanaOverlay::invalidar` no toma una region: invalida
                 // la ventana entera para que Windows mande `WM_PAINT`, pero
@@ -492,8 +515,8 @@ pub fn abrir(
                 match r.region {
                     Region::Nada => {}
                     Region::Caja(x0, y0, x1, y1) => {
-                        let a = camara.a_pantalla(Punto2::nuevo(x0, y0));
-                        let b = camara.a_pantalla(Punto2::nuevo(x1, y1));
+                        let a = efectiva.a_pantalla(Punto2::nuevo(x0, y0));
+                        let b = efectiva.a_pantalla(Punto2::nuevo(x1, y1));
                         let caja = (a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
                         sucio = Some(match sucio {
                             None => caja,
@@ -519,17 +542,17 @@ pub fn abrir(
                 let activo_ahora = !gesto.en_reposo() && !excluidos.is_empty();
                 if activo_ahora && en_reposo_antes {
                     rejilla.sincronizar(&escena);
-                    let vista = camara.ventana(ancho_px, alto_px);
+                    let vista = efectiva.ventana(ancho_px, alto_px);
                     let candidatos = rejilla.candidatos(vista);
                     let estampa = Estampa {
-                        camara: (camara.x, camara.y, camara.zoom),
+                        camara: (efectiva.x, efectiva.y, efectiva.zoom),
                         tamano: (ancho_px as u32, alto_px as u32),
                         excluidos: excluidos.clone(),
                     };
                     let _ = capa.preparar(&mut motor, estampa, |p| {
                         p.limpiar(Color::BLANCO);
-                        let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
-                        p.poner_vista((0.0, 0.0), camara.zoom, (origen.x, origen.y));
+                        let origen = efectiva.a_pantalla(Punto2::nuevo(0.0, 0.0));
+                        p.poner_vista((0.0, 0.0), efectiva.zoom, (origen.x, origen.y));
                         for id in candidatos {
                             if excluidos.contains(&id) {
                                 continue;
@@ -549,7 +572,7 @@ pub fn abrir(
                             por_cada_orden(
                                 &mut cache,
                                 e,
-                                camara.zoom,
+                                efectiva.zoom,
                                 escena.escala.as_ref(),
                                 |orden| {
                                     dibujar_orden(
@@ -578,14 +601,14 @@ pub fn abrir(
                         &mut motor,
                         &superficie,
                         &escena,
-                        &camara,
+                        &efectiva,
                         &gesto,
                         &mut cache,
                         &mut cache_tinta,
                         &rejilla,
                         &capa,
                         &caja,
-                        monitor.escala_por_cien,
+                        escala_por_cien,
                         ancho_px,
                         alto_px,
                         largo_px,
@@ -632,14 +655,14 @@ pub fn abrir(
                 &mut motor,
                 &superficie,
                 &escena,
-                &camara,
+                &efectiva,
                 &gesto,
                 &mut cache,
                 &mut cache_tinta,
                 &rejilla,
                 &capa,
                 &caja,
-                monitor.escala_por_cien,
+                escala_por_cien,
                 ancho_px,
                 alto_px,
                 zona,
@@ -665,7 +688,7 @@ pub fn abrir(
         // del editor aun no hace zoom (E4); el mecanismo queda puesto y
         // probado para cuando lo haga.
         let decision = decidir_zoom(
-            camara.zoom,
+            efectiva.zoom,
             zoom_visto,
             cache_tinta.escala(),
             zoom_desde,
@@ -675,7 +698,7 @@ pub fn abrir(
         zoom_visto = decision.visto;
         zoom_desde = decision.desde;
         if decision.rehacer {
-            cache_tinta.fijar_escala(camara.zoom);
+            cache_tinta.fijar_escala(efectiva.zoom);
             capa.soltar();
             ventana.invalidar();
         }
@@ -1505,6 +1528,19 @@ mod pruebas {
             panic!("un boton pulsado es un Pulsar");
         };
         assert_eq!(p, camara.a_mundo(Punto2::nuevo(20.0, 10.0)));
+    }
+
+    #[test]
+    fn a_escala_150_el_raton_cae_en_el_mundo_logico() {
+        // D127: un clic 150 px fisicos a la derecha del origen es 100 px
+        // logicos, que es donde Excalidraw pondria el punto.
+        let efectiva = crate::navegacion::vista_efectiva(&Camara::nueva(), 150);
+        let ev = EventoOverlay::BotonPulsado(Punto { x: 150, y: 75 });
+        let Some(EventoGesto::Pulsar { p, .. }) = a_evento(&ev, &efectiva, Punto { x: 0, y: 0 })
+        else {
+            panic!("un boton pulsado es un Pulsar");
+        };
+        assert_eq!((p.x, p.y), (100.0, 50.0));
     }
 
     #[test]
