@@ -1931,6 +1931,10 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
                 let v: Vec<(f32, f32)> = puntos.iter().map(mover).collect();
                 p.poligono(&v, color(*c));
             }
+            Orden::Tinta { contorno, color: c } => {
+                let v: Vec<(f32, f32)> = contorno.iter().map(mover).collect();
+                p.tinta(&v, color(*c));
+            }
             Orden::Polilinea {
                 puntos,
                 color: c,

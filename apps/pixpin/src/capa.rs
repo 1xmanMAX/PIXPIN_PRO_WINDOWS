@@ -500,6 +500,10 @@ fn pintar_ordenes(p: &pixpin_render::Pintor, ordenes: &[Orden], marco: RectF) {
                 let v: Vec<(f32, f32)> = puntos.iter().map(|q| (q.x, q.y)).collect();
                 p.poligono(&v, color(*c));
             }
+            Orden::Tinta { contorno, color: c } => {
+                let v: Vec<(f32, f32)> = contorno.iter().map(|q| (q.x, q.y)).collect();
+                p.tinta(&v, color(*c));
+            }
             Orden::Polilinea {
                 puntos,
                 color: c,

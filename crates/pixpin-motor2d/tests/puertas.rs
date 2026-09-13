@@ -9,7 +9,7 @@
 use std::time::Instant;
 
 use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
-use pixpin_motor2d::{Ajustes, Escena, Punto2, ordenes, ordenes_de_escena, poligono};
+use pixpin_motor2d::{Escena, Punto2, ordenes, ordenes_de_escena};
 
 /// Los topes de la spec valen para release; en depuracion se multiplican.
 const FACTOR: u32 = if cfg!(debug_assertions) { 20 } else { 1 };
@@ -48,15 +48,16 @@ fn elemento(i: u64) -> Elemento {
 #[test]
 fn un_trazo_de_500_puntos_se_convierte_en_poligono_en_menos_de_2_ms() {
     let puntos = trazo_largo(500);
-    let a = Ajustes::default();
+    let contorno =
+        || pixpin_motor2d::tinta::contorno_de_lapiz(&puntos, &[], 1.0, Some(Default::default()));
     // Una pasada en frio para que las paginas de memoria ya esten tocadas:
     // se mide el algoritmo, no el primer fallo de pagina.
-    let _ = poligono(&puntos, &a);
+    let _ = contorno();
 
     let t = Instant::now();
     let repeticiones = 20;
     for _ in 0..repeticiones {
-        let p = poligono(&puntos, &a);
+        let p = contorno();
         assert!(!p.is_empty());
     }
     let micros = t.elapsed().as_micros() / repeticiones;
@@ -204,6 +205,9 @@ fn puntos_de(v: &[pixpin_motor2d::Orden]) -> usize {
     v.iter()
         .map(|o| match o {
             pixpin_motor2d::Orden::Poligono { puntos, .. }
+            | pixpin_motor2d::Orden::Tinta {
+                contorno: puntos, ..
+            }
             | pixpin_motor2d::Orden::Polilinea { puntos, .. }
             | pixpin_motor2d::Orden::Relleno { puntos, .. } => puntos.len(),
             _ => 0,
@@ -212,28 +216,25 @@ fn puntos_de(v: &[pixpin_motor2d::Orden]) -> usize {
 }
 
 #[test]
-fn de_lejos_el_dibujo_cuesta_una_decima_parte() {
-    // La promesa del lienzo infinito en un equipo modesto. Los numeros con
-    // los que se eligio la tecnica, medidos sobre este mismo dibujo: al 50 %
-    // baja al 11,7 %, al 20 % al 7,4 % y al 5 % al 5,3 %. Se exige la quinta
-    // parte, que deja sitio de sobra y sigue cazando una regresion de verdad.
+fn de_lejos_nunca_cuesta_mas_que_el_dibujo_entero() {
+    // D115: la tinta solo se sustituye por debajo de 2 px. Esta puerta ya
+    // no promete una decima parte; promete que alejarse no fabrica MAS
+    // geometria, y que al 5 % algo se sigue viendo.
     let escena = dibujo_como_el_del_movil();
     let entero = puntos_de(&ordenes_de_escena(&escena));
-    for zoom in [0.5, 0.2, 0.05] {
-        let c = pixpin_motor2d::Camara {
-            x: 100.0,
-            y: 150.0,
-            zoom,
-        };
-        let lejos = puntos_de(&pixpin_motor2d::ordenes_de_escena_vista(
-            &escena, &c, 1920.0, 1080.0,
-        ));
-        assert!(lejos > 0, "al {zoom} no se pinto nada");
-        assert!(
-            lejos * 5 < entero,
-            "al {zoom} deberia costar mucho menos: {lejos} contra {entero}"
-        );
-    }
+    let c = pixpin_motor2d::Camara {
+        x: 100.0,
+        y: 150.0,
+        zoom: 0.05,
+    };
+    let lejos = puntos_de(&pixpin_motor2d::ordenes_de_escena_vista(
+        &escena, &c, 1920.0, 1080.0,
+    ));
+    assert!(lejos > 0, "al 5 % no se pinto nada");
+    assert!(
+        lejos <= entero,
+        "de lejos no puede costar mas que entero: {lejos} > {entero}"
+    );
 }
 
 #[test]
@@ -250,31 +251,26 @@ fn de_cerca_se_dibuja_la_tinta_entera() {
         "de cerca el trazo tiene que salir identico a como se guardo"
     );
     assert!(
-        matches!(cerca.first(), Some(pixpin_motor2d::Orden::Poligono { .. })),
+        matches!(cerca.first(), Some(pixpin_motor2d::Orden::Tinta { .. })),
         "de cerca un lapiz es tinta, no una linea: {:?}",
         cerca.first()
     );
 }
 
 #[test]
-fn un_trazo_diminuto_se_dibuja_como_una_raya() {
-    // El cambio que hace toda la economia: por debajo del umbral, la tinta se
-    // sustituye por una linea del mismo grosor. A ese tamano el ojo no
-    // distingue una de otra, y cuesta una fraccion.
+fn solo_lo_que_mide_menos_de_dos_pixeles_en_pantalla_se_dibuja_como_raya() {
     let escena = dibujo_como_el_del_movil();
     let e = escena.visibles().next().expect("el dibujo tiene elementos");
-    let lejos = pixpin_motor2d::ordenes_a_distancia(e, 0.1);
-    assert!(
-        matches!(lejos.first(), Some(pixpin_motor2d::Orden::Polilinea { .. })),
-        "de lejos deberia bastar una linea: {:?}",
-        lejos.first()
-    );
-    assert!(
-        puntos_de(&lejos) * 4 < puntos_de(&ordenes(e)),
-        "la linea no salio mas barata: {} contra {}",
-        puntos_de(&lejos),
-        puntos_de(&ordenes(e))
-    );
+    let (x0, y0, x1, y1) = e.caja();
+    let lado = (x1 - x0).max(y1 - y0);
+    assert!(matches!(
+        pixpin_motor2d::ordenes_a_distancia(e, 1.5 / lado).first(),
+        Some(pixpin_motor2d::Orden::Polilinea { .. })
+    ));
+    assert!(matches!(
+        pixpin_motor2d::ordenes_a_distancia(e, 10.0 / lado).first(),
+        Some(pixpin_motor2d::Orden::Tinta { .. })
+    ));
 }
 
 #[test]

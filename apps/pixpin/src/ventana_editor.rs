@@ -740,6 +740,7 @@ fn dibujar_orden(p: &pixpin_render::Pintor<'_>, orden: &Orden, vista: (f32, f32,
         Orden::Poligono { puntos, color } | Orden::Relleno { puntos, color } => {
             p.poligono(&a_tuplas(puntos), a_color(*color));
         }
+        Orden::Tinta { contorno, color } => p.tinta(&a_tuplas(contorno), a_color(*color)),
         Orden::Polilinea {
             puntos,
             color,

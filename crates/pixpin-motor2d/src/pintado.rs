@@ -14,7 +14,6 @@ use crate::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
 use crate::escena::Escena;
 use crate::formas;
 use crate::medida::Escala;
-use crate::trazo::{self, Ajustes};
 use crate::vector::Punto2;
 
 /// Una cosa que pintar. El consumidor traduce cada variante a su API.
@@ -24,6 +23,14 @@ pub enum Orden {
     /// trazo a mano: no es una linea gruesa, es una mancha con forma.
     Poligono {
         puntos: Vec<Punto2>,
+        color: ColorRgba,
+    },
+    /// El contorno cerrado de un trazo a mano (E1). Se rellena con curvas
+    /// por puntos medios y regla *winding* (`pixpin_render::tinta`), no
+    /// como un poligono de rectas: es lo que hace que se vea como en
+    /// Excalidraw.
+    Tinta {
+        contorno: Vec<Punto2>,
         color: ColorRgba,
     },
     /// Linea abierta de grosor constante.
@@ -86,6 +93,9 @@ fn girar_orden(o: &mut Orden, centro: Punto2, angulo: f32) {
     let gira = |p: &mut Punto2| *p = p.girar(centro, angulo);
     match o {
         Orden::Poligono { puntos, .. }
+        | Orden::Tinta {
+            contorno: puntos, ..
+        }
         | Orden::Polilinea { puntos, .. }
         | Orden::Relleno { puntos, .. }
         | Orden::Velo { hueco: puntos, .. } => puntos.iter_mut().for_each(gira),
@@ -112,34 +122,24 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
     let mut salida = Vec::new();
 
     match &e.figura {
-        Figura::Lapiz { puntos, .. } => {
-            // La tinta es un poligono relleno, no una linea gruesa: es lo que
-            // permite que el trazo adelgace en los extremos.
-            let a = Ajustes {
-                tamano: e.grosor,
-                ..Default::default()
-            };
-            let contorno = trazo::poligono(puntos, &a);
+        Figura::Lapiz {
+            puntos,
+            presiones,
+            opciones,
+        } => {
+            let contorno = crate::tinta::contorno_de_lapiz(puntos, presiones, e.grosor, *opciones);
             if !contorno.is_empty() {
-                salida.push(Orden::Poligono {
-                    puntos: contorno,
-                    color,
-                });
+                salida.push(Orden::Tinta { contorno, color });
             }
         }
 
         Figura::Resaltador { puntos } => {
             // D45: grueso, translucido y SIN adelgazar. Un resaltador de
             // grosor variable deja el texto medio tapado.
-            let a = Ajustes {
-                tamano: e.grosor * 3.0,
-                adelgazado: 0.0,
-                ..Default::default()
-            };
-            let contorno = trazo::poligono(puntos, &a);
+            let contorno = crate::tinta::contorno_de_resaltador(puntos, e.grosor);
             if !contorno.is_empty() {
-                salida.push(Orden::Poligono {
-                    puntos: contorno,
+                salida.push(Orden::Tinta {
+                    contorno,
                     color: ColorRgba {
                         a: 0.35 * e.opacidad,
                         ..e.trazo
@@ -385,28 +385,16 @@ pub fn ordenes_de_escena(escena: &Escena) -> Vec<Orden> {
 /// se quita por debajo de eso no se puede notar por definicion.
 pub const HOLGURA_DETALLE: f32 = 0.5;
 
-/// Por debajo de este tamano en pantalla, un trazo se dibuja como una linea y
-/// no como tinta.
+/// Por debajo de este tamano en pantalla un trazo de tinta se pinta como
+/// una raya.
 ///
-/// # Por que existe este umbral, y por que no se adelgaza la tinta
-///
-/// La primera idea fue quitarle puntos al trazo cuando se ve pequeno. Medido
-/// sobre un dibujo con la forma del real, **sale peor**: al 50 % con holgura
-/// de un pixel, adelgazar daba 20.564 puntos de salida contra los 18.236 de
-/// no hacer nada.
-///
-/// La causa esta en que la tinta de un lapiz no es una linea con grosor, es
-/// un contorno relleno con un arco de trece pasos en cada esquina cerrada y
-/// una tapa redonda en cada punta. Al quitar puntos, los angulos entre los
-/// que quedan se cierran mas, salen mas arcos, y el contorno engorda. Por
-/// debajo del 78 % no bajaba nunca: ahi ya solo quedaban las tapas.
-///
-/// Asi que la economia no es adelgazar la tinta, es **no dibujar tinta cuando
-/// no se ve**. Un trazo que en pantalla mide cuarenta pixeles no ensena ni su
-/// afilado ni sus tapas; una linea de su grosor medio es identica al ojo y
-/// cuesta una fraccion. Y ahi si conviene adelgazar, porque una polilinea
-/// saca un punto por cada punto que entra.
-pub const TINTA_MINIMA_PX: f32 = 48.0;
+/// Era 48 px y era la economia del lienzo infinito, pero borraba la tinta
+/// de todo lo pequeno: letras, tics y firmas salian como rayas de grosor
+/// fijo y puntas cortadas (diagnostico de E1). Excalidraw no simplifica
+/// nunca. Aqui se queda en 2 px (D115), donde de verdad no se distingue, y
+/// la economia de lejos pasa a la rejilla, la capa congelada y la cache de
+/// realizaciones de Direct2D.
+pub const TINTA_MINIMA_PX: f32 = 2.0;
 
 /// Las ordenes de un elemento visto a este aumento.
 ///
@@ -768,10 +756,10 @@ mod pruebas {
             ..base()
         };
         match &ordenes(&e)[0] {
-            Orden::Poligono { color, .. } => {
+            Orden::Tinta { color, .. } => {
                 assert!(color.a < 0.5, "no es translucido: alfa {}", color.a)
             }
-            otra => panic!("el resaltador deberia ser un poligono, es {otra:?}"),
+            otra => panic!("el resaltador deberia ser tinta, es {otra:?}"),
         }
     }
 
@@ -909,6 +897,9 @@ mod pruebas {
             .iter()
             .flat_map(|o| match o {
                 Orden::Poligono { puntos, .. }
+                | Orden::Tinta {
+                    contorno: puntos, ..
+                }
                 | Orden::Polilinea { puntos, .. }
                 | Orden::Relleno { puntos, .. }
                 | Orden::Velo { hueco: puntos, .. } => puntos.clone(),
@@ -968,6 +959,41 @@ mod pruebas {
         assert_eq!(e.angulo, 0.0, "la base no esta girada");
         let dos_veces = ordenes(&e);
         assert_eq!(ordenes(&e), dos_veces, "y sigue siendo reproducible");
+    }
+
+    #[test]
+    fn un_lapiz_se_pinta_como_tinta_y_no_como_poligono() {
+        let e = Elemento {
+            figura: Figura::Lapiz {
+                puntos: (0..20)
+                    .map(|i| Punto2::nuevo(i as f32 * 4.0, 0.0))
+                    .collect(),
+                presiones: Vec::new(),
+                opciones: Some(crate::tinta::OpcionesTinta::default()),
+            },
+            ..base()
+        };
+        assert!(matches!(ordenes(&e).first(), Some(Orden::Tinta { .. })));
+    }
+
+    #[test]
+    fn una_firma_de_cuarenta_pixeles_sigue_siendo_tinta() {
+        // Antes de E1, por debajo de 48 px salia una raya de grosor fijo: las
+        // letras y las firmas pequenas nunca se veian como tinta.
+        let e = Elemento {
+            figura: Figura::Lapiz {
+                puntos: (0..20)
+                    .map(|i| Punto2::nuevo(i as f32 * 2.0, (i as f32).sin() * 5.0))
+                    .collect(),
+                presiones: Vec::new(),
+                opciones: Some(crate::tinta::OpcionesTinta::default()),
+            },
+            ..base()
+        };
+        assert!(matches!(
+            ordenes_a_distancia(&e, 1.0).first(),
+            Some(Orden::Tinta { .. })
+        ));
     }
 
     #[test]

@@ -36,7 +36,6 @@ pub mod seleccion;
 pub mod tinta;
 pub mod tiradores;
 pub mod transformar;
-pub mod trazo;
 pub mod vector;
 
 pub use aligerar::aligerar;
@@ -59,5 +58,4 @@ pub use pintado::{
     ordenes_de_escena_vista,
 };
 pub use seleccion::Seleccion;
-pub use trazo::{Ajustes, PuntoTrazo, contorno, linea_central, poligono};
 pub use vector::{Punto2, distancia_a_segmento};
