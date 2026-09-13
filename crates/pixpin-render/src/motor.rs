@@ -10,8 +10,8 @@
 //! `pixpin-render` es L1: recibe `&ID3D11Device` y no sabe de donde sale.
 
 use windows::Win32::Graphics::Direct2D::Common::{
-    D2D_SIZE_U, D2D1_ALPHA_MODE_IGNORE, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_COLOR_F,
-    D2D1_PIXEL_FORMAT,
+    D2D_SIZE_U, D2D1_ALPHA_MODE, D2D1_ALPHA_MODE_IGNORE, D2D1_ALPHA_MODE_PREMULTIPLIED,
+    D2D1_COLOR_F, D2D1_PIXEL_FORMAT,
 };
 use windows::Win32::Graphics::Direct2D::{
     D2D1_BITMAP_OPTIONS, D2D1_BITMAP_OPTIONS_CANNOT_DRAW, D2D1_BITMAP_OPTIONS_NONE,
@@ -106,6 +106,22 @@ impl Color {
             a: self.a,
         }
     }
+}
+
+/// RGBA recto (lo que da un PNG) a premultiplicado (lo que espera Direct2D
+/// para componer con alfa). Pura, para probarla sin GPU.
+pub fn premultiplicar(rgba: &[u8]) -> Vec<u8> {
+    let mut v = rgba.to_vec();
+    for p in v.chunks_exact_mut(4) {
+        let a = p[3] as u32;
+        if a == 255 {
+            continue;
+        }
+        for c in &mut p[..3] {
+            *c = ((*c as u32 * a + 127) / 255) as u8;
+        }
+    }
+    v
 }
 
 pub struct MotorRender {
@@ -220,7 +236,9 @@ impl MotorRender {
     }
 
     /// Sube pixeles RGBA de CPU como bitmap D2D. Para los pines: la imagen
-    /// viene del almacen (PNG en disco), no de una textura de captura.
+    /// viene del almacen (PNG en disco), no de una textura de captura. El
+    /// alfa se IGNORA: el pin pinta su tarjeta debajo y una captura no trae
+    /// alfa util.
     pub fn bitmap_desde_pixeles(
         &self,
         ancho: u32,
@@ -228,25 +246,57 @@ impl MotorRender {
         rgba: &[u8],
     ) -> Result<ID2D1Bitmap1, ErrorRender> {
         validar_tamano_rgba(ancho, alto, rgba.len())?;
+        self.crear_bitmap_rgba(ancho, alto, rgba, D2D1_ALPHA_MODE_IGNORE)
+    }
+
+    /// Como `bitmap_desde_pixeles`, pero respetando el alfa (D138): el fondo
+    /// del lienzo es blanco, y un PNG transparente subido con el alfa
+    /// ignorado salia con fondo negro.
+    pub fn bitmap_desde_pixeles_premultiplicado(
+        &self,
+        ancho: u32,
+        alto: u32,
+        rgba: &[u8],
+    ) -> Result<ID2D1Bitmap1, ErrorRender> {
+        validar_tamano_rgba(ancho, alto, rgba.len())?;
+        let pre = premultiplicar(rgba);
+        self.crear_bitmap_rgba(ancho, alto, &pre, D2D1_ALPHA_MODE_PREMULTIPLIED)
+    }
+
+    /// El lado mayor que admite un bitmap en este dispositivo (D139). La
+    /// HD 4000 no sube texturas enormes: lo que pase de aqui se reduce antes.
+    pub fn lado_maximo_bitmap(&self) -> u32 {
+        // SAFETY: consulta sin precondiciones sobre el contexto vivo.
+        unsafe { self.contexto.GetMaximumBitmapSize() }
+    }
+
+    fn crear_bitmap_rgba(
+        &self,
+        ancho: u32,
+        alto: u32,
+        datos: &[u8],
+        alfa: D2D1_ALPHA_MODE,
+    ) -> Result<ID2D1Bitmap1, ErrorRender> {
         let propiedades = D2D1_BITMAP_PROPERTIES1 {
             pixelFormat: D2D1_PIXEL_FORMAT {
                 format: DXGI_FORMAT_R8G8B8A8_UNORM,
-                alphaMode: D2D1_ALPHA_MODE_IGNORE,
+                alphaMode: alfa,
             },
             dpiX: 96.0,
             dpiY: 96.0,
             bitmapOptions: D2D1_BITMAP_OPTIONS_NONE,
             colorContext: std::mem::ManuallyDrop::new(None),
         };
-        // SAFETY: el puntero y el paso describen exactamente `rgba`, que
-        // vive durante la llamada; D2D copia los datos al crear el bitmap.
+        // SAFETY: el puntero y el paso describen exactamente `datos` (el
+        // llamante ya valido ancho*alto*4), que vive durante la llamada; D2D
+        // copia los datos al crear el bitmap.
         let bitmap = unsafe {
             self.contexto.CreateBitmap(
                 D2D_SIZE_U {
                     width: ancho,
                     height: alto,
                 },
-                Some(rgba.as_ptr() as *const _),
+                Some(datos.as_ptr() as *const _),
                 ancho * 4,
                 &propiedades,
             )?
@@ -496,6 +546,94 @@ mod pruebas {
         );
         assert!(validar_tamano_rgba(0, 2, 0).is_err(), "ancho cero no vale");
         assert!(validar_tamano_rgba(2, 2, 16).is_ok());
+    }
+
+    #[test]
+    fn premultiplicar_multiplica_el_color_por_el_alfa_y_no_toca_lo_opaco() {
+        let v = premultiplicar(&[255, 0, 0, 128, 10, 20, 30, 0, 1, 2, 3, 255]);
+        assert_eq!(&v[0..4], &[128, 0, 0, 128]);
+        assert_eq!(&v[4..8], &[0, 0, 0, 0], "transparente total es negro cero");
+        assert_eq!(&v[8..12], &[1, 2, 3, 255], "lo opaco queda igual");
+    }
+
+    #[test]
+    #[ignore = "necesita GPU real; ejecutar con --ignored"]
+    fn un_png_transparente_se_pinta_sobre_el_blanco_y_no_sobre_negro() {
+        // D138. Pixel 0: transparente total. Pixel 1: rojo al 50 %.
+        let (d3d, ctx) = dispositivo_de_prueba();
+        let motor = MotorRender::nuevo(&d3d).unwrap();
+        let rgba = [0, 0, 0, 0, 255, 0, 0, 128];
+        let con_alfa = motor
+            .bitmap_desde_pixeles_premultiplicado(2, 1, &rgba)
+            .expect("deberia subir");
+        let destino_tex = textura(&d3d, 2, 1);
+        let destino = motor.destino_desde_textura(&destino_tex).unwrap();
+        let rect = crate::lienzo::RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: 2.0,
+            alto: 1.0,
+        };
+        motor
+            .dibujar(&destino, |p| {
+                p.limpiar(Color::BLANCO);
+                p.bitmap_con(&con_alfa, rect, None, crate::lienzo::Interpolacion::Vecino);
+            })
+            .unwrap();
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 0, 0), [255, 255, 255, 255]);
+        let [b, g, r, _] = pixel(&d3d, &ctx, &destino_tex, 1, 0);
+        assert!(r >= 253, "rojo {r}");
+        assert!(
+            (125..=130).contains(&g) && (125..=130).contains(&b),
+            "{g} {b}"
+        );
+
+        // Caso negativo: con el alfa ignorado (lo de antes) sale negro.
+        let sin_alfa = motor.bitmap_desde_pixeles(2, 1, &rgba).unwrap();
+        motor
+            .dibujar(&destino, |p| {
+                p.limpiar(Color::BLANCO);
+                p.bitmap_con(&sin_alfa, rect, None, crate::lienzo::Interpolacion::Vecino);
+            })
+            .unwrap();
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 0, 0), [0, 0, 0, 255]);
+    }
+
+    #[test]
+    #[ignore = "necesita GPU real; ejecutar con --ignored"]
+    fn un_bitmap_reducido_se_pinta_estirado_a_su_tamano_logico() {
+        // D139: la imagen que no cabia se sube a menos pixeles y se pinta en
+        // el rectangulo de su tamano real. 2x2 subido, 4x4 pintado.
+        let (d3d, ctx) = dispositivo_de_prueba();
+        let motor = MotorRender::nuevo(&d3d).unwrap();
+        assert!(
+            motor.lado_maximo_bitmap() >= 2048,
+            "ninguna GPU con Direct2D baja de 2048"
+        );
+        let rojo = [255u8, 0, 0, 255].repeat(4);
+        let b = motor
+            .bitmap_desde_pixeles_premultiplicado(2, 2, &rojo)
+            .unwrap();
+        let destino_tex = textura(&d3d, 8, 8);
+        let destino = motor.destino_desde_textura(&destino_tex).unwrap();
+        motor
+            .dibujar(&destino, |p| {
+                p.limpiar(Color::BLANCO);
+                p.bitmap_con(
+                    &b,
+                    crate::lienzo::RectF {
+                        x: 0.0,
+                        y: 0.0,
+                        ancho: 4.0,
+                        alto: 4.0,
+                    },
+                    None,
+                    crate::lienzo::Interpolacion::Vecino,
+                );
+            })
+            .unwrap();
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 3, 3), [0, 0, 255, 255]);
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 4, 4), [255, 255, 255, 255]);
     }
 
     #[test]

@@ -8,6 +8,7 @@
 use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
 use windows::Win32::Graphics::Direct2D::{
     D2D1_ANTIALIAS_MODE_ALIASED, D2D1_CAP_STYLE_FLAT, D2D1_DASH_STYLE_DASH,
+    D2D1_INTERPOLATION_MODE, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
     D2D1_INTERPOLATION_MODE_LINEAR, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_LINE_JOIN_MITER,
     D2D1_ROUNDED_RECT, D2D1_STROKE_STYLE_PROPERTIES1, ID2D1Bitmap1, ID2D1PathGeometry1,
     ID2D1SolidColorBrush, ID2D1StrokeStyle,
@@ -49,6 +50,27 @@ impl RectF {
             top: self.y,
             right: self.x + self.ancho,
             bottom: self.y + self.alto,
+        }
+    }
+}
+
+/// Como se muestrea un bitmap al estirarlo o encogerlo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Interpolacion {
+    /// Pixeles tal cual: la lupa, o una captura al 100 % o muy ampliada.
+    Vecino,
+    /// Suave y barata: ampliaciones intermedias.
+    Lineal,
+    /// Cubica de calidad: reducir sin dientes.
+    Cubica,
+}
+
+impl Interpolacion {
+    fn a_d2d(self) -> D2D1_INTERPOLATION_MODE {
+        match self {
+            Interpolacion::Vecino => D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+            Interpolacion::Lineal => D2D1_INTERPOLATION_MODE_LINEAR,
+            Interpolacion::Cubica => D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
         }
     }
 }
@@ -405,10 +427,23 @@ impl Pintor<'_> {
     /// reales); si no, interpolacion lineal (reescalados suaves).
     pub fn bitmap(&self, b: &ID2D1Bitmap1, destino: RectF, fuente: Option<RectF>, nitido: bool) {
         let modo = if nitido {
-            D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR
+            Interpolacion::Vecino
         } else {
-            D2D1_INTERPOLATION_MODE_LINEAR
+            Interpolacion::Lineal
         };
+        self.bitmap_con(b, destino, fuente, modo);
+    }
+
+    /// Dibuja un bitmap con el modo de interpolacion que se diga (D141). La
+    /// transformacion activa cuenta: dentro de la vista del mundo, `destino`
+    /// va en coordenadas del mundo.
+    pub fn bitmap_con(
+        &self,
+        b: &ID2D1Bitmap1,
+        destino: RectF,
+        fuente: Option<RectF>,
+        modo: Interpolacion,
+    ) {
         let fuente_d2d = fuente.map(|f| f.a_d2d());
         // SAFETY: dentro del fotograma; bitmap del mismo dispositivo D2D
         // (obligacion del llamante: todos los bitmaps salen de este motor).
@@ -417,7 +452,7 @@ impl Pintor<'_> {
                 b,
                 Some(&destino.a_d2d()),
                 1.0,
-                modo,
+                modo.a_d2d(),
                 fuente_d2d.as_ref().map(|f| f as *const _),
                 None,
             )
@@ -959,6 +994,26 @@ mod pruebas {
         D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
     };
     use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
+
+    #[test]
+    fn cada_interpolacion_va_a_su_modo_de_direct2d() {
+        use windows::Win32::Graphics::Direct2D::{
+            D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, D2D1_INTERPOLATION_MODE_LINEAR,
+            D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+        };
+        assert_eq!(
+            Interpolacion::Vecino.a_d2d(),
+            D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR
+        );
+        assert_eq!(
+            Interpolacion::Lineal.a_d2d(),
+            D2D1_INTERPOLATION_MODE_LINEAR
+        );
+        assert_eq!(
+            Interpolacion::Cubica.a_d2d(),
+            D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC
+        );
+    }
 
     fn dispositivo() -> (ID3D11Device, ID3D11DeviceContext) {
         let mut d3d = None;
