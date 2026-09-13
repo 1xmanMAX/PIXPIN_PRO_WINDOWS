@@ -1,0 +1,11 @@
+{
+  "name": "oraculo-excalidraw",
+  "private": true,
+  "type": "module",
+  "description": "Ejecuta la tinta real de Excalidraw y guarda referencias para las pruebas de Rust. No se distribuye.",
+  "scripts": { "generar": "node generar.mjs" },
+  "dependencies": {
+    "perfect-freehand": "1.2.0",
+    "@excalidraw/laser-pointer": "1.3.1"
+  }
+}
