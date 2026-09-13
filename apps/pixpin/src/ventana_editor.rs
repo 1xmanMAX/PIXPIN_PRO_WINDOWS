@@ -29,7 +29,7 @@
 //! `dibujar_orden`. No es geometria: es la misma clase de traduccion mecanica
 //! que `a_evento`, solo que de salida en vez de entrada.
 
-use crate::navegacion::vista_efectiva;
+use crate::navegacion::{self, vista_efectiva};
 use anyhow::{Context, Result};
 use pixpin_geom::Punto;
 use pixpin_motor2d::cache::Cache;
@@ -387,11 +387,13 @@ pub fn abrir(
 
     let mut escena = escena;
     let mut gesto = gesto_inicial(ajustes_iman);
-    let camara = Camara::nueva();
+    let mut camara = Camara::nueva();
     // D127: la camara del usuario va en pixeles logicos; `efectiva` es la
     // que pinta y traduce el raton. Se recalcula si cambia la escala.
     let mut escala_por_cien = monitor.escala_por_cien;
     let mut efectiva = vista_efectiva(&camara, escala_por_cien);
+    // D136: rueda, Shift, Ctrl, espacio y boton central, a la Excalidraw.
+    let mut navegador = navegacion::Navegador::nuevo();
     let mut cache = Cache::nueva();
     let mut cache_tinta = pixpin_render::CacheTinta::nueva();
     let retardo = pixpin_render::retardo_nitido(nivel);
@@ -447,6 +449,47 @@ pub fn abrir(
                     capa.soltar();
                     todo_sucio = true;
                     ventana.invalidar();
+                }
+                continue;
+            }
+            // D136: moverse por el lienzo va ANTES que la caja y que el
+            // gesto. Un clic con el espacio pulsado arrastra el lienzo aunque
+            // caiga sobre un boton, como en Excalidraw, y lo que el navegador
+            // consume no puede empezar un trazo. Los modificadores solo se
+            // leen para la rueda: sondearlos con cada muestra del lapiz seria
+            // pagar cinco llamadas al sistema mil veces por segundo.
+            let mods = if matches!(ev, EventoOverlay::Rueda(_)) {
+                let m = pixpin_shell::entrada::modificadores_pulsados();
+                navegacion::Modificadores {
+                    ctrl: m.ctrl,
+                    shift: m.shift,
+                }
+            } else {
+                navegacion::Modificadores::default()
+            };
+            let nav = navegador.evento(
+                &ev,
+                Punto {
+                    x: area.x,
+                    y: area.y,
+                },
+                escala_por_cien,
+                mods,
+                gesto.en_reposo(),
+            );
+            if let Some(accion) = nav.accion {
+                if navegacion::aplicar(&mut camara, accion) {
+                    efectiva = vista_efectiva(&camara, escala_por_cien);
+                    // La capa congelada se da por invalida sola: su Estampa
+                    // lleva la camara. `decidir_zoom` rehace la tinta nitida
+                    // cuando el zoom se quede quieto.
+                    todo_sucio = true;
+                    ventana.invalidar();
+                }
+            }
+            if nav.consumido {
+                if navegador.arrastrando() {
+                    ventana.poner_cursor(FormaCursorWin::Mover);
                 }
                 continue;
             }
