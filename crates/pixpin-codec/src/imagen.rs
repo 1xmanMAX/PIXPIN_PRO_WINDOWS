@@ -172,6 +172,48 @@ pub fn guardar(imagen: &ImagenRgba, ruta: &Path, formato: FormatoImagen) -> Resu
         })
 }
 
+/// Premultiplica RGB por alfa (en el mismo buffer straight-alpha que usa
+/// `ImagenRgba`), SOLO para pasarselo al filtro de `image::imageops::resize`.
+///
+/// `resize` promedia cada canal por separado. Con alfa recto, un pixel
+/// transparente NEGRO junto a uno opaco BLANCO promedia el negro y el blanco
+/// del RGB sin pesar por cuanto pesa cada uno en el resultado -sale una
+/// franja gris a medio camino, visible aunque el resultado sea semitraslucido
+/// y el negro de detras "no deberia" contar. Premultiplicando antes, el RGB
+/// de un pixel con alfa 0 ya es (0,0,0): un pixel completamente transparente
+/// deja de tener voto en el promedio de color, que es lo que se espera de
+/// "invisible". Se deshace con `despremultiplicar` tras `resize`.
+fn premultiplicar_para_resize(pixeles: &[u8]) -> Vec<u8> {
+    let mut v = pixeles.to_vec();
+    for p in v.chunks_exact_mut(4) {
+        let a = p[3] as u32;
+        for c in &mut p[0..3] {
+            *c = ((*c as u32 * a + 127) / 255) as u8;
+        }
+    }
+    v
+}
+
+/// Deshace `premultiplicar_para_resize` sobre el resultado YA reducido de
+/// `resize`, in-place: vuelve a alfa recto para que `ImagenRgba` siga
+/// cumpliendo su contrato (straight alpha, ver el comentario del modulo).
+fn despremultiplicar_de_resize(pixeles: &mut [u8]) {
+    for p in pixeles.chunks_exact_mut(4) {
+        let a = p[3] as u32;
+        for c in &mut p[0..3] {
+            // `checked_div` en vez de comprobar `a == 0` a mano (clippy pide
+            // esto: `manual_checked_ops`). Sin alfa no hay color que
+            // recuperar -el original se perdio al premultiplicar, 0 por
+            // cualquier cosa da 0-, asi que se deja en negro en vez de
+            // dividir entre cero.
+            *c = (*c as u32 * 255 + a / 2)
+                .checked_div(a)
+                .map(|v| v.min(255))
+                .unwrap_or(0) as u8;
+        }
+    }
+}
+
 /// La imagen a otro tamano, con filtro triangular (suave y rapido). Para el
 /// fondo del lienzo cuando la GPU no admite su tamano (D139). Consume la
 /// imagen para no duplicar sus bytes mientras se reduce.
@@ -193,12 +235,18 @@ pub fn redimensionar(imagen: ImagenRgba, ancho: u32, alto: u32) -> Result<Imagen
     if tiene != espera {
         return Err(incoherente);
     }
-    let origen = image::RgbaImage::from_raw(a0, h0, imagen.pixeles).ok_or(incoherente)?;
+    // Premultiplicar ANTES de construir la imagen de `image`: es el unico
+    // buffer que se le pasa a `resize` (D139/fix ronda 1: sin esto, un
+    // recorte con transparencia sangraba el color de detras en el borde).
+    let premultiplicada = premultiplicar_para_resize(&imagen.pixeles);
+    let origen = image::RgbaImage::from_raw(a0, h0, premultiplicada).ok_or(incoherente)?;
     let r = image::imageops::resize(&origen, ancho, alto, image::imageops::FilterType::Triangle);
+    let mut pixeles = r.into_raw();
+    despremultiplicar_de_resize(&mut pixeles);
     Ok(ImagenRgba {
         ancho,
         alto,
-        pixeles: r.into_raw(),
+        pixeles,
     })
 }
 
@@ -417,5 +465,64 @@ mod pruebas {
             pixeles: vec![0; 15],
         };
         assert!(redimensionar(corta, 1, 1).is_err());
+    }
+
+    #[test]
+    fn redimensionar_no_deja_que_lo_transparente_manche_el_color_del_vecino() {
+        // Fix ronda 1 (D139): blanco opaco, blanco opaco, negro transparente,
+        // negro transparente -> a 2x1 el filtro triangular de `image` no
+        // hace una media de caja exacta de dos en dos (su soporte se
+        // ensancha al reducir, asi que cada mitad se contamina un poco de
+        // alfa de la otra: 219 y 36 de verdad, no 255 y 0 limpios). Eso es
+        // normal en un downscale continuo y no es lo que este test vigila:
+        // lo que vigila es que el COLOR nunca se contamine con el negro
+        // invisible, que es justo lo que arregla premultiplicar antes de
+        // llamar a `resize`.
+        let img = ImagenRgba {
+            ancho: 4,
+            alto: 1,
+            pixeles: vec![
+                255, 255, 255, 255, //
+                255, 255, 255, 255, //
+                0, 0, 0, 0, //
+                0, 0, 0, 0,
+            ],
+        };
+        let r = redimensionar(img, 2, 1).unwrap();
+        assert_eq!(&r.pixeles[0..3], &[255, 255, 255], "mitad blanca: color");
+        assert!(r.pixeles[3] > 200, "mitad blanca: alfa alto, no 128 gris");
+        assert_eq!(
+            &r.pixeles[4..7],
+            &[255, 255, 255],
+            "mitad transparente: color sigue blanco, no gris"
+        );
+        assert!(r.pixeles[7] < 50, "mitad transparente: alfa bajo");
+
+        // El caso que de verdad delata el fallo: blanco opaco junto a negro
+        // TOTALMENTE transparente, reducidos a un solo pixel. El alfa final
+        // (~128) es la media de 255 y 0, pero el color no puede irse a gris
+        // (~128,128,128): el negro no pesa nada mientras es invisible, asi
+        // que el color tiene que seguir siendo blanco.
+        let mitad = ImagenRgba {
+            ancho: 2,
+            alto: 1,
+            pixeles: vec![
+                255, 255, 255, 255, //
+                0, 0, 0, 0,
+            ],
+        };
+        let r = redimensionar(mitad, 1, 1).unwrap();
+        assert!(
+            (r.pixeles[3] as i32 - 128).abs() <= 1,
+            "alfa a medias: {:?}",
+            r.pixeles
+        );
+        for c in &r.pixeles[0..3] {
+            assert!(
+                *c >= 250,
+                "el color no puede haberse ido a gris: {:?}",
+                r.pixeles
+            );
+        }
     }
 }
