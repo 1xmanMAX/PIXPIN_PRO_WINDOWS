@@ -1814,7 +1814,10 @@ fn pintar(i: &PinInterno) {
         // Las anotaciones van ENCIMA de todo lo demas: son una capa, y el
         // contenido original nunca se toca (D48). Se dibujan en coordenadas
         // del contenido, asi que hay que sumarles el margen de la sombra.
-        pintar_anotaciones(p, i, m);
+        // D147: lo dibujado en el lienzo fuera de la imagen se guarda, pero
+        // el pin ensena solo su contenido: sin recorte se colaba por el
+        // margen de la sombra.
+        p.con_recorte(caja, |p| pintar_anotaciones(p, i, m));
 
         // La lupa amplia el bitmap NATIVO del pin: si el pin esta escalado,
         // la fuente en pixeles del contenido se convierte a pixeles de la

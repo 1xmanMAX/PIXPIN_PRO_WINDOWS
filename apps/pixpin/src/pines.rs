@@ -201,10 +201,26 @@ pub struct Pines {
     /// vez: anotar dos pines a la vez no significa nada y complicaria el
     /// foco del teclado sin ganar nada.
     anotacion: Option<Anotacion>,
+    /// El lienzo que un pin pidio abrir (D132), a la espera de que el bucle
+    /// principal lo recoja con `tomar_lienzo`.
+    lienzo_pedido: Option<PedidoLienzo>,
     /// Cada cuanto pregunta un pin de video por fotogramas (D67): lo decide
     /// el nivel de rendimiento al arrancar. `None` si el dispositivo no
     /// soporta video (D66): entonces los videos se ensenan como documento.
     ritmo_video: Option<u32>,
+}
+
+/// Lo que el gestor deja preparado para abrir un pin en el lienzo. El
+/// gestor no abre el editor: el editor tiene su propio bucle y su propio
+/// dispositivo, y lo abre `main.rs`, que se lo devuelve con `terminar_lienzo`.
+pub struct PedidoLienzo {
+    pub id: u64,
+    /// El `.pixpin2d` del pin.
+    pub ruta: PathBuf,
+    pub habia_fichero: bool,
+    pub escena: Escena,
+    /// La imagen del pin, o el recuadro gris si no se pudo leer.
+    pub fondo: ImagenRgba,
 }
 
 /// Un pin en modo anotacion: su dibujo, su maquina y su elemento en curso.
@@ -278,6 +294,7 @@ impl Pines {
             texto_sin_codec,
             hwnd_app,
             anotacion: None,
+            lienzo_pedido: None,
             ritmo_video,
         })
     }
@@ -882,12 +899,7 @@ impl Pines {
             }
             CambioPin::PaletaPulsada(p) => self.paleta_pulsada(id, p),
             CambioPin::VideoFallido => self.degradar_video(id),
-            // El pedido existe ya, pero se atiende en la Tarea 10: aqui solo
-            // se deja constancia de que llego.
-            CambioPin::AbrirLienzoPedido => {
-                tracing::info!(id, "abrir en lienzo: aun sin atender");
-                Ok(())
-            }
+            CambioPin::AbrirLienzoPedido => self.pedir_lienzo(id),
             // Movido, Redimensionado y Cerrado los resuelve el callback.
             _ => Ok(()),
         }
@@ -1043,6 +1055,112 @@ impl Pines {
             "anotacion guardada"
         );
         Ok(())
+    }
+
+    /// Prepara el lienzo de un pin (D132). Queda en `lienzo_pedido` hasta
+    /// que el bucle principal lo recoja con `tomar_lienzo`.
+    fn pedir_lienzo(&mut self, id: u64) -> Result<()> {
+        if self.lienzo_pedido.is_some() {
+            return Ok(());
+        }
+        // D134: si se esta anotando ESTE pin, primero se guarda y se sale;
+        // si no, el lienzo abriria el fichero de antes de la anotacion.
+        if self.anotacion.as_ref().is_some_and(|a| a.id == id) {
+            self.salir_de_anotar()?;
+        }
+        let ruta = self
+            .ruta_anotacion(id)
+            .context("este pin no tiene contenido que abrir en el lienzo")?;
+        let (escena, habia_fichero) = match escena_para_lienzo(&ruta) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!(
+                    ?e,
+                    id,
+                    ruta = %ruta.display(),
+                    "dibujo del pin corrupto; el lienzo no se abre para no pisarlo"
+                );
+                return Ok(());
+            }
+        };
+        let (ruta_imagen, guardado) = {
+            let a = self.almacen.borrow();
+            let e = a
+                .entradas()
+                .iter()
+                .find(|e| e.id == id)
+                .context("el pin no esta en el almacen")?;
+            (a.ruta_objeto(e), e.pin)
+        };
+        let fondo = match cargar(&ruta_imagen) {
+            Ok(imagen) => imagen,
+            Err(e) => {
+                let (ancho, alto) = tamano_de_reserva(guardado);
+                tracing::warn!(
+                    ?e,
+                    id,
+                    ancho,
+                    alto,
+                    "imagen del pin ilegible; el lienzo abre sobre un recuadro gris"
+                );
+                crate::fondo_lienzo::recuadro_gris(ancho, alto)
+            }
+        };
+        self.lienzo_pedido = Some(PedidoLienzo {
+            id,
+            ruta,
+            habia_fichero,
+            escena,
+            fondo,
+        });
+        Ok(())
+    }
+
+    /// Lo que `purgar` dejo preparado para abrir en el lienzo, si hay algo.
+    pub fn tomar_lienzo(&mut self) -> Option<PedidoLienzo> {
+        self.lienzo_pedido.take()
+    }
+
+    /// Lo que devuelve el editor al cerrar (D146): guardar si toca y
+    /// repintar el pin con lo guardado. Un fallo al guardar deja el fichero
+    /// y el pin como estaban.
+    pub fn terminar_lienzo(
+        &mut self,
+        id: u64,
+        ruta: &Path,
+        habia_fichero: bool,
+        resultado: Result<Escena>,
+    ) {
+        let escena = match resultado {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!(?e, id, "no se pudo abrir el lienzo");
+                return;
+            }
+        };
+        match guardar_lienzo(ruta, &escena, habia_fichero) {
+            Err(e) => {
+                tracing::error!(
+                    ?e,
+                    id,
+                    "no se pudo guardar el lienzo; el pin sigue con lo de antes"
+                )
+            }
+            Ok(guardado) => {
+                tracing::info!(
+                    id,
+                    guardado,
+                    elementos = escena.cuantos_visibles(),
+                    "lienzo cerrado"
+                );
+                // Directamente con la escena y no con `recargar_anotaciones`:
+                // esa no toca el pin si el fichero quedo vacio, y lo borrado
+                // en el lienzo seguiria viendose en el pin.
+                if let Some(pin) = self.vivos.get(&id) {
+                    pin.poner_anotaciones(pixpin_motor2d::ordenes_de_escena(&escena));
+                }
+            }
+        }
     }
 
     /// Un evento del puntero o del teclado mientras se anota, y su repintado.
@@ -1912,9 +2030,50 @@ fn planificar_pedidos(pedidos: &[(u64, CambioPin)]) -> Vec<PasoPedido> {
     pasos
 }
 
+/// El tamano del recuadro gris cuando la imagen del pin no se puede leer:
+/// el del pin guardado si se conoce, si no 800 x 600 (tabla de errores).
+const RESERVA_LIENZO: (u32, u32) = (800, 600);
+
+fn tamano_de_reserva(guardado: Option<PinGuardado>) -> (u32, u32) {
+    match guardado {
+        Some(g) if g.ancho > 0 && g.alto > 0 => (g.ancho, g.alto),
+        _ => RESERVA_LIENZO,
+    }
+}
+
+/// La escena con la que se abre el lienzo y si ya habia fichero. Un fichero
+/// corrupto es un error: abrir el lienzo con una escena vacia y guardarla al
+/// cerrar pisaria lo que el usuario tenia (tabla de errores).
+fn escena_para_lienzo(ruta: &Path) -> Result<(Escena, bool), pixpin_motor2d::ErrorFormato> {
+    let habia = ruta.is_file();
+    let escena = pixpin_motor2d::cargar(ruta)?;
+    Ok((escena, habia))
+}
+
+/// D146: una escena vacia sin fichero previo no crea uno; con fichero previo
+/// se guarda aunque quede vacia, o lo borrado volveria a salir en el pin.
+fn hay_que_guardar_lienzo(escena: &Escena, habia_fichero: bool) -> bool {
+    habia_fichero || escena.cuantos_visibles() > 0
+}
+
+/// Guarda lo del lienzo si toca. Devuelve si escribio. `guardar` escribe a
+/// un temporal y renombra: si falla, el fichero anterior queda intacto.
+fn guardar_lienzo(
+    ruta: &Path,
+    escena: &Escena,
+    habia_fichero: bool,
+) -> Result<bool, pixpin_motor2d::ErrorFormato> {
+    if !hay_que_guardar_lienzo(escena, habia_fichero) {
+        return Ok(false);
+    }
+    pixpin_motor2d::guardar(ruta, escena)?;
+    Ok(true)
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    use pixpin_motor2d::gesto::{EventoGesto, Gesto};
     use pixpin_motor2d::{ColorRgba, Elemento, EstiloTrazo, Figura, Punto2};
 
     #[test]
@@ -2066,5 +2225,131 @@ mod pruebas {
         let (x1, y1, x2, y2) = e.caja();
         assert!(x1 >= 0.0 && y1 >= 0.0, "quedo fuera: {x1} {y1}");
         assert!(x2 <= imagen.ancho as f32 && y2 <= imagen.alto as f32);
+    }
+
+    fn dir_de_prueba(etiqueta: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("pixpin-lienzo-{etiqueta}"));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn una_escena_vacia_sin_fichero_previo_no_crea_fichero() {
+        let ruta = dir_de_prueba("vacia-sin-previo").join("objeto.pixpin2d");
+        let (escena, habia) = escena_para_lienzo(&ruta).unwrap();
+        assert!(!habia);
+        assert!(!guardar_lienzo(&ruta, &escena, habia).unwrap());
+        assert!(
+            !ruta.exists(),
+            "abrir y cerrar sin dibujar no deja ficheros"
+        );
+    }
+
+    #[test]
+    fn con_fichero_previo_se_guarda_aunque_quede_vacia() {
+        // Borrar todo en el lienzo tiene que borrarlo tambien del pin.
+        let ruta = dir_de_prueba("vacia-con-previo").join("objeto.pixpin2d");
+        let mut antes = Escena::nueva();
+        antes.anadir(trazo(1.0, 2.0, 30.0, 40.0));
+        pixpin_motor2d::guardar(&ruta, &antes).unwrap();
+        let (_, habia) = escena_para_lienzo(&ruta).unwrap();
+        assert!(habia);
+        assert!(guardar_lienzo(&ruta, &Escena::nueva(), habia).unwrap());
+        assert_eq!(pixpin_motor2d::cargar(&ruta).unwrap().cuantos_visibles(), 0);
+    }
+
+    #[test]
+    fn un_fichero_corrupto_no_abre_el_lienzo_ni_se_sobrescribe() {
+        let ruta = dir_de_prueba("corrupto").join("objeto.pixpin2d");
+        std::fs::write(&ruta, "{ esto no es un dibujo").unwrap();
+        assert!(escena_para_lienzo(&ruta).is_err());
+        assert_eq!(
+            std::fs::read_to_string(&ruta).unwrap(),
+            "{ esto no es un dibujo"
+        );
+    }
+
+    #[test]
+    fn si_guardar_falla_el_fichero_anterior_queda_intacto() {
+        let d = dir_de_prueba("guardar-falla");
+        let ruta = d.join("objeto.pixpin2d");
+        let mut antes = Escena::nueva();
+        antes.anadir(trazo(1.0, 2.0, 30.0, 40.0));
+        pixpin_motor2d::guardar(&ruta, &antes).unwrap();
+        let original = std::fs::read_to_string(&ruta).unwrap();
+        // El temporal de `guardar` no se puede escribir: hay un directorio
+        // con su nombre.
+        std::fs::create_dir_all(ruta.with_extension("pixpin2d.tmp")).unwrap();
+        let mut nueva = Escena::nueva();
+        nueva.anadir(trazo(5.0, 5.0, 9.0, 9.0));
+        assert!(guardar_lienzo(&ruta, &nueva, true).is_err());
+        assert_eq!(std::fs::read_to_string(&ruta).unwrap(), original);
+    }
+
+    #[test]
+    fn lo_dibujado_en_el_lienzo_vuelve_en_las_mismas_coordenadas() {
+        // Ida y vuelta (spec §6): la escena del pin, un trazo nuevo con el
+        // gesto (fuera de la imagen incluso, D147), guardar y recargar.
+        let ruta = dir_de_prueba("ida-y-vuelta").join("objeto.pixpin2d");
+        let mut previa = Escena::nueva();
+        previa.anadir(trazo(10.0, 10.0, 50.0, 50.0));
+        pixpin_motor2d::guardar(&ruta, &previa).unwrap();
+
+        let (mut escena, habia) = escena_para_lienzo(&ruta).unwrap();
+        let mut gesto = Gesto::nuevo();
+        gesto.evento(
+            EventoGesto::Pulsar {
+                p: Punto2::nuevo(-50.0, 10.0),
+                shift: false,
+                alt: false,
+                presion: None,
+            },
+            &mut escena,
+            1.0,
+        );
+        gesto.evento(
+            EventoGesto::Mover {
+                p: Punto2::nuevo(-20.0, 40.0),
+                shift: false,
+                alt: false,
+                presion: None,
+            },
+            &mut escena,
+            1.0,
+        );
+        gesto.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(-20.0, 40.0),
+            },
+            &mut escena,
+            1.0,
+        );
+        escena.compactar();
+        assert_eq!(escena.cuantos_visibles(), 2);
+        assert!(guardar_lienzo(&ruta, &escena, habia).unwrap());
+
+        let vuelta = pixpin_motor2d::cargar(&ruta).unwrap();
+        let antes: Vec<Elemento> = escena.visibles().cloned().collect();
+        let despues: Vec<Elemento> = vuelta.visibles().cloned().collect();
+        assert_eq!(antes, despues);
+    }
+
+    #[test]
+    fn sin_imagen_legible_el_recuadro_mide_lo_del_pin_o_800_por_600() {
+        let g = Pines::guardado_desde(
+            Rect {
+                x: 0,
+                y: 0,
+                ancho: 320,
+                alto: 200,
+            },
+            100,
+            100,
+        );
+        assert_eq!(tamano_de_reserva(Some(g)), (320, 200));
+        assert_eq!(tamano_de_reserva(None), (800, 600));
+        let cero = PinGuardado { ancho: 0, ..g };
+        assert_eq!(tamano_de_reserva(Some(cero)), (800, 600));
     }
 }

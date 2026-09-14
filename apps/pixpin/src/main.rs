@@ -1144,6 +1144,28 @@ fn arrancar(
         // se saca de la lista. Barato: nada que hacer si no cerro ninguno.
         if let Some(p) = &mut pines {
             p.purgar();
+            // D132/D144: el lienzo de un pin se abre aqui, fuera del gestor,
+            // porque el editor tiene su propio bucle. Mientras dura, lo que
+            // pidan otros pines espera en su cola; al cerrar se atiende con
+            // otro `purgar` (que puede traer otro lienzo, de ahi el `while`).
+            while let Some(pedido) = p.tomar_lienzo() {
+                let crate::pines::PedidoLienzo {
+                    id,
+                    ruta,
+                    habia_fichero,
+                    escena,
+                    fondo,
+                } = pedido;
+                let resultado = ventana_editor::abrir(
+                    escena,
+                    config.enganche,
+                    decision.nivel,
+                    config.rendimiento.medir_fotogramas,
+                    Some(fondo),
+                );
+                p.terminar_lienzo(id, &ruta, habia_fichero, resultado);
+                p.purgar();
+            }
             // Extraer paginas puede haber dejado algunas fuera por el
             // tope. Se avisa AQUI y no en el gestor porque la bandeja vive
             // en este bucle, y callarselo dejaria al usuario contando
