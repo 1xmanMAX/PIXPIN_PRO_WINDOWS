@@ -29,6 +29,7 @@
 //! `dibujar_orden`. No es geometria: es la misma clase de traduccion mecanica
 //! que `a_evento`, solo que de salida en vez de entrada.
 
+use crate::fondo_lienzo::{FondoLienzo, encuadre_inicial};
 use crate::navegacion::{self, vista_efectiva};
 use anyhow::{Context, Result};
 use pixpin_geom::Punto;
@@ -353,15 +354,21 @@ fn decidir_zoom(
 /// `medir_fotogramas` enciende el registro de D129: una linea de `tracing`
 /// cada 60 fotogramas con cuanto se tarda en vaciar la cola, pintar,
 /// presentar y esperar.
+///
+/// `fondo` es la imagen del pin, fija en el mundo en (0,0)-(ancho, alto)
+/// (D132); la bandeja pasa `None` (D137).
 pub fn abrir(
     escena: Escena,
     ajustes_iman: pixpin_motor2d::enganche::Ajustes,
     nivel: pixpin_nivel::Nivel,
     medir_fotogramas: bool,
+    fondo: Option<pixpin_codec::ImagenRgba>,
 ) -> Result<Escena> {
     let dispositivo =
         pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para el editor")?;
     let mut motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
+    // D139: se reduce aqui, que es donde se sabe cuanto admite la GPU.
+    let mut fondo = fondo.map(|img| FondoLienzo::nuevo(img, motor.lado_maximo_bitmap()));
 
     let disposicion =
         pixpin_capture::enumerar_monitores().context("sin monitores para el editor")?;
@@ -387,7 +394,17 @@ pub fn abrir(
 
     let mut escena = escena;
     let mut gesto = gesto_inicial(ajustes_iman);
-    let mut camara = Camara::nueva();
+    // D135: con fondo, la imagen centrada; sin fondo, el origen como antes.
+    let mut camara = match &fondo {
+        Some(f) => encuadre_inicial(
+            f.ancho(),
+            f.alto(),
+            area.ancho as f32,
+            area.alto as f32,
+            monitor.escala_por_cien,
+        ),
+        None => Camara::nueva(),
+    };
     // D127: la camara del usuario va en pixeles logicos; `efectiva` es la
     // que pinta y traduce el raton. Se recalcula si cambia la escala.
     let mut escala_por_cien = monitor.escala_por_cien;
@@ -644,10 +661,18 @@ pub fn abrir(
                         tamano: (ancho_px as u32, alto_px as u32),
                         excluidos: excluidos.clone(),
                     };
+                    if let Some(f) = fondo.as_mut() {
+                        f.asegurar(&motor);
+                    }
                     let _ = capa.preparar(&mut motor, estampa, |p| {
                         p.limpiar(Color::BLANCO);
                         let origen = efectiva.a_pantalla(Punto2::nuevo(0.0, 0.0));
                         p.poner_vista((0.0, 0.0), efectiva.zoom, (origen.x, origen.y));
+                        // D140: la imagen se pinta primera y entra en la capa:
+                        // mientras se dibuja, no cuesta nada por fotograma.
+                        if let Some(f) = &fondo {
+                            f.pintar(p, vista, efectiva.zoom);
+                        }
                         for id in candidatos {
                             if excluidos.contains(&id) {
                                 continue;
@@ -702,6 +727,7 @@ pub fn abrir(
                         &mut cache_tinta,
                         &rejilla,
                         &capa,
+                        &mut fondo,
                         &caja,
                         escala_por_cien,
                         ancho_px,
@@ -764,6 +790,7 @@ pub fn abrir(
                 &mut cache_tinta,
                 &rejilla,
                 &capa,
+                &mut fondo,
                 &caja,
                 escala_por_cien,
                 ancho_px,
@@ -832,6 +859,9 @@ pub fn abrir(
         }
     }
 
+    // D143: la copia en GPU (y la de CPU) se suelta al cerrar, no al volver
+    // al gestor de pines.
+    drop(fondo);
     ventana.ocultar();
     escena.compactar();
     Ok(escena)
@@ -912,6 +942,7 @@ fn pintar(
     cache_tinta: &mut pixpin_render::CacheTinta,
     rejilla: &Rejilla,
     capa: &CapaEstatica,
+    fondo: &mut Option<FondoLienzo>,
     caja_herramientas: &CajaHerramientas,
     escala_por_cien: u32,
     ancho_px: f32,
@@ -919,6 +950,9 @@ fn pintar(
     zona: Option<(i32, i32, i32, i32)>,
     encima: impl FnOnce(&pixpin_render::Pintor<'_>),
 ) -> Option<std::time::Duration> {
+    if let Some(f) = fondo.as_mut() {
+        f.asegurar(motor);
+    }
     let Ok(destino) = superficie.empezar(motor) else {
         return None;
     };
@@ -947,6 +981,7 @@ fn pintar(
     // resto de la pantalla con lo que hubiera antes.
     let zona = if capa_vale { zona } else { None };
 
+    let fondo_ref = fondo.as_ref();
     let error = motor.dibujar(&destino, |p| {
         // El mundo se dibuja en sus propias coordenadas; la matriz activa es
         // lo unico que cambia al encuadrar o acercar (camara.rs lo explica:
@@ -956,6 +991,13 @@ fn pintar(
             p.limpiar(Color::BLANCO);
         }
         p.poner_vista((0.0, 0.0), camara.zoom, (origen.x, origen.y));
+        // D140/D142: con la capa valida la imagen ya esta copiada; si no, va
+        // la primera, debajo de todo, y solo si se ve.
+        if !capa_vale {
+            if let Some(f) = fondo_ref {
+                f.pintar(p, vista, camara.zoom);
+            }
+        }
 
         for id in candidatos {
             // Con la capa valida, lo que no esta excluido ya esta copiado
@@ -1034,6 +1076,10 @@ fn pintar(
         // Dispositivo perdido: las realizaciones de tinta son del dispositivo
         // viejo y ya no valen (D2D las rechazaria en el siguiente fotograma).
         cache_tinta.vaciar();
+        // Dispositivo perdido: el bitmap del fondo tambien era del viejo.
+        if let Some(f) = fondo.as_mut() {
+            f.soltar();
+        }
     }
     let t_presentar = std::time::Instant::now();
     let _ = superficie.presentar_sincronizado(zona);
@@ -1078,6 +1124,7 @@ fn pedir_medida(
     cache_tinta: &mut pixpin_render::CacheTinta,
     rejilla: &Rejilla,
     capa: &CapaEstatica,
+    fondo: &mut Option<FondoLienzo>,
     caja: &CajaHerramientas,
     escala_por_cien: u32,
     ancho_px: f32,
@@ -1129,6 +1176,7 @@ fn pedir_medida(
                         cache_tinta,
                         rejilla,
                         capa,
+                        fondo,
                         caja,
                         escala_por_cien,
                         ancho_px,
@@ -1798,7 +1846,24 @@ mod pruebas {
             pixpin_motor2d::enganche::Ajustes::default(),
             pixpin_nivel::Nivel::Completo,
             false,
+            None,
         );
+    }
+
+    #[test]
+    fn el_fondo_no_es_un_elemento_que_se_pueda_seleccionar() {
+        // D133: la imagen vive fuera de la escena. Con un fondo abierto y
+        // nada dibujado, Ctrl+A no elige nada y el borrador no tiene que
+        // borrar.
+        let mut escena = Escena::nueva();
+        let mut gesto = Gesto::nuevo();
+        let _fondo = crate::fondo_lienzo::FondoLienzo::nuevo(
+            crate::fondo_lienzo::recuadro_gris(800, 600),
+            4096,
+        );
+        gesto.evento(EventoGesto::SeleccionarTodo, &mut escena, 1.0);
+        assert!(gesto.seleccion.ids().is_empty());
+        assert_eq!(escena.cuantos_visibles(), 0);
     }
 
     #[test]

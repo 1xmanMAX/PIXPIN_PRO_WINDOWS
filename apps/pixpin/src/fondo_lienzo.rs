@@ -70,6 +70,13 @@ pub fn se_ve(vista: (f32, f32, f32, f32), ancho: f32, alto: f32) -> bool {
 
 /// El recuadro gris que sustituye a una imagen que no se pudo leer. Nunca de
 /// cero pixeles: un bitmap vacio no se puede subir.
+///
+/// Sin llamador de produccion todavia: la Tarea 10 es quien decide el fondo
+/// real de un pin y quien recurre a este recuadro si la lectura falla. Esta
+/// tarea (8) solo cablea la bandeja pasando `None`, asi que aqui solo lo usan
+/// las pruebas -las de este fichero y la de `ventana_editor` que comprueba
+/// que el fondo no es seleccionable-.
+#[allow(dead_code)]
 pub fn recuadro_gris(ancho: u32, alto: u32) -> ImagenRgba {
     let (ancho, alto) = (ancho.max(1), alto.max(1));
     ImagenRgba {
@@ -138,6 +145,11 @@ impl FondoLienzo {
     }
 
     /// Cuantos pixeles se suben de verdad.
+    ///
+    /// Sin llamador de produccion todavia: lo usa la Tarea 10, que es quien
+    /// de verdad decide el fondo real de un pin (esta tarea solo cablea la
+    /// bandeja pasando `None`). Probado aqui mismo mientras tanto.
+    #[allow(dead_code)]
     pub fn tamano_subido(&self) -> (u32, u32) {
         (self.imagen.ancho, self.imagen.alto)
     }

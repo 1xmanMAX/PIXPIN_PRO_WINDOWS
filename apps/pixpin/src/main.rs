@@ -53,13 +53,6 @@ mod caja_dibujo;
 mod capa;
 mod cuenta_atras;
 mod editor;
-// Lo usa el editor desde la Tarea 8 del plan del lienzo. `cfg_attr(not(test),
-// ...)` no basta: bajo `--all-targets` el binario de pruebas se compila con
-// `cfg(test)` activo para el CRATE entero, asi que la condicion nunca aplica
-// ahi y `asegurar`/`pintar`/`soltar` (que ningun test de esta tarea llama)
-// siguen dando dead_code. Se permite sin condicion hasta que la Tarea 8 use
-// el modulo de verdad y la retire.
-#[allow(dead_code)]
 mod fondo_lienzo;
 mod gif;
 mod grabador;
@@ -729,6 +722,8 @@ fn arrancar(
                     config.enganche,
                     decision.nivel,
                     config.rendimiento.medir_fotogramas,
+                    // D137: la bandeja abre el editor en blanco, sin pin.
+                    None,
                 ) {
                     Ok(escena) => {
                         tracing::info!(elementos = escena.cuantos_visibles(), "editor cerrado")
