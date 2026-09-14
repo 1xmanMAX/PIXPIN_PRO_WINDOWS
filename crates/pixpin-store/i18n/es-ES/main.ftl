@@ -54,6 +54,7 @@ comando-capturar-y-copiar = Capturar y copiar
 comando-capturar-con-scroll = Captura larga con scroll
 comando-cuentagotas = Cuentagotas
 comando-pinear = Recortar y pinear
+comando-pinear-en-vivo = Pin en vivo (ver una zona en directo)
 comando-pinear-portapapeles = Pinear el portapapeles
 comando-anotar = Anotar la pantalla
 comando-anotar-congelada = Anotar una captura de la pantalla
@@ -140,6 +141,7 @@ pin-copiar-texto = Copiar el texto de la imagen
 
 # Abrir un pin de imagen en el lienzo del editor.
 pin-abrir-en-lienzo = Abrir en lienzo
+pin-congelar = Congelar como imagen
 
 # Paginas de un PDF pineado.
 pin-pagina-siguiente = Página siguiente

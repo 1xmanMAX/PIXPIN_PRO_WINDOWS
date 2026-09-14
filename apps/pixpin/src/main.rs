@@ -59,6 +59,7 @@ mod grabador;
 mod medir_fotogramas;
 mod navegacion;
 mod overlay;
+mod pin_vivo;
 mod pines;
 mod reproductor;
 mod scroll;
@@ -497,6 +498,7 @@ fn arrancar(
                     Some((ModoConfirmacion::ConBarra, None))
                 }
                 Some(comandos::Comando::Pinear) => Some((ModoConfirmacion::Pinear, None)),
+                Some(comandos::Comando::PinearEnVivo) => Some((ModoConfirmacion::PinEnVivo, None)),
                 Some(comandos::Comando::CapturarConScroll) => {
                     Some((ModoConfirmacion::Scroll, None))
                 }
@@ -968,6 +970,28 @@ fn arrancar(
                         );
                         Ok(Some(ruta))
                     }
+                    AccionFinal::PinEnVivo { region } => {
+                        let p = preparar_pines(
+                            &mut recursos_overlay,
+                            &mut pines,
+                            &ubicacion,
+                            &textos,
+                            hwnd,
+                            ritmo_video,
+                        )?;
+                        let r = recursos_overlay
+                            .as_ref()
+                            .context("sin recursos para la captura en vivo")?;
+                        // El mismo tope que el modo vivo del overlay (D14):
+                        // en Ligero, 30 fps bastan para seguir una zona y no
+                        // roban la GPU compartida.
+                        let tope = match decision.nivel {
+                            Nivel::Completo => std::time::Duration::ZERO,
+                            Nivel::Ligero => std::time::Duration::from_millis(33),
+                        };
+                        p.pinear_en_vivo(r.dispositivo(), region, tope)?;
+                        Ok(None)
+                    }
                     AccionFinal::Pinear { imagen, region } => {
                         // El gestor consume la accion aqui, no en
                         // ejecutar_accion: el pin nace 1:1 en la region del
@@ -1278,6 +1302,7 @@ fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
         dejar_pasar_clic: textos.t("pin-dejar-pasar-clic"),
         copiar_texto: textos.t("pin-copiar-texto"),
         abrir_en_lienzo: textos.t("pin-abrir-en-lienzo"),
+        congelar: textos.t("pin-congelar"),
         pagina_siguiente: textos.t("pin-pagina-siguiente"),
         pagina_anterior: textos.t("pin-pagina-anterior"),
         extraer_pagina: textos.t("pin-extraer-pagina"),
@@ -1373,7 +1398,10 @@ fn ejecutar_accion(
             pixpin_codec::guardar(&imagen, &ruta, pixpin_codec::FormatoImagen::Png)?;
             Ok(Some(ruta))
         }
-        AccionFinal::Pinear { .. } | AccionFinal::Scroll { .. } | AccionFinal::Gif { .. } => {
+        AccionFinal::Pinear { .. }
+        | AccionFinal::Scroll { .. }
+        | AccionFinal::Gif { .. }
+        | AccionFinal::PinEnVivo { .. } => {
             // El bucle los intercepta antes de llamar aqui, porque necesitan
             // el gestor o los recursos de captura; llegar seria un error de
             // cableado.

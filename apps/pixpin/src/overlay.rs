@@ -59,6 +59,9 @@ pub enum ModoConfirmacion {
     Texto,
     /// Confirmar oculta el overlay y arranca la grabacion en GIF (P5).
     Gif,
+    /// Confirmar deja la zona flotando como pin EN VIVO: se ve en directo
+    /// lo que pase en ella.
+    PinEnVivo,
 }
 
 /// Lo que el overlay decidio. La imagen ya esta recortada y en CPU.
@@ -81,6 +84,11 @@ pub enum AccionFinal {
         region: Rect,
     },
     Scroll {
+        region: Rect,
+    },
+    /// La zona del pin en vivo. Tampoco hay imagen: la trae la captura en
+    /// directo, con el overlay ya cerrado.
+    PinEnVivo {
         region: Rect,
     },
     Nada,
@@ -438,6 +446,7 @@ pub fn ejecutar_overlay(
         // La grabacion tampoco materializa nada aqui: se captura muchas
         // veces despues, con las ventanas ya ocultas.
         Some((QueAccion::Gif, region)) => Ok(AccionFinal::Gif { region }),
+        Some((QueAccion::PinEnVivo, region)) => Ok(AccionFinal::PinEnVivo { region }),
         Some((que, region)) => {
             let recorte = componer_region(dispositivo, &fuentes, region)
                 .context("no se pudo recortar la seleccion")?;
@@ -451,6 +460,7 @@ pub fn ejecutar_overlay(
                 QueAccion::Pinear => AccionFinal::Pinear { imagen, region },
                 QueAccion::Scroll => AccionFinal::Scroll { region },
                 QueAccion::Gif => AccionFinal::Gif { region },
+                QueAccion::PinEnVivo => AccionFinal::PinEnVivo { region },
             })
         }
         None => Ok(AccionFinal::Nada),
@@ -468,6 +478,7 @@ enum QueAccion {
     Guardar,
     GuardarComo,
     Pinear,
+    PinEnVivo,
     Scroll,
 }
 
@@ -831,6 +842,10 @@ fn aplicar_efecto(
             }
             ModoConfirmacion::Scroll => {
                 PENDIENTE.poner(QueAccion::Scroll, region);
+                Continuar::No
+            }
+            ModoConfirmacion::PinEnVivo => {
+                PENDIENTE.poner(QueAccion::PinEnVivo, region);
                 Continuar::No
             }
             // El cuentagotas no confirma regiones: su clic se resuelve al

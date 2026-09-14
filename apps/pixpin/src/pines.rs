@@ -15,6 +15,11 @@ use std::rc::Rc;
 /// cerrarlos uno a uno seria peor que no haber extraido nada.
 const TOPE_PAGINAS: u32 = 20;
 
+/// Desde donde se numeran los pines en vivo. El almacen cuenta desde 1 y no
+/// llegara aqui en la vida de nadie; asi un id basta para saber de que
+/// clase de pin es un pedido.
+const PRIMER_ID_EN_VIVO: u64 = 1 << 60;
+
 /// Ancho al que se dibuja una pagina extraida, en pixeles.
 ///
 /// Fijo y generoso: la pagina extraida es un documento para leer, no una
@@ -163,6 +168,13 @@ pub struct Pines {
     d3d: ID3D11Device,
     motor: Rc<MotorRender>,
     vivos: HashMap<u64, Pin>,
+    /// Los pines en vivo, con su zona de pantalla. Van aparte de `vivos`
+    /// porque no tienen entrada en el almacen: no se restauran al arrancar
+    /// ni se agrupan, y la mitad de los pedidos de un pin no significan nada
+    /// para ellos. Sus ids salen de `siguiente_en_vivo`, lejos de los del
+    /// almacen, para que la cola de pedidos no los confunda.
+    en_vivo: HashMap<u64, (Pin, Rc<RefCell<pixpin_capture::RecorteVivo>>)>,
+    siguiente_en_vivo: u64,
     /// Ids cerrados desde los callbacks; purgar() los drena en el bucle.
     cerrados: Rc<RefCell<Vec<u64>>>,
     /// Pila de los que se han cerrado, con la posicion que tenian: cerrar
@@ -282,6 +294,8 @@ impl Pines {
             d3d,
             motor,
             vivos: HashMap::new(),
+            en_vivo: HashMap::new(),
+            siguiente_en_vivo: PRIMER_ID_EN_VIVO,
             cerrados: Rc::new(RefCell::new(Vec::new())),
             reabrir: Rc::new(RefCell::new(Vec::new())),
             pedidos: Rc::new(RefCell::new(Vec::new())),
@@ -458,6 +472,121 @@ impl Pines {
             }
             Ok(_) => {}
             Err(e) => tracing::warn!(?e, id, "anotacion ilegible; el pin sale sin ella"),
+        }
+    }
+
+    /// Un pin que ensena `zona` en directo. Nace al lado de la zona, 1:1, y
+    /// no toca el almacen: lo que se ve no se guarda hasta congelarlo.
+    ///
+    /// Primero la ventana y despues la captura, porque la captura avisa a
+    /// ESA ventana de cada fotograma. Si la captura no se puede abrir, el
+    /// pin se destruye con el error: un pin en vivo sin zona seria un
+    /// recuadro vacio sin explicacion.
+    pub fn pinear_en_vivo(
+        &mut self,
+        dispositivo: &pixpin_capture::Dispositivo,
+        zona: Rect,
+        tope: std::time::Duration,
+    ) -> Result<u64> {
+        let disposicion = pixpin_capture::enumerar_monitores().context("sin monitores")?;
+        let encuadre = pixpin_capture::encuadrar(zona, disposicion.monitores())
+            .context("la zona no cae en ningun monitor")?;
+        let monitor = disposicion
+            .monitores()
+            .iter()
+            .find(|m| m.id == encuadre.id_monitor)
+            .context("el monitor de la zona desaparecio")?;
+        let escala = monitor.escala_por_cien;
+        let sitio = crate::pin_vivo::sitio_junto_a(encuadre.zona, monitor.area_trabajo);
+
+        let id = self.siguiente_en_vivo;
+        self.siguiente_en_vivo += 1;
+        let cerrados = Rc::clone(&self.cerrados);
+        let pedidos = Rc::clone(&self.pedidos);
+        let hwnd_app = self.hwnd_app;
+        let pin = Pin::nuevo(
+            &self.d3d,
+            Rc::clone(&self.motor),
+            Contenido::Vivo {
+                ancho: encuadre.zona.ancho,
+                alto: encuadre.zona.alto,
+            },
+            sitio,
+            escala,
+            self.tema_claro,
+            self.ritmo_video.unwrap_or(16),
+            Box::new(move |cambio| match cambio {
+                // Moverlo o agrandarlo no se guarda: no hay entrada.
+                CambioPin::Movido(_) | CambioPin::Redimensionado(_) => {}
+                CambioPin::Cerrado => {
+                    cerrados.borrow_mut().push(id);
+                    pixpin_shell::despertar(hwnd_app);
+                }
+                otro => {
+                    pedidos.borrow_mut().push((id, otro));
+                    pixpin_shell::despertar(hwnd_app);
+                }
+            }),
+        )
+        .context("no se pudo crear la ventana del pin en vivo")?;
+        pin.poner_textos(self.textos.clone());
+
+        let recorte = pixpin_capture::RecorteVivo::nuevo(
+            dispositivo,
+            encuadre,
+            tope,
+            Some((pin.hwnd().0 as isize, pixpin_pin::MSG_FOTOGRAMA_VIVO)),
+        )
+        .context("no se pudo abrir la captura en vivo de la zona")?;
+        let recorte = Rc::new(RefCell::new(recorte));
+        pin.poner_fuente_viva(Box::new(crate::pin_vivo::FuenteCompartida(Rc::clone(
+            &recorte,
+        ))));
+        tracing::info!(id, ?zona, ?encuadre, ?sitio, "pin en vivo creado");
+        self.en_vivo.insert(id, (pin, recorte));
+        Ok(id)
+    }
+
+    /// Lo que un pin en vivo pidio. Solo tres cosas tienen sentido sin
+    /// entrada en el almacen; el resto se descarta en silencio, porque el
+    /// menu del pin en vivo ni siquiera las ofrece.
+    fn atender_en_vivo(&mut self, id: u64, cambio: CambioPin) -> Result<()> {
+        match cambio {
+            CambioPin::CopiarPedido => {
+                let (_, recorte) = self.en_vivo.get(&id).context("el pin en vivo ya no esta")?;
+                let img = recorte
+                    .borrow()
+                    .imagen()
+                    .context("no se pudo leer el fotograma en vivo")?;
+                pixpin_codec::copiar_imagen(&img).context("no se pudo copiar la imagen")?;
+                Ok(())
+            }
+            // Congelar = lo que se ve pasa a ser un pin de imagen de los de
+            // siempre, en el mismo sitio y tamano, y el pin en vivo se va.
+            CambioPin::CongelarPedido => {
+                let (pin, recorte) = self
+                    .en_vivo
+                    .remove(&id)
+                    .context("el pin en vivo ya no esta")?;
+                let img = recorte
+                    .borrow()
+                    .imagen()
+                    .context("no se pudo leer el fotograma en vivo")?;
+                let rect = pin.rect_contenido();
+                let escala = pin.escala_por_cien();
+                // Soltar antes el en vivo: cierra su captura y su ventana, y
+                // el pin congelado no nace tapado por el.
+                drop(pin);
+                drop(recorte);
+                let nuevo = self.pinear(&img, rect, escala)?;
+                tracing::info!(id, nuevo, "pin en vivo congelado");
+                Ok(())
+            }
+            CambioPin::EliminarPedido => {
+                self.en_vivo.remove(&id);
+                Ok(())
+            }
+            _ => Ok(()),
         }
     }
 
@@ -809,6 +938,14 @@ impl Pines {
         let cerrados: Vec<u64> = self.cerrados.borrow_mut().drain(..).collect();
         for id in cerrados {
             self.vivos.remove(&id);
+            // Soltar el pin en vivo cierra tambien su captura (Drop).
+            if let Some((_, recorte)) = self.en_vivo.remove(&id) {
+                tracing::info!(
+                    id,
+                    aceptados = recorte.borrow().aceptados(),
+                    "pin en vivo cerrado"
+                );
+            }
         }
         let pedidos: Vec<(u64, CambioPin)> = self.pedidos.borrow_mut().drain(..).collect();
         // Los punteros de la anotacion se procesan sin pintar y se pinta UNA
@@ -847,7 +984,12 @@ impl Pines {
 
     /// Lo que el pin pidio y no podia hacer solo.
     fn atender(&mut self, id: u64, cambio: CambioPin) -> Result<()> {
+        if self.en_vivo.contains_key(&id) {
+            return self.atender_en_vivo(id, cambio);
+        }
         match cambio {
+            // Solo lo pide un pin en vivo, y ese ya salio por arriba.
+            CambioPin::CongelarPedido => Ok(()),
             CambioPin::CopiarPedido => self.copiar(id),
             CambioPin::TextoPedido => self.copiar_texto(id),
             CambioPin::ReconocerPedido => self.reconocer_texto(id).map(|_| ()),
@@ -1866,7 +2008,10 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
             }
             self.vivos.remove(id);
         }
-        ids.len()
+        // Los en vivo no tienen sitio que recordar: se cierran sin mas.
+        let en_vivo = self.en_vivo.len();
+        self.en_vivo.clear();
+        ids.len() + en_vivo
     }
 
     /// Quita los pines de la pantalla SIN cerrarlos: el almacen los sigue
@@ -1966,7 +2111,7 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
     }
 
     pub fn abiertos(&self) -> usize {
-        self.vivos.len()
+        self.vivos.len() + self.en_vivo.len()
     }
 }
 

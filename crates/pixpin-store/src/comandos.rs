@@ -44,6 +44,8 @@ pub enum Comando {
     Cuentagotas,
     /// Recortar y dejarlo flotando como pin.
     Pinear,
+    /// Elegir una zona y dejarla flotando como pin en vivo.
+    PinearEnVivo,
     /// Pinear lo que haya en el portapapeles.
     PinearPortapapeles,
     /// Anotar sobre la pantalla en vivo.
@@ -156,6 +158,15 @@ pub const CATALOGO: &[Descriptor] = &[
         clave_titulo: "comando-pinear",
         atajo_por_defecto: Some("Ctrl+Alt+F"),
         en_bandeja: false,
+    },
+    Descriptor {
+        comando: Comando::PinearEnVivo,
+        nombre: "pinear-en-vivo",
+        clave_titulo: "comando-pinear-en-vivo",
+        // Sin atajo: el usuario no quiere que PixPin se quede combinaciones
+        // que no pidio (D81). Sale en la bandeja y se ata en los ajustes.
+        atajo_por_defecto: None,
+        en_bandeja: true,
     },
     Descriptor {
         comando: Comando::PinearPortapapeles,
@@ -441,6 +452,7 @@ mod pruebas {
         Comando::GrabarGif,
         Comando::Cuentagotas,
         Comando::Pinear,
+        Comando::PinearEnVivo,
         Comando::PinearPortapapeles,
         Comando::Anotar,
         Comando::AnotarCongelada,

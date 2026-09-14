@@ -37,6 +37,9 @@ pub const CMD_EXTRAER_TODAS: u32 = 15;
 /// Abrir el pin en el lienzo infinito del editor, con la imagen de fondo
 /// (D131). Solo en pines de imagen.
 pub const CMD_ABRIR_LIENZO: u32 = 16;
+/// Dejar el fotograma que se ve de un pin en vivo como pin de imagen
+/// normal, guardado en el almacen.
+pub const CMD_CONGELAR: u32 = 17;
 pub const CMD_SIN_GRUPO: u32 = 100;
 pub const CMD_COLOR_BASE: u32 = 101;
 
@@ -72,6 +75,8 @@ pub struct TextosPin {
     pub copiar_texto: String,
     /// El de abrir la imagen en el lienzo del editor (D131).
     pub abrir_en_lienzo: String,
+    /// El de congelar un pin en vivo como imagen.
+    pub congelar: String,
 }
 
 /// Una linea del menu, ya decidida. `Separador` no lleva texto.
@@ -120,6 +125,47 @@ pub fn entradas_del_menu(
         pagina,
     } = estado;
     let mut v = Vec::new();
+
+    // El pin en vivo tiene menu propio y corto. No hay entrada en el
+    // almacen detras —la zona no se guarda hasta congelarla—, asi que nada
+    // de grupos, guardar, eliminar ni leer texto: prometerlos seria
+    // ofrecer algo sin fichero sobre el que hacerlo.
+    if let Contenido::Vivo { .. } = contenido {
+        v.push(EntradaMenu::Accion {
+            id: CMD_REPRODUCIR,
+            etiqueta: if reproduciendo {
+                t.pausar.clone()
+            } else {
+                t.reproducir.clone()
+            },
+        });
+        v.push(EntradaMenu::Accion {
+            id: CMD_CONGELAR,
+            etiqueta: t.congelar.clone(),
+        });
+        v.push(EntradaMenu::Separador);
+        v.push(EntradaMenu::Accion {
+            id: CMD_COPIAR,
+            etiqueta: t.copiar.clone(),
+        });
+        v.push(EntradaMenu::Accion {
+            id: CMD_TAMANO_ORIGINAL,
+            etiqueta: t.tamano_original.clone(),
+        });
+        if !pasante {
+            v.push(EntradaMenu::Separador);
+            v.push(EntradaMenu::Accion {
+                id: CMD_PASANTE,
+                etiqueta: t.dejar_pasar_clic.clone(),
+            });
+        }
+        v.push(EntradaMenu::Separador);
+        v.push(EntradaMenu::Accion {
+            id: CMD_CERRAR,
+            etiqueta: t.cerrar.clone(),
+        });
+        return v;
+    }
 
     // El video lleva sus controles ARRIBA: son lo que se busca al abrir el
     // menu de un video (D68).
@@ -386,7 +432,58 @@ mod pruebas {
             pagina_anterior: "Pagina anterior".into(),
             extraer_pagina: "Extraer esta pagina".into(),
             extraer_todas: "Extraer todas las paginas".into(),
+            congelar: "Congelar como imagen".into(),
         }
+    }
+
+    #[test]
+    fn el_pin_en_vivo_ofrece_pausar_congelar_copiar_y_cerrar_arriba_la_pausa() {
+        let vivo = Contenido::Vivo {
+            ancho: 300,
+            alto: 200,
+        };
+        let e = entradas_del_menu(
+            &vivo,
+            EstadoMenu {
+                reproduciendo: true,
+                ..Default::default()
+            },
+            &textos(),
+        );
+        assert_eq!(
+            e[0],
+            EntradaMenu::Accion {
+                id: CMD_REPRODUCIR,
+                etiqueta: "Pausar".into()
+            },
+            "corriendo, lo primero es pausar"
+        );
+        let ids = ids(&e);
+        for esperado in [CMD_CONGELAR, CMD_COPIAR, CMD_TAMANO_ORIGINAL, CMD_CERRAR] {
+            assert!(ids.contains(&esperado), "falta {esperado}");
+        }
+        // Caso negativo: sin entrada en el almacen no hay nada que
+        // eliminar, guardar, agrupar ni leer.
+        for ausente in [CMD_ELIMINAR, CMD_GUARDAR_COMO, CMD_TEXTO, CMD_ABRIR_LIENZO] {
+            assert!(!ids.contains(&ausente), "sobra {ausente}");
+        }
+        assert!(!e.contains(&EntradaMenu::SubmenuGrupo));
+    }
+
+    #[test]
+    fn el_pin_en_vivo_en_pausa_ofrece_reanudar() {
+        let vivo = Contenido::Vivo {
+            ancho: 300,
+            alto: 200,
+        };
+        let e = entradas_del_menu(&vivo, EstadoMenu::default(), &textos());
+        assert_eq!(
+            e[0],
+            EntradaMenu::Accion {
+                id: CMD_REPRODUCIR,
+                etiqueta: "Reproducir".into()
+            }
+        );
     }
 
     fn video() -> Contenido {

@@ -68,6 +68,14 @@ pub enum Contenido {
         nombre: String,
         vista: ImagenRgba,
     },
+    /// Una zona de la pantalla vista en directo. Los pixeles no viven aqui:
+    /// los trae la `FuenteViva` que el gestor cuelga despues con
+    /// `Pin::poner_fuente_viva`. `ancho`/`alto` son los de la zona en
+    /// pixeles fisicos, su 100 %.
+    Vivo {
+        ancho: u32,
+        alto: u32,
+    },
 }
 
 /// Como se ensena un archivo por referencia, decidido SOLO por su extension
@@ -197,6 +205,9 @@ pub fn tamano_natural(
                 (*ancho, *alto)
             }
         }
+
+        // 1:1 como una captura: la zona se ve del tamano que tiene.
+        Contenido::Vivo { ancho, alto } => ((*ancho).max(1), (*alto).max(1)),
 
         // La miniatura tal cual la dio la Shell mas la franja del nombre.
         Contenido::Documento { vista, .. } => (

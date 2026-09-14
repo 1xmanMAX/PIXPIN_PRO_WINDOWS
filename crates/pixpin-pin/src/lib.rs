@@ -16,6 +16,7 @@ pub mod menu;
 pub mod paleta;
 pub mod ventana;
 pub mod video;
+pub mod vivo;
 pub mod zoom;
 
 pub use arrastre::{Carga, ErrorArrastre, Resultado as ResultadoArrastre, arrastrar, carga_de};
@@ -28,8 +29,9 @@ pub use estado::{
 };
 pub use icono::{LADO_ICONO, icono_de, miniatura_de};
 pub use menu::{
-    CMD_ABRIR_UBICACION, CMD_CERRAR, CMD_COLOR_BASE, CMD_COPIAR, CMD_ELIMINAR, CMD_GUARDAR_COMO,
-    CMD_OCULTAR_GRUPO, CMD_REPRODUCIR, CMD_SIN_GRUPO, CMD_SONIDO, CMD_TAMANO_ORIGINAL, TextosPin,
+    CMD_ABRIR_UBICACION, CMD_CERRAR, CMD_COLOR_BASE, CMD_CONGELAR, CMD_COPIAR, CMD_ELIMINAR,
+    CMD_GUARDAR_COMO, CMD_OCULTAR_GRUPO, CMD_REPRODUCIR, CMD_SIN_GRUPO, CMD_SONIDO,
+    CMD_TAMANO_ORIGINAL, TextosPin,
 };
 pub use paleta::{Paleta, PintorPaleta};
 pub use ventana::{
@@ -37,4 +39,5 @@ pub use ventana::{
     contenido_desde_ventana, rect_ventana,
 };
 pub use video::Reproductor;
+pub use vivo::{FuenteViva, MSG_FOTOGRAMA_VIVO};
 pub use zoom::{ControlZoom, escalar_anclado};

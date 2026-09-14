@@ -37,6 +37,7 @@ use crate::contenido::{
 };
 use crate::estado::{EfectoPin, EstadoPin, EventoPin, MINIMO_LOGICO};
 use crate::video::Reproductor;
+use crate::vivo::{FuenteViva, MSG_FOTOGRAMA_VIVO};
 
 /// Margen transparente alrededor del contenido: ahi vive la sombra (D30).
 pub const MARGEN_SOMBRA_LOGICO: u32 = 24;
@@ -139,6 +140,9 @@ pub enum CambioPin {
     /// Media Foundation no pudo con el video (D72): el gestor vuelve a
     /// crear el pin como documento o ficha.
     VideoFallido,
+    /// Menu de un pin en vivo: dejar lo que se ve como pin de imagen.
+    /// Lo resuelve el gestor, que tiene la fuente y el almacen.
+    CongelarPedido,
 }
 
 /// La lupa dentro del pin (D52): que trozo del contenido se amplia y donde
@@ -546,6 +550,11 @@ struct PinInterno {
     /// Cada cuanto se pregunta por un fotograma nuevo (D67): 16 ms en
     /// `Completo`, 33 en `Ligero`.
     ritmo_video_ms: u32,
+    /// La zona de pantalla de un pin en vivo, puesta por el gestor tras
+    /// crear la ventana (la fuente necesita su HWND para avisarla).
+    fuente_viva: Option<Box<dyn FuenteViva>>,
+    /// En pausa, los avisos de fotograma se ignoran y queda el ultimo.
+    vivo_pausado: bool,
     al_cambiar: Box<dyn Fn(CambioPin)>,
 }
 
@@ -615,7 +624,7 @@ impl Pin {
             Contenido::Archivo { icono, .. } => icono.as_ref(),
             Contenido::Documento { vista, .. } => Some(vista),
             // El video no tiene bitmap fijo: lo trae cada fotograma.
-            Contenido::Nota { .. } | Contenido::Video { .. } => None,
+            Contenido::Nota { .. } | Contenido::Video { .. } | Contenido::Vivo { .. } => None,
         };
         let bitmap = match fuente_bitmap {
             Some(img) => Some(motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles)?),
@@ -632,6 +641,7 @@ impl Pin {
             Contenido::Imagen(img) => (img.ancho, img.alto),
             Contenido::Documento { vista, .. } => (vista.ancho, vista.alto),
             Contenido::Video { ancho, alto, .. } if *ancho > 0 && *alto > 0 => (*ancho, *alto),
+            Contenido::Vivo { ancho, alto } => (*ancho, *alto),
             // Sin tamano nativo de pixeles: el "100 %" de una nota o una
             // ficha es el tamano con el que nacio.
             _ => (rect_contenido.ancho, rect_contenido.alto),
@@ -712,6 +722,8 @@ impl Pin {
             video,
             video_fallido,
             ritmo_video_ms,
+            fuente_viva: None,
+            vivo_pausado: false,
             al_cambiar,
         });
         // SAFETY: la ventana es propia y viva; el Box se cede al USERDATA y
@@ -980,6 +992,35 @@ impl Pin {
     }
 }
 
+impl Pin {
+    /// Cuelga la zona de pantalla de un pin en vivo. Va aparte de `nuevo`
+    /// porque la fuente necesita el HWND de esta ventana para despertarla.
+    ///
+    /// El pin se EXCLUYE de la captura: sin eso, ponerlo encima de su propia
+    /// zona lo meteria dentro de si mismo, un pasillo de espejos que ademas
+    /// tapa lo que se queria ver. Efecto secundario conocido: tampoco sale
+    /// en las capturas de pantalla, de PixPin ni de otros programas.
+    pub fn poner_fuente_viva(&self, fuente: Box<dyn FuenteViva>) {
+        // SAFETY: afinidad de una ventana propia y viva. Si el sistema no la
+        // admite (anterior a Windows 10 2004) falla sin mas y el pin sigue
+        // funcionando, solo que se vera a si mismo si se le pone encima.
+        unsafe {
+            if let Err(e) = SetWindowDisplayAffinity(self.hwnd, WDA_EXCLUDEFROMCAPTURE) {
+                tracing::warn!(?e, "el pin en vivo no se pudo excluir de la captura");
+            }
+        }
+        if let Some(i) = interno_de(self.hwnd) {
+            i.fuente_viva = Some(fuente);
+            i.vivo_pausado = false;
+        }
+    }
+
+    /// Si es un pin en vivo y esta en pausa.
+    pub fn vivo_pausado(&self) -> bool {
+        interno_de(self.hwnd).is_some_and(|i| i.vivo_pausado)
+    }
+}
+
 /// Si la ventana es un pin de video. `None` si ya no existe.
 fn contenido_es_video(hwnd: HWND) -> Option<bool> {
     interno_de(hwnd).map(|i| matches!(i.contenido, Contenido::Video { .. }))
@@ -990,6 +1031,17 @@ fn armar_temporizador_video(hwnd: HWND, ritmo_ms: u32) {
     // id solo cambia el intervalo.
     unsafe {
         SetTimer(Some(hwnd), ID_TEMPORIZADOR_VIDEO, ritmo_ms.max(1), None);
+    }
+}
+
+/// Pausar o reanudar un pin en vivo. En pausa la captura sigue abierta
+/// —reabrirla tarda y parpadea el aviso de grabacion del sistema—, pero el
+/// pin deja de copiar: se queda el ultimo fotograma, que es lo que se
+/// quiere al pausar para leer algo que se mueve.
+fn alternar_vivo(i: &mut PinInterno) {
+    if i.fuente_viva.is_some() {
+        i.vivo_pausado = !i.vivo_pausado;
+        tracing::info!(pausado = i.vivo_pausado, "pin en vivo alternado");
     }
 }
 
@@ -1293,7 +1345,7 @@ fn rehacer_bitmap(i: &mut PinInterno) {
         Contenido::Imagen(img) => Some(img),
         Contenido::Archivo { icono, .. } => icono.as_ref(),
         Contenido::Documento { vista, .. } => Some(vista),
-        Contenido::Nota { .. } | Contenido::Video { .. } => None,
+        Contenido::Nota { .. } | Contenido::Video { .. } | Contenido::Vivo { .. } => None,
     };
     let Some(original) = fuente else { return };
     let filtrada = pixpin_codec::filtros::aplicar(original, i.filtros);
@@ -1608,7 +1660,7 @@ fn pintar(i: &PinInterno) {
             // heredada de S2-A): el redondeo se aprecia en la sombra.
             // El video es una imagen en movimiento: el bitmap es el ultimo
             // fotograma, o nada hasta que llegue el primero (D63).
-            Contenido::Imagen(_) | Contenido::Video { .. } => {
+            Contenido::Imagen(_) | Contenido::Video { .. } | Contenido::Vivo { .. } => {
                 if let Some(b) = &i.bitmap {
                     if i.giro == 0 && !i.volteo_h && !i.volteo_v {
                         p.bitmap(b, caja, None, false);
@@ -2657,6 +2709,9 @@ extern "system" fn procedimiento_pin(
                 } else if matches!(i.contenido, Contenido::Video { .. }) {
                     // El doble clic en un video reproduce o pausa (D68/D70).
                     alternar_video(hwnd, i);
+                } else if matches!(i.contenido, Contenido::Vivo { .. }) {
+                    // Y en un pin en vivo, igual: es un video de la pantalla.
+                    alternar_vivo(i);
                 } else if !i.anotando {
                     (i.al_cambiar)(CambioPin::AnotarPedido);
                 }
@@ -2680,7 +2735,8 @@ extern "system" fn procedimiento_pin(
                 let Some(t) = i.textos.clone() else {
                     return LRESULT(0);
                 };
-                let reproduciendo = i.video.as_ref().is_some_and(|v| v.reproduciendo());
+                let reproduciendo = i.video.as_ref().is_some_and(|v| v.reproduciendo())
+                    || (i.fuente_viva.is_some() && !i.vivo_pausado);
                 // Cuantas paginas tiene se pregunta la PRIMERA vez que se
                 // abre el menu de un PDF, no al nacer el pin: abrir el
                 // documento cuesta, y la mayoria de los pines nunca ven su
@@ -2716,7 +2772,13 @@ extern "system" fn procedimiento_pin(
                     Some(crate::menu::CMD_CERRAR) => aplicar(hwnd, EfectoPin::Cerrar),
                     // Los del video tambien se resuelven aqui: el reproductor
                     // vive en esta ventana (D64/D68).
-                    Some(crate::menu::CMD_REPRODUCIR) => alternar_video(hwnd, i),
+                    Some(crate::menu::CMD_REPRODUCIR) => {
+                        if matches!(i.contenido, Contenido::Vivo { .. }) {
+                            alternar_vivo(i);
+                        } else {
+                            alternar_video(hwnd, i);
+                        }
+                    }
                     Some(crate::menu::CMD_SONIDO) => {
                         if let Some(v) = &i.video {
                             v.alternar_sonido();
@@ -2732,6 +2794,7 @@ extern "system" fn procedimiento_pin(
                             crate::menu::CMD_GUARDAR_COMO => Some(CambioPin::GuardarComoPedido),
                             crate::menu::CMD_TEXTO => Some(CambioPin::TextoPedido),
                             crate::menu::CMD_ABRIR_LIENZO => Some(CambioPin::AbrirLienzoPedido),
+                            crate::menu::CMD_CONGELAR => Some(CambioPin::CongelarPedido),
                             crate::menu::CMD_PAGINA_SIGUIENTE => Some(CambioPin::PaginaPedida(1)),
                             crate::menu::CMD_PAGINA_ANTERIOR => Some(CambioPin::PaginaPedida(-1)),
                             crate::menu::CMD_EXTRAER_PAGINA => Some(CambioPin::ExtraerPaginaPedida),
@@ -2917,6 +2980,8 @@ extern "system" fn procedimiento_pin(
             if let Some(i) = interno_de(hwnd) {
                 if matches!(i.contenido, Contenido::Video { .. }) && !i.anotando {
                     alternar_video(hwnd, i);
+                } else if matches!(i.contenido, Contenido::Vivo { .. }) {
+                    alternar_vivo(i);
                 }
             }
             LRESULT(0)
@@ -2965,6 +3030,25 @@ extern "system" fn procedimiento_pin(
                         RETARDO_GUARDADO_MS,
                         None,
                     );
+                }
+            }
+            LRESULT(0)
+        }
+        m if m == MSG_FOTOGRAMA_VIVO => {
+            if let Some(i) = interno_de(hwnd) {
+                if i.vivo_pausado {
+                    return LRESULT(0);
+                }
+                // La captura manda un aviso por fotograma y no espera: si el
+                // pintado va atrasado se acumulan en la cola. `tick` dice si
+                // queda algo NUEVO, asi que los avisos sobrantes no copian
+                // ni pintan nada.
+                let textura = i.fuente_viva.as_mut().and_then(|f| f.tick());
+                if let Some(t) = textura {
+                    if i.bitmap.is_none() {
+                        i.bitmap = i.motor.bitmap_desde_textura(&t).ok();
+                    }
+                    pintar(i);
                 }
             }
             LRESULT(0)

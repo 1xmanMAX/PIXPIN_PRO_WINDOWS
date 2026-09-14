@@ -100,6 +100,9 @@ pub fn carga_de(contenido: &Contenido, ruta: Option<&Path>) -> Option<Carga> {
         Contenido::Archivo { .. } | Contenido::Documento { .. } => {
             ruta.map(|r| Carga::Fichero(r.to_path_buf()))
         }
+        // Una zona en directo no es un fichero ni una imagen quieta: para
+        // llevarsela se congela primero.
+        Contenido::Vivo { .. } => None,
     }
 }
 

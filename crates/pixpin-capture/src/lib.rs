@@ -16,11 +16,13 @@ pub mod instantanea;
 pub mod mapa;
 pub mod monitores;
 mod pruebas_util;
+pub mod recorte_vivo;
 pub mod sesion;
 
 pub use dispositivo::{Dispositivo, ErrorCaptura};
 pub use duplicacion::Duplicador;
 pub use instantanea::{Instantanea, capturar_monitor, componer_region};
-pub use mapa::a_imagen;
+pub use mapa::{a_imagen, textura_a_imagen};
 pub use monitores::{enumerar_monitores, handle_de_monitor};
+pub use recorte_vivo::{Encuadre, RecorteVivo, encuadrar};
 pub use sesion::SesionViva;

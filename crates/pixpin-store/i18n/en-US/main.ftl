@@ -53,6 +53,7 @@ comando-capturar-y-copiar = Capture and copy
 comando-capturar-con-scroll = Scrolling capture
 comando-cuentagotas = Colour picker
 comando-pinear = Crop and pin
+comando-pinear-en-vivo = Live pin (watch an area live)
 comando-pinear-portapapeles = Pin the clipboard
 comando-anotar = Annotate the screen
 comando-anotar-congelada = Annotate a screenshot
@@ -139,6 +140,7 @@ pin-copiar-texto = Copy the text in the image
 
 # Opening an image pin in the editor canvas.
 pin-abrir-en-lienzo = Open in canvas
+pin-congelar = Freeze as image
 
 # Pages of a pinned PDF.
 pin-pagina-siguiente = Next page
