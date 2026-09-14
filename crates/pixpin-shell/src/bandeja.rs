@@ -14,7 +14,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, GetSystemMetrics, HICON,
     IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, LR_SHARED, LoadIconW, LoadImageW, MF_POPUP,
     MF_SEPARATOR, MF_STRING, PostMessageW, SM_CXSMICON, SM_CYSMICON, SetForegroundWindow,
-    TPM_RIGHTBUTTON, TrackPopupMenu, WM_NULL,
+    TPM_NONOTIFY, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, WM_NULL,
 };
 use windows::core::{HSTRING, PCWSTR, Result as WinResult};
 
@@ -22,6 +22,73 @@ use crate::ventana::WM_BANDEJA;
 
 /// Identificador del icono dentro de nuestra propia ventana. Solo hay uno.
 const ID_ICONO: u32 = 1;
+
+thread_local! {
+    /// La ventana duena del menu, creada la primera vez que se abre.
+    static DUENA_MENU: std::cell::Cell<Option<isize>> = const { std::cell::Cell::new(None) };
+}
+
+/// Una ventana normal, invisible y sin boton en la barra de tareas, que solo
+/// sirve para que el menu tenga duena.
+///
+/// El icono avisa a la ventana `HWND_MESSAGE` del bucle, pero una ventana
+/// solo-mensajes NO puede pasar a primer plano: `SetForegroundWindow` falla
+/// sin decir nada y `TrackPopupMenu` se queda esperando sin ensenar el menu
+/// hasta que el programa se activa por otra via. El usuario lo vio asi: el
+/// clic derecho no hacia nada y el menu salia de golpe al empezar una
+/// captura con Alt. Una ventana de verdad, aunque oculta, si recibe el
+/// primer plano que la Shell concede al pulsar el icono.
+fn duena_del_menu() -> Option<HWND> {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CreateWindowExW, DefWindowProcW, RegisterClassExW, WNDCLASSEXW, WS_EX_TOOLWINDOW, WS_POPUP,
+    };
+    use windows::core::w;
+
+    if let Some(h) = DUENA_MENU.with(|d| d.get()) {
+        return Some(HWND(h as *mut _));
+    }
+    extern "system" fn proc_duena(
+        hwnd: HWND,
+        mensaje: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> windows::Win32::Foundation::LRESULT {
+        // SAFETY: delegar en el procedimiento por defecto con los mismos
+        // argumentos que Windows paso.
+        unsafe { DefWindowProcW(hwnd, mensaje, wparam, lparam) }
+    }
+    // SAFETY: modulo propio; la clase apunta a un procedimiento estatico.
+    // Registrarla dos veces falla sin efecto, y CreateWindowExW informa del
+    // fallo real si lo hubiera.
+    let hwnd = unsafe {
+        let instancia = GetModuleHandleW(None).ok()?;
+        let clase = WNDCLASSEXW {
+            cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+            lpfnWndProc: Some(proc_duena),
+            hInstance: instancia.into(),
+            lpszClassName: w!("PixPinDuenaMenuBandeja"),
+            ..Default::default()
+        };
+        let _ = RegisterClassExW(&clase);
+        CreateWindowExW(
+            WS_EX_TOOLWINDOW,
+            w!("PixPinDuenaMenuBandeja"),
+            w!(""),
+            WS_POPUP,
+            0,
+            0,
+            0,
+            0,
+            None,
+            None,
+            Some(instancia.into()),
+            None,
+        )
+        .ok()?
+    };
+    DUENA_MENU.with(|d| d.set(Some(hwnd.0 as isize)));
+    Some(hwnd)
+}
 
 /// Textos del menu, ya traducidos por el catalogo Fluent.
 pub struct EtiquetasMenu {
@@ -278,16 +345,43 @@ impl Bandeja {
             // Sin esta llamada el menu no se cierra al hacer clic fuera. Es
             // un requisito documentado de TrackPopupMenu que se olvida a
             // menudo, y tiene que ir antes de TrackPopupMenu para que surta
-            // efecto.
-            // SAFETY: `hwnd` es la ventana propia, valida mientras dure la
+            // efecto. La duena es la ventana oculta, no `hwnd` (ver
+            // `duena_del_menu`).
+            let duena = duena_del_menu().unwrap_or(hwnd);
+            // SAFETY: `duena` es una ventana propia, viva mientras dure la
             // llamada.
-            let _ = unsafe { SetForegroundWindow(hwnd) };
+            let _ = unsafe { SetForegroundWindow(duena) };
 
-            // SAFETY: `menu` sigue vivo, `hwnd` es la ventana propia y
+            // Con TPM_RETURNCMD el menu devuelve lo elegido en vez de mandar
+            // WM_COMMAND a su duena, que no tiene bucle propio. Se reenvia a
+            // la ventana del bucle como si viniera de alli: el camino de
+            // siempre, `Evento::Menu`.
+            // SAFETY: `menu` sigue vivo, `duena` es una ventana propia y
             // `punto` ya se ha inicializado con GetCursorPos.
-            let _ = unsafe {
-                TrackPopupMenu(menu, TPM_RIGHTBUTTON, punto.x, punto.y, None, hwnd, None)
+            let elegido = unsafe {
+                TrackPopupMenu(
+                    menu,
+                    TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
+                    punto.x,
+                    punto.y,
+                    None,
+                    duena,
+                    None,
+                )
             };
+            if elegido.0 != 0 {
+                // SAFETY: `hwnd` es la ventana del bucle, viva; WM_COMMAND
+                // lleva el identificador en la palabra baja de wParam.
+                let _ = unsafe {
+                    PostMessageW(
+                        Some(hwnd),
+                        windows::Win32::UI::WindowsAndMessaging::WM_COMMAND,
+                        WPARAM(elegido.0 as usize),
+                        LPARAM(0),
+                    )
+                };
+            }
+            let hwnd = duena;
 
             // El otro medio del workaround documentado por Microsoft para
             // TrackPopupMenu con iconos de notificacion (el primero es el
