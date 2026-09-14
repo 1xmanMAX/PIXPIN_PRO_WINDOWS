@@ -137,6 +137,9 @@ ajustes-abrir-fichero = Open the settings file
 # Reading the text of a pin (P4.2).
 pin-copiar-texto = Copy the text in the image
 
+# Opening an image pin in the editor canvas.
+pin-abrir-en-lienzo = Open in canvas
+
 # Pages of a pinned PDF.
 pin-pagina-siguiente = Next page
 pin-pagina-anterior = Previous page

@@ -99,6 +99,9 @@ pub enum CambioPin {
     EliminarPedido,
     /// Doble clic sobre imagen o nota: entrar a anotar (D47).
     AnotarPedido,
+    /// Menu de un pin de imagen: abrirlo en el lienzo del editor (D131). Lo
+    /// resuelve el gestor, que conoce el almacen y el fichero de dibujo.
+    AbrirLienzoPedido,
     /// En modo anotacion, el raton se reenvia tal cual en coordenadas del
     /// CONTENIDO (el margen de sombra ya descontado). El pin no sabe
     /// dibujar: quien lleva la maquina de anotar es el gestor, que vive en
@@ -2725,6 +2728,7 @@ extern "system" fn procedimiento_pin(
                             crate::menu::CMD_COPIAR => Some(CambioPin::CopiarPedido),
                             crate::menu::CMD_GUARDAR_COMO => Some(CambioPin::GuardarComoPedido),
                             crate::menu::CMD_TEXTO => Some(CambioPin::TextoPedido),
+                            crate::menu::CMD_ABRIR_LIENZO => Some(CambioPin::AbrirLienzoPedido),
                             crate::menu::CMD_PAGINA_SIGUIENTE => Some(CambioPin::PaginaPedida(1)),
                             crate::menu::CMD_PAGINA_ANTERIOR => Some(CambioPin::PaginaPedida(-1)),
                             crate::menu::CMD_EXTRAER_PAGINA => Some(CambioPin::ExtraerPaginaPedida),

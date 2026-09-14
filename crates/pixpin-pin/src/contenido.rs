@@ -36,6 +36,7 @@ pub const NOTA_MARGEN_LOGICO: f32 = 12.0;
 pub const NOTA_TEXTO_LOGICO: f32 = 14.0;
 
 /// Lo que el pin dibuja dentro de su tarjeta.
+#[derive(Debug)]
 pub enum Contenido {
     Imagen(ImagenRgba),
     /// Solo lectura en v1: se lee, se mueve, se agrupa y se copia. La

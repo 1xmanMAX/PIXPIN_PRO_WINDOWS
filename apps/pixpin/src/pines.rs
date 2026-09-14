@@ -882,6 +882,12 @@ impl Pines {
             }
             CambioPin::PaletaPulsada(p) => self.paleta_pulsada(id, p),
             CambioPin::VideoFallido => self.degradar_video(id),
+            // El pedido existe ya, pero se atiende en la Tarea 10: aqui solo
+            // se deja constancia de que llego.
+            CambioPin::AbrirLienzoPedido => {
+                tracing::info!(id, "abrir en lienzo: aun sin atender");
+                Ok(())
+            }
             // Movido, Redimensionado y Cerrado los resuelve el callback.
             _ => Ok(()),
         }

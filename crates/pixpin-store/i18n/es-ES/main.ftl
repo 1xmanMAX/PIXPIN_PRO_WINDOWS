@@ -138,6 +138,9 @@ ajustes-abrir-fichero = Abrir el fichero de ajustes
 # Leer el texto de un pin (P4.2).
 pin-copiar-texto = Copiar el texto de la imagen
 
+# Abrir un pin de imagen en el lienzo del editor.
+pin-abrir-en-lienzo = Abrir en lienzo
+
 # Paginas de un PDF pineado.
 pin-pagina-siguiente = Página siguiente
 pin-pagina-anterior = Página anterior

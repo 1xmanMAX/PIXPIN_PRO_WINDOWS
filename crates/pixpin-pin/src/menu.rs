@@ -34,6 +34,9 @@ pub const CMD_PAGINA_ANTERIOR: u32 = 13;
 pub const CMD_EXTRAER_PAGINA: u32 = 14;
 /// Sacar TODAS las paginas, una por pin.
 pub const CMD_EXTRAER_TODAS: u32 = 15;
+/// Abrir el pin en el lienzo infinito del editor, con la imagen de fondo
+/// (D131). Solo en pines de imagen.
+pub const CMD_ABRIR_LIENZO: u32 = 16;
 pub const CMD_SIN_GRUPO: u32 = 100;
 pub const CMD_COLOR_BASE: u32 = 101;
 
@@ -67,6 +70,8 @@ pub struct TextosPin {
     pub extraer_todas: String,
     /// El de leer el texto de la imagen (P4.2).
     pub copiar_texto: String,
+    /// El de abrir la imagen en el lienzo del editor (D131).
+    pub abrir_en_lienzo: String,
 }
 
 /// Una linea del menu, ya decidida. `Separador` no lleva texto.
@@ -181,6 +186,15 @@ pub fn entradas_del_menu(
         v.push(EntradaMenu::Accion {
             id: CMD_TEXTO,
             etiqueta: t.copiar_texto.clone(),
+        });
+    }
+
+    // Abrir en el lienzo va con las acciones de la imagen: dibujar sin el
+    // borde del pin. El doble clic sigue anotando dentro del pin.
+    if matches!(contenido, Contenido::Imagen(_)) {
+        v.push(EntradaMenu::Accion {
+            id: CMD_ABRIR_LIENZO,
+            etiqueta: t.abrir_en_lienzo.clone(),
         });
     }
 
@@ -367,6 +381,7 @@ mod pruebas {
             sonido: "Sonido".into(),
             dejar_pasar_clic: "Dejar pasar el clic".into(),
             copiar_texto: "Copiar el texto".into(),
+            abrir_en_lienzo: "Abrir en lienzo".into(),
             pagina_siguiente: "Pagina siguiente".into(),
             pagina_anterior: "Pagina anterior".into(),
             extraer_pagina: "Extraer esta pagina".into(),
@@ -680,6 +695,36 @@ mod pruebas {
             for esperado in [CMD_COPIAR, CMD_CERRAR, CMD_ELIMINAR] {
                 assert!(ids.contains(&esperado), "falta la entrada {esperado}");
             }
+        }
+    }
+
+    #[test]
+    fn abrir_en_lienzo_solo_esta_en_los_pines_de_imagen() {
+        let estado = EstadoMenu {
+            con_ocr: true,
+            ..Default::default()
+        };
+        assert!(ids(&entradas_del_menu(&imagen(), estado, &textos())).contains(&CMD_ABRIR_LIENZO));
+        // Casos negativos: una nota, una ficha, un video o un documento no
+        // tienen pixeles propios que poner de fondo.
+        let nota = Contenido::Nota { texto: "x".into() };
+        for c in [
+            nota,
+            archivo(),
+            video(),
+            Contenido::Documento {
+                nombre: "a.pdf".into(),
+                vista: ImagenRgba {
+                    ancho: 1,
+                    alto: 1,
+                    pixeles: vec![0; 4],
+                },
+            },
+        ] {
+            assert!(
+                !ids(&entradas_del_menu(&c, estado, &textos())).contains(&CMD_ABRIR_LIENZO),
+                "{c:?}"
+            );
         }
     }
 

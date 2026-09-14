@@ -1255,6 +1255,7 @@ fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
         sonido: textos.t("pin-sonido"),
         dejar_pasar_clic: textos.t("pin-dejar-pasar-clic"),
         copiar_texto: textos.t("pin-copiar-texto"),
+        abrir_en_lienzo: textos.t("pin-abrir-en-lienzo"),
         pagina_siguiente: textos.t("pin-pagina-siguiente"),
         pagina_anterior: textos.t("pin-pagina-anterior"),
         extraer_pagina: textos.t("pin-extraer-pagina"),
