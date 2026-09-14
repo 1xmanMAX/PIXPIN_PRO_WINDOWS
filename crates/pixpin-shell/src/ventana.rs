@@ -302,7 +302,7 @@ extern "system" fn procedimiento(
                 punto: pixpin_geom::Punto { x, y },
             })
         }
-        WM_BANDEJA => evento_de_bandeja(lparam.0 as u32)
+        WM_BANDEJA => evento_de_bandeja(lparam.0 as u32),
         WM_DESTROY => {
             // SAFETY: llamada sin argumentos que solo encola WM_QUIT en la
             // cola de mensajes de este hilo; no toca memoria ajena.
