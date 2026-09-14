@@ -302,7 +302,7 @@ extern "system" fn procedimiento(
                 punto: pixpin_geom::Punto { x, y },
             })
         }
-        WM_BANDEJA => evento_de_bandeja(lparam.0 as u32),
+        WM_BANDEJA => evento_de_bandeja(lparam.0 as u32)
         WM_DESTROY => {
             // SAFETY: llamada sin argumentos que solo encola WM_QUIT en la
             // cola de mensajes de este hilo; no toca memoria ajena.
@@ -314,6 +314,20 @@ extern "system" fn procedimiento(
 
     if let Some(evento) = evento {
         PENDIENTES.with(|p| p.borrow_mut().push(evento));
+        // Un mensaje ENVIADO desde otro hilo (la Shell manda asi el aviso del
+        // icono de la bandeja) se atiende DENTRO de GetMessageW, que no
+        // vuelve: el evento quedaba en la cola hasta que llegara un mensaje
+        // encolado cualquiera. El usuario lo vivia como que el clic derecho
+        // no abria el menu y este salia de golpe al hacer un gesto con Alt.
+        // Un WM_NULL encolado hace volver a GetMessageW y el bucle drena.
+        // SAFETY: una consulta sin argumentos y un PostMessage a la ventana
+        // propia, viva mientras se procesa su propio mensaje.
+        unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::{InSendMessage, PostMessageW, WM_NULL};
+            if InSendMessage().as_bool() {
+                let _ = PostMessageW(Some(hwnd), WM_NULL, WPARAM(0), LPARAM(0));
+            }
+        }
         return LRESULT(0);
     }
 
