@@ -29,6 +29,7 @@
 
 pub mod codigos;
 pub mod cuaderno;
+pub mod identidad;
 
 use std::collections::BTreeMap;
 use std::io::{Cursor, Read, Write};
