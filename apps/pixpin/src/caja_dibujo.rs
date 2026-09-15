@@ -58,39 +58,44 @@ pub fn pintar_caja(
                 },
             );
         }
-        // Sin iconos todavia: una letra por herramienta, que es legible y
-        // no bloquea el resto de la fase. Los iconos vectoriales llegan
-        // cuando el motor dibuje sus propios simbolos.
-        p.texto(
-            etiqueta(*boton),
-            caja_boton.x + 13.0 * e,
-            caja_boton.y + 8.0 * e,
-            16.0 * e,
+        // Los iconos de Excalidraw, a su tamano de boton: 20 px logicos
+        // dentro de un boton de 40, como su barra de herramientas.
+        let lado = 20.0 * e;
+        p.icono(
+            icono(*boton),
+            RectF {
+                x: caja_boton.x + (caja_boton.ancho - lado) / 2.0,
+                y: caja_boton.y + (caja_boton.alto - lado) / 2.0,
+                ancho: lado,
+                alto: lado,
+            },
             Color::BLANCO,
         );
     }
 }
 
-/// La letra que representa cada boton mientras no haya iconos.
-fn etiqueta(b: BotonCaja) -> &'static str {
+/// El icono de Excalidraw de cada boton. Donde Excalidraw no tiene la
+/// herramienta (resaltador, foco, cotas), el suyo mas parecido.
+fn icono(b: BotonCaja) -> &'static pixpin_render::icono::Icono {
+    use pixpin_render::iconos_excalidraw as i;
     match b {
-        BotonCaja::Elegir(Herramienta::Mano) => "M",
-        BotonCaja::Elegir(Herramienta::Lapiz) => "L",
-        BotonCaja::Elegir(Herramienta::Resaltador) => "R",
-        BotonCaja::Elegir(Herramienta::Linea) => "/",
-        BotonCaja::Elegir(Herramienta::Flecha) => ">",
-        BotonCaja::Elegir(Herramienta::Rectangulo) => "□",
-        BotonCaja::Elegir(Herramienta::Elipse) => "○",
-        BotonCaja::Elegir(Herramienta::Texto) => "T",
-        BotonCaja::Elegir(Herramienta::Foco) => "F",
-        BotonCaja::Elegir(Herramienta::Lupa) => "Q",
-        BotonCaja::Elegir(Herramienta::Borrador) => "B",
-        BotonCaja::Elegir(Herramienta::Cota) => "A",
-        BotonCaja::Elegir(Herramienta::Escalar) => "E",
-        BotonCaja::Elegir(Herramienta::EscalaGrafica) => "G",
-        BotonCaja::Deshacer => "↶",
-        BotonCaja::Rehacer => "↷",
-        BotonCaja::Color => "C",
-        BotonCaja::Salir => "X",
+        BotonCaja::Elegir(Herramienta::Mano) => &i::HAND_ICON,
+        BotonCaja::Elegir(Herramienta::Lapiz) => &i::FREEDRAW_ICON,
+        BotonCaja::Elegir(Herramienta::Resaltador) => &i::PEN_MODE_ICON,
+        BotonCaja::Elegir(Herramienta::Linea) => &i::LINE_ICON,
+        BotonCaja::Elegir(Herramienta::Flecha) => &i::ARROW_ICON,
+        BotonCaja::Elegir(Herramienta::Rectangulo) => &i::RECTANGLE_ICON,
+        BotonCaja::Elegir(Herramienta::Elipse) => &i::ELLIPSE_ICON,
+        BotonCaja::Elegir(Herramienta::Texto) => &i::TEXT_ICON,
+        BotonCaja::Elegir(Herramienta::Foco) => &i::PRESENTATION_ICON,
+        BotonCaja::Elegir(Herramienta::Lupa) => &i::SEARCH_ICON,
+        BotonCaja::Elegir(Herramienta::Borrador) => &i::ERASER_ICON,
+        BotonCaja::Elegir(Herramienta::Cota) => &i::LINE_EDITOR_ICON,
+        BotonCaja::Elegir(Herramienta::Escalar) => &i::RESIZE_ICON,
+        BotonCaja::Elegir(Herramienta::EscalaGrafica) => &i::GRID_ICON,
+        BotonCaja::Deshacer => &i::UNDO_ICON,
+        BotonCaja::Rehacer => &i::REDO_ICON,
+        BotonCaja::Color => &i::PALETTE,
+        BotonCaja::Salir => &i::CLOSE_ICON,
     }
 }

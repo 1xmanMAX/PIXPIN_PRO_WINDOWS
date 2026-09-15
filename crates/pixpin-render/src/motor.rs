@@ -134,6 +134,20 @@ pub struct MotorRender {
     /// solo con `SetColor`: hay primitivas que piden dos pinceles a la vez y
     /// el segundo pisaria el color del primero.
     pinceles: std::cell::RefCell<Vec<([u32; 4], ID2D1SolidColorBrush)>>,
+    /// Geometrias de los iconos, por la direccion de su trazado estatico.
+    /// Un icono se lee y se construye UNA vez; despues cada fotograma solo
+    /// cambia la transformada. `None` recuerda un trazado que no se pudo
+    /// construir, para no reintentarlo sesenta veces por segundo.
+    pub(crate) iconos: std::cell::RefCell<
+        std::collections::HashMap<
+            usize,
+            Option<windows::Win32::Graphics::Direct2D::ID2D1PathGeometry1>,
+        >,
+    >,
+    /// Los cuatro estilos de trazo de los iconos: extremo y union, redondos
+    /// o no.
+    pub(crate) estilos_icono:
+        std::cell::RefCell<[Option<windows::Win32::Graphics::Direct2D::ID2D1StrokeStyle>; 4]>,
 }
 
 impl MotorRender {
@@ -158,6 +172,8 @@ impl MotorRender {
             contexto,
             dwrite,
             pinceles: std::cell::RefCell::new(Vec::new()),
+            iconos: std::cell::RefCell::new(std::collections::HashMap::new()),
+            estilos_icono: std::cell::RefCell::new([None, None, None, None]),
         })
     }
 

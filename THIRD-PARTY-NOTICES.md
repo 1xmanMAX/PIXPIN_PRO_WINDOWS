@@ -4,7 +4,7 @@ PixPin Max incluye código traducido a Rust de los siguientes proyectos, bajo su
 
 ## Excalidraw
 
-Módulos: `crates/pixpin-motor2d/src/tinta/{mod.rs,laser.rs}`, `crates/pixpin-render/src/tinta.rs`.
+Módulos: `crates/pixpin-motor2d/src/tinta/{mod.rs,laser.rs}`, `crates/pixpin-render/src/tinta.rs`, `crates/pixpin-render/src/iconos_excalidraw.rs` (iconos de `packages/excalidraw/components/icons.tsx`; algunos de Tabler Icons, MIT).
 
 MIT License
 

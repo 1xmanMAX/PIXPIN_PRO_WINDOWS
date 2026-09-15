@@ -115,7 +115,7 @@ impl MotorRender {
 
 /// Primitivas de dibujo validas SOLO dentro de `MotorRender::dibujar`.
 pub struct Pintor<'a> {
-    motor: &'a MotorRender,
+    pub(crate) motor: &'a MotorRender,
 }
 
 /// Estilo de un tramo de texto. Sin nada marcado es el texto normal.
