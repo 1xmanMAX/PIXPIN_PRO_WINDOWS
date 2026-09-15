@@ -784,6 +784,12 @@ impl Gesto {
                 // trazo mas largo lo dejaria congelado en un tramo viejo y
                 // la tinta nueva quedaria fuera de la zona presentada.
                 let mut caja_ancha: Option<(f32, f32, f32, f32)> = None;
+                // Las figuras (no el trazo) cambian ENTERAS al mover el cursor: un
+                // rectangulo crece desde donde se pulso y sus lados lejanos
+                // tambien se mueven. La zona sucia es su caja antes y despues;
+                // con solo el tramo anterior->p esos lados se presentaban tarde
+                // y la figura parecia arrastrarse (lo noto el usuario).
+                let caja_antes = escena.buscar(id).map(|e| e.caja());
                 if let Some(e) = escena.buscar_mut(id) {
                     match &mut e.figura {
                         Figura::Lapiz {
@@ -832,6 +838,20 @@ impl Gesto {
                         }
                     }
                     e.tocar();
+                }
+                if caja_ancha.is_none() {
+                    if let (Some(a), Some(e)) = (caja_antes, escena.buscar(id)) {
+                        let d = e.caja();
+                        // Margen para el grosor, el temblor de la rugosidad y la
+                        // punta de una flecha, que salen de la caja geometrica.
+                        let m = e.grosor * 2.0 + 4.0 * e.rugosidad + 24.0;
+                        caja_ancha = Some((
+                            a.0.min(d.0) - m,
+                            a.1.min(d.1) - m,
+                            a.2.max(d.2) + m,
+                            a.3.max(d.3) + m,
+                        ));
+                    }
                 }
                 let region = match caja_ancha {
                     // El contorno de un punto nuevo se apoya en varios
@@ -2340,6 +2360,29 @@ mod pruebas {
             (100.0, 50.0),
             "y nace pegado a la esquina del vecino, que es para lo que esta el iman"
         );
+    }
+
+    #[test]
+    fn arrastrar_un_rectangulo_repinta_la_figura_entera_y_no_solo_el_cursor() {
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Rectangulo;
+        g.enganche.activo = false;
+        g.evento(pulsar(Punto2::nuevo(0.0, 0.0)), &mut escena, 1.0);
+        g.evento(mover(Punto2::nuevo(300.0, 200.0)), &mut escena, 1.0);
+        let r = g.evento(mover(Punto2::nuevo(310.0, 210.0)), &mut escena, 1.0);
+        match r.region {
+            Region::Caja(x0, y0, x1, y1) => {
+                // El lado izquierdo y el de arriba nacen en el origen y
+                // cambian con cada movimiento: tienen que entrar en la zona.
+                assert!(x0 <= 0.0 && y0 <= 0.0, "deja fuera el origen: {x0},{y0}");
+                assert!(
+                    x1 >= 310.0 && y1 >= 210.0,
+                    "deja fuera el cursor: {x1},{y1}"
+                );
+            }
+            otra => panic!("esperaba una caja, llego {otra:?}"),
+        }
     }
 
     #[test]

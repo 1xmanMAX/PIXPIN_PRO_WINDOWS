@@ -270,8 +270,11 @@ fn gesto_inicial(ajustes_iman: pixpin_motor2d::enganche::Ajustes) -> Gesto {
 /// la capa se daria por invalida en cada fotograma (la `Estampa` no casaria)
 /// o, peor, valdria sin contener lo que hay que pintar encima.
 fn excluidos_de(gesto: &Gesto) -> Vec<u64> {
-    match gesto.trazo_en_curso() {
-        Some(id) => vec![id],
+    // Todo lo que se esta dibujando, no solo el trazo a mano: una figura en
+    // curso fuera de la capa congelada obligaba a repintar la escena entera
+    // en cada fotograma.
+    match gesto.elemento_en_curso() {
+        Some((id, _)) => vec![id],
         None => gesto.seleccion.ids().to_vec(),
     }
 }
