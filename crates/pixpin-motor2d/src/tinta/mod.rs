@@ -7,6 +7,7 @@
 
 pub mod freehand;
 pub mod laser;
+pub mod prediccion;
 
 use serde::{Deserialize, Serialize};
 

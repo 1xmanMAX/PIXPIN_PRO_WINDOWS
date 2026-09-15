@@ -186,6 +186,17 @@ fn tecla_a_herramienta(c: char) -> Option<Herramienta> {
     }
 }
 
+/// Cuanto se adelanta la punta del trazo en curso: lo que tarda un punto
+/// del raton en verse con la cola de fotogramas en 1. Con 28 ms la punta
+/// quedaba 14 ms POR DELANTE del cursor en la medida: se veia adelantada.
+const HORIZONTE_PREDICCION_MS: f32 = 14.0;
+/// Hasta donde puede adelantarse, en pixeles de pantalla.
+const TOPE_PREDICCION_PX: f32 = 48.0;
+/// Lo mas que se espera a la senal de fotograma antes de pintar igualmente.
+const ESPERA_MAXIMA_SENAL_MS: u32 = 20;
+const ESPERA_MAXIMA_SENAL: std::time::Duration =
+    std::time::Duration::from_millis(ESPERA_MAXIMA_SENAL_MS as u64);
+
 /// La tecla que elige `h`, para pintarla en la esquina de su boton. Es la
 /// inversa de `tecla_a_herramienta`: si alguna vez se separan, la barra
 /// ensenaria una tecla que no hace nada, y la prueba lo vigila.
@@ -387,7 +398,15 @@ pub fn abrir(
     let area = monitor.area_trabajo;
 
     let ventana = VentanaOverlay::nueva(area).context("no se pudo abrir el editor")?;
-    let superficie = Superficie::nueva(
+    // PIXPIN_TINTA_CLASICA vuelve a la presentacion de antes, para medir la
+    // diferencia en el mismo equipo con el mismo binario.
+    let tinta_clasica = std::env::var_os("PIXPIN_TINTA_CLASICA").is_some();
+    let crear = if tinta_clasica {
+        Superficie::nueva
+    } else {
+        Superficie::nueva_baja_latencia
+    };
+    let superficie = crear(
         &motor,
         dispositivo.d3d(),
         ventana.handle(),
@@ -436,11 +455,27 @@ pub fn abrir(
     let mut caja = CajaHerramientas::barra_superior(area, escala_por_cien, &BOTONES_EDITOR);
     // Donde estaba el raton la ultima vez, para resaltar el boton de debajo.
     let mut raton_barra: Option<Punto> = None;
+    // La punta predicha del trazo en curso (ver `tinta::prediccion`): se
+    // pinta donde estara el cursor cuando el fotograma llegue a pantalla.
+    let mut predictor = pixpin_motor2d::tinta::prediccion::Predictor::nuevo();
+    let reloj = std::time::Instant::now();
+    // Si el fotograma anterior pinto una punta predicha: la zona que se
+    // presenta tiene que cubrir tambien donde estaba, o quedaria un resto.
+    let mut habia_prediccion = false;
 
     // Zona sucia acumulada durante la vuelta: se pinta un solo fotograma
     // DESPUES de vaciar la cola de eventos, no uno por evento (pintar a
     // mitad de la cola era lo que hacia perder puntos del lapiz).
     let mut hay_que_pintar = false;
+    // Si DXGI ya admite otro fotograma. Se pinta solo entonces, y justo
+    // antes se leen los movimientos: los puntos mas nuevos llegan al
+    // siguiente refresco en vez de esperar en una cola de tres fotogramas.
+    let mut fotograma_listo = superficie.senal_fotograma().is_none();
+    // Desde cuando se espera la senal con algo por pintar. Si otra ventana
+    // tapa el editor, DWM no consume fotogramas y la senal no llega: sin un
+    // tope el trazo se congelaba hasta soltar (medido, con la terminal
+    // encima).
+    let mut esperando_senal: Option<std::time::Instant> = None;
     let mut sucio: Option<(f32, f32, f32, f32)> = None;
     let mut todo_sucio = false;
     let mut medidor = crate::medir_fotogramas::MedidorFotogramas::nuevo(medir_fotogramas);
@@ -638,6 +673,15 @@ pub fn abrir(
                 },
             ) {
                 let g = con_modificadores(g);
+                let ms = reloj.elapsed().as_secs_f64() * 1000.0;
+                match g {
+                    EventoGesto::Pulsar { p, .. } => {
+                        predictor.reiniciar();
+                        predictor.anotar(p, ms);
+                    }
+                    EventoGesto::Mover { p, .. } => predictor.anotar(p, ms),
+                    _ => {}
+                }
                 let en_reposo_antes = gesto.en_reposo();
                 let r = gesto.evento(g, &mut escena, 1.0 / efectiva.zoom);
                 ventana.poner_cursor(forma_de(r.cursor));
@@ -778,7 +822,19 @@ pub fn abrir(
         // puntos al gesto: pintar a mitad de la cola era lo que hacia perder
         // puntos. Presentar con vsync bloquea hasta el refresco; mientras,
         // Windows guarda los movimientos y la Tarea 7 los recupera.
-        if hay_que_pintar {
+        if hay_que_pintar && !fotograma_listo {
+            if let Some(s) = superficie.senal_fotograma() {
+                fotograma_listo = pixpin_shell::overlay::senal_disparada(s);
+            }
+            let desde = *esperando_senal.get_or_insert_with(std::time::Instant::now);
+            if desde.elapsed() >= ESPERA_MAXIMA_SENAL {
+                fotograma_listo = true;
+            }
+        }
+        if fotograma_listo || !hay_que_pintar {
+            esperando_senal = None;
+        }
+        if hay_que_pintar && fotograma_listo {
             // D129: `t_pintar` empieza AQUI, antes de `rejilla.sincronizar`,
             // no despues: sincronizar la rejilla es coste de este fotograma
             // (recorre la escena, O(su tamano)) y si quedara fuera de toda
@@ -790,18 +846,38 @@ pub fn abrir(
             // (`capa_vale`, dentro de `pintar`) es la que manda sobre si la
             // zona parcial es segura: `capa.lista()` solo dice que hay una
             // capa horneada, no que `volcar` la vaya a usar ahora mismo.
+            // La punta predicha: horizonte medido (~30 ms de la lectura a la
+            // pantalla en el equipo del usuario) y tope de 48 px de pantalla.
+            let prediccion = gesto
+                .trazo_en_curso()
+                .filter(|_| !tinta_clasica)
+                .and_then(|_| {
+                    predictor.predecir(
+                        HORIZONTE_PREDICCION_MS,
+                        TOPE_PREDICCION_PX / efectiva.zoom,
+                        efectiva.zoom,
+                    )
+                });
+            // Lo que se presenta crece por el tope: la punta nueva y la del
+            // fotograma anterior caen, como mucho, a esa distancia.
+            let holgura = if prediccion.is_some() || habia_prediccion {
+                TOPE_PREDICCION_PX as i32 + 8
+            } else {
+                2
+            };
             let zona = if todo_sucio {
                 None
             } else {
                 sucio.map(|(x0, y0, x1, y1)| {
                     (
-                        x0.floor() as i32 - 2,
-                        y0.floor() as i32 - 2,
-                        x1.ceil() as i32 + 2,
-                        y1.ceil() as i32 + 2,
+                        x0.floor() as i32 - holgura,
+                        y0.floor() as i32 - holgura,
+                        x1.ceil() as i32 + holgura,
+                        y1.ceil() as i32 + holgura,
                     )
                 })
             };
+            habia_prediccion = prediccion.is_some();
             let pintado = pintar(
                 &mut motor,
                 &superficie,
@@ -819,6 +895,7 @@ pub fn abrir(
                 ancho_px,
                 alto_px,
                 zona,
+                prediccion,
                 |_| {},
             );
             match pintado {
@@ -828,6 +905,7 @@ pub fn abrir(
                         presentar,
                     });
                     hay_que_pintar = false;
+                    fotograma_listo = superficie.senal_fotograma().is_none();
                     sucio = None;
                     todo_sucio = false;
                 }
@@ -871,7 +949,23 @@ pub fn abrir(
         // `decision.tope_ms` es `None` en cuanto no hay nada pendiente -y
         // solo entonces-, asi que nunca gira en vacio con un tope de 0 ms.
         let t_esperar = std::time::Instant::now();
-        pixpin_shell::overlay::esperar_eventos(decision.tope_ms);
+        let senal = if hay_que_pintar && !fotograma_listo {
+            superficie.senal_fotograma()
+        } else {
+            None
+        };
+        let tope = if senal.is_some() {
+            Some(
+                decision
+                    .tope_ms
+                    .map_or(ESPERA_MAXIMA_SENAL_MS, |t| t.min(ESPERA_MAXIMA_SENAL_MS)),
+            )
+        } else {
+            decision.tope_ms
+        };
+        if pixpin_shell::overlay::esperar_eventos_o_senal(senal, tope) {
+            fotograma_listo = true;
+        }
         if let Some(linea) = medidor.anotar(crate::medir_fotogramas::Vuelta {
             puntos,
             vaciar,
@@ -972,6 +1066,7 @@ fn pintar(
     ancho_px: f32,
     alto_px: f32,
     zona: Option<(i32, i32, i32, i32)>,
+    prediccion: Option<Punto2>,
     encima: impl FnOnce(&pixpin_render::Pintor<'_>),
 ) -> Option<std::time::Duration> {
     if let Some(f) = fondo.as_mut() {
@@ -1034,6 +1129,25 @@ fn pintar(
             };
             if e.borrado {
                 continue;
+            }
+            // El trazo en curso con la punta predicha: se pinta una copia
+            // con ese punto de mas. La escena no se toca, asi que al soltar
+            // queda el trazo real.
+            if let Some(q) = prediccion.filter(|_| gesto.trazo_en_curso() == Some(e.id)) {
+                let mut copia = e.clone();
+                if let pixpin_motor2d::Figura::Lapiz {
+                    puntos, presiones, ..
+                } = &mut copia.figura
+                {
+                    puntos.push(q);
+                    if let Some(&ultima) = presiones.last() {
+                        presiones.push(ultima);
+                    }
+                    for orden in pixpin_motor2d::pintado::ordenes_a_distancia(&copia, camara.zoom) {
+                        dibujar_orden(p, &orden, vista, None);
+                    }
+                    continue;
+                }
             }
             // Lo excluido es lo que se arrastra o el trazo en curso: su
             // version sube en CADA fotograma, asi que cachear su tinta
@@ -1210,6 +1324,7 @@ fn pedir_medida(
                         escala_por_cien,
                         ancho_px,
                         alto_px,
+                        None,
                         None,
                         |p| dibujar_cajetin(p, ancho_px, alto_px, largo_px, &texto, unidad),
                     );

@@ -39,18 +39,80 @@ pub struct Superficie {
     asignado: std::cell::Cell<(u32, u32)>,
     /// Hay una transformada de estirado puesta en el visual.
     estirada: std::cell::Cell<bool>,
+    /// Banderas con las que nacio la swapchain: `ResizeBuffers` tiene que
+    /// repetirlas o pierde la espera de fotograma.
+    banderas: DXGI_SWAP_CHAIN_FLAG,
+    /// La senal de «ya se puede presentar otro fotograma», solo en la
+    /// superficie de baja latencia. Se cierra en `Drop`.
+    senal: Option<windows::Win32::Foundation::HANDLE>,
+}
+
+impl Drop for Superficie {
+    fn drop(&mut self) {
+        if let Some(s) = self.senal.take() {
+            // SAFETY: el handle lo dio GetFrameLatencyWaitableObject y es
+            // nuestro; se cierra una sola vez.
+            unsafe {
+                let _ = windows::Win32::Foundation::CloseHandle(s);
+            }
+        }
+    }
 }
 
 impl Superficie {
     /// La ventana del llamante debe sobrevivir a la Superficie (obligacion
     /// del llamante: en el overlay, la ventana posee a su Superficie).
     pub fn nueva(
-        _motor: &MotorRender,
+        motor: &MotorRender,
         d3d: &ID3D11Device,
         hwnd: HWND,
         ancho: u32,
         alto: u32,
     ) -> Result<Self, ErrorRender> {
+        Self::crear(motor, d3d, hwnd, ancho, alto, false)
+    }
+
+    /// Superficie para dibujar a mano: latencia de fotograma 1 y senal de
+    /// espera (`senal_fotograma`).
+    ///
+    /// Por defecto DXGI deja encolar hasta tres fotogramas. Un editor que
+    /// pinta en 3 ms los llena, y cada trazo sale con esos fotogramas de
+    /// retraso: la tinta va detras del raton. Con la cola en 1 y esperando a
+    /// la senal ANTES de leer el raton, los puntos se leen lo mas tarde
+    /// posible y se ven en el siguiente refresco (tecnica de «frame latency
+    /// waitable object» de Microsoft para aplicaciones de tinta y juegos).
+    pub fn nueva_baja_latencia(
+        motor: &MotorRender,
+        d3d: &ID3D11Device,
+        hwnd: HWND,
+        ancho: u32,
+        alto: u32,
+    ) -> Result<Self, ErrorRender> {
+        Self::crear(motor, d3d, hwnd, ancho, alto, true)
+    }
+
+    /// El handle crudo que se puede esperar (junto con los mensajes) hasta
+    /// que DXGI admita otro fotograma. `None` en la superficie normal.
+    pub fn senal_fotograma(&self) -> Option<isize> {
+        self.senal.map(|h| h.0 as isize)
+    }
+
+    fn crear(
+        _motor: &MotorRender,
+        d3d: &ID3D11Device,
+        hwnd: HWND,
+        ancho: u32,
+        alto: u32,
+        baja_latencia: bool,
+    ) -> Result<Self, ErrorRender> {
+        use windows::Win32::Graphics::Dxgi::{
+            DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT, IDXGISwapChain2,
+        };
+        let banderas = if baja_latencia {
+            DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT
+        } else {
+            DXGI_SWAP_CHAIN_FLAG(0)
+        };
         let dxgi: IDXGIDevice = d3d.cast().map_err(|_| ErrorRender::SinDxgi)?;
         // SAFETY: el adaptador y la factoria se obtienen del dispositivo del
         // llamante, vivo durante toda la llamada.
@@ -70,11 +132,23 @@ impl Superficie {
             SwapEffect: DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
             Scaling: DXGI_SCALING_STRETCH,
             AlphaMode: DXGI_ALPHA_MODE_PREMULTIPLIED,
+            Flags: banderas.0 as u32,
             ..Default::default()
         };
         // SAFETY: swapchain DE COMPOSICION (sin HWND propio): es el unico
         // tipo valido para NOREDIRECTIONBITMAP; parametros documentados.
         let swapchain = unsafe { fabrica.CreateSwapChainForComposition(&dxgi, &desc, None)? };
+        let senal = if baja_latencia {
+            // SAFETY: la swapchain se creo con la bandera de espera, que es
+            // la condicion de las dos llamadas; el handle es nuestro.
+            unsafe {
+                let s2: IDXGISwapChain2 = swapchain.cast()?;
+                s2.SetMaximumFrameLatency(1)?;
+                Some(s2.GetFrameLatencyWaitableObject())
+            }
+        } else {
+            None
+        };
 
         // SAFETY: dispositivo de composicion sobre el mismo DXGI; el target
         // toma la ventana del llamante (ver la obligacion en el doc de
@@ -98,6 +172,8 @@ impl Superficie {
             swapchain,
             asignado: std::cell::Cell::new((ancho.max(1), alto.max(1))),
             estirada: std::cell::Cell::new(false),
+            banderas,
+            senal,
         })
     }
 
@@ -219,7 +295,7 @@ impl Superficie {
                 ancho.max(1),
                 alto.max(1),
                 DXGI_FORMAT_UNKNOWN,
-                DXGI_SWAP_CHAIN_FLAG(0),
+                self.banderas,
             )?
         };
         self.asignado.set((ancho.max(1), alto.max(1)));

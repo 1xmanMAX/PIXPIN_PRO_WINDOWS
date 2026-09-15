@@ -496,6 +496,45 @@ pub fn esperar_eventos(tope_ms: Option<u32>) {
     }
 }
 
+/// Como `esperar_eventos`, pero despierta tambien con `senal` (la de «ya se
+/// puede presentar» de una swapchain de baja latencia). Devuelve `true` si
+/// desperto la senal: entonces toca leer el raton y pintar YA.
+/// Si la senal ya esta disparada, sin esperar (y consumiendola). Hace falta
+/// porque con el raton en marcha `esperar_eventos_o_senal` despierta SIEMPRE
+/// por la entrada, que va primero, y la senal no llegaba a leerse: el editor
+/// dejaba de pintar hasta que el raton se paraba (tirones de 200-350 ms
+/// medidos al cablearlo).
+pub fn senal_disparada(senal: isize) -> bool {
+    use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
+    use windows::Win32::System::Threading::WaitForSingleObjectEx;
+    // SAFETY: consulta sin espera de un handle vivo del llamante.
+    unsafe { WaitForSingleObjectEx(HANDLE(senal as *mut _), 0, false) == WAIT_OBJECT_0 }
+}
+
+pub fn esperar_eventos_o_senal(senal: Option<isize>, tope_ms: Option<u32>) -> bool {
+    use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
+    use windows::Win32::System::Threading::INFINITE;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        MWMO_INPUTAVAILABLE, MsgWaitForMultipleObjectsEx, QS_ALLINPUT,
+    };
+    let Some(s) = senal else {
+        esperar_eventos(tope_ms);
+        return false;
+    };
+    let handles = [HANDLE(s as *mut _)];
+    // SAFETY: el handle es de la swapchain del llamante, vivo mientras dura
+    // la espera; la cola es la del hilo actual.
+    let r = unsafe {
+        MsgWaitForMultipleObjectsEx(
+            Some(&handles),
+            tope_ms.unwrap_or(INFINITE),
+            QS_ALLINPUT,
+            MWMO_INPUTAVAILABLE,
+        )
+    };
+    r == WAIT_OBJECT_0
+}
+
 pub fn bucle_modal(
     ventanas: &[VentanaOverlay],
     mut callback: impl FnMut(HWND, EventoOverlay) -> crate::ventana::Continuar,
