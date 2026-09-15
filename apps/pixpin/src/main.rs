@@ -182,6 +182,17 @@ fn arrancar(
         raiz = ?ubicacion.raiz(),
         "PixPin Max arrancando"
     );
+    // La identidad de este equipo, en el formato de PixPin Android
+    // (`sincro/identidad.json`): de ella sale el codigo de aparato que llevan
+    // los tres codigos de todo lo que nazca aqui. Sin ella la app funciona;
+    // solo se registra el fallo.
+    let nombre_equipo = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixPin Max".into());
+    match pixpin_proyecto::identidad::Identidad::leer_o_crear(ubicacion.raiz(), &nombre_equipo) {
+        Ok(i) => {
+            tracing::info!(aparato = %i.yo.codigo(), nombre = %i.yo.nombre, "identidad del equipo")
+        }
+        Err(e) => tracing::warn!(?e, "no se pudo leer ni crear la identidad del equipo"),
+    }
 
     // 4. Que nos han configurado.
     let mut config = ajustes::cargar(&ubicacion).context("no se pudieron leer los ajustes")?;
