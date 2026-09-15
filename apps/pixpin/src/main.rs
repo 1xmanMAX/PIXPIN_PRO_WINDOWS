@@ -59,6 +59,7 @@ mod grabador;
 mod medir_fotogramas;
 mod navegacion;
 mod overlay;
+mod panel_dibujo;
 mod pin_vivo;
 mod pines;
 mod reproductor;

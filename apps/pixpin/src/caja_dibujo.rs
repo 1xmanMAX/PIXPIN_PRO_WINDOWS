@@ -103,7 +103,7 @@ fn icono(b: BotonCaja) -> &'static pixpin_render::icono::Icono {
 }
 
 /// Un color de la hoja de estilos de Excalidraw, `#rrggbb`.
-const fn hex(rgb: u32) -> Color {
+pub(crate) const fn hex(rgb: u32) -> Color {
     Color {
         r: ((rgb >> 16) & 0xff) as f32 / 255.0,
         g: ((rgb >> 8) & 0xff) as f32 / 255.0,
@@ -124,7 +124,7 @@ const SEPARADOR: Color = hex(0xf1f0ff);
 /// La sombra de isla de Excalidraw (`--shadow-island`) aproximada con capas
 /// redondeadas: tres sombras de CSS no existen en Direct2D, y un desenfoque
 /// de verdad costaria un efecto por fotograma para algo casi invisible.
-fn sombra_isla(p: &Pintor, r: RectF, radio: f32, e: f32) {
+pub(crate) fn sombra_isla(p: &Pintor, r: RectF, radio: f32, e: f32) {
     let capa = |crece: f32, baja: f32, alfa: f32| {
         p.rellenar_redondeado(
             RectF {

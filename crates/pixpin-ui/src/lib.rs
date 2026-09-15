@@ -14,6 +14,7 @@ pub mod caja_herramientas;
 pub mod lupa;
 pub mod overlay;
 pub mod panel;
+pub mod panel_lateral;
 pub mod propiedades;
 
 pub use anotador::{

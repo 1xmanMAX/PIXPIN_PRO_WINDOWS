@@ -462,6 +462,8 @@ pub fn abrir(
     // Si el fotograma anterior pinto una punta predicha: la zona que se
     // presenta tiene que cubrir tambien donde estaba, o quedaria un resto.
     let mut habia_prediccion = false;
+    // El panel lateral tal como se pinto por ultima vez.
+    let mut ultimo_panel: Option<pixpin_ui::panel_lateral::PanelLateral> = None;
 
     // Zona sucia acumulada durante la vuelta: se pinta un solo fotograma
     // DESPUES de vaciar la cola de eventos, no uno por evento (pintar a
@@ -611,6 +613,27 @@ pub fn abrir(
             // La pregunta "de la caja o del lienzo" es `CajaHerramientas::
             // destino`, pura: aqui solo queda el `match` sobre su resultado,
             // asi que la decision en si esta bajo prueba sin ventana.
+            // El panel lateral, igual que la barra: un clic ahi es suyo.
+            if let EventoOverlay::BotonPulsado(p) | EventoOverlay::BotonSoltado(p) = ev {
+                if let Some(panel) =
+                    crate::panel_dibujo::panel_para(&gesto, &escena, area, escala_por_cien)
+                {
+                    use pixpin_ui::panel_lateral::DestinoPanel;
+                    match panel.destino(p) {
+                        DestinoPanel::Accion(a) => {
+                            if matches!(ev, EventoOverlay::BotonPulsado(_))
+                                && crate::panel_dibujo::aplicar(a, &mut gesto, &mut escena)
+                            {
+                                todo_sucio = true;
+                                ventana.invalidar();
+                            }
+                            continue;
+                        }
+                        DestinoPanel::Panel => continue,
+                        DestinoPanel::Fuera => {}
+                    }
+                }
+            }
             if let EventoOverlay::BotonPulsado(p) = ev {
                 match caja.destino(p) {
                     DestinoClic::Boton(boton) => {
@@ -865,6 +888,12 @@ pub fn abrir(
             } else {
                 2
             };
+            // El panel cambia con la seleccion y la herramienta: si no es el
+            // que se pinto la ultima vez, se presenta entero.
+            let panel = crate::panel_dibujo::panel_para(&gesto, &escena, area, escala_por_cien);
+            if panel != ultimo_panel {
+                todo_sucio = true;
+            }
             let zona = if todo_sucio {
                 None
             } else {
@@ -896,6 +925,7 @@ pub fn abrir(
                 alto_px,
                 zona,
                 prediccion,
+                panel.as_ref(),
                 |_| {},
             );
             match pintado {
@@ -905,6 +935,7 @@ pub fn abrir(
                         presentar,
                     });
                     hay_que_pintar = false;
+                    ultimo_panel = panel;
                     fotograma_listo = superficie.senal_fotograma().is_none();
                     sucio = None;
                     todo_sucio = false;
@@ -1067,6 +1098,7 @@ fn pintar(
     alto_px: f32,
     zona: Option<(i32, i32, i32, i32)>,
     prediccion: Option<Punto2>,
+    panel: Option<&pixpin_ui::panel_lateral::PanelLateral>,
     encima: impl FnOnce(&pixpin_render::Pintor<'_>),
 ) -> Option<std::time::Duration> {
     if let Some(f) = fondo.as_mut() {
@@ -1212,6 +1244,9 @@ fn pintar(
                 _ => None,
             },
         );
+        if let Some(panel) = panel {
+            crate::panel_dibujo::pintar(p, panel, escala_por_cien);
+        }
         encima(p);
     });
     if error.is_err() {
@@ -1324,6 +1359,7 @@ fn pedir_medida(
                         escala_por_cien,
                         ancho_px,
                         alto_px,
+                        None,
                         None,
                         None,
                         |p| dibujar_cajetin(p, ancho_px, alto_px, largo_px, &texto, unidad),
