@@ -25,6 +25,7 @@ pub mod escalabarra;
 pub mod escena;
 pub mod estilo;
 pub mod excalidraw;
+pub mod forma_rapida;
 pub mod formas;
 pub mod formato;
 pub mod gesto;

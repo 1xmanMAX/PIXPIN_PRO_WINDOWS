@@ -224,6 +224,10 @@ pub struct Gesto {
     pub grosor_tinta: f32,
     /// Pluma variable o constante para los trazos nuevos.
     pub variabilidad: crate::tinta::Variabilidad,
+    /// Una elipse de forma rapida que se esta ajustando: centro, distancia
+    /// del cursor al convertirla y radios de entonces. Escala desde su
+    /// centro; crecer desde una esquina la haria saltar al convertirse.
+    forma_elipse: Option<(Punto2, f32, f32, f32)>,
     /// El «actual» del panel lateral: con esto nacen las figuras nuevas.
     /// El grosor del lapiz sigue en `grosor_tinta` (las teclas 1/2/3).
     pub estilo: crate::estilo::EstiloDibujo,
@@ -241,6 +245,7 @@ impl Default for Gesto {
             grosor_tinta: crate::tinta::GROSOR_MEDIO,
             variabilidad: crate::tinta::Variabilidad::Variable,
             estilo: crate::estilo::EstiloDibujo::default(),
+            forma_elipse: None,
         }
     }
 }
@@ -270,10 +275,88 @@ impl Gesto {
         }
     }
 
+    /// Forma rapida: si se esta dibujando a mano y el trazo parece una linea,
+    /// un rectangulo o una elipse, lo convierte en esa figura (con su color y
+    /// un grosor equivalente) y deja listo el ajuste: los movimientos
+    /// siguientes la redimensionan. Lo llama la ventana cuando el cursor se
+    /// queda quieto con el boton pulsado. `None` si no hay nada que convertir.
+    /// Sigue siendo el mismo elemento, anadido en este paso: un Ctrl+Z lo
+    /// quita entero.
+    pub fn convertir_en_forma(&mut self, escena: &mut Escena, cursor: Punto2) -> Option<Respuesta> {
+        use crate::forma_rapida::{FormaReconocida, reconocer};
+        let Estado::Dibujando { id } = self.estado else {
+            return None;
+        };
+        if self.herramienta != Herramienta::Lapiz {
+            return None;
+        }
+        let e = escena.buscar(id)?;
+        let Figura::Lapiz { puntos, .. } = &e.figura else {
+            return None;
+        };
+        let forma = reconocer(puntos)?;
+        let grosor = crate::estilo::NivelGrosor::de_elemento(&e.figura, e.grosor).de_forma();
+        let relleno = self.estilo.relleno;
+        let e = escena.buscar_mut(id)?;
+        e.grosor = grosor;
+        e.angulo = 0.0;
+        self.forma_elipse = None;
+        match forma {
+            FormaReconocida::Linea { a, .. } => {
+                e.figura = Figura::Linea {
+                    puntos: vec![a, cursor],
+                };
+                e.x = a.x;
+                e.y = a.y;
+                self.trazo.clear();
+                self.trazo.push(a);
+            }
+            FormaReconocida::Rectangulo { caja } => {
+                e.figura = Figura::Rectangulo;
+                e.relleno = relleno;
+                (e.x, e.y, e.ancho, e.alto) = (caja.0, caja.1, caja.2 - caja.0, caja.3 - caja.1);
+                // Crece desde la esquina opuesta al cursor: la que queda fija
+                // mientras se tira de la otra.
+                let esquinas = [
+                    Punto2::nuevo(caja.0, caja.1),
+                    Punto2::nuevo(caja.2, caja.1),
+                    Punto2::nuevo(caja.0, caja.3),
+                    Punto2::nuevo(caja.2, caja.3),
+                ];
+                let ancla = esquinas
+                    .into_iter()
+                    .max_by(|a, b| a.distancia(cursor).total_cmp(&b.distancia(cursor)))?;
+                self.trazo.clear();
+                self.trazo.push(ancla);
+            }
+            FormaReconocida::Elipse { caja } => {
+                e.figura = Figura::Elipse;
+                e.relleno = relleno;
+                (e.x, e.y, e.ancho, e.alto) = (caja.0, caja.1, caja.2 - caja.0, caja.3 - caja.1);
+                let centro = Punto2::nuevo((caja.0 + caja.2) / 2.0, (caja.1 + caja.3) / 2.0);
+                self.forma_elipse = Some((
+                    centro,
+                    cursor.distancia(centro).max(1.0),
+                    e.ancho / 2.0,
+                    e.alto / 2.0,
+                ));
+            }
+        }
+        e.tocar();
+        Some(Respuesta {
+            region: Region::Todo,
+            cursor: FormaCursor::Cruz,
+            pide: None,
+        })
+    }
+
     /// Cualquier elemento que se esta dibujando (no solo el trazo a mano) y
     /// el punto donde se pulso: la ventana pinta su punta predicha.
     pub fn elemento_en_curso(&self) -> Option<(u64, Option<Punto2>)> {
         match self.estado {
+            // La elipse rapida no crece desde un origen: sin origen, la punta
+            // predicha no la deforma.
+            Estado::Dibujando { id } if self.forma_elipse.is_some() => Some((id, None)),
             Estado::Dibujando { id } => Some((id, self.trazo.first().copied())),
             _ => None,
         }
@@ -732,6 +815,7 @@ impl Gesto {
                 }
             }
             let id = escena.anadir(e);
+            self.forma_elipse = None;
             self.estado = Estado::Dibujando { id };
             return Respuesta {
                 region: Region::Todo,
@@ -790,6 +874,7 @@ impl Gesto {
                 // con solo el tramo anterior->p esos lados se presentaban tarde
                 // y la figura parecia arrastrarse (lo noto el usuario).
                 let caja_antes = escena.buscar(id).map(|e| e.caja());
+                let elipse_rapida = self.forma_elipse;
                 if let Some(e) = escena.buscar_mut(id) {
                     match &mut e.figura {
                         Figura::Lapiz {
@@ -825,6 +910,17 @@ impl Gesto {
                                 puntos.push(p);
                             } else if let Some(ultimo) = puntos.last_mut() {
                                 *ultimo = p;
+                            }
+                        }
+                        Figura::Elipse if elipse_rapida.is_some() => {
+                            // Forma rapida: escala desde el centro, en
+                            // proporcion a como se aleja el cursor.
+                            if let Some((c, d0, rx, ry)) = elipse_rapida {
+                                let k = p.distancia(c) / d0.max(1.0);
+                                e.x = c.x - rx * k;
+                                e.y = c.y - ry * k;
+                                e.ancho = 2.0 * rx * k;
+                                e.alto = 2.0 * ry * k;
                             }
                         }
                         _ => {
@@ -1004,6 +1100,7 @@ impl Gesto {
         // Un paso sin cambios no entra en el historial, asi que hacer clic
         // sin arrastrar no consume un Ctrl+Z. De eso se encarga cerrar_paso.
         escena.cerrar_paso();
+        self.forma_elipse = None;
         self.estado = Estado::Reposo;
         Respuesta {
             region: Region::Todo,
@@ -2359,6 +2456,93 @@ mod pruebas {
             (nacido.x, nacido.y),
             (100.0, 50.0),
             "y nace pegado a la esquina del vecino, que es para lo que esta el iman"
+        );
+    }
+
+    fn dibujar_a_mano(g: &mut Gesto, escena: &mut Escena, puntos: &[Punto2]) {
+        g.herramienta = Herramienta::Lapiz;
+        g.enganche.activo = false;
+        g.evento(pulsar(puntos[0]), escena, 1.0);
+        for p in &puntos[1..] {
+            g.evento(mover(*p), escena, 1.0);
+        }
+    }
+
+    #[test]
+    fn un_circulo_a_mano_quieto_se_vuelve_elipse_y_crece_desde_su_centro() {
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        let circulo: Vec<Punto2> = (0..=48)
+            .map(|i| {
+                let t = std::f32::consts::TAU * i as f32 / 48.0;
+                Punto2::nuevo(100.0 + 50.0 * t.cos(), 100.0 + 50.0 * t.sin())
+            })
+            .collect();
+        dibujar_a_mano(&mut g, &mut escena, &circulo);
+        let cursor = *circulo.last().unwrap();
+        assert!(g.convertir_en_forma(&mut escena, cursor).is_some());
+        let (id, _) = g.elemento_en_curso().unwrap();
+        assert!(matches!(escena.buscar(id).unwrap().figura, Figura::Elipse));
+        // Alejarse al doble del centro dobla los radios sin mover el centro.
+        g.evento(mover(Punto2::nuevo(200.0, 100.0)), &mut escena, 1.0);
+        let e = escena.buscar(id).unwrap();
+        assert!((e.ancho - 200.0).abs() < 4.0, "ancho {}", e.ancho);
+        assert!(
+            ((e.x + e.ancho / 2.0) - 100.0).abs() < 2.0,
+            "el centro no se mueve"
+        );
+    }
+
+    #[test]
+    fn una_l_quieta_se_vuelve_rectangulo_que_se_ajusta_al_tirar_y_se_deshace_de_una() {
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        let mut l: Vec<Punto2> = (0..=20)
+            .map(|i| Punto2::nuevo(0.0, 100.0 - 5.0 * i as f32))
+            .collect();
+        l.extend((1..=30).map(|i| Punto2::nuevo(5.0 * i as f32, 0.0)));
+        dibujar_a_mano(&mut g, &mut escena, &l);
+        assert!(
+            g.convertir_en_forma(&mut escena, Punto2::nuevo(150.0, 0.0))
+                .is_some()
+        );
+        let (id, _) = g.elemento_en_curso().unwrap();
+        // Tirar hacia abajo a la derecha: la esquina opuesta (abajo a la
+        // izquierda, donde empezo) se queda fija.
+        g.evento(mover(Punto2::nuevo(220.0, -40.0)), &mut escena, 1.0);
+        let e = escena.buscar(id).unwrap().clone();
+        assert!(matches!(e.figura, Figura::Rectangulo));
+        assert_eq!((e.x, e.y + e.alto), (0.0, 100.0), "el ancla es el inicio");
+        assert_eq!(e.ancho, 220.0);
+        g.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(220.0, -40.0),
+            },
+            &mut escena,
+            1.0,
+        );
+        assert!(escena.deshacer());
+        assert!(
+            escena.buscar(id).is_none_or(|e| e.borrado),
+            "un Ctrl+Z lo quita entero"
+        );
+    }
+
+    #[test]
+    fn un_garabato_quieto_no_se_convierte_y_sin_dibujar_tampoco() {
+        let mut escena = Escena::nueva();
+        let mut g = Gesto::nuevo();
+        assert!(
+            g.convertir_en_forma(&mut escena, Punto2::nuevo(0.0, 0.0))
+                .is_none()
+        );
+        let zig: Vec<Punto2> = (0..40)
+            .map(|i| Punto2::nuevo(i as f32 * 5.0, if i % 2 == 0 { 0.0 } else { 30.0 }))
+            .collect();
+        dibujar_a_mano(&mut g, &mut escena, &zig);
+        assert!(
+            g.convertir_en_forma(&mut escena, Punto2::nuevo(195.0, 30.0))
+                .is_none()
         );
     }
 

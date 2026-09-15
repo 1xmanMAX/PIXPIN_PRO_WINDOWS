@@ -194,6 +194,10 @@ const HORIZONTE_PREDICCION_MS: f32 = 28.0;
 /// Hasta donde puede adelantarse, en pixeles de pantalla: con 48 un trazo
 /// rapido topaba y la punta volvia a quedarse atras.
 const TOPE_PREDICCION_PX: f32 = 80.0;
+/// Cuanto tiene que quedarse quieto el cursor dibujando a mano para que el
+/// trazo se convierta en figura (forma rapida). Menos se dispara al dudar a
+/// mitad de un trazo; mas se hace esperar.
+const PAUSA_FORMA: std::time::Duration = std::time::Duration::from_millis(450);
 /// Lo mas que se espera a la senal de fotograma antes de pintar igualmente.
 const ESPERA_MAXIMA_SENAL_MS: u32 = 20;
 const ESPERA_MAXIMA_SENAL: std::time::Duration =
@@ -467,6 +471,9 @@ pub fn abrir(
     // Si el fotograma anterior pinto una punta predicha: la zona que se
     // presenta tiene que cubrir tambien donde estaba, o quedaria un resto.
     let mut habia_prediccion = false;
+    // Forma rapida: desde cuando esta quieto el cursor dibujando a mano, y
+    // donde. Quieto `PAUSA_FORMA` convierte el trazo en figura.
+    let mut quieto: Option<(std::time::Instant, Punto2)> = None;
     // El panel lateral tal como se pinto por ultima vez.
     let mut ultimo_panel: Option<pixpin_ui::panel_lateral::PanelLateral> = None;
 
@@ -706,8 +713,19 @@ pub fn abrir(
                     EventoGesto::Pulsar { p, .. } => {
                         predictor.reiniciar();
                         predictor.anotar(p, ms);
+                        quieto = Some((std::time::Instant::now(), p));
                     }
-                    EventoGesto::Mover { p, .. } => predictor.anotar(p, ms),
+                    EventoGesto::Mover { p, .. } => {
+                        predictor.anotar(p, ms);
+                        // Moverse mas de 4 px de pantalla reinicia la pausa: el
+                        // temblor de la mano parada no cuenta como movimiento.
+                        let lejos =
+                            quieto.is_none_or(|(_, q)| q.distancia(p) * efectiva.zoom > 4.0);
+                        if lejos {
+                            quieto = Some((std::time::Instant::now(), p));
+                        }
+                    }
+                    EventoGesto::Soltar { .. } => quieto = None,
                     _ => {}
                 }
                 let en_reposo_antes = gesto.en_reposo();
@@ -850,6 +868,26 @@ pub fn abrir(
         // puntos al gesto: pintar a mitad de la cola era lo que hacia perder
         // puntos. Presentar con vsync bloquea hasta el refresco; mientras,
         // Windows guarda los movimientos y la Tarea 7 los recupera.
+        // Forma rapida (como QuickShape de Procreate): el trazo a mano quieto
+        // con el boton pulsado se convierte en linea, rectangulo o elipse, y
+        // lo que se arrastre despues la ajusta.
+        if let Some((desde, p)) = quieto {
+            let dibujando_a_mano =
+                gesto.herramienta == Herramienta::Lapiz && gesto.trazo_en_curso().is_some();
+            if !dibujando_a_mano {
+                quieto = None;
+            } else if desde.elapsed() >= PAUSA_FORMA {
+                // Una sola vez por pausa: si no parece nada, se sigue
+                // dibujando y la siguiente pausa lo vuelve a mirar.
+                quieto = None;
+                if gesto.convertir_en_forma(&mut escena, p).is_some() {
+                    predictor.reiniciar();
+                    todo_sucio = true;
+                    hay_que_pintar = true;
+                    ventana.invalidar();
+                }
+            }
+        }
         if hay_que_pintar && !fotograma_listo {
             if let Some(s) = superficie.senal_fotograma() {
                 fotograma_listo = pixpin_shell::overlay::senal_disparada(s);
@@ -989,6 +1027,17 @@ pub fn abrir(
             superficie.senal_fotograma()
         } else {
             None
+        };
+        // Con una pausa de forma rapida en marcha no llegan eventos (el raton
+        // esta quieto): el bucle tiene que despertarse cuando se cumpla.
+        let tope_forma = quieto
+            .map(|(desde, _)| PAUSA_FORMA.saturating_sub(desde.elapsed()).as_millis() as u32 + 1);
+        let decision = DecisionZoom {
+            tope_ms: match (decision.tope_ms, tope_forma) {
+                (Some(a), Some(b)) => Some(a.min(b)),
+                (a, b) => a.or(b),
+            },
+            ..decision
         };
         let tope = if senal.is_some() {
             Some(
