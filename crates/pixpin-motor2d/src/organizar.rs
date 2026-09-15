@@ -102,6 +102,40 @@ pub fn al_fondo(escena: &mut Escena, sel: &Seleccion) {
     escena.cerrar_paso();
 }
 
+/// Sube lo elegido UNA posicion: pasa por delante del primer elemento no
+/// elegido que tenia encima. Es «Traer adelante» del panel de Excalidraw.
+pub fn adelante(escena: &mut Escena, sel: &Seleccion) {
+    un_paso(escena, sel, true);
+}
+
+/// Baja lo elegido una posicion («Enviar atras»).
+pub fn atras(escena: &mut Escena, sel: &Seleccion) {
+    un_paso(escena, sel, false);
+}
+
+fn un_paso(escena: &mut Escena, sel: &Seleccion, sube: bool) {
+    escena.abrir_paso();
+    escena.apuntar_reordenamiento();
+    let n = escena.elementos.len();
+    // Se recorre desde el lado hacia el que se mueve, para que dos elegidos
+    // seguidos avancen juntos en vez de pisarse.
+    let indices: Vec<usize> = if sube {
+        (0..n).rev().collect()
+    } else {
+        (0..n).collect()
+    };
+    for i in indices {
+        if !sel.contiene(escena.elementos[i].id) {
+            continue;
+        }
+        let j = if sube { i + 1 } else { i.wrapping_sub(1) };
+        if j < n && !sel.contiene(escena.elementos[j].id) {
+            escena.elementos.swap(i, j);
+        }
+    }
+    escena.cerrar_paso();
+}
+
 fn reordenar(escena: &mut Escena, sel: &Seleccion, al_frente: bool) {
     // Particionar conserva el orden dentro de cada mitad, que es justo lo
     // que hace falta: subir dos elementos no debe intercambiarlos.
@@ -137,6 +171,8 @@ pub fn alinear(escena: &mut Escena, sel: &Seleccion, como: Alineacion) {
         escena.apuntar_edicion(id);
         if let Some(e) = escena.buscar_mut(id) {
             e.mover(dx, dy);
+            // Sin subir la version la cache pintaria el sitio viejo.
+            e.tocar();
         }
     }
     escena.cerrar_paso();
@@ -181,6 +217,7 @@ pub fn repartir(escena: &mut Escena, sel: &Seleccion, como: Reparto) {
                 Reparto::Horizontal => e.mover(d, 0.0),
                 Reparto::Vertical => e.mover(0.0, d),
             }
+            e.tocar();
         }
     }
     escena.cerrar_paso();
@@ -292,6 +329,24 @@ mod pruebas {
 
         al_fondo(&mut escena, &sel);
         assert_eq!(escena.elementos.first().unwrap().id, a);
+    }
+
+    #[test]
+    fn adelante_y_atras_mueven_una_sola_posicion_y_se_deshacen() {
+        let (mut escena, a, b, c) = con_tres();
+        let mut sel = Seleccion::nueva();
+        sel.poner(a);
+        let ids = |e: &Escena| e.elementos.iter().map(|x| x.id).collect::<Vec<u64>>();
+        adelante(&mut escena, &sel);
+        assert_eq!(ids(&escena), vec![b, a, c], "una posicion, no al frente");
+        atras(&mut escena, &sel);
+        assert_eq!(ids(&escena), vec![a, b, c]);
+        // Caso negativo: el que ya esta al fondo no se mueve mas.
+        atras(&mut escena, &sel);
+        assert_eq!(ids(&escena), vec![a, b, c]);
+        adelante(&mut escena, &sel);
+        assert!(escena.deshacer());
+        assert_eq!(ids(&escena), vec![a, b, c]);
     }
 
     #[test]

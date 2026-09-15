@@ -224,6 +224,9 @@ pub struct Gesto {
     pub grosor_tinta: f32,
     /// Pluma variable o constante para los trazos nuevos.
     pub variabilidad: crate::tinta::Variabilidad,
+    /// El «actual» del panel lateral: con esto nacen las figuras nuevas.
+    /// El grosor del lapiz sigue en `grosor_tinta` (las teclas 1/2/3).
+    pub estilo: crate::estilo::EstiloDibujo,
 }
 
 impl Default for Gesto {
@@ -237,6 +240,7 @@ impl Default for Gesto {
             anclaje_activo: None,
             grosor_tinta: crate::tinta::GROSOR_MEDIO,
             variabilidad: crate::tinta::Variabilidad::Variable,
+            estilo: crate::estilo::EstiloDibujo::default(),
         }
     }
 }
@@ -515,16 +519,20 @@ impl Gesto {
             ancho: 0.0,
             alto: 0.0,
             angulo: 0.0,
-            trazo: crate::elemento::ColorRgba::opaco(0.0, 0.0, 0.0),
-            relleno: None,
+            trazo: self.estilo.trazo,
+            // El fondo solo tiene sentido en lo que encierra un area.
+            relleno: match self.herramienta {
+                Herramienta::Rectangulo | Herramienta::Elipse => self.estilo.relleno,
+                _ => None,
+            },
             grosor: if self.herramienta == Herramienta::Lapiz {
                 self.grosor_tinta
             } else {
-                3.0
+                self.estilo.grosor.de_forma()
             },
-            estilo: crate::elemento::EstiloTrazo::Solido,
-            rugosidad: 1.0,
-            opacidad: 1.0,
+            estilo: self.estilo.estilo,
+            rugosidad: self.estilo.rugosidad,
+            opacidad: self.estilo.opacidad,
             semilla: 1,
             version: 0,
             borrado: false,

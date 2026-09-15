@@ -23,6 +23,7 @@ pub mod elemento;
 pub mod enganche;
 pub mod escalabarra;
 pub mod escena;
+pub mod estilo;
 pub mod excalidraw;
 pub mod formas;
 pub mod formato;
