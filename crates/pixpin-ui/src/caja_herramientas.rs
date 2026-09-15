@@ -19,6 +19,18 @@ const MARGEN_LOGICO: u32 = 6;
 /// Separacion entre la caja y el borde del contenido.
 const SEPARACION_LOGICA: u32 = 12;
 
+/// La barra de arriba del editor copia la de Excalidraw
+/// (`docs/excalidraw/interfaz.md` §2.4): isla con 4 px de relleno, botones
+/// de 36 px separados 4 px, a 16 px del borde, y separadores de 1 px con
+/// 4 px de margen entre grupos.
+const LADO_BARRA_LOGICO: u32 = 36;
+const HUECO_BARRA_LOGICO: u32 = 4;
+const RELLENO_BARRA_LOGICO: u32 = 4;
+const DISTANCIA_BORDE_LOGICA: u32 = 16;
+const SEPARADOR_LOGICO: u32 = 1;
+const MARGEN_SEPARADOR_LOGICO: u32 = 4;
+const ALTO_SEPARADOR_LOGICO: u32 = 24;
+
 /// Lo que se puede pulsar. Las herramientas y, al final, las acciones.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BotonCaja {
@@ -60,18 +72,22 @@ pub const BOTONES: [BotonCaja; 14] = [
 /// verdad: pinta `ordenes_medibles`, atiende `Peticion::Calibrar` y sabe
 /// dibujar su cajetin. Por eso las tres van aqui, con las demas de dibujar,
 /// antes de Deshacer.
+///
+/// En el orden de la barra de Excalidraw (seleccion, rectangulo, elipse,
+/// flecha, linea, dibujo, texto, borrador) y despues, en su propio grupo,
+/// las que Excalidraw no tiene.
 pub const BOTONES_EDITOR: [BotonCaja; 17] = [
     BotonCaja::Elegir(Herramienta::Mano),
-    BotonCaja::Elegir(Herramienta::Lapiz),
-    BotonCaja::Elegir(Herramienta::Resaltador),
-    BotonCaja::Elegir(Herramienta::Linea),
-    BotonCaja::Elegir(Herramienta::Flecha),
     BotonCaja::Elegir(Herramienta::Rectangulo),
     BotonCaja::Elegir(Herramienta::Elipse),
+    BotonCaja::Elegir(Herramienta::Flecha),
+    BotonCaja::Elegir(Herramienta::Linea),
+    BotonCaja::Elegir(Herramienta::Lapiz),
     BotonCaja::Elegir(Herramienta::Texto),
+    BotonCaja::Elegir(Herramienta::Borrador),
+    BotonCaja::Elegir(Herramienta::Resaltador),
     BotonCaja::Elegir(Herramienta::Foco),
     BotonCaja::Elegir(Herramienta::Lupa),
-    BotonCaja::Elegir(Herramienta::Borrador),
     BotonCaja::Elegir(Herramienta::Cota),
     BotonCaja::Elegir(Herramienta::Escalar),
     BotonCaja::Elegir(Herramienta::EscalaGrafica),
@@ -89,9 +105,99 @@ pub struct CajaHerramientas {
     /// es la misma geometria, pero da por hecho una lista, no lee una
     /// constante global.
     botones: &'static [BotonCaja],
+    /// Barra de arriba al estilo Excalidraw en vez de columna al lado.
+    horizontal: bool,
+}
+
+/// El grupo de un boton en la barra: entre grupos va un separador. Las de
+/// dibujar que tiene Excalidraw, las propias de PixPin y las acciones.
+pub fn grupo(b: BotonCaja) -> u8 {
+    match b {
+        BotonCaja::Elegir(
+            Herramienta::Resaltador
+            | Herramienta::Foco
+            | Herramienta::Lupa
+            | Herramienta::Cota
+            | Herramienta::Escalar
+            | Herramienta::EscalaGrafica,
+        ) => 1,
+        BotonCaja::Elegir(_) => 0,
+        BotonCaja::Deshacer | BotonCaja::Rehacer | BotonCaja::Color | BotonCaja::Salir => 2,
+    }
 }
 
 impl CajaHerramientas {
+    /// La barra de herramientas de Excalidraw: en horizontal, centrada
+    /// arriba del `area` y a 16 px de su borde. Si no cabe a lo ancho, se
+    /// pega a la izquierda en vez de salirse por los dos lados.
+    pub fn barra_superior(
+        area: Rect,
+        escala_por_cien: u32,
+        botones: &'static [BotonCaja],
+    ) -> CajaHerramientas {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let n = botones.len() as u32;
+        let cortes = botones
+            .windows(2)
+            .filter(|par| grupo(par[0]) != grupo(par[1]))
+            .count() as u32;
+        let ancho = 2 * e(RELLENO_BARRA_LOGICO)
+            + n * e(LADO_BARRA_LOGICO)
+            + n.saturating_sub(1) * e(HUECO_BARRA_LOGICO)
+            + cortes * (e(SEPARADOR_LOGICO) + e(MARGEN_SEPARADOR_LOGICO) + e(HUECO_BARRA_LOGICO));
+        let alto = 2 * e(RELLENO_BARRA_LOGICO) + e(LADO_BARRA_LOGICO);
+        let x_ideal = area.x + (area.ancho as i32 - ancho as i32) / 2;
+        let x_max = (area.derecha() - ancho as i32).max(area.izquierda());
+        CajaHerramientas {
+            marco: Rect {
+                x: x_ideal.clamp(area.izquierda(), x_max),
+                y: area.y + e(DISTANCIA_BORDE_LOGICA) as i32,
+                ancho,
+                alto,
+            },
+            escala_por_cien,
+            botones,
+            horizontal: true,
+        }
+    }
+
+    /// Cuanto se desplaza el boton `indice` por los separadores que tiene
+    /// delante, en pixeles fisicos.
+    fn desplazamiento_separadores(&self, indice: usize) -> u32 {
+        let e = |v: u32| v * self.escala_por_cien / 100;
+        let antes = self.botones[..=indice.min(self.botones.len().saturating_sub(1))]
+            .windows(2)
+            .filter(|par| grupo(par[0]) != grupo(par[1]))
+            .count() as u32;
+        antes * (e(SEPARADOR_LOGICO) + e(MARGEN_SEPARADOR_LOGICO) + e(HUECO_BARRA_LOGICO))
+    }
+
+    /// Los separadores de 1 px entre grupos de la barra. Vacio en la caja
+    /// vertical, que no los lleva.
+    pub fn separadores(&self) -> Vec<Rect> {
+        if !self.horizontal {
+            return Vec::new();
+        }
+        let e = |v: u32| v * self.escala_por_cien / 100;
+        let alto = e(ALTO_SEPARADOR_LOGICO);
+        (1..self.botones.len())
+            .filter(|&i| grupo(self.botones[i - 1]) != grupo(self.botones[i]))
+            .map(|i| {
+                let previo = self.rect_de(i - 1);
+                Rect {
+                    x: previo.derecha() + e(HUECO_BARRA_LOGICO) as i32,
+                    y: self.marco.y + (self.marco.alto as i32 - alto as i32) / 2,
+                    ancho: e(SEPARADOR_LOGICO).max(1),
+                    alto,
+                }
+            })
+            .collect()
+    }
+
+    pub fn es_horizontal(&self) -> bool {
+        self.horizontal
+    }
+
     /// A la izquierda del contenido si cabe; si no, a la derecha; si tampoco,
     /// dentro y pegada al borde izquierdo. Siempre entera en el area de
     /// trabajo: una caja medio fuera de pantalla no se puede usar.
@@ -140,12 +246,26 @@ impl CajaHerramientas {
             },
             escala_por_cien,
             botones,
+            horizontal: false,
         }
     }
 
     /// El rectangulo de un boton por su indice.
     pub fn rect_de(&self, indice: usize) -> Rect {
         let e = |v: u32| v * self.escala_por_cien / 100;
+        if self.horizontal {
+            let lado = e(LADO_BARRA_LOGICO);
+            let relleno = e(RELLENO_BARRA_LOGICO);
+            let paso = lado + e(HUECO_BARRA_LOGICO);
+            return Rect {
+                x: self.marco.x
+                    + (relleno + indice as u32 * paso + self.desplazamiento_separadores(indice))
+                        as i32,
+                y: self.marco.y + relleno as i32,
+                ancho: lado,
+                alto: lado,
+            };
+        }
         let lado = e(LADO_BOTON_LOGICO);
         let hueco = e(HUECO_LOGICO);
         let margen = e(MARGEN_LOGICO);
@@ -477,5 +597,82 @@ mod pruebas {
                 "el boton {i} se sale del marco"
             );
         }
+    }
+    #[test]
+    fn la_barra_de_excalidraw_va_centrada_arriba_a_16_px_y_mide_44_de_alto() {
+        let b = CajaHerramientas::barra_superior(area(), 100, &BOTONES_EDITOR);
+        assert!(b.es_horizontal());
+        assert_eq!(b.marco.y, 16);
+        assert_eq!(
+            b.marco.alto, 44,
+            "36 de boton mas 4 de relleno arriba y abajo"
+        );
+        let izq = b.marco.x - area().x;
+        let der = area().derecha() - b.marco.derecha();
+        assert!((izq - der).abs() <= 1, "centrada: {izq} y {der}");
+    }
+
+    #[test]
+    fn los_botones_de_la_barra_son_de_36_y_no_se_pisan_con_los_separadores() {
+        let b = CajaHerramientas::barra_superior(area(), 100, &BOTONES_EDITOR);
+        let seps = b.separadores();
+        assert_eq!(seps.len(), 2, "dibujar | propias de PixPin | acciones");
+        for i in 0..BOTONES_EDITOR.len() {
+            let r = b.rect_de(i);
+            assert_eq!((r.ancho, r.alto), (36, 36));
+            assert!(
+                r.derecha() <= b.marco.derecha() - 4,
+                "boton {i} fuera: {r:?}"
+            );
+            if i > 0 {
+                assert!(
+                    r.x >= b.rect_de(i - 1).derecha() + 4,
+                    "boton {i} pisa al anterior"
+                );
+            }
+            for s in &seps {
+                assert!(r.interseccion(*s).is_none(), "boton {i} pisa un separador");
+            }
+        }
+    }
+
+    #[test]
+    fn un_clic_en_la_barra_elige_su_boton_y_debajo_de_ella_es_lienzo() {
+        let b = CajaHerramientas::barra_superior(area(), 150, &BOTONES_EDITOR);
+        let r = b.rect_de(2);
+        let centro = Punto {
+            x: r.x + r.ancho as i32 / 2,
+            y: r.y + r.alto as i32 / 2,
+        };
+        assert_eq!(b.destino(centro), DestinoClic::Boton(BOTONES_EDITOR[2]));
+        // Caso negativo: el separador es de la barra, pero no es un boton.
+        let s = b.separadores()[0];
+        assert_eq!(b.destino(Punto { x: s.x, y: s.y }), DestinoClic::Caja);
+        assert_eq!(
+            b.destino(Punto {
+                x: centro.x,
+                y: b.marco.abajo() + 1
+            }),
+            DestinoClic::Lienzo
+        );
+    }
+
+    #[test]
+    fn en_una_pantalla_estrecha_la_barra_se_pega_a_la_izquierda_sin_salirse() {
+        let estrecha = Rect {
+            x: 0,
+            y: 0,
+            ancho: 400,
+            alto: 800,
+        };
+        let b = CajaHerramientas::barra_superior(estrecha, 100, &BOTONES_EDITOR);
+        assert_eq!(b.marco.x, 0);
+    }
+
+    #[test]
+    fn la_caja_vertical_no_tiene_separadores() {
+        let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES_EDITOR);
+        assert!(!c.es_horizontal());
+        assert!(c.separadores().is_empty());
     }
 }

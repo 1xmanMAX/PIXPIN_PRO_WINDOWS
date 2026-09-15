@@ -186,6 +186,15 @@ fn tecla_a_herramienta(c: char) -> Option<Herramienta> {
     }
 }
 
+/// La tecla que elige `h`, para pintarla en la esquina de su boton. Es la
+/// inversa de `tecla_a_herramienta`: si alguna vez se separan, la barra
+/// ensenaria una tecla que no hace nada, y la prueba lo vigila.
+fn tecla_de(h: Herramienta) -> Option<char> {
+    ['M', 'L', 'R', 'T', 'F', 'Q', 'B', 'A', 'E', 'G']
+        .into_iter()
+        .find(|c| tecla_a_herramienta(*c) == Some(h))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum CambioPluma {
     Grosor(f32),
@@ -424,7 +433,9 @@ pub fn abrir(
     // "Contenido" y area de trabajo son el mismo rectangulo, como en
     // `CapaViva::nueva` (`capa.rs`): aqui el contenido ES la pantalla
     // entera, no hay un pin ni una ventana mas pequena de referencia.
-    let mut caja = CajaHerramientas::colocar(area, area, escala_por_cien, &BOTONES_EDITOR);
+    let mut caja = CajaHerramientas::barra_superior(area, escala_por_cien, &BOTONES_EDITOR);
+    // Donde estaba el raton la ultima vez, para resaltar el boton de debajo.
+    let mut raton_barra: Option<Punto> = None;
 
     // Zona sucia acumulada durante la vuelta: se pinta un solo fotograma
     // DESPUES de vaciar la cola de eventos, no uno por evento (pintar a
@@ -460,13 +471,24 @@ pub fn abrir(
                 {
                     escala_por_cien = m.escala_por_cien;
                     efectiva = vista_efectiva(&camara, escala_por_cien);
-                    caja = CajaHerramientas::colocar(area, area, escala_por_cien, &BOTONES_EDITOR);
+                    caja = CajaHerramientas::barra_superior(area, escala_por_cien, &BOTONES_EDITOR);
                     // La capa congelada se horneo a la escala vieja.
                     capa.soltar();
                     todo_sucio = true;
                     ventana.invalidar();
                 }
                 continue;
+            }
+            // El resaltado de la barra sigue al raton, como en Excalidraw.
+            // Solo se repinta cuando cambia el boton de debajo: con cada
+            // movimiento seria un fotograma entero por nada.
+            if let EventoOverlay::RatonMovido(p) = ev {
+                let antes = raton_barra.and_then(|r| caja.boton_en(r));
+                raton_barra = Some(p);
+                if caja.boton_en(p) != antes {
+                    todo_sucio = true;
+                    ventana.invalidar();
+                }
             }
             // D136: moverse por el lienzo va ANTES que la caja y que el
             // gesto. Un clic con el espacio pulsado arrastra el lienzo aunque
@@ -792,6 +814,7 @@ pub fn abrir(
                 &capa,
                 &mut fondo,
                 &caja,
+                raton_barra,
                 escala_por_cien,
                 ancho_px,
                 alto_px,
@@ -944,6 +967,7 @@ fn pintar(
     capa: &CapaEstatica,
     fondo: &mut Option<FondoLienzo>,
     caja_herramientas: &CajaHerramientas,
+    raton_barra: Option<Punto>,
     escala_por_cien: u32,
     ancho_px: f32,
     alto_px: f32,
@@ -1063,12 +1087,16 @@ fn pintar(
         // del mundo que `poner_vista` dejo puesta arriba, igual que hace
         // `dibujar_cajetin` mas abajo.
         p.desplazar(0.0, 0.0);
-        crate::caja_dibujo::pintar_caja(
+        crate::caja_dibujo::pintar_barra(
             p,
             caja_herramientas,
             gesto.herramienta,
             escala_por_cien,
-            Punto { x: 0, y: 0 },
+            raton_barra,
+            |b| match b {
+                BotonCaja::Elegir(h) => tecla_de(h),
+                _ => None,
+            },
         );
         encima(p);
     });
@@ -1178,6 +1206,7 @@ fn pedir_medida(
                         capa,
                         fondo,
                         caja,
+                        None,
                         escala_por_cien,
                         ancho_px,
                         alto_px,
@@ -1337,6 +1366,21 @@ fn a_color(c: ColorRgba) -> Color {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn la_tecla_pintada_en_cada_boton_elige_esa_herramienta() {
+        for b in pixpin_ui::BOTONES_EDITOR {
+            if let BotonCaja::Elegir(h) = b {
+                if let Some(c) = tecla_de(h) {
+                    assert_eq!(tecla_a_herramienta(c), Some(h), "{c} no elige {h:?}");
+                    assert_eq!(tecla_a_herramienta(c.to_ascii_lowercase()), Some(h));
+                }
+            }
+        }
+        // Caso negativo: el rectangulo no tiene tecla y no se pinta ninguna.
+        assert_eq!(tecla_de(Herramienta::Rectangulo), None);
+        assert_eq!(tecla_de(Herramienta::Lapiz), Some('L'));
+    }
     use pixpin_geom::Tirador;
     use pixpin_motor2d::camara::Camara;
     use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
