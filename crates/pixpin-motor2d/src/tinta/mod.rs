@@ -15,6 +15,11 @@ use crate::vector::Punto2;
 
 pub const STREAMLINE_RATON: f32 = 0.5;
 pub const STREAMLINE_LAPIZ: f32 = 0.2;
+/// El suavizado de los trazos NUEVOS con raton. `STREAMLINE_RATON` (0,5, el
+/// de Excalidraw) se queda para abrir los dibujos guardados sin valor, que
+/// no deben cambiar de aspecto. Con 0,5 el trazo se separaba del camino de
+/// la mano y el usuario lo sentia como «mucha correccion de escritura».
+pub const STREAMLINE_RATON_NUEVO: f32 = 0.15;
 /// `VARIABLE_WIDTH_FREEDRAW.SIZE_FACTOR`: afinado a ojo por Excalidraw.
 pub const FACTOR_VARIABLE: f32 = 4.25;
 /// `CONSTANT_WIDTH_FREEDRAW.SIZE_FACTOR`.

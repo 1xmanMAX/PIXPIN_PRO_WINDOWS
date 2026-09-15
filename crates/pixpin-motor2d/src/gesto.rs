@@ -270,6 +270,15 @@ impl Gesto {
         }
     }
 
+    /// Cualquier elemento que se esta dibujando (no solo el trazo a mano) y
+    /// el punto donde se pulso: la ventana pinta su punta predicha.
+    pub fn elemento_en_curso(&self) -> Option<(u64, Option<Punto2>)> {
+        match self.estado {
+            Estado::Dibujando { id } => Some((id, self.trazo.first().copied())),
+            _ => None,
+        }
+    }
+
     /// La marquesina en curso, para que la ventana la pinte.
     pub fn marquesina(&self) -> Option<(f32, f32, f32, f32)> {
         match self.estado {
@@ -490,7 +499,7 @@ impl Gesto {
                 presiones: Vec::with_capacity(PUNTOS_RESERVADOS),
                 opciones: Some(crate::tinta::OpcionesTinta {
                     variabilidad: self.variabilidad,
-                    streamline: crate::tinta::STREAMLINE_RATON,
+                    streamline: crate::tinta::STREAMLINE_RATON_NUEVO,
                 }),
             },
             Herramienta::Resaltador => Figura::Resaltador {
@@ -1185,7 +1194,7 @@ mod pruebas {
         assert_eq!(grosor, crate::tinta::GROSOR_GRUESO);
         let o = opciones.expect("un trazo nuevo nunca es legado");
         assert_eq!(o.variabilidad, crate::tinta::Variabilidad::Constante);
-        assert_eq!(o.streamline, crate::tinta::STREAMLINE_RATON);
+        assert_eq!(o.streamline, crate::tinta::STREAMLINE_RATON_NUEVO);
     }
 
     #[test]

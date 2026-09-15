@@ -18,6 +18,7 @@
 
 use std::collections::VecDeque;
 
+use crate::elemento::{Elemento, Figura};
 use crate::vector::Punto2;
 
 /// Ventana de muestras con la que se mide la velocidad.
@@ -102,8 +103,107 @@ impl Predictor {
     }
 }
 
+/// Una copia del elemento en curso con su punta llevada a `q`, el punto
+/// predicho: el trazo gana un punto; linea, flecha y cota mueven su extremo;
+/// las figuras de caja crecen desde `origen`, donde se pulso. `None` si el
+/// elemento no tiene punta que adelantar.
+pub fn con_punta(e: &Elemento, origen: Option<Punto2>, q: Punto2) -> Option<Elemento> {
+    let mut c = e.clone();
+    match &mut c.figura {
+        Figura::Lapiz {
+            puntos, presiones, ..
+        } => {
+            puntos.push(q);
+            if let Some(&u) = presiones.last() {
+                presiones.push(u);
+            }
+        }
+        Figura::Resaltador { puntos } => puntos.push(q),
+        Figura::Linea { puntos } | Figura::Flecha { puntos, .. } | Figura::Cota { puntos }
+            if puntos.len() >= 2 =>
+        {
+            *puntos.last_mut()? = q;
+        }
+        Figura::Rectangulo | Figura::Elipse | Figura::Foco { .. } | Figura::EscalaGrafica => {
+            let o = origen?;
+            c.x = o.x.min(q.x);
+            c.y = o.y.min(q.y);
+            c.ancho = (q.x - o.x).abs();
+            c.alto = (q.y - o.y).abs();
+        }
+        _ => return None,
+    }
+    Some(c)
+}
+
 #[cfg(test)]
 mod pruebas {
+    use crate::elemento::{ColorRgba, EstiloTrazo};
+
+    fn elemento(figura: Figura) -> Elemento {
+        Elemento {
+            id: 1,
+            figura,
+            x: 10.0,
+            y: 10.0,
+            ancho: 20.0,
+            alto: 20.0,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: None,
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn el_rectangulo_crece_desde_donde_se_pulso_hasta_la_punta_predicha() {
+        let e = elemento(Figura::Rectangulo);
+        let c = con_punta(
+            &e,
+            Some(Punto2::nuevo(10.0, 10.0)),
+            Punto2::nuevo(50.0, 5.0),
+        )
+        .unwrap();
+        assert_eq!((c.x, c.y, c.ancho, c.alto), (10.0, 5.0, 40.0, 5.0));
+        // Caso negativo: sin origen no se inventa la caja.
+        assert!(con_punta(&e, None, Punto2::nuevo(50.0, 5.0)).is_none());
+    }
+
+    #[test]
+    fn la_flecha_mueve_su_extremo_y_el_lapiz_gana_un_punto() {
+        let f = elemento(Figura::Flecha {
+            puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(5.0, 5.0)],
+            punta_inicio: false,
+            punta_fin: true,
+        });
+        let c = con_punta(&f, None, Punto2::nuevo(9.0, 9.0)).unwrap();
+        match c.figura {
+            Figura::Flecha { puntos, .. } => assert_eq!(puntos[1], Punto2::nuevo(9.0, 9.0)),
+            _ => unreachable!(),
+        }
+        let l = elemento(Figura::Lapiz {
+            puntos: vec![Punto2::nuevo(0.0, 0.0)],
+            presiones: vec![0.5],
+            opciones: None,
+        });
+        match con_punta(&l, None, Punto2::nuevo(3.0, 0.0)).unwrap().figura {
+            Figura::Lapiz {
+                puntos, presiones, ..
+            } => {
+                assert_eq!(puntos.len(), 2);
+                assert_eq!(presiones, vec![0.5, 0.5]);
+            }
+            _ => unreachable!(),
+        }
+    }
+
     use super::*;
 
     fn recta(pred: &mut Predictor, vx: f32, vy: f32, n: usize, cada_ms: f64) {

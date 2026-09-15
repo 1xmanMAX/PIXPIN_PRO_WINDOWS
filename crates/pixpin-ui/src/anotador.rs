@@ -568,7 +568,7 @@ impl Anotador {
                 opciones: Some(pixpin_motor2d::tinta::OpcionesTinta {
                     variabilidad: pixpin_motor2d::tinta::Variabilidad::Variable,
                     streamline: if g.presiones.is_empty() {
-                        pixpin_motor2d::tinta::STREAMLINE_RATON
+                        pixpin_motor2d::tinta::STREAMLINE_RATON_NUEVO
                     } else {
                         pixpin_motor2d::tinta::STREAMLINE_LAPIZ
                     },

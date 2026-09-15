@@ -186,12 +186,14 @@ fn tecla_a_herramienta(c: char) -> Option<Herramienta> {
     }
 }
 
-/// Cuanto se adelanta la punta del trazo en curso: lo que tarda un punto
-/// del raton en verse con la cola de fotogramas en 1. Con 28 ms la punta
-/// quedaba 14 ms POR DELANTE del cursor en la medida: se veia adelantada.
-const HORIZONTE_PREDICCION_MS: f32 = 14.0;
-/// Hasta donde puede adelantarse, en pixeles de pantalla.
-const TOPE_PREDICCION_PX: f32 = 48.0;
+/// Cuanto se adelanta la punta del trazo en curso. La medida contra la
+/// posicion LOGICA del cursor daba 28 ms como adelantado y se bajo a 14, pero
+/// lo que se ve es el cursor que pinta Windows, que tambien llega tarde: con
+/// 14 el usuario veia la tinta detras, y con 28 «casi cero lag». Manda la vista.
+const HORIZONTE_PREDICCION_MS: f32 = 28.0;
+/// Hasta donde puede adelantarse, en pixeles de pantalla: con 48 un trazo
+/// rapido topaba y la punta volvia a quedarse atras.
+const TOPE_PREDICCION_PX: f32 = 80.0;
 /// Lo mas que se espera a la senal de fotograma antes de pintar igualmente.
 const ESPERA_MAXIMA_SENAL_MS: u32 = 20;
 const ESPERA_MAXIMA_SENAL: std::time::Duration =
@@ -872,7 +874,7 @@ pub fn abrir(
             // La punta predicha: horizonte medido (~30 ms de la lectura a la
             // pantalla en el equipo del usuario) y tope de 48 px de pantalla.
             let prediccion = gesto
-                .trazo_en_curso()
+                .elemento_en_curso()
                 .filter(|_| !tinta_clasica)
                 .and_then(|_| {
                     predictor.predecir(
@@ -1162,19 +1164,12 @@ fn pintar(
             if e.borrado {
                 continue;
             }
-            // El trazo en curso con la punta predicha: se pinta una copia
-            // con ese punto de mas. La escena no se toca, asi que al soltar
-            // queda el trazo real.
-            if let Some(q) = prediccion.filter(|_| gesto.trazo_en_curso() == Some(e.id)) {
-                let mut copia = e.clone();
-                if let pixpin_motor2d::Figura::Lapiz {
-                    puntos, presiones, ..
-                } = &mut copia.figura
-                {
-                    puntos.push(q);
-                    if let Some(&ultima) = presiones.last() {
-                        presiones.push(ultima);
-                    }
+            // Lo que se esta dibujando (trazo, linea, flecha, rectangulo,
+            // elipse) con su punta en el punto predicho: se pinta una copia.
+            // La escena no se toca, asi que al soltar queda lo real.
+            let en_curso = gesto.elemento_en_curso().filter(|(id, _)| *id == e.id);
+            if let (Some(q), Some((_, origen))) = (prediccion, en_curso) {
+                if let Some(copia) = pixpin_motor2d::tinta::prediccion::con_punta(e, origen, q) {
                     for orden in pixpin_motor2d::pintado::ordenes_a_distancia(&copia, camara.zoom) {
                         dibujar_orden(p, &orden, vista, None);
                     }
