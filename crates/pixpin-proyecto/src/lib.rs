@@ -27,6 +27,7 @@
 //!
 //! Por eso se guardan las entradas crudas del ZIP y no solo lo interpretado.
 
+pub mod codigos;
 pub mod cuaderno;
 
 use std::collections::BTreeMap;
@@ -57,6 +58,9 @@ pub struct Manifiesto {
     /// Milisegundos desde 1970.
     pub escrito: i64,
     pub proyecto: String,
+    /// Lo que anada una version de Android al manifiesto, tal cual.
+    #[serde(flatten)]
+    pub resto: serde_json::Map<String, serde_json::Value>,
 }
 
 impl Default for Manifiesto {
@@ -67,6 +71,7 @@ impl Default for Manifiesto {
             aplicacion: "pixpin-max".into(),
             escrito: 0,
             proyecto: String::new(),
+            resto: serde_json::Map::new(),
         }
     }
 }
@@ -97,6 +102,14 @@ pub struct Hoja {
     /// Nombre de una vista guardada del croquis.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vista: Option<String>,
+    /// Su codigo unico (Android v0.50): no cambia aunque cambie el `id` al
+    /// recibirla. Ver `codigos`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uid: Option<String>,
+    /// Todo lo que trae y aqui no se entiende, tal cual: abrir y volver a
+    /// guardar no puede perder lo que anada una version de Android.
+    #[serde(flatten)]
+    pub resto: serde_json::Map<String, serde_json::Value>,
 }
 
 /// El proyecto: sus hojas y como se relacionan.
@@ -116,6 +129,61 @@ pub struct Proyecto {
     pub pdf_origen: Option<String>,
     #[serde(rename = "pdfLimpio", skip_serializing_if = "Option::is_none")]
     pub pdf_limpio: Option<String>,
+    /// Los tres codigos del proyecto (Android v0.50): unico, cuando se creo
+    /// (milisegundos desde 1970) y el aparato donde nacio (`K7Q2`). Solo se
+    /// pone al dia un proyecto si coinciden los tres.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uid: Option<String>,
+    #[serde(skip_serializing_if = "es_cero")]
+    pub creado: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aparato: Option<String>,
+    /// Lo que no se entiende, tal cual (ver `Hoja::resto`).
+    #[serde(flatten)]
+    pub resto: serde_json::Map<String, serde_json::Value>,
+}
+
+fn es_cero(v: &i64) -> bool {
+    *v == 0
+}
+
+impl Hoja {
+    /// Su codigo unico: el suyo, o el que sale de su id si es de antes.
+    pub fn codigo_unico(&self) -> String {
+        codigos::unico(self.uid.as_deref(), "h:", &self.id)
+    }
+}
+
+impl Proyecto {
+    pub fn codigo_unico(&self) -> String {
+        codigos::unico(self.uid.as_deref(), "p:", &self.id)
+    }
+
+    /// Si dos proyectos son la misma cosa: codigo unico, fecha de creacion y
+    /// aparato iguales (`Codigos.mismos` de Android). Si no, lo recibido se
+    /// crea aparte en vez de pisar.
+    pub fn mismo_que(&self, otro: &Proyecto) -> bool {
+        self.codigo_unico() == otro.codigo_unico()
+            && self.creado == otro.creado
+            && self.aparato == otro.aparato
+    }
+
+    /// Le pone los codigos que le falten, sin tocar los que ya tiene: el
+    /// unico sale de su id (el mismo que calcularia Android) y el aparato es
+    /// el de este equipo. La fecha de creacion no se inventa.
+    pub fn sellar(&mut self, aparato: Option<&str>) {
+        if self.uid.is_none() {
+            self.uid = Some(self.codigo_unico());
+        }
+        if self.aparato.is_none() {
+            self.aparato = aparato.map(str::to_string);
+        }
+        for h in &mut self.hojas {
+            if h.uid.is_none() {
+                h.uid = Some(h.codigo_unico());
+            }
+        }
+    }
 }
 
 /// Un `.pixpin` abierto.
@@ -278,6 +346,44 @@ impl Paquete {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn un_proyecto_de_android_con_sus_tres_codigos_sale_igual_al_volver_a_escribirlo() {
+        let original = r#"{"id":"p1","nombre":"Casa","hojas":[{"id":"h1","nombre":"Planta","dibujo":"d1","uid":"2C8C39HXZ9","padre":"h0","borrada":123}],"archivado":false,"tocado":5,"croquis":[],"uid":"VVT587BFCA","creado":1757939357123,"aparato":"K7Q2","borradas":{"h9":456},"vieneDe":{"aparato":"9FMQ"}}"#;
+        let p: Proyecto = serde_json::from_str(original).unwrap();
+        assert_eq!(p.uid.as_deref(), Some("VVT587BFCA"));
+        assert_eq!(
+            (p.creado, p.aparato.as_deref()),
+            (1757939357123, Some("K7Q2"))
+        );
+        let vuelta = serde_json::to_value(&p).unwrap();
+        let esperado: serde_json::Value = serde_json::from_str(original).unwrap();
+        assert_eq!(vuelta, esperado, "se perdio algo al guardar");
+    }
+
+    #[test]
+    fn sellar_pone_los_codigos_que_saldrian_en_android_y_no_toca_los_que_hay() {
+        let mut p = Proyecto {
+            id: "proyecto-1".into(),
+            hojas: vec![Hoja {
+                id: "hoja-7".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        p.sellar(Some("ABCD"));
+        assert_eq!(p.uid.as_deref(), Some("VVT587BFCA"));
+        assert_eq!(p.hojas[0].uid.as_deref(), Some("2C8C39HXZ9"));
+        assert_eq!(p.aparato.as_deref(), Some("ABCD"));
+        // Caso negativo: lo que ya tenia codigos no cambia al sellar otra vez.
+        let mut q = p.clone();
+        q.sellar(Some("ZZZZ"));
+        assert_eq!(q.aparato.as_deref(), Some("ABCD"));
+        assert!(p.mismo_que(&q));
+        // Mismo unico pero otra fecha: no es la misma cosa, se crea aparte.
+        q.creado = 1;
+        assert!(!p.mismo_que(&q));
+    }
 
     /// Un paquete de mentira con lo justo: proyecto, un lienzo, una nota y
     /// un croquis que aqui no sabemos leer.

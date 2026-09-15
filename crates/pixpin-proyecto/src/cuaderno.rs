@@ -92,9 +92,38 @@ pub struct Mensaje {
     pub miniapp: Option<String>,
     #[serde(rename = "respondeA")]
     pub responde_a: Option<String>,
+    /// Los tres codigos (Android v0.50): el numero en su conversacion, la
+    /// letra del aparato de antes, el codigo unico, el aparato donde nacio y
+    /// de donde se copio.
+    pub numero: i64,
+    pub letra: Option<String>,
+    pub uid: Option<String>,
+    pub aparato: Option<String>,
+    pub origen: Option<String>,
+    /// Lo que no se entiende, tal cual: guardar no puede perder lo que
+    /// anada una version de Android.
+    #[serde(flatten)]
+    pub resto: serde_json::Map<String, serde_json::Value>,
 }
 
 impl Mensaje {
+    pub fn codigo_unico(&self) -> String {
+        crate::codigos::unico(self.uid.as_deref(), "m:", &self.id)
+    }
+
+    /// `47·K7Q2`, `47a` o nada.
+    pub fn codigo_chat(&self) -> Option<String> {
+        crate::codigos::de_chat(self.numero, self.aparato.as_deref(), self.letra.as_deref())
+    }
+
+    /// Si dos mensajes son la misma cosa: los tres codigos iguales.
+    pub fn mismo_que(&self, otro: &Mensaje) -> bool {
+        self.codigo_unico() == otro.codigo_unico()
+            && self.codigo_chat().is_some()
+            && self.codigo_chat() == otro.codigo_chat()
+            && self.cuando == otro.cuando
+    }
+
     /// Lo que se ensena de un mensaje en una linea.
     ///
     /// Para una nota de voz se prefiere su transcripcion: el texto de un
@@ -167,6 +196,22 @@ impl Cuaderno {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn un_mensaje_con_sus_tres_codigos_se_reconoce_y_no_pierde_campos() {
+        let original = r#"{"id":"1757939357123","cuando":1757939357123,"texto":"hola","numero":47,"uid":"RVK5YHKCX7","aparato":"K7Q2","recibidoDe":"Max phone · K7Q2","vieneDe":{"x":1}}"#;
+        let m: Mensaje = serde_json::from_str(original).unwrap();
+        assert_eq!(m.codigo_chat().as_deref(), Some("47·K7Q2"));
+        assert_eq!(m.codigo_unico(), "RVK5YHKCX7");
+        let mut otro = m.clone();
+        assert!(m.mismo_que(&otro));
+        otro.cuando += 1;
+        assert!(!m.mismo_que(&otro), "otra fecha: no es el mismo");
+        let vuelta = serde_json::to_value(&m).unwrap();
+        for campo in ["recibidoDe", "vieneDe", "numero", "uid", "aparato"] {
+            assert!(vuelta.get(campo).is_some(), "se perdio {campo}");
+        }
+    }
 
     fn cuaderno_de_prueba() -> &'static str {
         concat!(
