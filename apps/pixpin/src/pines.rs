@@ -251,6 +251,12 @@ struct Anotacion {
     /// Donde estaba el raton la ultima vez, en coordenadas del contenido:
     /// la lupa se recalcula desde aqui cuando la rueda cambia el aumento.
     ultimo_cursor: Punto,
+    /// El mismo punto en pixeles del dibujo, para ensenar el pincel ahi.
+    cursor_documento: pixpin_motor2d::Punto2,
+    /// Tras girar la rueda se ve un circulo del tamano del pincel en el
+    /// cursor, hasta que se empieza a dibujar: sin el, el grosor nuevo no
+    /// se veia hasta el siguiente trazo y parecia que la rueda no hacia nada.
+    ver_grosor: bool,
 }
 
 impl Anotacion {
@@ -259,6 +265,27 @@ impl Anotacion {
         let mut v = pixpin_motor2d::ordenes_de_escena(&self.escena);
         if let Some(e) = &self.en_curso {
             v.extend(pixpin_motor2d::ordenes(e));
+        }
+        if self.ver_grosor {
+            let radio = (self.anotador.grosor() / 2.0).max(1.0);
+            let c = self.cursor_documento;
+            let puntos: Vec<pixpin_motor2d::Punto2> = (0..=32)
+                .map(|k| {
+                    let t = std::f32::consts::TAU * k as f32 / 32.0;
+                    pixpin_motor2d::Punto2::nuevo(c.x + radio * t.cos(), c.y + radio * t.sin())
+                })
+                .collect();
+            v.push(pixpin_motor2d::Orden::Polilinea {
+                puntos,
+                color: pixpin_motor2d::ColorRgba {
+                    r: 0.2,
+                    g: 0.2,
+                    b: 0.2,
+                    a: 0.8,
+                },
+                grosor: 1.5,
+                estilo: pixpin_motor2d::EstiloTrazo::Solido,
+            });
         }
         // El marco va el ultimo: encima de todo, para que se vea que hay
         // algo elegido aunque quede debajo de otro trazo.
@@ -1123,6 +1150,8 @@ impl Pines {
             paleta,
             escala_por_cien: monitor.escala_por_cien,
             ultimo_cursor: Punto { x: 0, y: 0 },
+            cursor_documento: pixpin_motor2d::Punto2::nuevo(0.0, 0.0),
+            ver_grosor: false,
         });
         self.repintar_paleta();
         tracing::info!(id, ms = t0.elapsed().as_millis() as u64, "modo anotacion");
@@ -1317,6 +1346,10 @@ impl Pines {
     /// escena, SIN pintar. Devuelve si el pin necesita repintarse: `purgar`
     /// junta asi una tanda de puntos en un solo repintado (I1).
     fn procesar_anotacion(&mut self, id: u64, evento: EventoAnotador) -> Result<bool> {
+        let escala = self
+            .vivos
+            .get(&id)
+            .map_or((1.0, 1.0), |pin| pin.escala_contenido());
         let Some(a) = self.anotacion.as_mut().filter(|a| a.id == id) else {
             return Ok(false);
         };
@@ -1340,6 +1373,21 @@ impl Pines {
         ) {
             let (shift, alt) = pixpin_shell::modificadores();
             a.anotador.poner_modificadores(shift, alt);
+        }
+        // El dibujo va en pixeles del contenido ORIGINAL; el raton, en los de
+        // la ventana. Con el pin agrandado o reducido la tinta caia lejos
+        // del puntero (lo reporto el usuario).
+        let evento = a_documento(evento, escala);
+        match &evento {
+            EventoAnotador::Rueda(_) => a.ver_grosor = true,
+            EventoAnotador::Pulsar(_) => a.ver_grosor = false,
+            _ => {}
+        }
+        if let EventoAnotador::Mover(p)
+        | EventoAnotador::Pulsar(p)
+        | EventoAnotador::Muestra { p, .. } = &evento
+        {
+            a.cursor_documento = *p;
         }
         let efecto = a.anotador.procesar(evento);
         let mut repintar = true;
@@ -1419,9 +1467,12 @@ impl Pines {
         if let Some(pin) = self.vivos.get(&id) {
             // Con un texto abierto, el IME compone al lado (D57).
             if let Some(p) = escribiendo {
+                // El texto esta en pixeles del original; el IME, en los de
+                // la ventana.
+                let (fx, fy) = pin.escala_contenido();
                 pin.poner_posicion_ime(Punto {
-                    x: p.x as i32,
-                    y: p.y as i32,
+                    x: (p.x * fx) as i32,
+                    y: (p.y * fy) as i32,
                 });
             }
             // La lupa (D52): la aritmetica aqui, los pixeles en el pin.
@@ -2121,6 +2172,21 @@ fn a_punto2(p: pixpin_geom::Punto) -> pixpin_motor2d::Punto2 {
 }
 
 /// El evento de anotacion de un pedido del puntero; `None` si no lo es.
+/// Pasa los puntos de un evento del anotador de pixeles de la ventana del
+/// pin a pixeles del contenido original, dividiendo por su escala.
+fn a_documento(evento: EventoAnotador, (fx, fy): (f32, f32)) -> EventoAnotador {
+    let d = |p: pixpin_motor2d::Punto2| {
+        pixpin_motor2d::Punto2::nuevo(p.x / fx.max(1e-6), p.y / fy.max(1e-6))
+    };
+    match evento {
+        EventoAnotador::Pulsar(p) => EventoAnotador::Pulsar(d(p)),
+        EventoAnotador::Mover(p) => EventoAnotador::Mover(d(p)),
+        EventoAnotador::Soltar(p) => EventoAnotador::Soltar(d(p)),
+        EventoAnotador::Muestra { p, presion } => EventoAnotador::Muestra { p: d(p), presion },
+        otro => otro,
+    }
+}
+
 fn evento_de_puntero(cambio: CambioPin) -> Option<EventoAnotador> {
     match cambio {
         CambioPin::PunteroPulsado(p) => Some(EventoAnotador::Pulsar(a_punto2(p))),
@@ -2220,6 +2286,37 @@ mod pruebas {
     use super::*;
     use pixpin_motor2d::gesto::{EventoGesto, Gesto};
     use pixpin_motor2d::{ColorRgba, Elemento, EstiloTrazo, Figura, Punto2};
+
+    #[test]
+    fn el_raton_se_divide_por_la_escala_del_pin_antes_de_dibujar() {
+        use pixpin_motor2d::Punto2;
+        // Pin al 200 %: el punto (100, 60) de la ventana es el (50, 30) del
+        // original, que es donde se guarda y desde donde se pinta por 2.
+        let e = a_documento(
+            EventoAnotador::Mover(Punto2::nuevo(100.0, 60.0)),
+            (2.0, 2.0),
+        );
+        assert_eq!(e, EventoAnotador::Mover(Punto2::nuevo(50.0, 30.0)));
+        let m = a_documento(
+            EventoAnotador::Muestra {
+                p: Punto2::nuevo(30.0, 30.0),
+                presion: Some(0.5),
+            },
+            (0.5, 1.5),
+        );
+        assert_eq!(
+            m,
+            EventoAnotador::Muestra {
+                p: Punto2::nuevo(60.0, 20.0),
+                presion: Some(0.5)
+            }
+        );
+        // Caso negativo: lo que no es un punto no se toca.
+        assert_eq!(
+            a_documento(EventoAnotador::Rueda(120), (2.0, 2.0)),
+            EventoAnotador::Rueda(120)
+        );
+    }
 
     #[test]
     fn una_tanda_de_muestras_y_su_movimiento_se_pinta_una_sola_vez() {

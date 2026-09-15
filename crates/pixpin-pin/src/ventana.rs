@@ -1015,6 +1015,23 @@ impl Pin {
         }
     }
 
+    /// Cuantos pixeles de la ventana mide un pixel del contenido original,
+    /// en horizontal y en vertical. Las anotaciones se guardan en pixeles
+    /// del original y se pintan multiplicadas por esto; el raton llega en
+    /// pixeles de la ventana y hay que DIVIDIRLO por lo mismo, o la tinta
+    /// sale desplazada en cuanto el pin no esta al 100 %.
+    pub fn escala_contenido(&self) -> (f32, f32) {
+        let Some(i) = interno_de(self.hwnd) else {
+            return (1.0, 1.0);
+        };
+        let (nw, nh) = i.imagen_nativa;
+        let r = i.estado.rect();
+        if nw == 0 || nh == 0 || r.ancho == 0 || r.alto == 0 {
+            return (1.0, 1.0);
+        }
+        (r.ancho as f32 / nw as f32, r.alto as f32 / nh as f32)
+    }
+
     /// Si es un pin en vivo y esta en pausa.
     pub fn vivo_pausado(&self) -> bool {
         interno_de(self.hwnd).is_some_and(|i| i.vivo_pausado)

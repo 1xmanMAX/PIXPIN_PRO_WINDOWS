@@ -315,8 +315,12 @@ impl Anotador {
                     let paso = if delta > 0 { 1.25 } else { 0.8 };
                     self.lupa = (self.lupa * paso).clamp(LUPA_MINIMA, LUPA_MAXIMA);
                 } else {
-                    let paso = if delta > 0 { 1.0 } else { -1.0 };
-                    self.grosor = (self.grosor + paso).clamp(GROSOR_MINIMO, GROSOR_MAXIMO);
+                    // Proporcional y no de uno en uno: con +1 en un rango de
+                    // 1 a 48 una muesca pasaba de 4 a 5 y no se notaba (lo
+                    // reporto el usuario). Un 20 % por muesca va de fino a
+                    // grueso en una docena de muescas.
+                    let paso = if delta > 0 { 1.2 } else { 1.0 / 1.2 };
+                    self.grosor = (self.grosor * paso).clamp(GROSOR_MINIMO, GROSOR_MAXIMO);
                 }
                 EfectoAnotador::Repintar
             }
