@@ -136,12 +136,38 @@ pub struct Base {
     pub proyecto: Option<String>,
 }
 
+/// Que un proyecto se borro, y cuando.
+///
+/// Es una «lapida»: sin ella, borrar un proyecto aqui no se notaria alli, y
+/// a la vuelta siguiente el otro aparato lo devolveria como si fuera nuevo.
+/// Llego con la version 4 del protocolo (16-sep-2026).
+///
+/// Que la lapida gane o no se decide con la hora: si el otro toco el
+/// proyecto DESPUES de que aqui se borrara, manda lo suyo y la lapida se
+/// levanta. Borrar no puede pisar trabajo posterior de nadie.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LapidaDeChat {
+    /// El id del chat, que es el del proyecto.
+    pub chat: String,
+    /// Cuando se borro, en milisegundos.
+    pub cuando: i64,
+    /// En que aparato se borro.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub aparato: String,
+}
+
 /// Lo que pide quien conduce la sincronizacion.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Peticion {
-    /// Que se pide: `hola`, `catalogo`, `inventario`, `mensajes`, `aplicar`,
-    /// `archivos`, `pon`, `parche`, `damecambios`, `dame`, `base`, `adios`.
+    /// Que se pide: `hola`, `catalogo`, `lapidas`, `inventario`, `mensajes`,
+    /// `aplicar`, `archivos`, `pon`, `parche`, `damecambios`, `dame`, `base`,
+    /// `borrarchat`, `adios`.
+    ///
+    /// `lapidas` y `borrarchat` son de la version 4. Al que no entiende un
+    /// tipo se le muere la conversacion, asi que hay que contestarlos todos,
+    /// aunque sea con una respuesta vacia.
     pub t: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hola: Option<Hola>,
@@ -219,6 +245,10 @@ pub struct Respuesta {
     pub parche: Option<String>,
     #[serde(rename = "faltaBase", skip_serializing_if = "es_falso")]
     pub falta_base: bool,
+    /// Los proyectos borrados aqui (version 4). Va vacia mientras este lado
+    /// no borre nada, y entonces no viaja siquiera.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub lapidas: Vec<LapidaDeChat>,
 }
 
 /// El texto que manda Android cuando ya esta sincronizando con otro.
@@ -277,7 +307,52 @@ mod pruebas {
         let h = Hola::default();
         assert_eq!(h.version, crate::VERSION);
         let json = serde_json::to_string(&h).unwrap();
-        assert!(json.contains(r#""version":3"#), "{json}");
+        // Android corta si el numero no es EXACTAMENTE el suyo: no hay
+        // negociacion. Esta prueba esta para que subirlo duela y se mire.
+        assert!(json.contains(r#""version":4"#), "{json}");
+    }
+
+    #[test]
+    fn una_lapida_va_y_vuelve_y_no_viaja_si_no_hay_ninguna() {
+        // Sin borrados, el campo no se escribe siquiera.
+        assert_eq!(serde_json::to_string(&Respuesta::default()).unwrap(), "{}");
+
+        let r = Respuesta {
+            lapidas: vec![LapidaDeChat {
+                chat: "pr-1".into(),
+                cuando: 1_789_500_000_000,
+                aparato: "K7Q2".into(),
+            }],
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        assert_eq!(
+            json,
+            r#"{"lapidas":[{"chat":"pr-1","cuando":1789500000000,"aparato":"K7Q2"}]}"#
+        );
+        let vuelta: Respuesta = serde_json::from_str(&json).unwrap();
+        assert_eq!(vuelta.lapidas, r.lapidas);
+        // Sin aparato, ese campo tampoco viaja.
+        let sin = LapidaDeChat {
+            chat: "pr-2".into(),
+            cuando: 1,
+            aparato: String::new(),
+        };
+        assert_eq!(
+            serde_json::to_string(&sin).unwrap(),
+            r#"{"chat":"pr-2","cuando":1}"#
+        );
+    }
+
+    #[test]
+    fn una_respuesta_de_android_con_lapidas_se_entiende() {
+        // Tal como la escribiria el movil, con campos que aqui no existen.
+        let json = r#"{"lapidas":[{"chat":"pr-1","cuando":1789500000000,"aparato":"9FMQ","futuro":true}],"chats":[]}"#;
+        let r: Respuesta = serde_json::from_str(json).unwrap();
+        assert_eq!(r.lapidas.len(), 1);
+        assert_eq!(r.lapidas[0].chat, "pr-1");
+        assert_eq!(r.lapidas[0].aparato, "9FMQ");
+        assert!(r.error.is_none());
     }
 
     #[test]

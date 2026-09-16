@@ -24,14 +24,23 @@ pub mod mensajes;
 
 /// La version del protocolo que se habla. Viaja en el saludo `hola`.
 ///
-/// Solo la comprueba quien inicia (asi es en Android): si no coincide, se
-/// corta ahi y se pide actualizar los dos aparatos. Historia: la 2 mandaba el
-/// resumen detras de cada archivo; la 3 trae los codigos unicos, la fusion
-/// sin preguntar y los parches.
-pub const VERSION: u32 = 3;
+/// **La comprobacion es estricta y sin margen**: Android corta si el numero
+/// no es exactamente el suyo. No hay negociacion ni rango, asi que una v3 y
+/// una v4 no se hablan, y este numero hay que subirlo a la vez que alli.
+///
+/// Historia: la 2 mandaba el resumen detras de cada archivo; la 3 trajo los
+/// codigos unicos, la fusion sin preguntar y los parches; la 4 (16-sep-2026)
+/// hace viajar el borrado de un proyecto con las lapidas de chat.
+pub const VERSION: u32 = 4;
 
-/// El tipo de servicio que se anuncia y se busca por mDNS.
+/// El tipo de servicio que se anuncia y se busca por mDNS al sincronizar.
 pub const SERVICIO: &str = "_pixpin._tcp.";
+/// Mandar algo puntual a otro aparato: el que envia escucha y anuncia esto.
+pub const SERVICIO_ENVIO: &str = "_pixpinenvio._tcp.";
+/// Y al reves: el que RECIBE escucha y ensena su codigo, para que el otro se
+/// lo mande. Es el caso de «pasarle esto al ordenador»: el PC ensena su QR y
+/// el movil lo escanea.
+pub const SERVICIO_RECIBIR: &str = "_pixpinrecibe._tcp.";
 /// El puerto que se intenta primero. Si esta ocupado, Android cae a uno
 /// efimero y lo dice en el saludo, asi que no se puede dar por fijo.
 pub const PUERTO: u16 = 47474;
