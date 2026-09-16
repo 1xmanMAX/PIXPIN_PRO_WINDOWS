@@ -1,0 +1,19 @@
+[package]
+name = "pixpin-sincro"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# Criptografia de RustCrypto (MIT OR Apache-2.0). Aqui NO se escribe
+# criptografia a mano: el proyecto tiene su propio SHA-256 porque un hash es
+# corto y se comprueba contra los vectores del NIST, pero un AES-GCM hecho en
+# casa es un riesgo de seguridad, no un ahorro de dependencia.
+aes-gcm = "0.10.3"
+hmac = "0.12.1"
+pbkdf2 = { version = "0.12.2", default-features = false, features = ["hmac"] }
+sha2 = "0.10.9"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
