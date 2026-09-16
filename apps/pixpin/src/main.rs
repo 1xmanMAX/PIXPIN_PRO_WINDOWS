@@ -722,7 +722,7 @@ fn arrancar(
                     for proyecto in &proyectos {
                         // Un proyecto que falle no puede llevarse los
                         // demas ficheros que venian con el.
-                        match p.abrir_paquete(proyecto, &m) {
+                        match p.abrir_paquete(proyecto, &m, &ubicacion) {
                             Ok((hechas, _)) => cuantos += hechas,
                             Err(e) => tracing::warn!(?e, ruta = %proyecto.display(), "proyecto que no se pudo abrir"),
                         }

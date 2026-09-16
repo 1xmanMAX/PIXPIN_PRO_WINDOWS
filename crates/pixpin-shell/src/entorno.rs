@@ -106,6 +106,30 @@ pub fn tema_claro() -> bool {
     valor != 0
 }
 
+/// La hora local ahora mismo, en milisegundos desde 1970 **ya corridos al
+/// huso del usuario**. Asi lo de arriba puede comparar dias sin saber nada
+/// de husos: dos instantes caen el mismo dia si dividen igual entre 86400000.
+pub fn ahora_local_ms() -> i64 {
+    use windows::Win32::Foundation::{FILETIME, SYSTEMTIME};
+    use windows::Win32::System::SystemInformation::GetLocalTime;
+    use windows::Win32::System::Time::SystemTimeToFileTime;
+
+    // SAFETY: `GetLocalTime` solo escribe el SYSTEMTIME que devuelve, y
+    // `SystemTimeToFileTime` lee ese y escribe el FILETIME que se le pasa.
+    let ft = unsafe {
+        let t: SYSTEMTIME = GetLocalTime();
+        let mut ft = FILETIME::default();
+        if SystemTimeToFileTime(&t, &mut ft).is_err() {
+            return 0;
+        }
+        ft
+    };
+    // FILETIME cuenta de cien en cien nanosegundos desde 1601.
+    const A_1970: i64 = 116_444_736_000_000_000;
+    let cien_ns = ((ft.dwHighDateTime as i64) << 32) | ft.dwLowDateTime as i64;
+    (cien_ns - A_1970) / 10_000
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;

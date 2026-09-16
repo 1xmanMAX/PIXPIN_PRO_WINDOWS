@@ -313,6 +313,74 @@ impl Disposicion {
             caben.min(cuantas.saturating_sub(primera)),
         )
     }
+
+    /// Hasta donde se puede bajar. Si todo cabe, cero: la lista corta no se
+    /// mueve y no puede quedar en blanco por encima.
+    pub fn scroll_maximo(&self, cuantas: usize, escala_por_cien: u32) -> i32 {
+        let alto = (FILA * escala_por_cien / 100) as i32;
+        (cuantas as i32 * alto - self.filas.alto as i32).max(0)
+    }
+
+    /// Deja el desplazamiento dentro de lo que existe.
+    pub fn scroll_ajustado(&self, scroll: i32, cuantas: usize, escala_por_cien: u32) -> i32 {
+        scroll.clamp(0, self.scroll_maximo(cuantas, escala_por_cien))
+    }
+}
+
+/// Las piezas de una fila, ya colocadas dentro de su rectangulo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PartesFila {
+    pub avatar: Rect,
+    /// Esquina donde empieza el nombre.
+    pub nombre: Punto,
+    /// Esquina donde empieza la ultima linea.
+    pub resumen: Punto,
+    /// Lo ancho que puede ser el texto sin chocar con la hora o el contador.
+    pub ancho_texto: u32,
+    /// Donde termina la hora, arriba a la derecha.
+    pub derecha: i32,
+}
+
+/// Coloca lo de dentro de una fila. Con la lista plegada solo hay avatar,
+/// centrado, y el texto no tiene sitio.
+pub fn partes_fila(fila: Rect, plegada: bool, escala_por_cien: u32) -> PartesFila {
+    let e = |v: u32| v * escala_por_cien / 100;
+    let avatar = e(AVATAR);
+    if plegada {
+        let x = fila.x + (fila.ancho as i32 - avatar as i32) / 2;
+        return PartesFila {
+            avatar: Rect {
+                x,
+                y: fila.y + e(AVATAR_Y) as i32,
+                ancho: avatar,
+                alto: avatar,
+            },
+            nombre: Punto { x, y: fila.y },
+            resumen: Punto { x, y: fila.y },
+            ancho_texto: 0,
+            derecha: fila.derecha(),
+        };
+    }
+    let derecha = fila.derecha() - e(MARGEN_DERECHO) as i32;
+    let texto_x = fila.x + e(TEXTO_X) as i32;
+    PartesFila {
+        avatar: Rect {
+            x: fila.x + e(AVATAR_X) as i32,
+            y: fila.y + e(AVATAR_Y) as i32,
+            ancho: avatar,
+            alto: avatar,
+        },
+        nombre: Punto {
+            x: texto_x,
+            y: fila.y + e(NOMBRE_Y) as i32,
+        },
+        resumen: Punto {
+            x: texto_x,
+            y: fila.y + e(RESUMEN_Y) as i32,
+        },
+        ancho_texto: (derecha - texto_x).max(0) as u32,
+        derecha,
+    }
 }
 
 #[cfg(test)]
@@ -574,5 +642,158 @@ mod pruebas_ventana {
             100,
         );
         assert_eq!((r.ancho, r.alto), (1300, 900));
+    }
+}
+
+#[cfg(test)]
+mod pruebas_filas {
+    use super::*;
+
+    fn disposicion(alto: u32) -> Disposicion {
+        Disposicion::calcular(1024, alto, 100, 300, Vista::Ambas)
+    }
+
+    #[test]
+    fn la_lista_no_se_desplaza_si_todo_cabe_y_se_para_al_final_si_no() {
+        let d = disposicion(768);
+        let caben = d.filas.alto / FILA;
+        assert_eq!(d.scroll_maximo(caben as usize, 100), 0, "todo a la vista");
+        // Con diez filas de mas, se puede bajar hasta que la ultima quede
+        // pegada abajo, ni un pixel mas.
+        let muchas = caben as usize + 10;
+        let tope = muchas as i32 * FILA as i32 - d.filas.alto as i32;
+        assert!(tope > 0);
+        assert_eq!(d.scroll_maximo(muchas, 100), tope);
+        assert_eq!(d.scroll_ajustado(9999, muchas, 100), tope);
+        assert_eq!(d.scroll_ajustado(-50, muchas, 100), 0, "no se sube de mas");
+    }
+
+    #[test]
+    fn de_mil_proyectos_solo_se_pintan_los_que_entran() {
+        let d = disposicion(768);
+        let (primera, cuantas) = d.visibles(0, 1000, 100);
+        assert_eq!(primera, 0);
+        assert!(cuantas < 20, "no puede pintar las mil: {cuantas}");
+        // Bajando, empieza por otra y sigue pintando pocas.
+        let (primera, cuantas2) = d.visibles(10 * FILA as i32, 1000, 100);
+        assert_eq!(primera, 10);
+        assert_eq!(cuantas, cuantas2);
+    }
+
+    #[test]
+    fn lo_de_dentro_de_una_fila_va_donde_telegram() {
+        let d = disposicion(768);
+        let fila = d.fila(0, 0, 100);
+        let p = partes_fila(fila, false, 100);
+        assert_eq!(p.avatar.ancho, AVATAR);
+        assert_eq!(p.avatar.x, fila.x + AVATAR_X as i32);
+        assert_eq!(p.nombre.x, fila.x + TEXTO_X as i32);
+        assert!(p.resumen.y > p.nombre.y, "la ultima linea va debajo");
+        // El texto no llega al borde: deja sitio a la hora.
+        assert!(p.derecha < fila.derecha());
+        assert_eq!(p.ancho_texto, (p.derecha - p.nombre.x) as u32);
+        // Plegada: solo el avatar, centrado, y sin sitio para texto.
+        let q = partes_fila(fila, true, 100);
+        assert_eq!(q.ancho_texto, 0);
+        assert_eq!(
+            q.avatar.x - fila.x,
+            fila.derecha() - q.avatar.derecha(),
+            "centrado"
+        );
+    }
+
+    #[test]
+    fn pinchar_bajo_la_ultima_fila_no_elige_ninguna() {
+        let d = disposicion(768);
+        let dentro = Punto {
+            x: d.filas.x + 10,
+            y: d.filas.y + FILA as i32 + 5,
+        };
+        assert_eq!(d.fila_en(dentro, 0, 3, 100), Some(1));
+        // Con solo una fila, ese mismo punto es hueco.
+        assert_eq!(d.fila_en(dentro, 0, 1, 100), None);
+        // Y la cabecera nunca es una fila.
+        let cabecera = Punto {
+            x: d.filas.x + 10,
+            y: d.cabecera_lista.y + 2,
+        };
+        assert_eq!(d.fila_en(cabecera, 0, 3, 100), None);
+    }
+}
+
+/// La hora que se ensena a la derecha de una fila.
+///
+/// Ambos instantes en milisegundos **de hora local** (ver
+/// `pixpin_shell::entorno::ahora_local_ms`), que asi el mismo dia es la
+/// misma division y no hace falta saber de husos.
+///
+/// Lo de hoy va con la hora; lo de antes, con la fecha, y solo lleva el ano
+/// si es de otro. Sin palabras, para que valga en cualquier idioma.
+pub fn etiqueta_hora(cuando_ms: i64, ahora_ms: i64) -> String {
+    const DIA: i64 = 86_400_000;
+    if cuando_ms <= 0 {
+        return String::new();
+    }
+    let dia = cuando_ms.div_euclid(DIA);
+    if dia == ahora_ms.div_euclid(DIA) {
+        let del_dia = cuando_ms.rem_euclid(DIA) / 1000;
+        return format!("{:02}:{:02}", del_dia / 3600, (del_dia % 3600) / 60);
+    }
+    let (a, m, d) = civil(dia);
+    let (ahora_a, _, _) = civil(ahora_ms.div_euclid(DIA));
+    if a == ahora_a {
+        format!("{d:02}/{m:02}")
+    } else {
+        format!("{d:02}/{m:02}/{:02}", a.rem_euclid(100))
+    }
+}
+
+/// Dia desde 1970 a (ano, mes, dia). Algoritmo `civil_from_days` de Howard
+/// Hinnant, de dominio publico; vale de 1601 en adelante de sobra.
+fn civil(dias: i64) -> (i64, u32, u32) {
+    let z = dias + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+#[cfg(test)]
+mod pruebas_hora {
+    use super::*;
+
+    /// 15 de septiembre de 2026, 14:32:05 locales.
+    const AHORA: i64 = 1_789_482_725_000;
+
+    #[test]
+    fn lo_de_hoy_va_con_la_hora_y_lo_viejo_con_la_fecha() {
+        assert_eq!(etiqueta_hora(AHORA, AHORA), "14:32");
+        // Esta madrugada, aunque sea hace poco, sigue siendo hoy.
+        let madrugada = AHORA - 14 * 3_600_000 - 32 * 60_000 - 5_000;
+        assert_eq!(etiqueta_hora(madrugada, AHORA), "00:00");
+        // Ayer ya lleva fecha, sin ano por ser del mismo.
+        assert_eq!(etiqueta_hora(AHORA - 86_400_000, AHORA), "14/09");
+        // Y de otro ano, con ano.
+        assert_eq!(etiqueta_hora(AHORA - 400 * 86_400_000, AHORA), "11/08/25");
+    }
+
+    #[test]
+    fn sin_fecha_no_se_inventa_nada() {
+        assert_eq!(etiqueta_hora(0, AHORA), "");
+        assert_eq!(etiqueta_hora(-5, AHORA), "");
+    }
+
+    #[test]
+    fn el_calendario_acierta_en_los_bisiestos() {
+        // 2000 es bisiesto (divisible entre 400) y 1900 no lo era.
+        assert_eq!(civil(11_016), (2000, 2, 29));
+        assert_eq!(civil(11_017), (2000, 3, 1));
+        assert_eq!(civil(0), (1970, 1, 1));
+        assert_eq!(civil(-1), (1969, 12, 31));
     }
 }

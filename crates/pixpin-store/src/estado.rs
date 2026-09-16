@@ -77,6 +77,7 @@ mod pruebas {
         assert_eq!(cargar(&u), Estado::default());
         let e = Estado {
             gif_por_segundo: Some(25),
+            chat_ventana: Some([10, 20, 900, 700]),
         };
         guardar(&u, &e).unwrap();
         assert_eq!(cargar(&u), e);

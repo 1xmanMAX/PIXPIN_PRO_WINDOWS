@@ -1771,7 +1771,12 @@ impl Pines {
     /// se ve como lo que es: sus hojas encima de la mesa.
     ///
     /// Devuelve cuantas hojas salieron y cuantas quedaron fuera.
-    pub fn abrir_paquete(&mut self, ruta: &Path, monitor: &Monitor) -> Result<(usize, usize)> {
+    pub fn abrir_paquete(
+        &mut self,
+        ruta: &Path,
+        monitor: &Monitor,
+        ubicacion: &pixpin_store::Ubicacion,
+    ) -> Result<(usize, usize)> {
         let paquete = pixpin_proyecto::Paquete::abrir(ruta)
             .with_context(|| format!("no se pudo abrir {}", ruta.display()))?;
         // El PDF a un temporal: el lector de PDF trabaja sobre disco, y el
@@ -1803,6 +1808,21 @@ impl Pines {
             total,
             "proyecto abierto"
         );
+
+        // Y queda en la lista de la ventana de chat. Si ya estaba (los tres
+        // codigos iguales) se pone al dia; si no, entra como uno nuevo, que
+        // es lo que hace PixPin Android al recibir. Que esto falle no puede
+        // deshacer un proyecto que ya esta abierto en pantalla.
+        let raiz = ubicacion.raiz();
+        let mut indice = pixpin_proyecto::almacen::Indice::leer(raiz);
+        let (que, id) = indice.recibir(pixpin_proyecto::almacen::Ficha::de_proyecto(
+            &paquete.proyecto,
+            Some(ruta),
+        ));
+        match indice.guardar(raiz) {
+            Ok(()) => tracing::info!(?que, %id, "proyecto en la lista"),
+            Err(e) => tracing::warn!(?e, "no se pudo apuntar el proyecto en la lista"),
+        }
         Ok((hechas, total))
     }
 

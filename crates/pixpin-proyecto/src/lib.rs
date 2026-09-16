@@ -27,6 +27,7 @@
 //!
 //! Por eso se guardan las entradas crudas del ZIP y no solo lo interpretado.
 
+pub mod almacen;
 pub mod codigos;
 pub mod cuaderno;
 pub mod identidad;

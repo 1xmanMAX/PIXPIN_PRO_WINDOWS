@@ -154,3 +154,7 @@ aviso-paginas-extraidas-detalle = { $hechas } de { $total }. El resto se dejó f
 chat-titulo = Proyectos
 chat-sin-proyectos = Aún no hay proyectos
 chat-elige-proyecto = Elige un proyecto para verlo
+chat-hojas = { $cuantas ->
+    [one] 1 hoja
+   *[other] { $cuantas } hojas
+  }

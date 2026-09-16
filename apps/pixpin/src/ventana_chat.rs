@@ -13,8 +13,10 @@
 //! igual en tema claro y oscuro.
 //!
 //! Pasos hechos: las dos columnas, el asa, la barra de titulo (mover,
-//! minimizar, maximizar y cerrar), redimensionar por los bordes y recordar
-//! donde quedo. La lista de proyectos y el historial llegan despues.
+//! minimizar, maximizar y cerrar), redimensionar por los bordes, recordar
+//! donde quedo y la lista de proyectos (avatar, nombre, hojas, hora y
+//! contador), que pinta solo las filas que se ven. El historial de cada
+//! proyecto llega despues.
 
 use anyhow::{Context, Result};
 use pixpin_geom::{Punto, Rect};
@@ -42,6 +44,13 @@ struct Tema {
     separador: Color,
     texto: Color,
     apagado: Color,
+    /// La fila bajo el raton y la fila elegida.
+    fila_sobre: Color,
+    fila_elegida: Color,
+    /// El texto de la fila elegida, que va sobre color fuerte.
+    texto_elegido: Color,
+    /// La pildora de pendientes.
+    contador: Color,
 }
 
 const CLARO: Tema = Tema {
@@ -54,6 +63,10 @@ const CLARO: Tema = Tema {
     separador: hex(0xe0e0e0),
     texto: hex(0x000000),
     apagado: hex(0x999999),
+    fila_sobre: hex(0xf1f1f1),
+    fila_elegida: hex(0x3390ec),
+    texto_elegido: hex(0xffffff),
+    contador: hex(0x3390ec),
 };
 
 const OSCURO: Tema = Tema {
@@ -66,6 +79,10 @@ const OSCURO: Tema = Tema {
     separador: hex(0x101921),
     texto: hex(0xffffff),
     apagado: hex(0x7d8b99),
+    fila_sobre: hex(0x202b36),
+    fila_elegida: hex(0x2b5278),
+    texto_elegido: hex(0xffffff),
+    contador: hex(0x3390ec),
 };
 
 fn rf(r: Rect) -> RectF {
@@ -150,9 +167,20 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     } else {
         &OSCURO
     };
+    // Los proyectos, ya ordenados como se ensenan. La lista se lee entera
+    // una vez: es un indice pequeno, y lo caro (abrir cada `.pixpin`) no se
+    // hace hasta que se elige uno.
+    let indice = pixpin_proyecto::almacen::Indice::leer(ubicacion.raiz());
+    let fichas: Vec<pixpin_proyecto::almacen::Ficha> =
+        indice.ordenadas().into_iter().cloned().collect();
+    let ahora = pixpin_shell::entorno::ahora_local_ms();
+
     let mut ancho_lista = chat::ancho_inicial(marco.ancho, escala);
     let mut arrastre: Option<Arrastre> = None;
     let mut sobre: Option<BotonBarra> = None;
+    let mut scroll: i32 = 0;
+    let mut fila_sobre: Option<usize> = None;
+    let mut elegida: Option<usize> = None;
     // Antes de maximizar, para poder volver.
     let mut antes_de_maximizar: Option<Rect> = None;
     let mut hay_que_pintar = true;
@@ -203,6 +231,9 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     } else if disposicion.asa.contiene(l) {
                         ventana.capturar_raton();
                         arrastre = Some(Arrastre::Asa(l.x - ancho_lista as i32));
+                    } else if let Some(i) = disposicion.fila_en(l, scroll, fichas.len(), escala) {
+                        elegida = Some(i);
+                        hay_que_pintar = true;
                     }
                 }
                 EventoOverlay::RatonMovido(p) => {
@@ -230,6 +261,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         }
                         None => {
                             sobre = disposicion.boton_barra_en(l, escala);
+                            fila_sobre = disposicion.fila_en(l, scroll, fichas.len(), escala);
                             let cursor = chat::borde_en(l, marco.ancho, marco.alto, escala)
                                 .map(cursor_de)
                                 .unwrap_or(if disposicion.asa.contiene(l) {
@@ -248,6 +280,24 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     }
                     arrastre = None;
                 }
+                EventoOverlay::Rueda(delta) => {
+                    // Tres filas por muesca, como Telegram y como el ajuste
+                    // de Windows por omision.
+                    let paso = 3 * (chat::FILA * escala / 100) as i32;
+                    let nuevo = disposicion.scroll_ajustado(
+                        scroll - delta.signum() * paso,
+                        fichas.len(),
+                        escala,
+                    );
+                    if nuevo != scroll {
+                        scroll = nuevo;
+                        // Lo que hay bajo el raton cambia aunque el raton no
+                        // se mueva.
+                        let p = local(pixpin_shell::entorno::posicion_del_cursor());
+                        fila_sobre = disposicion.fila_en(p, scroll, fichas.len(), escala);
+                        hay_que_pintar = true;
+                    }
+                }
                 EventoOverlay::Pintar => hay_que_pintar = true,
                 EventoOverlay::Cerrar => cerrar = true,
                 EventoOverlay::Tecla { vk, .. } if vk == VK_ESCAPE => cerrar = true,
@@ -265,6 +315,16 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
             if cambia_el_tamano {
                 let _ = superficie.redimensionar(marco.ancho, marco.alto);
                 ancho_lista = chat::ancho_ajustado(ancho_lista as i32, marco.ancho, escala);
+                // Al hacerse mas alta caben mas filas: si estaba abajo del
+                // todo, quedaria hueco en blanco bajo la ultima.
+                let d = Disposicion::calcular(
+                    marco.ancho,
+                    marco.alto,
+                    escala,
+                    ancho_lista,
+                    Vista::Ambas,
+                );
+                scroll = d.scroll_ajustado(scroll, fichas.len(), escala);
                 hay_que_pintar = true;
             }
         }
@@ -272,8 +332,16 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
         if hay_que_pintar {
             hay_que_pintar = false;
             if let Ok(destino) = superficie.empezar(&motor) {
+                let lista = Lista {
+                    fichas: &fichas,
+                    scroll,
+                    sobre: fila_sobre,
+                    elegida,
+                    ahora,
+                    textos,
+                };
                 let _ = motor.dibujar(&destino, |p: &Pintor| {
-                    pintar(p, &disposicion, tema, escala, textos, sobre);
+                    pintar(p, &disposicion, tema, escala, textos, sobre, &lista);
                 });
                 let _ = superficie.presentar();
             }
@@ -292,6 +360,39 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     Ok(())
 }
 
+/// Lo que hace falta para pintar la lista.
+struct Lista<'a> {
+    fichas: &'a [pixpin_proyecto::almacen::Ficha],
+    scroll: i32,
+    sobre: Option<usize>,
+    elegida: Option<usize>,
+    /// La hora local de ahora, para decidir si una fecha es de hoy.
+    ahora: i64,
+    textos: &'a Catalogo,
+}
+
+/// Los colores de los avatares, los mismos siete de Telegram. Cual toca sale
+/// del codigo unico del proyecto, asi que un proyecto tiene siempre el suyo,
+/// aqui y en el telefono.
+const COLORES_AVATAR: [u32; 7] = [
+    0xe17076, 0xfaa774, 0xa695e7, 0x7bc862, 0x6ec9cb, 0x65aadd, 0xee7aae,
+];
+
+/// Las letras del avatar: la inicial de las dos primeras palabras.
+fn iniciales(nombre: &str) -> String {
+    nombre
+        .split_whitespace()
+        .take(2)
+        .filter_map(|p| p.chars().next())
+        .flat_map(|c| c.to_uppercase())
+        .collect()
+}
+
+fn color_avatar(codigo: &str) -> Color {
+    let suma: u32 = codigo.bytes().map(u32::from).sum();
+    hex(COLORES_AVATAR[suma as usize % COLORES_AVATAR.len()])
+}
+
 fn pintar(
     p: &Pintor,
     d: &Disposicion,
@@ -299,6 +400,7 @@ fn pintar(
     escala: u32,
     textos: &Catalogo,
     sobre: Option<BotonBarra>,
+    lista: &Lista,
 ) {
     let e = escala as f32 / 100.0;
     p.limpiar(tema.chat);
@@ -425,15 +527,22 @@ fn pintar(
         tema.texto,
     );
 
-    // Sin proyectos todavia: se dice, en vez de dejar dos columnas en blanco
-    // que parecen un fallo.
-    centrar_texto(
-        &textos.t("chat-sin-proyectos"),
-        d.filas,
-        None,
-        13.0 * e,
-        tema.apagado,
-    );
+    // Sin proyectos todavia: se dice, en vez de dejar la columna en blanco
+    // que parece un fallo.
+    if lista.fichas.is_empty() {
+        centrar_texto(
+            &textos.t("chat-sin-proyectos"),
+            d.filas,
+            None,
+            13.0 * e,
+            tema.apagado,
+        );
+    } else {
+        pintar_filas(p, d, tema, escala, lista);
+    }
+
+    // La columna de la derecha llega en el paso siguiente; de momento dice
+    // que hay que elegir.
     centrar_texto(
         &textos.t("chat-elige-proyecto"),
         d.chat,
@@ -441,4 +550,136 @@ fn pintar(
         13.0 * e,
         tema.apagado,
     );
+}
+
+/// Pinta **solo las filas que se ven**: una lista de mil proyectos cuesta lo
+/// mismo que una de diez.
+fn pintar_filas(p: &Pintor, d: &Disposicion, tema: &Tema, escala: u32, lista: &Lista) {
+    let e = escala as f32 / 100.0;
+    if d.filas.ancho == 0 || d.filas.alto == 0 {
+        return;
+    }
+    // Recorte al area de filas: la primera y la ultima suelen salirse, y sin
+    // esto pintarian encima de la cabecera.
+    p.empujar_recorte(rf(d.filas));
+    let (primera, cuantas) = d.visibles(lista.scroll, lista.fichas.len(), escala);
+    for i in primera..primera + cuantas {
+        let ficha = &lista.fichas[i];
+        let r = d.fila(i, lista.scroll, escala);
+        let elegida = lista.elegida == Some(i);
+        if elegida {
+            p.rellenar(rf(r), tema.fila_elegida);
+        } else if lista.sobre == Some(i) {
+            p.rellenar(rf(r), tema.fila_sobre);
+        }
+        let partes = pixpin_ui::chat::partes_fila(r, d.plegada, escala);
+
+        // El avatar: un circulo de su color con las iniciales.
+        let a = rf(partes.avatar);
+        p.rellenar_redondeado(a, a.ancho / 2.0, color_avatar(&ficha.codigo_unico()));
+        let letras = iniciales(&ficha.nombre);
+        let tam = a.alto * 0.4;
+        let (w, h) = p.medir_texto(&letras, tam);
+        p.texto(
+            &letras,
+            a.x + (a.ancho - w) / 2.0,
+            a.y + (a.alto - h) / 2.0,
+            tam,
+            Color::BLANCO,
+        );
+        if partes.ancho_texto == 0 {
+            continue;
+        }
+
+        let (nombre_color, resumen_color) = if elegida {
+            (tema.texto_elegido, tema.texto_elegido)
+        } else {
+            (tema.texto, tema.apagado)
+        };
+        // La hora primero: dice cuanto sitio le queda al nombre.
+        let hora = pixpin_ui::chat::etiqueta_hora(ficha.tocado, lista.ahora);
+        let tam_hora = chat::CONTADOR_TAM * e;
+        let mut hueco_nombre = partes.ancho_texto as f32;
+        if !hora.is_empty() {
+            let (w, h) = p.medir_texto(&hora, tam_hora);
+            p.texto(
+                &hora,
+                partes.derecha as f32 - w,
+                partes.nombre.y as f32 + (chat::TEXTO_TAM * e - h) / 2.0,
+                tam_hora,
+                if elegida {
+                    tema.texto_elegido
+                } else {
+                    tema.apagado
+                },
+            );
+            hueco_nombre -= w + 8.0 * e;
+        }
+        p.texto_linea(
+            &ficha.nombre,
+            partes.nombre.x as f32,
+            partes.nombre.y as f32,
+            chat::TEXTO_TAM * e,
+            hueco_nombre.max(0.0),
+            nombre_color,
+        );
+
+        // Y la ultima linea, dejando sitio al contador si lo hay.
+        let mut hueco_resumen = partes.ancho_texto as f32;
+        if ficha.sin_leer > 0 {
+            let texto = if ficha.sin_leer > 99 {
+                "99+".to_string()
+            } else {
+                ficha.sin_leer.to_string()
+            };
+            let alto = chat::CONTADOR_ALTO as f32 * e;
+            let (w, h) = p.medir_texto(&texto, chat::CONTADOR_TAM * e);
+            let ancho = (w + alto * 0.6).max(alto);
+            let caja = RectF {
+                x: partes.derecha as f32 - ancho,
+                y: partes.resumen.y as f32,
+                ancho,
+                alto,
+            };
+            p.rellenar_redondeado(
+                caja,
+                alto / 2.0,
+                if elegida {
+                    tema.texto_elegido
+                } else {
+                    tema.contador
+                },
+            );
+            p.texto(
+                &texto,
+                caja.x + (ancho - w) / 2.0,
+                caja.y + (alto - h) / 2.0,
+                chat::CONTADOR_TAM * e,
+                if elegida {
+                    tema.fila_elegida
+                } else {
+                    Color::BLANCO
+                },
+            );
+            hueco_resumen -= ancho + 8.0 * e;
+        }
+        // Mientras no haya mensajes, la ultima linea dice lo que tiene
+        // dentro; el texto se compone aqui porque aqui esta el idioma.
+        let resumen = if ficha.resumen.is_empty() {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("cuantas", ficha.hojas);
+            lista.textos.t_args("chat-hojas", &args)
+        } else {
+            ficha.resumen.clone()
+        };
+        p.texto_linea(
+            &resumen,
+            partes.resumen.x as f32,
+            partes.resumen.y as f32,
+            chat::TEXTO_TAM * e,
+            hueco_resumen.max(0.0),
+            resumen_color,
+        );
+    }
+    p.soltar_recorte();
 }
