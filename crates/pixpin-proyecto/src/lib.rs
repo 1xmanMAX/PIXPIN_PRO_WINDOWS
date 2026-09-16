@@ -31,6 +31,7 @@ pub mod almacen;
 pub mod codigos;
 pub mod cuaderno;
 pub mod identidad;
+pub mod tabla;
 
 use std::collections::BTreeMap;
 use std::io::{Cursor, Read, Write};
