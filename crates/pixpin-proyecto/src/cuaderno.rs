@@ -51,6 +51,53 @@ pub enum Clase {
     Otra(String),
 }
 
+/// Las secciones del cuaderno, las mismas que `Seccion` en PixPin Android.
+///
+/// Viven aqui y no en la interfaz porque son del dominio: que una nota de
+/// voz sea «voz» no depende de como se pinte. La interfaz solo decide en
+/// que orden se ensenan y con que aspecto.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Seccion {
+    Todo,
+    Fotos,
+    Archivos,
+    Voz,
+    Dibujos,
+    Fijados,
+    Buzon,
+}
+
+impl Seccion {
+    pub const TODAS: [Seccion; 7] = [
+        Seccion::Todo,
+        Seccion::Fotos,
+        Seccion::Archivos,
+        Seccion::Voz,
+        Seccion::Dibujos,
+        Seccion::Fijados,
+        Seccion::Buzon,
+    ];
+
+    /// La clave de su nombre traducido.
+    pub fn clave(self) -> &'static str {
+        match self {
+            Seccion::Todo => "info-todo",
+            Seccion::Fotos => "info-fotos",
+            Seccion::Archivos => "info-archivos",
+            Seccion::Voz => "info-voz",
+            Seccion::Dibujos => "info-dibujos",
+            Seccion::Fijados => "info-fijados",
+            Seccion::Buzon => "info-buzon",
+        }
+    }
+
+    /// Si se ensena como cuadricula. Lo que se mira va en cuadricula; lo que
+    /// se lee, en filas.
+    pub fn es_cuadricula(self) -> bool {
+        matches!(self, Seccion::Fotos | Seccion::Dibujos)
+    }
+}
+
 /// Un mensaje del cuaderno.
 ///
 /// Todo opcional salvo lo que identifica: el movil anade campos con el
@@ -283,6 +330,35 @@ impl Cuaderno {
             .max()
             .unwrap_or(0)
             + 1
+    }
+
+    /// Los mensajes de una seccion, en el orden en que estan.
+    ///
+    /// Las secciones son las de PixPin Android. Dos criterios que no son
+    /// evidentes: el BUZON es un aparte y no sale en «todo» (es donde caducan
+    /// cosas a los siete dias), y una PAGINA de plano cuenta como archivo,
+    /// porque quien busca un plano lo busca ahi y no le importa de que clase
+    /// es por dentro.
+    pub fn de_seccion(&self, seccion: Seccion) -> Vec<&Mensaje> {
+        self.mensajes
+            .iter()
+            .filter(|m| {
+                if m.en_buzon {
+                    return seccion == Seccion::Buzon;
+                }
+                match seccion {
+                    Seccion::Todo => true,
+                    Seccion::Buzon => false,
+                    Seccion::Fijados => m.fijado,
+                    Seccion::Fotos => m.clase == Some(Clase::Imagen),
+                    Seccion::Archivos => {
+                        matches!(m.clase, Some(Clase::Archivo) | Some(Clase::Pagina))
+                    }
+                    Seccion::Voz => m.clase == Some(Clase::Voz),
+                    Seccion::Dibujos => m.clase == Some(Clase::Dibujo),
+                }
+            })
+            .collect()
     }
 
     /// Los mensajes de una conversacion. `None` es la general.
@@ -539,5 +615,56 @@ mod pruebas {
         assert_eq!(m.codigo_chat().as_deref(), Some("4·K7Q2"));
         // Lo que se ensena de el es su nombre: no tiene texto.
         assert_eq!(m.resumen(), "fachada.jpg");
+    }
+
+    #[test]
+    fn cada_seccion_se_queda_con_lo_suyo() {
+        let c = Cuaderno::leer(concat!(
+            r#"{"id":"n","clase":"NOTA","texto":"hola"}"#,
+            "\n",
+            r#"{"id":"i","clase":"IMAGEN","nombre":"a.jpg"}"#,
+            "\n",
+            r#"{"id":"a","clase":"ARCHIVO","nombre":"plano.pdf"}"#,
+            "\n",
+            r#"{"id":"v","clase":"VOZ","nombre":"v.m4a"}"#,
+            "\n",
+            r#"{"id":"d","clase":"DIBUJO","nombre":"croquis"}"#,
+            "\n",
+            r#"{"id":"p","clase":"PAGINA","nombre":"plano.pdf","fijado":true}"#,
+            "\n",
+            r#"{"id":"b","clase":"NOTA","texto":"caduca","enBuzon":true}"#,
+            "\n"
+        ));
+        let ids =
+            |s: Seccion| -> Vec<&str> { c.de_seccion(s).iter().map(|m| m.id.as_str()).collect() };
+        // «Todo» es todo lo que no esta en el buzon: el buzon es un aparte,
+        // no una etiqueta mas.
+        assert_eq!(ids(Seccion::Todo), ["n", "i", "a", "v", "d", "p"]);
+        assert_eq!(ids(Seccion::Fotos), ["i"]);
+        // Una pagina de plano es un archivo para quien lo busca: lo que
+        // importa es que se abre fuera, no de que clase es por dentro.
+        assert_eq!(ids(Seccion::Archivos), ["a", "p"]);
+        assert_eq!(ids(Seccion::Voz), ["v"]);
+        assert_eq!(ids(Seccion::Dibujos), ["d"]);
+        assert_eq!(ids(Seccion::Fijados), ["p"]);
+        assert_eq!(ids(Seccion::Buzon), ["b"]);
+    }
+
+    #[test]
+    fn una_clase_que_no_conocemos_solo_sale_en_todo() {
+        let c =
+            Cuaderno::leer(r#"{"id":"x","clase":"COSA_NUEVA","texto":"de una version futura"}"#);
+        assert_eq!(c.de_seccion(Seccion::Todo).len(), 1, "no se pierde");
+        // Y no se cuela en ninguna de las demas fingiendo ser algo que no es.
+        for s in [
+            Seccion::Fotos,
+            Seccion::Archivos,
+            Seccion::Voz,
+            Seccion::Dibujos,
+            Seccion::Fijados,
+            Seccion::Buzon,
+        ] {
+            assert!(c.de_seccion(s).is_empty(), "{s:?}");
+        }
     }
 }
