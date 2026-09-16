@@ -15,27 +15,37 @@
 
 use pixpin_geom::Rect;
 
-/// Medidas en pixeles logicos (al 100 %).
-/// Lo ancho que puede llegar a ser una burbuja, en centesimas del ancho de
-/// la columna y con un tope duro: una linea larguisima se lee mal.
-pub const BURBUJA_POR_CIEN: u32 = 72;
-pub const BURBUJA_MAXIMA: u32 = 480;
-/// Lo que se separa la burbuja del borde de la columna.
-pub const MARGEN: u32 = 12;
-/// El relleno de dentro de la burbuja.
-pub const RELLENO_X: u32 = 12;
-pub const RELLENO_Y: u32 = 7;
-pub const RADIO: u32 = 12;
+/// Medidas en pixeles logicos (al 100 %), las de Telegram Desktop.
+///
+/// El ancho de una burbuja tiene un tope DURO de 430, no una proporcion de
+/// la columna: una linea de mas de eso se lee mal por ancha que sea la
+/// ventana.
+pub const BURBUJA_MAXIMA: u32 = 430;
+/// Lo que se separa del borde de su lado, y lo que se le reserva al lado
+/// contrario para que se vea de un vistazo de quien es cada mensaje.
+pub const MARGEN: u32 = 16;
+pub const MARGEN_CONTRARIO: u32 = 56;
+/// El relleno de dentro de la burbuja (`msgPadding`).
+pub const RELLENO_X: u32 = 11;
+pub const RELLENO_Y: u32 = 8;
+pub const RADIO: u32 = 16;
 /// Entre dos burbujas seguidas del mismo lado, y al cambiar de lado.
-pub const HUECO: u32 = 4;
-pub const HUECO_GRUPO: u32 = 10;
-/// La pildora con la fecha que separa los dias.
-pub const SEPARADOR: u32 = 34;
-pub const SEPARADOR_TAM: f32 = 12.0;
-pub const TEXTO_TAM: f32 = 14.0;
-pub const HORA_TAM: f32 = 11.0;
-/// Lo que se le reserva a la hora dentro de la burbuja, a su derecha.
-pub const HORA_HUECO: u32 = 44;
+pub const HUECO: u32 = 2;
+pub const HUECO_GRUPO: u32 = 8;
+/// La pildora con la fecha que separa los dias: 24 de alto, con 10 de aire
+/// encima y 2 debajo, y 12 de relleno a cada lado.
+pub const SEPARADOR_PILDORA: u32 = 24;
+pub const SEPARADOR_MARGEN: u32 = 10;
+pub const SEPARADOR_RELLENO_X: u32 = 12;
+pub const SEPARADOR: u32 = SEPARADOR_MARGEN + SEPARADOR_PILDORA + 2;
+pub const SEPARADOR_TAM: f32 = 13.0;
+pub const TEXTO_TAM: f32 = 13.0;
+pub const HORA_TAM: f32 = 13.0;
+/// El hueco entre el final de la ultima linea y la hora (`msgDateSpace`).
+pub const HORA_HUECO: u32 = 12;
+/// Lo que la hora invade el relleno de la burbuja, a la derecha y abajo.
+pub const HORA_INVADE_X: u32 = 2;
+pub const HORA_INVADE_Y: u32 = 5;
 
 /// Un mensaje a colocar, ya medido por quien pinta.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,9 +91,10 @@ impl Puesto {
 /// que quien pinta usa para medir el texto antes de llamar a `colocar`.
 pub fn ancho_contenido(area: Rect, escala_por_cien: u32) -> u32 {
     let e = |v: u32| v * escala_por_cien / 100;
-    let util = area.ancho.saturating_sub(2 * e(MARGEN));
-    let tope = (util * BURBUJA_POR_CIEN / 100).min(e(BURBUJA_MAXIMA));
-    tope.saturating_sub(2 * e(RELLENO_X))
+    // Lo que queda quitando el margen del lado propio y el que se reserva al
+    // contrario; y por ancha que sea la ventana, nunca mas de 430.
+    let util = area.ancho.saturating_sub(e(MARGEN) + e(MARGEN_CONTRARIO));
+    util.min(e(BURBUJA_MAXIMA)).saturating_sub(2 * e(RELLENO_X))
 }
 
 /// Reparte los mensajes de arriba abajo, del mas viejo al mas nuevo, con el

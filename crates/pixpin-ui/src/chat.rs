@@ -36,14 +36,24 @@ pub const PLEGAR_BAJO: u32 = 130;
 pub const LISTA_PLEGADA: u32 = 66;
 pub const ASA: u32 = 6;
 /// La barra de titulo propia: la ventana no tiene marco del sistema.
-pub const BARRA: u32 = 40;
+pub const BARRA: u32 = 24;
 /// Cada boton de la barra (minimizar, maximizar, cerrar).
-pub const BOTON_BARRA_ANCHO: u32 = 46;
+pub const BOTON_BARRA_ANCHO: u32 = 36;
 /// Margen de los bordes por los que se redimensiona.
 pub const BORDE: u32 = 6;
 
-/// Cabecera de la lista y del chat.
+/// Cabecera de la lista y del chat (`topBarHeight`).
 pub const CABECERA: u32 = 54;
+/// Dentro de la cabecera del chat: avatar de 42 en (19, 6) y el texto a 69,
+/// con el nombre a 8 de arriba.
+pub const CABECERA_AVATAR: u32 = 42;
+pub const CABECERA_AVATAR_X: u32 = 19;
+pub const CABECERA_AVATAR_Y: u32 = 6;
+pub const CABECERA_TEXTO_X: u32 = 69;
+pub const CABECERA_NOMBRE_Y: u32 = 8;
+pub const CABECERA_MARGEN_DERECHO: u32 = 17;
+/// El nombre va en seminegrita de 13 y el estado en normal de 13.
+pub const CABECERA_TAM: f32 = 13.0;
 /// Fila de la lista de chats.
 pub const FILA: u32 = 62;
 pub const AVATAR: u32 = 46;
@@ -54,20 +64,28 @@ pub const TEXTO_X: u32 = 68;
 pub const NOMBRE_Y: u32 = 10;
 pub const RESUMEN_Y: u32 = 34;
 pub const TEXTO_TAM: f32 = 13.0;
-/// El contador de pendientes: pildora de 19 de alto con texto de 12.
+/// El contador de pendientes: pildora de 19 de alto con texto de 12 en
+/// negrita y 5 de relleno a cada lado. Con un solo digito sale un circulo.
 pub const CONTADOR_ALTO: u32 = 19;
 pub const CONTADOR_TAM: f32 = 12.0;
+pub const CONTADOR_RELLENO: u32 = 5;
+/// Lo minimo que se separa la hora del nombre.
+pub const HORA_HUECO: u32 = 5;
+/// El titulo de la barra, en seminegrita.
+pub const TITULO_TAM: f32 = 12.0;
 /// Margen a la derecha de la fila para la hora y el contador.
 pub const MARGEN_DERECHO: u32 = 10;
 
 /// La caja de escribir, abajo de la columna del proyecto. Crece con el
 /// texto hasta un tope; pasado ese tope se desplaza por dentro, que si no
 /// una nota larga se comeria el historial entero.
-pub const REDACCION_MINIMA: u32 = 52;
-pub const REDACCION_MAXIMA: u32 = 160;
+/// 36 de campo mas 9 de aire arriba y abajo, como Telegram; el tope de
+/// crecimiento tambien es el suyo.
+pub const REDACCION_MINIMA: u32 = 54;
+pub const REDACCION_MAXIMA: u32 = 224;
 pub const REDACCION_RELLENO_X: u32 = 14;
-pub const REDACCION_RELLENO_Y: u32 = 14;
-pub const REDACCION_TAM: f32 = 14.0;
+pub const REDACCION_RELLENO_Y: u32 = 9;
+pub const REDACCION_TAM: f32 = 13.0;
 
 /// Que se ve cuando solo cabe una columna.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -809,6 +827,12 @@ pub fn etiqueta_fecha(cuando_ms: i64, ahora_ms: i64) -> String {
     } else {
         format!("{d:02}/{m:02}/{:02}", a.rem_euclid(100))
     }
+}
+
+/// El dia de una fecha, partido en ano, mes (1-12) y dia, para quien tenga
+/// que componer el nombre del mes en su idioma.
+pub fn partes_fecha(cuando_ms: i64) -> (i64, u32, u32) {
+    civil(cuando_ms.div_euclid(86_400_000))
 }
 
 /// Dia desde 1970 a (ano, mes, dia). Algoritmo `civil_from_days` de Howard

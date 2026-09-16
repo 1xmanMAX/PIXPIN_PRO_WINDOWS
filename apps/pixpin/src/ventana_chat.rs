@@ -56,48 +56,75 @@ struct Tema {
     texto_elegido: Color,
     /// La pildora de pendientes.
     contador: Color,
-    /// Las burbujas del historial y la pildora que separa los dias.
+    /// Las burbujas del historial, su texto, su hora y la pildora que
+    /// separa los dias.
     burbuja_mia: Color,
     burbuja_otra: Color,
+    texto_mio: Color,
+    texto_otro: Color,
+    hora_mia: Color,
+    hora_otra: Color,
     separador_dia: Color,
+    texto_separador: Color,
 }
 
 const CLARO: Tema = Tema {
-    barra: hex(0xffffff),
-    boton_sobre: hex(0xe6e6e6),
+    // titleBg, titleButtonBgOver y titleButtonCloseBgOver del tema claro
+    // por omision de Telegram («day-blue»).
+    barra: hex(0xf1f1f1),
+    boton_sobre: hex(0xe5e5e5),
     cerrar_sobre: hex(0xe81123),
     lista: hex(0xffffff),
     chat: hex(0xf1f1f1),
     cabecera: hex(0xffffff),
     separador: hex(0xe0e0e0),
-    texto: hex(0x000000),
+    // dialogsNameFg, dialogsTextFg, dialogsBgActive y dialogsUnreadBg.
+    texto: hex(0x222222),
     apagado: hex(0x999999),
     fila_sobre: hex(0xf1f1f1),
-    fila_elegida: hex(0x3390ec),
+    fila_elegida: hex(0x419fd9),
     texto_elegido: hex(0xffffff),
-    contador: hex(0x3390ec),
-    burbuja_mia: hex(0xeeffde),
+    contador: hex(0x40a7e3),
+    // msgOutBg, msgInBg y sus colores de texto y hora.
+    burbuja_mia: hex(0xeffdde),
     burbuja_otra: hex(0xffffff),
-    separador_dia: hex(0xe4e4e4),
+    texto_mio: hex(0x000000),
+    texto_otro: hex(0x000000),
+    hora_mia: hex(0x6db566),
+    hora_otra: hex(0xa0acb6),
+    separador_dia: hex(0x6b8f5c),
+    texto_separador: hex(0xffffff),
 };
 
 const OSCURO: Tema = Tema {
-    barra: hex(0x17212b),
-    boton_sobre: hex(0x232e3a),
-    cerrar_sobre: hex(0xe81123),
+    // titleBgActive, titleButtonBgOver y titleButtonCloseBgOver del tema
+    // «night» de Telegram.
+    barra: hex(0x242f3d),
+    boton_sobre: hex(0x2c3847),
+    cerrar_sobre: hex(0xe92539),
     lista: hex(0x17212b),
     chat: hex(0x0e1621),
     cabecera: hex(0x17212b),
     separador: hex(0x101921),
-    texto: hex(0xffffff),
-    apagado: hex(0x7d8b99),
+    // dialogsNameFg, dialogsTextFg y dialogsUnreadBg.
+    texto: hex(0xf5f5f5),
+    apagado: hex(0x7f91a4),
     fila_sobre: hex(0x202b36),
     fila_elegida: hex(0x2b5278),
     texto_elegido: hex(0xffffff),
-    contador: hex(0x3390ec),
+    contador: hex(0x4082bc),
+    // msgOutBg, msgInBg y sus colores de texto y hora.
     burbuja_mia: hex(0x2b5278),
     burbuja_otra: hex(0x182533),
-    separador_dia: hex(0x1b2735),
+    texto_mio: hex(0xe4ecf2),
+    texto_otro: hex(0xf5f5f5),
+    hora_mia: hex(0x7da8d3),
+    hora_otra: hex(0x6d7f8f),
+    // msgServiceBg del tema oscuro, ya mezclado sobre el fondo del chat:
+    // el original es semitransparente y se recalcula con el fondo de
+    // pantalla, que aqui no existe.
+    separador_dia: hex(0x1d2a38),
+    texto_separador: hex(0xffffff),
 };
 
 fn rf(r: Rect) -> RectF {
@@ -692,7 +719,7 @@ fn pintar(
         &textos.t("app-nombre"),
         d.barra,
         Some(12.0 * e),
-        13.0 * e,
+        chat::TITULO_TAM * e,
         tema.texto,
     );
 
@@ -719,15 +746,20 @@ fn pintar(
             r.x as f32 + r.ancho as f32 / 2.0,
             r.y as f32 + r.alto as f32 / 2.0,
         );
-        let lado = 10.0 * e;
+        // Los glifos de Telegram en Windows, medidos: la raya de minimizar
+        // 12x3, el cuadro de maximizar 12x12 y el aspa de cerrar 10x10.
+        let lado = match boton {
+            BotonBarra::Cerrar => 10.0 * e,
+            _ => 12.0 * e,
+        };
         let grosor = (1.0 * e).max(1.0);
         match boton {
             BotonBarra::Minimizar => p.rellenar(
                 RectF {
                     x: cx - lado / 2.0,
-                    y: cy,
+                    y: cy - (3.0 * e).max(1.0) / 2.0,
                     ancho: lado,
-                    alto: grosor,
+                    alto: (3.0 * e).max(1.0),
                 },
                 color,
             ),
@@ -846,7 +878,7 @@ fn pintar_filas(p: &Pintor, d: &Disposicion, tema: &Tema, escala: u32, lista: &L
                     tema.apagado
                 },
             );
-            hueco_nombre -= w + 8.0 * e;
+            hueco_nombre -= w + chat::HORA_HUECO as f32 * e;
         }
         p.texto_linea(
             &ficha.nombre,
@@ -860,14 +892,14 @@ fn pintar_filas(p: &Pintor, d: &Disposicion, tema: &Tema, escala: u32, lista: &L
         // Y la ultima linea, dejando sitio al contador si lo hay.
         let mut hueco_resumen = partes.ancho_texto as f32;
         if ficha.sin_leer > 0 {
-            let texto = if ficha.sin_leer > 99 {
-                "99+".to_string()
-            } else {
-                ficha.sin_leer.to_string()
-            };
+            // El numero entero, sin «99+»: Telegram ensancha la pildora y
+            // ensena los pendientes que hay, que es el dato que importa.
+            let texto = ficha.sin_leer.to_string();
             let alto = chat::CONTADOR_ALTO as f32 * e;
             let (w, h) = p.medir_texto(&texto, chat::CONTADOR_TAM * e);
-            let ancho = (w + alto * 0.6).max(alto);
+            // Cinco de relleno a cada lado, y nunca mas estrecha que alta:
+            // con un solo digito sale un circulo.
+            let ancho = (w + 2.0 * chat::CONTADOR_RELLENO as f32 * e).max(alto);
             let caja = RectF {
                 x: partes.derecha as f32 - ancho,
                 y: partes.resumen.y as f32,
@@ -894,7 +926,7 @@ fn pintar_filas(p: &Pintor, d: &Disposicion, tema: &Tema, escala: u32, lista: &L
                     Color::BLANCO
                 },
             );
-            hueco_resumen -= ancho + 8.0 * e;
+            hueco_resumen -= ancho + chat::HORA_HUECO as f32 * e;
         }
         // Mientras no haya mensajes, la ultima linea dice lo que tiene
         // dentro; el texto se compone aqui porque aqui esta el idioma.
@@ -957,9 +989,10 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
 
     // La cabecera: el avatar del proyecto, su nombre y lo que tiene dentro.
     let cab = d.cabecera_chat;
-    let avatar = chat::AVATAR as f32 * e * 0.8;
-    let ax = cab.x as f32 + 16.0 * e;
-    let ay = cab.y as f32 + (cab.alto as f32 - avatar) / 2.0;
+    // Las medidas de la cabecera de Telegram: avatar de 42 en (19, 6).
+    let avatar = chat::CABECERA_AVATAR as f32 * e;
+    let ax = cab.x as f32 + chat::CABECERA_AVATAR_X as f32 * e;
+    let ay = cab.y as f32 + chat::CABECERA_AVATAR_Y as f32 * e;
     let caja = RectF {
         x: ax,
         y: ay,
@@ -976,13 +1009,14 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
         avatar * 0.4,
         Color::BLANCO,
     );
-    let texto_x = ax + avatar + 12.0 * e;
-    let ancho_nombre = (cab.derecha() as f32 - 16.0 * e - texto_x).max(0.0);
+    let texto_x = cab.x as f32 + chat::CABECERA_TEXTO_X as f32 * e;
+    let ancho_nombre =
+        (cab.derecha() as f32 - chat::CABECERA_MARGEN_DERECHO as f32 * e - texto_x).max(0.0);
     p.texto_linea(
         &a.ficha.nombre,
         texto_x,
-        cab.y as f32 + 10.0 * e,
-        15.0 * e,
+        cab.y as f32 + chat::CABECERA_NOMBRE_Y as f32 * e,
+        chat::CABECERA_TAM * e,
         ancho_nombre,
         tema.texto,
     );
@@ -995,11 +1029,13 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
         // Lo que no se pudo leer se dice, no se calla.
         abajo.push_str(&format!("  ·  {} ?", a.rotas));
     }
+    // La linea de estado se apoya abajo, a 8 del borde, como en Telegram.
+    let (_, alto_estado) = p.medir_texto(&abajo, chat::CABECERA_TAM * e);
     p.texto_linea(
         &abajo,
         texto_x,
-        cab.y as f32 + 30.0 * e,
-        chat::CONTADOR_TAM * e,
+        cab.abajo() as f32 - chat::CABECERA_NOMBRE_Y as f32 * e - alto_estado,
+        chat::CABECERA_TAM * e,
         ancho_nombre,
         tema.apagado,
     );
@@ -1036,13 +1072,26 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                         format!("{etiqueta}\n{texto}")
                     };
                 }
-                // La hora va en la misma caja, al final: se le reserva sitio
-                // para que no se monte sobre la ultima linea.
-                let (ancho, alto) =
-                    p.medir_texto_ajustado(&texto, h::TEXTO_TAM * e, ancho_contenido as f32);
+                // La hora va al final de la ultima linea, con su hueco. Si
+                // ahi no cabe, baja a una linea propia y la burbuja crece;
+                // es lo que hace Telegram, y evita que se monte encima.
+                let tam = h::TEXTO_TAM * e;
+                let (ancho, alto) = p.medir_texto_ajustado(&texto, tam, ancho_contenido as f32);
+                let hora = pixpin_ui::chat::etiqueta_hora(m.cuando, ahora);
+                let (ancho_hora, alto_hora) = p.medir_texto(&hora, h::HORA_TAM * e);
+                let reserva = ancho_hora + h::HORA_HUECO as f32 * e;
+                // Si el texto cabe igual en una caja mas estrecha, ninguna
+                // de sus lineas llega al borde y la hora tiene sitio.
+                let estrecho = (ancho_contenido as f32 - reserva).max(1.0);
+                let cabe_al_lado = p.medir_texto_ajustado(&texto, tam, estrecho).1 <= alto + 0.5;
+                let (ancho, alto) = if cabe_al_lado {
+                    ((ancho + reserva).min(ancho_contenido as f32), alto)
+                } else {
+                    (ancho, alto + alto_hora)
+                };
                 entradas.push(h::Entrada {
                     alto: alto.ceil() as u32,
-                    ancho: (ancho + h::HORA_HUECO as f32 * e).ceil() as u32,
+                    ancho: ancho.ceil() as u32,
                     // Lo que nacio en otro aparato se ensena a la izquierda.
                     mio: m.origen.is_none(),
                     dia: m.cuando.div_euclid(86_400_000),
@@ -1076,32 +1125,37 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
 
         if let Some(sep) = puesto.separador {
             let sep = mover(sep);
-            let fecha = pixpin_ui::chat::etiqueta_fecha(m.cuando, ahora);
+            let fecha = fecha_larga(m.cuando, ahora, textos);
             if !fecha.is_empty() {
-                let (w, alto) = p.medir_texto(&fecha, h::SEPARADOR_TAM * e);
-                let ancho = w + 20.0 * e;
+                let tam = h::SEPARADOR_TAM * e;
+                let (w, alto_texto) = p.medir_texto(&fecha, tam);
+                let alto = h::SEPARADOR_PILDORA as f32 * e;
+                let ancho = w + 2.0 * h::SEPARADOR_RELLENO_X as f32 * e;
                 let caja = RectF {
                     x: sep.x as f32 + (sep.ancho as f32 - ancho) / 2.0,
-                    y: sep.y as f32 + (sep.alto as f32 - alto - 6.0 * e) / 2.0,
+                    // La pildora va pegada abajo de su hueco: encima lleva
+                    // 10 de aire y debajo 2.
+                    y: sep.abajo() as f32 - 2.0 * e - alto,
                     ancho,
-                    alto: alto + 6.0 * e,
+                    alto,
                 };
-                p.rellenar_redondeado(caja, caja.alto / 2.0, tema.separador_dia);
+                p.rellenar_redondeado(caja, alto / 2.0, tema.separador_dia);
                 p.texto(
                     &fecha,
-                    caja.x + 10.0 * e,
-                    caja.y + 3.0 * e,
-                    h::SEPARADOR_TAM * e,
-                    tema.apagado,
+                    caja.x + h::SEPARADOR_RELLENO_X as f32 * e,
+                    caja.y + (alto - alto_texto) / 2.0,
+                    tam,
+                    tema.texto_separador,
                 );
             }
         }
 
         let burbuja = mover(puesto.burbuja);
-        let color = if m.origen.is_none() {
-            tema.burbuja_mia
+        let mio = m.origen.is_none();
+        let (color, color_texto, color_hora) = if mio {
+            (tema.burbuja_mia, tema.texto_mio, tema.hora_mia)
         } else {
-            tema.burbuja_otra
+            (tema.burbuja_otra, tema.texto_otro, tema.hora_otra)
         };
         p.rellenar_redondeado(rf(burbuja), h::RADIO as f32 * e, color);
         let dentro = Rect {
@@ -1115,18 +1169,19 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
             h::TEXTO_TAM * e,
             dentro.ancho as f32,
             &[],
-            tema.texto,
+            color_texto,
         );
-        // La hora, abajo a la derecha de la burbuja.
+        // La hora, abajo a la derecha, invadiendo un poco el relleno de la
+        // burbuja como hace Telegram: 2 por la derecha y 5 por abajo.
         let hora = pixpin_ui::chat::etiqueta_hora(m.cuando, ahora);
         if !hora.is_empty() {
             let (w, alto) = p.medir_texto(&hora, h::HORA_TAM * e);
             p.texto(
                 &hora,
-                burbuja.derecha() as f32 - h::RELLENO_X as f32 * e - w,
-                burbuja.abajo() as f32 - h::RELLENO_Y as f32 * e - alto,
+                burbuja.derecha() as f32 - (h::RELLENO_X - h::HORA_INVADE_X) as f32 * e - w,
+                burbuja.abajo() as f32 - (h::RELLENO_Y - h::HORA_INVADE_Y) as f32 * e - alto,
                 h::HORA_TAM * e,
-                tema.apagado,
+                color_hora,
             );
         }
     }
@@ -1348,4 +1403,25 @@ fn adjuntar(
         indice.guardar(raiz)?;
     }
     Ok(())
+}
+
+/// La fecha del separador de dias, como la escribe Telegram: «15 de
+/// septiembre», con el ano solo si no es este.
+///
+/// A proposito NO dice «Hoy» ni «Ayer»: Telegram Desktop tampoco, y una
+/// pildora que pone «Hoy» entre dos mensajes de hace un rato no separa nada.
+fn fecha_larga(cuando_ms: i64, ahora_ms: i64, textos: &Catalogo) -> String {
+    if cuando_ms <= 0 {
+        return String::new();
+    }
+    let (ano, mes, dia) = pixpin_ui::chat::partes_fecha(cuando_ms);
+    let (ano_ahora, _, _) = pixpin_ui::chat::partes_fecha(ahora_ms);
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("dia", dia);
+    args.set("mes", textos.t(&format!("chat-mes-{mes}")));
+    if ano == ano_ahora {
+        return textos.t_args("chat-fecha", &args);
+    }
+    args.set("ano", ano);
+    textos.t_args("chat-fecha-con-ano", &args)
 }
