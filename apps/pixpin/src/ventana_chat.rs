@@ -60,6 +60,8 @@ struct Tema {
     buscador: Color,
     /// El azul del boton de enviar (`historySendIconFg`).
     enviar: Color,
+    /// El fondo sobre el que se ensena un lienzo: una hoja de papel.
+    papel: Color,
     /// Las burbujas del historial, su texto, su hora y la pildora que
     /// separa los dias.
     burbuja_mia: Color,
@@ -92,6 +94,7 @@ const CLARO: Tema = Tema {
     // filterInputInactiveBg.
     buscador: hex(0xf1f1f1),
     enviar: hex(0x40a7e3),
+    papel: hex(0xffffff),
     // msgOutBg, msgInBg y sus colores de texto y hora.
     burbuja_mia: hex(0xeffdde),
     burbuja_otra: hex(0xffffff),
@@ -123,6 +126,9 @@ const OSCURO: Tema = Tema {
     // filterInputInactiveBg.
     buscador: hex(0x242f3d),
     enviar: hex(0x5288c1),
+    // En oscuro tampoco se pinta negro sobre negro: el lienzo lleva su
+    // hoja clara, solo un poco apagada para no deslumbrar.
+    papel: hex(0xe8e8e8),
     // msgOutBg, msgInBg y sus colores de texto y hora.
     burbuja_mia: hex(0x2b5278),
     burbuja_otra: hex(0x182533),
@@ -663,6 +669,10 @@ struct Abierto {
     /// Lineas del cuaderno que no se entendieron. Se ensenan: si faltan
     /// mensajes, el usuario tiene que enterarse.
     rotas: usize,
+    /// El lienzo de cada mensaje que sea un dibujo, si se pudo leer. Va en
+    /// paralelo a `mensajes` y se lee UNA vez al abrir el proyecto: leer y
+    /// traducir un excalidraw en cada fotograma seria tirar el rato.
+    vistas: Vec<Option<LienzoVisto>>,
     /// Cual de los mensajes esta fijado, si hay alguno. En Android es el
     /// campo `fijado`; aqui se ensena en una barra bajo la cabecera.
     fijado: Option<usize>,
@@ -1198,7 +1208,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
         if c.ancho != ancho_contenido || c.puestos.len() != a.mensajes.len() {
             let mut entradas = Vec::with_capacity(a.mensajes.len());
             let mut lineas = Vec::with_capacity(a.mensajes.len());
-            for m in &a.mensajes {
+            for (indice, m) in a.mensajes.iter().enumerate() {
                 let mut texto = m.resumen();
                 if let Some(etiqueta) = clase_de(m, textos) {
                     texto = if texto.is_empty() {
@@ -1219,11 +1229,18 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                 // de sus lineas llega al borde y la hora tiene sitio.
                 let estrecho = (ancho_contenido as f32 - reserva).max(1.0);
                 let cabe_al_lado = p.medir_texto_ajustado(&texto, tam, estrecho).1 <= alto + 0.5;
-                let (ancho, alto) = if cabe_al_lado {
+                let (mut ancho, mut alto) = if cabe_al_lado {
                     ((ancho + reserva).min(ancho_contenido as f32), alto)
                 } else {
                     (ancho, alto + alto_hora)
                 };
+                // Un dibujo ensena su lienzo: la vista previa manda sobre
+                // el texto, que queda como pie.
+                if a.vistas.get(indice).is_some_and(|v| v.is_some()) {
+                    let vista_ancho = (h::VISTA_ANCHO as f32 * e).min(ancho_contenido as f32);
+                    ancho = ancho.max(vista_ancho);
+                    alto += h::VISTA_ALTO as f32 * e + h::RELLENO_Y as f32 * e;
+                }
                 entradas.push(h::Entrada {
                     alto: alto.ceil() as u32,
                     ancho: ancho.ceil() as u32,
@@ -1298,10 +1315,26 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
             y: burbuja.y + (h::RELLENO_Y as f32 * e) as i32,
             ..mover(puesto.dentro(escala))
         };
+        // Si es un dibujo, primero el lienzo y el texto debajo, como pie.
+        let mut texto_y = dentro.y as f32;
+        if let Some(Some(vista)) = a.vistas.get(i) {
+            let alto_vista = h::VISTA_ALTO as f32 * e;
+            let hoja = RectF {
+                x: dentro.x as f32,
+                y: texto_y,
+                ancho: dentro.ancho as f32,
+                alto: alto_vista,
+            };
+            // Fondo de papel: un dibujo se hace sobre blanco, y su trazo
+            // oscuro sobre la burbuja azul no se leeria.
+            p.rellenar_redondeado(hoja, 6.0 * e, tema.papel);
+            pintar_lienzo(p, vista, hoja);
+            texto_y += alto_vista + h::RELLENO_Y as f32 * e;
+        }
         p.parrafo(
             &c.lineas[i],
             dentro.x as f32,
-            dentro.y as f32,
+            texto_y,
             h::TEXTO_TAM * e,
             dentro.ancho as f32,
             &[],
@@ -1345,9 +1378,14 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
     // El ultimo fijado manda, como en Android: fijar otro sustituye al
     // anterior en la barra.
     let fijado = mensajes.iter().rposition(|m| m.fijado);
+    let vistas = mensajes
+        .iter()
+        .map(|m| leer_vista(ubicacion, &ficha.id, m))
+        .collect();
     Abierto {
         ficha: ficha.clone(),
         mensajes,
+        vistas,
         rotas: cuaderno.lineas_rotas,
         fijado,
         borrador: String::new(),
@@ -1569,6 +1607,7 @@ fn adjuntar(
     // Primero al cuaderno y solo despues a la pantalla, como al escribir.
     cuaderno::anadir(&almacen::carpeta(raiz, &a.ficha.id), &mensaje)?;
     a.mensajes.push(mensaje);
+    a.vistas.push(None);
     a.ficha.tocado = cuando;
     a.ficha.resumen = nombre.to_string();
     let mut indice = almacen::Indice::leer(raiz);
@@ -1652,4 +1691,111 @@ fn meter_ficheros(
         }
     }
     hechos
+}
+
+/// Un lienzo ya leido y listo para pintar en su burbuja.
+struct LienzoVisto {
+    ordenes: Vec<pixpin_motor2d::Orden>,
+    /// La caja que ocupa el dibujo, en sus propias coordenadas.
+    caja: (f32, f32, f32, f32),
+}
+
+/// Lee el lienzo de un mensaje de clase DIBUJO.
+///
+/// Devuelve `None` si el mensaje no apunta a ninguno, si su fichero no esta
+/// o si el dibujo esta vacio: una burbuja con un recuadro en blanco es peor
+/// que una que diga «Dibujo» y su nombre.
+fn leer_vista(
+    ubicacion: &Ubicacion,
+    proyecto: &str,
+    m: &pixpin_proyecto::cuaderno::Mensaje,
+) -> Option<LienzoVisto> {
+    use pixpin_proyecto::cuaderno::Clase;
+    if m.clase != Some(Clase::Dibujo) {
+        return None;
+    }
+    // `referencia` es el id del dibujo, no un fichero: asi lo escribe
+    // Android, y por eso no se usa `ruta`.
+    let id = m.referencia.as_deref().filter(|r| !r.is_empty())?;
+    let ruta = pixpin_proyecto::almacen::lienzo(ubicacion.raiz(), proyecto, id);
+    let texto = std::fs::read_to_string(&ruta)
+        .inspect_err(|e| tracing::warn!(?e, ruta = %ruta.display(), "lienzo que no se pudo leer"))
+        .ok()?;
+    let lienzo = pixpin_motor2d::excalidraw::leer(&texto)
+        .inspect_err(|e| tracing::warn!(?e, "lienzo que no se entiende"))
+        .ok()?;
+    let mut escena = pixpin_motor2d::Escena::nueva();
+    for e in lienzo.elementos() {
+        escena.anadir(e);
+    }
+    let caja = escena.caja()?;
+    let ordenes = pixpin_motor2d::ordenes_de_escena(&escena);
+    if ordenes.is_empty() {
+        return None;
+    }
+    Some(LienzoVisto { ordenes, caja })
+}
+
+/// Pinta un lienzo dentro de `destino`, entero y sin deformarlo.
+fn pintar_lienzo(p: &Pintor, vista: &LienzoVisto, destino: RectF) {
+    use pixpin_motor2d::Orden;
+    let (x0, y0, x1, y1) = vista.caja;
+    let (ancho, alto) = ((x1 - x0).max(1.0), (y1 - y0).max(1.0));
+    // La misma escala en los dos ejes, y centrado: deformar un plano para
+    // que llene la caja lo hace ilegible.
+    let escala = (destino.ancho / ancho).min(destino.alto / alto);
+    let dx = destino.x + (destino.ancho - ancho * escala) / 2.0;
+    let dy = destino.y + (destino.alto - alto * escala) / 2.0;
+    let mover = |q: &pixpin_motor2d::Punto2| ((q.x - x0) * escala + dx, (q.y - y0) * escala + dy);
+    let color = |c: pixpin_motor2d::ColorRgba| Color {
+        r: c.r,
+        g: c.g,
+        b: c.b,
+        a: c.a,
+    };
+
+    p.empujar_recorte(destino);
+    for orden in &vista.ordenes {
+        match orden {
+            Orden::Poligono { puntos, color: c } | Orden::Relleno { puntos, color: c } => {
+                let v: Vec<(f32, f32)> = puntos.iter().map(mover).collect();
+                p.poligono(&v, color(*c));
+            }
+            Orden::Tinta { contorno, color: c } => {
+                let v: Vec<(f32, f32)> = contorno.iter().map(mover).collect();
+                p.tinta(&v, color(*c));
+            }
+            Orden::Polilinea {
+                puntos,
+                color: c,
+                grosor,
+                ..
+            } => {
+                let v: Vec<(f32, f32)> = puntos.iter().map(mover).collect();
+                // El grosor escala con el dibujo; si no, un trazo grueso en
+                // una vista pequena lo taparia entero.
+                p.polilinea(&v, (grosor * escala).max(0.75), color(*c));
+            }
+            Orden::Texto {
+                texto,
+                x,
+                y,
+                tam,
+                color: c,
+                ancho_max,
+                ..
+            } => p.texto_ajustado(
+                texto,
+                (x - x0) * escala + dx,
+                (y - y0) * escala + dy,
+                (tam * escala).max(4.0),
+                ancho_max * escala,
+                color(*c),
+            ),
+            // El velo es de la capa viva y las imagenes incrustadas todavia
+            // no tienen almacen: en una vista previa no se echan de menos.
+            Orden::Velo { .. } | Orden::Imagen { .. } => {}
+        }
+    }
+    p.soltar_recorte();
 }

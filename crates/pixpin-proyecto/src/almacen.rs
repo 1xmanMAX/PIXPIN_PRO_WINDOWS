@@ -98,6 +98,15 @@ pub fn carpeta(raiz: &Path, id: &str) -> PathBuf {
     raiz.join("proyectos").join(id)
 }
 
+/// El fichero de un lienzo del proyecto, con el mismo nombre que dentro del
+/// `.pixpin` (`lienzos/<dibujo>.excalidraw`): asi un proyecto abierto y uno
+/// empaquetado se leen igual.
+pub fn lienzo(raiz: &Path, id: &str, dibujo: &str) -> PathBuf {
+    carpeta(raiz, id)
+        .join("lienzos")
+        .join(format!("{dibujo}.excalidraw"))
+}
+
 /// Deja un nombre de fichero en algo que se pueda escribir en cualquier
 /// disco: sin separadores, sin los signos que Windows prohibe y sin los
 /// nombres reservados. Un nombre que venga de fuera no puede decidir donde

@@ -49,6 +49,11 @@ pub const HORA_HUECO: u32 = 12;
 /// Lo que la hora invade el relleno de la burbuja, a la derecha y abajo.
 pub const HORA_INVADE_X: u32 = 2;
 pub const HORA_INVADE_Y: u32 = 5;
+/// La vista previa de un lienzo dentro de su burbuja. Cabe entera dentro de
+/// esta caja, sin deformarse: un dibujo apaisado y uno alto se ensenan
+/// igual de legibles.
+pub const VISTA_ANCHO: u32 = 260;
+pub const VISTA_ALTO: u32 = 180;
 
 /// Un mensaje a colocar, ya medido por quien pinta.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
