@@ -74,6 +74,8 @@ pub enum Comando {
     CopiarTexto,
     /// Fijar encima de todo la ventana que haya bajo el raton, o bajarla.
     VentanaEncima,
+    /// Abrir la ventana de chat: los proyectos como conversaciones.
+    AbrirChat,
     /// Abrir la ventana de ajustes.
     AbrirAjustes,
     /// Cerrar el programa.
@@ -268,6 +270,13 @@ pub const CATALOGO: &[Descriptor] = &[
         clave_titulo: "comando-ventana-encima",
         atajo_por_defecto: None,
         en_bandeja: false,
+    },
+    Descriptor {
+        comando: Comando::AbrirChat,
+        nombre: "abrir-chat",
+        clave_titulo: "comando-abrir-chat",
+        atajo_por_defecto: None,
+        en_bandeja: true,
     },
     Descriptor {
         comando: Comando::AbrirAjustes,
@@ -465,6 +474,7 @@ mod pruebas {
         Comando::CerrarTodosLosPines,
         Comando::CopiarTexto,
         Comando::VentanaEncima,
+        Comando::AbrirChat,
         Comando::AbrirAjustes,
         Comando::Salir,
     ];

@@ -65,6 +65,7 @@ mod pines;
 mod reproductor;
 mod scroll;
 mod ventana_ajustes;
+mod ventana_chat;
 mod ventana_editor;
 
 use anyhow::{Context, Result};
@@ -645,6 +646,16 @@ fn arrancar(
                     pixpin_shell::Fijada::SinVentana => {
                         tracing::info!("bajo el cursor no hay ventana que fijar")
                     }
+                }
+                Continuar::Si
+            }
+            _ if comando == Some(comandos::Comando::AbrirChat) => {
+                let recursos = match &mut recursos_overlay {
+                    Some(r) => Ok(&*r),
+                    nada => Recursos::nuevos().map(|r| &*nada.insert(r)),
+                };
+                if let Err(e) = recursos.and_then(|r| ventana_chat::abrir(r, &textos)) {
+                    tracing::warn!(?e, "no se pudo abrir el chat de proyectos");
                 }
                 Continuar::Si
             }
