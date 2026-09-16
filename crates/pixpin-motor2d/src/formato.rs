@@ -81,6 +81,7 @@ mod pruebas {
             alto: 0.0,
             angulo: 0.0,
             trazo: ColorRgba::opaco(0.1, 0.2, 0.3),
+            estilo_relleno: Default::default(),
             relleno: None,
             grosor: 3.0,
             estilo: EstiloTrazo::Solido,

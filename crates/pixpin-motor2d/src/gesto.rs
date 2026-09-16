@@ -613,6 +613,7 @@ impl Gesto {
             angulo: 0.0,
             trazo: self.estilo.trazo,
             // El fondo solo tiene sentido en lo que encierra un area.
+            estilo_relleno: Default::default(),
             relleno: match self.herramienta {
                 Herramienta::Rectangulo | Herramienta::Elipse => self.estilo.relleno,
                 _ => None,
@@ -1224,6 +1225,7 @@ mod pruebas {
             alto,
             angulo: 0.0,
             trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            estilo_relleno: Default::default(),
             relleno: Some(ColorRgba::opaco(1.0, 0.0, 0.0)),
             grosor: 2.0,
             estilo: EstiloTrazo::Solido,
@@ -2260,6 +2262,7 @@ mod pruebas {
             alto: 50.0,
             angulo: 0.0,
             trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            estilo_relleno: Default::default(),
             relleno: None,
             grosor: 2.0,
             estilo: EstiloTrazo::Solido,

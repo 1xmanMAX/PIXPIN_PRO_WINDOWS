@@ -32,6 +32,7 @@ use serde_json::{Map, Value};
 
 use crate::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
 use crate::medida::Escala;
+use crate::relleno::EstiloRelleno;
 use crate::vector::Punto2;
 
 #[derive(Debug, thiserror::Error)]
@@ -248,6 +249,28 @@ fn puntos_hacia(puntos: &[Punto2], x: f32, y: f32) -> Value {
     )
 }
 
+/// El `fillStyle` de Excalidraw, con sus tres palabras exactas.
+///
+/// Cualquier otra cosa —que no venga, que venga vacia, o que sea un estilo de
+/// una version futura del movil— cae en el de por omision. No se rechaza el
+/// elemento entero por esto: un relleno que no sabemos pintar no es motivo
+/// para que un rectangulo deje de ser un rectangulo.
+fn estilo_relleno_desde(v: Option<&Value>) -> EstiloRelleno {
+    match v.and_then(Value::as_str) {
+        Some("solid") => EstiloRelleno::Solido,
+        Some("cross-hatch") => EstiloRelleno::Cruzado,
+        _ => EstiloRelleno::Rayado,
+    }
+}
+
+fn estilo_relleno_hacia(e: EstiloRelleno) -> &'static str {
+    match e {
+        EstiloRelleno::Solido => "solid",
+        EstiloRelleno::Rayado => "hachure",
+        EstiloRelleno::Cruzado => "cross-hatch",
+    }
+}
+
 /// Traduce un elemento de Excalidraw al nuestro. `None` si no sabemos que es.
 fn elemento_desde(v: &Value) -> Option<Elemento> {
     let tipo = v.get("type")?.as_str()?;
@@ -335,6 +358,7 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
         angulo: num_o(v, "angle", 0.0),
         trazo: color_desde(v.get("strokeColor")).unwrap_or(ColorRgba::opaco(0.1, 0.1, 0.1)),
         relleno: color_desde(v.get("backgroundColor")),
+        estilo_relleno: estilo_relleno_desde(v.get("fillStyle")),
         grosor: num_o(v, "strokeWidth", 2.0),
         estilo: match v.get("strokeStyle").and_then(|s| s.as_str()) {
             Some("dashed") => EstiloTrazo::Discontinuo,
@@ -390,6 +414,22 @@ fn elemento_hacia(e: &Elemento, original: &Value) -> Value {
             None => "transparent".into(),
         }),
     );
+    // Un `fillStyle` que no entendemos se lee como el de por omision, asi que
+    // reescribirlo lo destruiria: un estilo de una version futura del movil
+    // entraria como «hachure» y saldria como «hachure» para siempre. Mientras
+    // el estilo siga siendo el de por omision -o sea, mientras aqui no se haya
+    // tocado- se devuelve el original tal cual, la misma regla que ya protege
+    // a la escala y a los elementos ajenos.
+    let sin_entender = mapa
+        .get("fillStyle")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !matches!(s, "solid" | "hachure" | "cross-hatch"));
+    if !(sin_entender && e.estilo_relleno == EstiloRelleno::default()) {
+        mapa.insert(
+            "fillStyle".into(),
+            Value::String(estilo_relleno_hacia(e.estilo_relleno).into()),
+        );
+    }
     mapa.insert("strokeWidth".into(), Value::from(e.grosor as f64));
     mapa.insert(
         "strokeStyle".into(),
@@ -658,6 +698,86 @@ mod pruebas {
         // Con alfa, ocho digitos.
         let medio = color_desde(Some(&Value::String("#00ff0080".into()))).unwrap();
         assert_eq!(color_hacia(medio), "#00ff0080");
+    }
+
+    #[test]
+    fn las_tres_palabras_del_fill_style_se_leen_y_se_escriben() {
+        let json = r##"{"type":"excalidraw","elements":[
+            {"type":"rectangle","x":0,"y":0,"width":10,"height":10,
+             "backgroundColor":"#ffcc00","fillStyle":"cross-hatch","seed":1},
+            {"type":"rectangle","x":20,"y":0,"width":10,"height":10,
+             "backgroundColor":"#ffcc00","fillStyle":"solid","seed":2},
+            {"type":"rectangle","x":40,"y":0,"width":10,"height":10,
+             "backgroundColor":"#ffcc00","fillStyle":"hachure","seed":3}
+        ]}"##;
+        let l = leer(json).unwrap();
+        let e = l.elementos();
+        assert_eq!(e[0].estilo_relleno, EstiloRelleno::Cruzado);
+        assert_eq!(e[1].estilo_relleno, EstiloRelleno::Solido);
+        assert_eq!(e[2].estilo_relleno, EstiloRelleno::Rayado);
+
+        let vuelta = escribir(&l);
+        assert!(vuelta.contains("\"cross-hatch\""), "{vuelta}");
+        assert!(vuelta.contains("\"solid\""));
+        assert!(vuelta.contains("\"hachure\""));
+        let estilos: Vec<EstiloRelleno> = leer(&vuelta)
+            .unwrap()
+            .elementos()
+            .iter()
+            .map(|x| x.estilo_relleno)
+            .collect();
+        assert_eq!(
+            estilos,
+            e.iter().map(|x| x.estilo_relleno).collect::<Vec<_>>(),
+            "la ida y vuelta cambio algun estilo de relleno"
+        );
+    }
+
+    #[test]
+    fn un_elemento_sin_fill_style_se_lee_rayado_como_en_excalidraw() {
+        // Su `currentItemFillStyle` es «hachure»: si aqui cayera en solido, el
+        // mismo fichero se veria rayado en el movil y como una mancha aqui.
+        let json = r##"{"type":"excalidraw","elements":[
+            {"type":"rectangle","x":0,"y":0,"width":10,"height":10,
+             "backgroundColor":"#ffcc00","seed":1}
+        ]}"##;
+        assert_eq!(
+            leer(json).unwrap().elementos()[0].estilo_relleno,
+            EstiloRelleno::Rayado
+        );
+    }
+
+    #[test]
+    fn un_fill_style_desconocido_no_rompe_la_lectura_ni_se_pierde_al_escribir() {
+        // Caso negativo: un estilo de una version futura del movil no puede
+        // tumbar el elemento entero -un relleno raro no deja de ser un
+        // rectangulo- ni desaparecer al pasar por Windows, que es la misma
+        // regla que protege a la escala y a los elementos ajenos.
+        let json = r##"{"type":"excalidraw","elements":[
+            {"type":"rectangle","x":0,"y":0,"width":10,"height":10,
+             "backgroundColor":"#ffcc00","fillStyle":"zigzag-del-futuro","seed":1}
+        ]}"##;
+        let mut l = leer(json).unwrap();
+        assert_eq!(l.cuantos_ajenos(), 0, "sigue siendo un rectangulo nuestro");
+        assert_eq!(
+            l.elementos()[0].estilo_relleno,
+            EstiloRelleno::Rayado,
+            "lo que no se entiende cae en el de por omision"
+        );
+        assert!(
+            escribir(&l).contains("zigzag-del-futuro"),
+            "el estilo que no entendemos tiene que volver intacto"
+        );
+
+        // Pero en cuanto se cambia aqui, manda lo de aqui: si no, el estilo
+        // elegido en Windows no llegaria nunca al movil.
+        primero_mut(&mut l).estilo_relleno = EstiloRelleno::Solido;
+        let vuelta = escribir(&l);
+        assert!(!vuelta.contains("zigzag-del-futuro"), "{vuelta}");
+        assert_eq!(
+            leer(&vuelta).unwrap().elementos()[0].estilo_relleno,
+            EstiloRelleno::Solido
+        );
     }
 
     #[test]
@@ -937,6 +1057,7 @@ mod pruebas {
                 alto: 0.0,
                 angulo: 0.0,
                 trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+                estilo_relleno: Default::default(),
                 relleno: None,
                 grosor: 2.0,
                 estilo: EstiloTrazo::Solido,

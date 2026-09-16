@@ -104,6 +104,7 @@ mod pruebas {
             alto: 100.0,
             angulo: 0.0,
             trazo: pixpin_motor2d::elemento::ColorRgba::opaco(0.0, 0.0, 0.0),
+            estilo_relleno: Default::default(),
             relleno: None,
             grosor: 2.0,
             estilo: pixpin_motor2d::elemento::EstiloTrazo::Solido,

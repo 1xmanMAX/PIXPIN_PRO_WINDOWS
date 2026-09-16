@@ -11,6 +11,7 @@
 //! luego estorba al seleccionar.
 
 use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+use pixpin_motor2d::relleno::EstiloRelleno;
 use pixpin_motor2d::vector::Punto2;
 
 /// Cuanto hay que moverse para que deje de ser un clic (px logicos).
@@ -514,6 +515,7 @@ impl Anotador {
             alto: tam * 1.3,
             angulo: 0.0,
             trazo: self.color,
+            estilo_relleno: Default::default(),
             relleno: None,
             grosor: self.grosor,
             estilo: EstiloTrazo::Solido,
@@ -623,6 +625,11 @@ impl Anotador {
             angulo: 0.0,
             trazo: color,
             relleno,
+            // Solido a proposito, y no el rayado que trae por omision el
+            // campo: el panel todavia no ofrece elegir el estilo del relleno,
+            // asi que lo que se dibuja aqui tiene que seguir saliendo como
+            // salia. Cuando el panel lo ofrezca, este valor saldra de el.
+            estilo_relleno: EstiloRelleno::Solido,
             // La capa y el pin miden el grosor en pixeles (la rueda lo
             // cambia asi); la tinta de Excalidraw lo quiere como strokeWidth.
             grosor: if self.herramienta == Herramienta::Lapiz {

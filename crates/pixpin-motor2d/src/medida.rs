@@ -243,6 +243,7 @@ mod pruebas {
             alto: (b.y - a.y).abs(),
             angulo: 0.0,
             trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            estilo_relleno: Default::default(),
             relleno: None,
             grosor: 0.0,
             estilo: EstiloTrazo::Solido,

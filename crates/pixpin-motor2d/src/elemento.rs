@@ -12,6 +12,7 @@ use std::mem::size_of;
 
 use serde::{Deserialize, Serialize};
 
+use crate::relleno::EstiloRelleno;
 use crate::vector::Punto2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,6 +135,20 @@ pub struct Elemento {
     pub trazo: ColorRgba,
     #[serde(default)]
     pub relleno: Option<ColorRgba>,
+    /// Como se pinta ese relleno: plano o rayado (ver `relleno.rs`).
+    ///
+    /// El valor por omision del TIPO es rayado, que es lo que significa un
+    /// elemento sin `fillStyle` en Excalidraw y en el movil; asi lo lee
+    /// `excalidraw::leer`, explicitamente.
+    ///
+    /// Pero al leer un documento NUESTRO sin este campo se usa SOLIDO, que es
+    /// como se veia cuando se guardo. Son dos origenes distintos y cada uno
+    /// merece su respuesta: un `.excalidraw` sin `fillStyle` siempre quiso
+    /// decir rayado, y un `.pixpin2d` de antes de que esto existiera se
+    /// dibujo solido. Igualarlos cambiaria el aspecto de lo que el usuario ya
+    /// tiene guardado, que es lo que no se puede hacer.
+    #[serde(default = "relleno_solido")]
+    pub estilo_relleno: EstiloRelleno,
     pub grosor: f32,
     #[serde(default = "estilo_por_defecto")]
     pub estilo: EstiloTrazo,
@@ -159,6 +174,10 @@ pub struct Elemento {
     /// verdad sobre lo mismo.
     #[serde(default)]
     pub grupos: Vec<String>,
+}
+
+fn relleno_solido() -> EstiloRelleno {
+    EstiloRelleno::Solido
 }
 
 fn estilo_por_defecto() -> EstiloTrazo {
@@ -296,6 +315,7 @@ mod pruebas {
             alto: 0.0,
             angulo: 0.0,
             trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            estilo_relleno: Default::default(),
             relleno: None,
             grosor: 4.0,
             estilo: EstiloTrazo::Solido,
@@ -422,6 +442,16 @@ mod pruebas {
         assert_eq!(e.rugosidad, 1.0, "la rugosidad por defecto es 1");
         assert_eq!(e.semilla, 1, "una semilla ausente vale 1, nunca 0");
         assert_eq!(e.estilo, EstiloTrazo::Solido);
+        // Esto es un documento NUESTRO, no un `.excalidraw`: uno guardado
+        // antes de que existiera este campo se dibujo solido, y reabrirlo
+        // rayado cambiaria el aspecto de lo que el usuario ya tiene. El
+        // rayado es lo que significa un `.excalidraw` SIN `fillStyle`, y de
+        // eso se encarga `excalidraw::leer`, que lo pone explicitamente.
+        assert_eq!(
+            e.estilo_relleno,
+            EstiloRelleno::Solido,
+            "un documento nuestro de antes de este campo se dibujo solido"
+        );
         assert!(!e.borrado);
     }
 

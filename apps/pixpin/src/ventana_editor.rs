@@ -1877,6 +1877,7 @@ mod pruebas {
         let id = escena.anadir(Elemento {
             id: 0,
             figura: Figura::Rectangulo,
+            estilo_relleno: Default::default(),
             x: 0.0,
             y: 0.0,
             ancho: 100.0,
@@ -2237,6 +2238,7 @@ mod pruebas {
         // vuelve a "olvidarse" del rotulo. Por eso el sumidero es un cierre
         // y no el `Pintor`: pasarle el pintor habria matado esta prueba.
         let cota = Elemento {
+            estilo_relleno: Default::default(),
             figura: Figura::Cota {
                 puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
             },

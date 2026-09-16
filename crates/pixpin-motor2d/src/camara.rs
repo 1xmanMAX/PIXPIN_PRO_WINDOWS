@@ -218,6 +218,7 @@ mod pruebas {
                 b: 0.0,
                 a: 1.0,
             },
+            estilo_relleno: Default::default(),
             relleno: None,
             grosor: 1.0,
             estilo: EstiloTrazo::Solido,

@@ -33,6 +33,7 @@ fn elemento(i: u64) -> Elemento {
         alto: 80.0,
         angulo: 0.0,
         trazo: ColorRgba::opaco(0.1, 0.1, 0.1),
+        estilo_relleno: Default::default(),
         relleno: None,
         grosor: 2.0,
         estilo: EstiloTrazo::Solido,

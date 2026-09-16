@@ -35,6 +35,7 @@ pub mod medida;
 pub mod organizar;
 pub mod pintado;
 pub mod portapapeles;
+pub mod relleno;
 pub mod seleccion;
 pub mod tinta;
 pub mod tiradores;
@@ -60,5 +61,6 @@ pub use pintado::{
     Orden, marco_de_seleccion, ordenes, ordenes_a_distancia, ordenes_de_escena,
     ordenes_de_escena_vista,
 };
+pub use relleno::{EstiloRelleno, lineas_de_rayado};
 pub use seleccion::Seleccion;
 pub use vector::{Punto2, distancia_a_segmento};

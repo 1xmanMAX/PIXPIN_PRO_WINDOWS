@@ -35,6 +35,33 @@ pub const CABECERA: u32 = 54;
 pub const VOLVER_ANCHO: u32 = 60;
 pub const TITULO_TAM: f32 = 14.0;
 
+/// Como CAPA FLOTANTE: un recuadro redondeado centrado sobre la
+/// conversacion, con velo detras. Es lo que se ve en Telegram cuando la
+/// ventana no da para tres columnas, y es la forma que se copia aqui.
+pub const CAPA_ANCHO_MINIMO: u32 = 324;
+pub const CAPA_ANCHO_DESEADO: u32 = 392;
+/// Lo que se le deja a cada lado. Si la ventana no da ni para el minimo mas
+/// estos margenes, la capa pasa a pantalla completa.
+pub const CAPA_MARGEN: u32 = 48;
+/// Arriba y abajo el margen no es fijo: es la veinticuatroava parte del alto,
+/// sujeta entre estos dos. En una ventana baja la capa casi la llena; en una
+/// alta no se estira hasta parecer una columna.
+pub const CAPA_MARGEN_ARRIBA_MINIMO: u32 = 20;
+pub const CAPA_MARGEN_ARRIBA_MAXIMO: u32 = 40;
+pub const CAPA_RADIO: u32 = 8;
+/// La cabecera de la capa es un poco mas alta que la de la columna.
+pub const CAPA_CABECERA: u32 = 56;
+/// El titulo y su subtitulo, cuando lleva los dos.
+pub const CAPA_TITULO_X: u32 = 16;
+pub const CAPA_TITULO_Y: u32 = 8;
+pub const CAPA_SUBTITULO_Y: u32 = 28;
+pub const CAPA_TITULO_TAM: f32 = 14.0;
+pub const CAPA_SUBTITULO_TAM: f32 = 13.0;
+/// Los dos botones de la derecha. El aspa es de 48 y la lupa de 56: no es un
+/// descuido, es lo que mide cada uno en Telegram.
+pub const CAPA_BOTON_CERRAR: u32 = 48;
+pub const CAPA_BOTON_BUSCAR: u32 = 56;
+
 /// La ficha de arriba: avatar grande, nombre y estado.
 pub const FICHA_ALTO: u32 = 108;
 pub const FICHA_AVATAR: u32 = 72;
@@ -87,7 +114,9 @@ pub struct Disposicion {
     pub ficha: Rect,
     /// La tira de pestanas entera.
     pub tira: Rect,
-    /// La «isla» de dentro de la tira, que es lo que lleva fondo.
+    /// La «isla» de dentro de la tira, que es lo que lleva fondo. Va CENTRADA
+    /// y solo tan ancha como sus pestanas: una isla a todo lo ancho con las
+    /// pestanas apretadas a la izquierda se ve distinta.
     pub isla: Rect,
     /// Lo que queda debajo para el contenido.
     pub contenido: Rect,
@@ -106,7 +135,101 @@ pub fn ancho_panel(ancho_ventana: u32, escala_por_cien: u32) -> u32 {
     e(ANCHO_MINIMO).max(e(ANCHO_MAXIMO).min(ancho_ventana / 3))
 }
 
+/// Donde cae la capa flotante dentro de la ventana.
+///
+/// Se centra, con su ancho deseado si cabe y sus margenes a los lados. En una
+/// ventana pequena no cabe ni el minimo con margenes: entonces se lo queda
+/// todo, que es lo que hace Telegram en vez de encoger hasta lo ilegible.
+pub fn capa_en(ventana: Rect, escala_por_cien: u32) -> (Rect, bool) {
+    let e = |v: u32| v * escala_por_cien / 100;
+    let minimo_con_margenes = e(CAPA_ANCHO_MINIMO) + 2 * e(CAPA_MARGEN);
+    if ventana.ancho < minimo_con_margenes {
+        return (ventana, true);
+    }
+    let ancho = e(CAPA_ANCHO_DESEADO).min(ventana.ancho - 2 * e(CAPA_MARGEN));
+    // Alta pero no pegada a los bordes: se le deja el mismo aire arriba y
+    // abajo que a los lados.
+    // Arriba y abajo, la veinticuatroava parte del alto, sujeta entre 20 y 40.
+    let margen =
+        (ventana.alto / 24).clamp(e(CAPA_MARGEN_ARRIBA_MINIMO), e(CAPA_MARGEN_ARRIBA_MAXIMO));
+    let alto = ventana.alto.saturating_sub(2 * margen).max(1);
+    (
+        Rect {
+            x: ventana.x + (ventana.ancho as i32 - ancho as i32) / 2,
+            y: ventana.y + (ventana.alto as i32 - alto as i32) / 2,
+            ancho,
+            alto,
+        },
+        false,
+    )
+}
+
 impl Disposicion {
+    /// Reparte el panel como CAPA: cabecera con titulo y subtitulo, dos
+    /// botones a la derecha, la isla de pestanas y el contenido.
+    ///
+    /// La diferencia con la columna no es solo el sitio: aqui no hay flecha
+    /// de volver a la izquierda —se cierra con el aspa— y la cabecera es un
+    /// poco mas alta porque lleva dos lineas.
+    pub fn capa(caja: Rect, escala_por_cien: u32) -> Disposicion {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let cabecera = Rect {
+            alto: e(CAPA_CABECERA).min(caja.alto),
+            ..caja
+        };
+        let tira = Rect {
+            x: caja.x,
+            y: cabecera.abajo(),
+            ancho: caja.ancho,
+            alto: e(TIRA_ALTO).min(caja.alto.saturating_sub(cabecera.alto)),
+        };
+        let isla = Rect {
+            x: tira.x + e(TIRA_MARGEN_X) as i32,
+            y: tira.y + e(TIRA_MARGEN_Y) as i32,
+            ancho: tira.ancho.saturating_sub(2 * e(TIRA_MARGEN_X)),
+            alto: tira.alto.saturating_sub(2 * e(TIRA_MARGEN_Y)),
+        };
+        let arriba = tira.abajo();
+        Disposicion {
+            panel: caja,
+            cabecera,
+            // En la capa el aspa hace de «volver»: cierra.
+            volver: Rect {
+                x: cabecera.derecha() - e(CAPA_BOTON_CERRAR) as i32,
+                y: cabecera.y,
+                ancho: e(CAPA_BOTON_CERRAR).min(cabecera.ancho),
+                alto: cabecera.alto,
+            },
+            // La capa no tiene ficha: el nombre ya esta en la cabecera.
+            ficha: Rect {
+                x: caja.x,
+                y: cabecera.abajo(),
+                ancho: caja.ancho,
+                alto: 0,
+            },
+            tira,
+            isla,
+            contenido: Rect {
+                x: caja.x,
+                y: arriba,
+                ancho: caja.ancho,
+                alto: (caja.abajo() - arriba).max(0) as u32,
+            },
+            pantalla_completa: false,
+        }
+    }
+
+    /// El boton de la lupa, a la izquierda del aspa.
+    pub fn buscar(&self, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        Rect {
+            x: self.volver.x - e(CAPA_BOTON_BUSCAR) as i32,
+            y: self.cabecera.y,
+            ancho: e(CAPA_BOTON_BUSCAR),
+            alto: self.cabecera.alto,
+        }
+    }
+
     /// Reparte el panel dentro de `hueco`, que es la columna de la derecha o
     /// la ventana entera.
     pub fn calcular(hueco: Rect, pantalla_completa: bool, escala_por_cien: u32) -> Disposicion {
@@ -193,13 +316,17 @@ impl Disposicion {
     }
 
     /// La pildora de la pestana activa: su rectangulo, ya encogido.
+    /// La pildora de la pestana activa: su rectangulo, encogido por los
+    /// CUATRO lados, no solo arriba y abajo. Asi queda del ancho del texto mas
+    /// su relleno menos los dos retranqueos, que es como se ve en Telegram.
     pub fn pildora(&self, pestana: Rect, escala_por_cien: u32) -> Rect {
         let e = |v: u32| v * escala_por_cien / 100;
+        let hueco = e(PILDORA_HUECO);
         Rect {
-            x: pestana.x,
-            y: pestana.y + e(PILDORA_HUECO) as i32,
-            ancho: pestana.ancho,
-            alto: pestana.alto.saturating_sub(2 * e(PILDORA_HUECO)),
+            x: pestana.x + hueco as i32,
+            y: pestana.y + hueco as i32,
+            ancho: pestana.ancho.saturating_sub(2 * hueco),
+            alto: pestana.alto.saturating_sub(2 * hueco),
         }
     }
 
@@ -387,9 +514,11 @@ mod pruebas {
         let d = Disposicion::calcular(hueco(), false, 100);
         let p = d.pestanas(&[40.0], 100);
         let pildora = d.pildora(p[0], 100);
-        assert_eq!(pildora.ancho, p[0].ancho, "de ancho, la misma");
+        // Encogida por los cuatro lados, no solo arriba y abajo.
+        assert_eq!(pildora.ancho, p[0].ancho - 2 * PILDORA_HUECO);
         assert_eq!(pildora.alto, p[0].alto - 2 * PILDORA_HUECO);
         assert!(pildora.y > p[0].y && pildora.abajo() < p[0].abajo());
+        assert!(pildora.x > p[0].x && pildora.derecha() < p[0].derecha());
         // Y se acierta donde se pulsa.
         let dentro = Punto {
             x: p[0].x + 5,
@@ -474,5 +603,57 @@ mod pruebas {
         assert_eq!(f.nombre.x, f.estado.x);
         assert!(f.nombre.x >= f.miniatura.derecha());
         assert!(f.ancho_texto > 0);
+    }
+
+    fn ventana() -> Rect {
+        Rect {
+            x: 0,
+            y: 0,
+            ancho: 1024,
+            alto: 768,
+        }
+    }
+
+    #[test]
+    fn la_capa_se_centra_y_deja_su_aire_a_los_lados() {
+        let (caja, completa) = capa_en(ventana(), 100);
+        assert!(!completa);
+        assert_eq!(caja.ancho, CAPA_ANCHO_DESEADO);
+        // Centrada: lo que sobra a la izquierda es lo que sobra a la derecha.
+        assert_eq!(caja.x, ventana().derecha() - caja.derecha());
+        assert_eq!(caja.y, ventana().abajo() - caja.abajo());
+        assert!(caja.alto < ventana().alto, "no llega a los bordes");
+    }
+
+    #[test]
+    fn en_una_ventana_pequena_la_capa_se_lo_queda_todo() {
+        // Caso negativo: por debajo del minimo mas sus margenes no cabe, y
+        // encoger hasta lo ilegible seria peor que taparlo todo.
+        let pequena = Rect {
+            x: 0,
+            y: 0,
+            ancho: CAPA_ANCHO_MINIMO + 2 * CAPA_MARGEN - 1,
+            alto: 500,
+        };
+        let (caja, completa) = capa_en(pequena, 100);
+        assert!(completa);
+        assert_eq!(caja, pequena);
+    }
+
+    #[test]
+    fn en_la_capa_el_aspa_va_a_la_derecha_y_la_lupa_a_su_lado() {
+        let (caja, _) = capa_en(ventana(), 100);
+        let d = Disposicion::capa(caja, 100);
+        // El aspa pegada al borde derecho de la cabecera.
+        assert_eq!(d.volver.derecha(), d.cabecera.derecha());
+        // La lupa, justo a su izquierda y sin solaparse.
+        let lupa = d.buscar(100);
+        assert_eq!(lupa.derecha(), d.volver.x);
+        assert!(lupa.x < d.volver.x);
+        // La capa no tiene ficha: el nombre ya va en la cabecera.
+        assert_eq!(d.ficha.alto, 0);
+        // Y el contenido empieza justo bajo la tira.
+        assert_eq!(d.contenido.y, d.tira.abajo());
+        assert_eq!(d.contenido.abajo(), caja.abajo());
     }
 }

@@ -14,6 +14,7 @@ use crate::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
 use crate::escena::Escena;
 use crate::formas;
 use crate::medida::Escala;
+use crate::relleno::EstiloRelleno;
 use crate::vector::Punto2;
 
 /// Una cosa que pintar. El consumidor traduce cada variante a su API.
@@ -108,6 +109,65 @@ fn girar_orden(o: &mut Orden, centro: Punto2, angulo: f32) {
             *y = p.y;
         }
     }
+}
+
+/// Lo que hay que pintar DENTRO de una figura cerrada, antes de su contorno.
+///
+/// Con estilo solido es una mancha; con rayado o cruzado, una polilinea por
+/// raya —del color del relleno y con la pluma mas fina del relleno, no con la
+/// del contorno.
+///
+/// Usa un generador propio sembrado con la misma semilla en vez del del
+/// elemento: si gastara numeros del otro, el garabato del contorno cambiaria
+/// segun como este relleno el interior, y rellenar una figura ya dibujada la
+/// redibujaria distinta (D38).
+fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
+    let Some(r) = e.relleno.filter(|c| c.a > 0.0) else {
+        return Vec::new();
+    };
+    let color = con_opacidad(r, e.opacidad);
+    let mut azar = Azar::nuevo(e.semilla);
+
+    if e.estilo_relleno == EstiloRelleno::Solido {
+        // La figura LISA, no la rugosa: rellenar la temblorosa deja huecos
+        // por donde se escapa el fondo.
+        let puntos = if elipse {
+            formas::elipse(e.x, e.y, e.ancho, e.alto, 0.0, &mut azar)
+                .into_iter()
+                .next()
+                .unwrap_or_default()
+        } else {
+            vec![
+                Punto2::nuevo(e.x, e.y),
+                Punto2::nuevo(e.x + e.ancho, e.y),
+                Punto2::nuevo(e.x + e.ancho, e.y + e.alto),
+                Punto2::nuevo(e.x, e.y + e.alto),
+            ]
+        };
+        if puntos.is_empty() {
+            return Vec::new();
+        }
+        return vec![Orden::Relleno { puntos, color }];
+    }
+
+    crate::relleno::lineas_de_rayado(
+        (e.x, e.y, e.ancho, e.alto),
+        elipse,
+        e.estilo_relleno,
+        e.grosor,
+        e.rugosidad,
+        &mut azar,
+    )
+    .into_iter()
+    .map(|(a, b)| Orden::Polilinea {
+        puntos: vec![a, b],
+        color,
+        grosor: crate::relleno::grosor_de_rayado(e.grosor),
+        // Siempre solidas: unas rayas de relleno discontinuas se leerian
+        // como suciedad y no como relleno.
+        estilo: EstiloTrazo::Solido,
+    })
+    .collect()
 }
 
 /// Las ordenes de dibujo de un elemento, en orden de pintado.
@@ -207,17 +267,7 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
 
         Figura::Rectangulo => {
             // El relleno va PRIMERO: si fuera despues taparia el trazo.
-            if let Some(r) = e.relleno.filter(|c| c.a > 0.0) {
-                salida.push(Orden::Relleno {
-                    puntos: vec![
-                        Punto2::nuevo(e.x, e.y),
-                        Punto2::nuevo(e.x + e.ancho, e.y),
-                        Punto2::nuevo(e.x + e.ancho, e.y + e.alto),
-                        Punto2::nuevo(e.x, e.y + e.alto),
-                    ],
-                    color: con_opacidad(r, e.opacidad),
-                });
-            }
+            salida.extend(ordenes_de_relleno(e, false));
             for pasada in formas::rectangulo(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar) {
                 salida.push(Orden::Polilinea {
                     puntos: pasada,
@@ -229,20 +279,7 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
         }
 
         Figura::Elipse => {
-            if let Some(r) = e.relleno.filter(|c| c.a > 0.0) {
-                // El relleno usa la elipse LISA, no la rugosa: rellenar la
-                // temblorosa deja huecos por donde se escapa el fondo.
-                let mut lisa = Azar::nuevo(e.semilla);
-                if let Some(anillo) = formas::elipse(e.x, e.y, e.ancho, e.alto, 0.0, &mut lisa)
-                    .into_iter()
-                    .next()
-                {
-                    salida.push(Orden::Relleno {
-                        puntos: anillo,
-                        color: con_opacidad(r, e.opacidad),
-                    });
-                }
-            }
+            salida.extend(ordenes_de_relleno(e, true));
             for pasada in formas::elipse(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar) {
                 salida.push(Orden::Polilinea {
                     puntos: pasada,
@@ -690,6 +727,7 @@ mod pruebas {
             alto: 50.0,
             angulo: 0.0,
             trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            estilo_relleno: Default::default(),
             relleno: None,
             grosor: 2.0,
             estilo: EstiloTrazo::Solido,
@@ -717,11 +755,127 @@ mod pruebas {
         // contorno.
         let e = Elemento {
             relleno: Some(ColorRgba::opaco(1.0, 1.0, 0.0)),
+            estilo_relleno: EstiloRelleno::Solido,
             ..base()
         };
         let o = ordenes(&e);
         assert!(matches!(o[0], Orden::Relleno { .. }), "primero el relleno");
         assert!(o[1..].iter().any(|x| matches!(x, Orden::Polilinea { .. })));
+    }
+
+    /// Las polilineas del color del relleno: las rayas, y no el contorno.
+    fn rayas_de(e: &Elemento) -> Vec<Vec<Punto2>> {
+        let relleno = e.relleno.expect("el elemento del caso tiene relleno");
+        ordenes(e)
+            .into_iter()
+            .filter_map(|o| match o {
+                Orden::Polilinea { puntos, color, .. } if color == relleno => Some(puntos),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn un_relleno_rayado_sale_como_rayas_y_no_como_mancha() {
+        // Lo que faltaba: un dibujo rayado del movil se veia aqui como una
+        // mancha de color plano.
+        let e = Elemento {
+            relleno: Some(ColorRgba::opaco(1.0, 1.0, 0.0)),
+            estilo_relleno: EstiloRelleno::Rayado,
+            ..base()
+        };
+        let o = ordenes(&e);
+        assert!(
+            !o.iter().any(|x| matches!(x, Orden::Relleno { .. })),
+            "el rayado no puede traer ademas la mancha solida"
+        );
+        let rayas = rayas_de(&e);
+        assert!(rayas.len() > 3, "solo salieron {} rayas", rayas.len());
+        for r in &rayas {
+            assert_eq!(r.len(), 2, "cada raya es un segmento");
+        }
+        // Y van antes del contorno, como el relleno solido.
+        assert!(matches!(o[0], Orden::Polilinea { .. }));
+    }
+
+    #[test]
+    fn las_rayas_del_relleno_son_mas_finas_que_el_contorno() {
+        // `fillWeight: strokeWidth / 2`: con la pluma del contorno, el
+        // interior pesaria mas que la propia figura.
+        let e = Elemento {
+            relleno: Some(ColorRgba::opaco(1.0, 1.0, 0.0)),
+            estilo_relleno: EstiloRelleno::Rayado,
+            grosor: 4.0,
+            ..base()
+        };
+        for o in ordenes(&e) {
+            if let Orden::Polilinea { color, grosor, .. } = o {
+                if color == e.relleno.unwrap() {
+                    assert_eq!(grosor, 2.0, "la raya tiene que ir a media pluma");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn una_figura_sin_relleno_no_produce_ni_una_raya() {
+        // Caso negativo: el estilo de relleno por omision es rayado, asi que
+        // sin esto CUALQUIER rectangulo saldria rayado por dentro.
+        let e = base();
+        assert!(e.relleno.is_none());
+        assert_eq!(e.estilo_relleno, EstiloRelleno::Rayado);
+        let solo_contorno = ordenes(&e);
+        let sin_estilo = ordenes(&Elemento {
+            estilo_relleno: EstiloRelleno::Solido,
+            ..base()
+        });
+        assert_eq!(
+            solo_contorno, sin_estilo,
+            "sin relleno, el estilo de relleno no puede cambiar nada"
+        );
+    }
+
+    #[test]
+    fn el_rayado_de_una_elipse_se_queda_dentro_de_la_elipse() {
+        let e = Elemento {
+            figura: Figura::Elipse,
+            relleno: Some(ColorRgba::opaco(0.0, 0.0, 1.0)),
+            estilo_relleno: EstiloRelleno::Cruzado,
+            rugosidad: 0.0,
+            ..base()
+        };
+        // base(): x 10, y 10, ancho 100, alto 50.
+        let (cx, cy, rx, ry) = (60.0f32, 35.0f32, 50.0f32, 25.0f32);
+        let rayas = rayas_de(&e);
+        assert!(!rayas.is_empty(), "una elipse rellena tiene que rayarse");
+        for p in rayas.iter().flatten() {
+            let dentro = ((p.x - cx) / rx).powi(2) + ((p.y - cy) / ry).powi(2);
+            assert!(dentro <= 1.01, "la raya sale de la elipse en {p:?}");
+        }
+    }
+
+    #[test]
+    fn rellenar_una_figura_no_le_cambia_el_garabato_del_contorno() {
+        // El rayado usa su propio generador: si gastara numeros del azar del
+        // elemento, rellenar una figura ya dibujada la redibujaria con otro
+        // temblor y el dibujo daria un salto.
+        let contorno_de = |e: &Elemento| -> Vec<Vec<Punto2>> {
+            let tinta = e.trazo;
+            ordenes(e)
+                .into_iter()
+                .filter_map(|o| match o {
+                    Orden::Polilinea { puntos, color, .. } if color == tinta => Some(puntos),
+                    _ => None,
+                })
+                .collect()
+        };
+        let vacia = base();
+        let rayada = Elemento {
+            relleno: Some(ColorRgba::opaco(1.0, 0.0, 0.0)),
+            estilo_relleno: EstiloRelleno::Rayado,
+            ..base()
+        };
+        assert_eq!(contorno_de(&vacia), contorno_de(&rayada));
     }
 
     #[test]
