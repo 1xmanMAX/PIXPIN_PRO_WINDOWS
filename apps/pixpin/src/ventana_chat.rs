@@ -307,6 +307,18 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     } else if disposicion.asa.contiene(l) {
                         ventana.capturar_raton();
                         arrastre = Some(Arrastre::Asa(l.x - ancho_lista as i32));
+                    } else if let Some((a, indice)) = abierto.as_ref().and_then(|a| {
+                        let area =
+                            disposicion.historial(a.alto_caja.get(), a.fijado.is_some(), escala);
+                        let c = a.colocado.borrow();
+                        let scroll = a.scroll.unwrap_or_else(|| {
+                            pixpin_ui::historial::scroll_maximo(area, a.alto.get())
+                        });
+                        pixpin_ui::historial::mensaje_en(area, &c.puestos, scroll, l)
+                            .map(|i| (a, i))
+                    }) {
+                        abrir_mensaje(ubicacion, a, indice);
+                        buscando = false;
                     } else if disposicion.buscador(escala).contiene(l) {
                         buscando = true;
                         hay_que_pintar = true;
@@ -1798,4 +1810,34 @@ fn pintar_lienzo(p: &Pintor, vista: &LienzoVisto, destino: RectF) {
         }
     }
     p.soltar_recorte();
+}
+
+/// Abre lo que hay detras de un mensaje: su fichero, con la aplicacion que
+/// le toque.
+///
+/// Un mensaje sin fichero (una nota) no hace nada al pincharlo, que es mejor
+/// que abrir algo que el usuario no pidio. Los dibujos todavia no abren el
+/// editor: escribir de vuelta el `.excalidraw` sin perder lo que el movil
+/// mete y aqui no se entiende es un trabajo aparte, y a medias seria peor.
+fn abrir_mensaje(ubicacion: &Ubicacion, a: &Abierto, indice: usize) {
+    let Some(m) = a.mensajes.get(indice) else {
+        return;
+    };
+    let Some(relativa) = m.ruta.as_deref().filter(|r| !r.is_empty()) else {
+        return;
+    };
+    // La ruta del mensaje es relativa a la carpeta del proyecto. Una que
+    // venga del movil sera absoluta y de otro aparato: entonces no hay nada
+    // que abrir aqui, y decirlo es mejor que abrir cualquier cosa.
+    let ruta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id).join(relativa);
+    if !ruta.is_file() {
+        tracing::info!(
+            ruta = %ruta.display(),
+            "el fichero de ese mensaje no esta en este equipo"
+        );
+        return;
+    }
+    if let Err(e) = pixpin_shell::abrir::abrir(&ruta) {
+        tracing::warn!(?e, ruta = %ruta.display(), "no se pudo abrir");
+    }
 }

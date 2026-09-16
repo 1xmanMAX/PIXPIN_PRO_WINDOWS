@@ -13,7 +13,7 @@
 //!   no son puras ni se pueden probar. Quien pinta mide y pasa el alto ya
 //!   hecho en `Entrada::alto`; esto solo reparte.
 
-use pixpin_geom::Rect;
+use pixpin_geom::{Punto, Rect};
 
 /// Medidas en pixeles logicos (al 100 %), las de Telegram Desktop.
 ///
@@ -188,6 +188,25 @@ pub fn scroll_ajustado(area: Rect, alto_total: u32, scroll: i32) -> i32 {
         scroll_minimo(area, alto_total),
         scroll_maximo(area, alto_total),
     )
+}
+
+/// En que mensaje se pincho, si se pincho en alguno.
+///
+/// `punto` va en coordenadas de la ventana; `scroll` es el mismo que usa
+/// quien pinta. Fuera del area no hay mensaje aunque las cuentas cuadren:
+/// el historial esta recortado.
+pub fn mensaje_en(area: Rect, puestos: &[Puesto], scroll: i32, punto: Punto) -> Option<usize> {
+    if !area.contiene(punto) {
+        return None;
+    }
+    // Al documento: se le quita el origen del area y se le suma lo bajado.
+    let en_documento = Punto {
+        x: punto.x,
+        y: punto.y - area.y + scroll,
+    };
+    puestos
+        .iter()
+        .position(|p| p.burbuja.contiene(en_documento))
 }
 
 /// Cuales de los puestos se ven con este desplazamiento, para pintar solo
@@ -413,5 +432,46 @@ mod pruebas {
             fuera[1].burbuja.y - fuera[0].burbuja.abajo(),
             HUECO_GRUPO as i32
         );
+    }
+
+    #[test]
+    fn se_sabe_en_que_burbuja_se_pincho_y_donde_no_hay_ninguna() {
+        let a = area();
+        let unas: Vec<Entrada> = (0..5).map(|_| entrada(20, 100, true, 1)).collect();
+        let (p, _) = colocar(a, &unas, 100);
+        // Justo en medio de la segunda.
+        let b = p[1].burbuja;
+        let dentro = pixpin_geom::Punto {
+            x: b.x + b.ancho as i32 / 2,
+            y: b.y + b.alto as i32 / 2 + a.y,
+        };
+        assert_eq!(mensaje_en(a, &p, 0, dentro), Some(1));
+        // A la izquierda de una burbuja mia hay hueco, no mensaje.
+        let hueco = pixpin_geom::Punto {
+            x: a.x + 5,
+            y: dentro.y,
+        };
+        assert_eq!(mensaje_en(a, &p, 0, hueco), None);
+        // Y fuera del area, nada, aunque las coordenadas cuadren.
+        let fuera = pixpin_geom::Punto {
+            x: dentro.x,
+            y: a.y - 10,
+        };
+        assert_eq!(mensaje_en(a, &p, 0, fuera), None);
+    }
+
+    #[test]
+    fn con_la_lista_desplazada_se_acierta_igual() {
+        let a = area();
+        let muchas: Vec<Entrada> = (0..80).map(|_| entrada(20, 100, true, 1)).collect();
+        let (p, alto) = colocar(a, &muchas, 100);
+        let scroll = scroll_maximo(a, alto);
+        // La ultima burbuja queda pegada abajo del area.
+        let ultima = p[p.len() - 1].burbuja;
+        let punto = pixpin_geom::Punto {
+            x: ultima.x + 5,
+            y: ultima.y + ultima.alto as i32 / 2 + a.y - scroll,
+        };
+        assert_eq!(mensaje_en(a, &p, scroll, punto), Some(p.len() - 1));
     }
 }
