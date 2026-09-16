@@ -139,10 +139,28 @@ pub fn colocar(area: Rect, entradas: &[Entrada], escala_por_cien: u32) -> (Vec<P
     (puestos, (y + e(HUECO_GRUPO) as i32).max(0) as u32)
 }
 
-/// Hasta donde se puede subir. Cero si todo cabe: un historial corto se
-/// queda quieto, pegado abajo.
+/// El desplazamiento con el que el ultimo mensaje queda pegado abajo.
+///
+/// Puede salir NEGATIVO, y esa es la gracia: si los mensajes no llenan la
+/// columna, se apoyan sobre la caja de escribir en vez de quedarse arriba
+/// con un hueco debajo. Es como se ve una conversacion de tres mensajes en
+/// cualquier chat.
 pub fn scroll_maximo(area: Rect, alto_total: u32) -> i32 {
-    (alto_total as i32 - area.alto as i32).max(0)
+    alto_total as i32 - area.alto as i32
+}
+
+/// Lo mas arriba que se puede ir. Con un historial que no llena la columna
+/// no hay nada que subir: el minimo y el maximo son el mismo sitio.
+pub fn scroll_minimo(area: Rect, alto_total: u32) -> i32 {
+    scroll_maximo(area, alto_total).min(0)
+}
+
+/// Deja el desplazamiento dentro de lo que existe.
+pub fn scroll_ajustado(area: Rect, alto_total: u32, scroll: i32) -> i32 {
+    scroll.clamp(
+        scroll_minimo(area, alto_total),
+        scroll_maximo(area, alto_total),
+    )
 }
 
 /// Cuales de los puestos se ven con este desplazamiento, para pintar solo
@@ -262,15 +280,30 @@ mod pruebas {
     }
 
     #[test]
-    fn un_historial_corto_no_se_desplaza_y_uno_largo_si() {
+    fn un_historial_corto_se_apoya_abajo_y_no_se_puede_mover() {
         let a = area();
         let cortas: Vec<Entrada> = (0..3).map(|_| entrada(20, 100, true, 1)).collect();
         let (_, alto) = colocar(a, &cortas, 100);
-        assert_eq!(scroll_maximo(a, alto), 0);
+        assert!(alto < a.alto, "esto prueba el caso de que sobra sitio");
+        // Negativo: empuja los mensajes hacia abajo, contra la caja.
+        assert_eq!(scroll_maximo(a, alto), alto as i32 - a.alto as i32);
+        assert!(scroll_maximo(a, alto) < 0);
+        // Y no hay nada que subir ni que bajar: un solo sitio posible.
+        assert_eq!(scroll_minimo(a, alto), scroll_maximo(a, alto));
+        assert_eq!(scroll_ajustado(a, alto, 500), scroll_maximo(a, alto));
+        assert_eq!(scroll_ajustado(a, alto, -500), scroll_maximo(a, alto));
+    }
+
+    #[test]
+    fn un_historial_largo_si_se_desplaza_y_no_pasa_de_los_extremos() {
+        let a = area();
         let muchas: Vec<Entrada> = (0..200).map(|i| entrada(20, 100, true, i / 10)).collect();
         let (_, alto) = colocar(a, &muchas, 100);
         assert_eq!(scroll_maximo(a, alto), alto as i32 - a.alto as i32);
         assert!(scroll_maximo(a, alto) > 0);
+        assert_eq!(scroll_minimo(a, alto), 0, "arriba del todo es el principio");
+        assert_eq!(scroll_ajustado(a, alto, -50), 0, "no se sube de mas");
+        assert_eq!(scroll_ajustado(a, alto, 999_999), scroll_maximo(a, alto));
     }
 
     #[test]
@@ -309,7 +342,9 @@ mod pruebas {
     fn sin_mensajes_no_hay_nada_que_colocar() {
         let (p, alto) = colocar(area(), &[], 100);
         assert!(p.is_empty());
-        assert_eq!(scroll_maximo(area(), alto), 0);
+        // Sin nada, el unico sitio posible; da igual cual sea mientras no
+        // se pueda mover ni se pinte nada.
+        assert_eq!(scroll_minimo(area(), alto), scroll_maximo(area(), alto));
         assert_eq!(visibles(area(), &p, 0), (0, 0));
     }
 }

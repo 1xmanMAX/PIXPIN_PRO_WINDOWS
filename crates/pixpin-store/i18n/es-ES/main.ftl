@@ -166,3 +166,4 @@ chat-clase-dibujo = Dibujo
 chat-clase-pagina = Página
 chat-clase-proyecto = Proyecto
 chat-clase-miniapp = Mini-aplicación
+chat-escribe = Escribe una nota…

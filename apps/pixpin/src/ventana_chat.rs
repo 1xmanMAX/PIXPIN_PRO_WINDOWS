@@ -16,7 +16,9 @@
 //! minimizar, maximizar y cerrar), redimensionar por los bordes, recordar
 //! donde quedo y la lista de proyectos (avatar, nombre, hojas, hora y
 //! contador), que pinta solo las filas que se ven, y el historial del
-//! proyecto elegido en burbujas. Escribir mensajes llega despues.
+//! proyecto elegido en burbujas, y escribir notas en la caja de abajo
+//! (borrador por proyecto, Entrar envia, Mayusculas+Entrar hace renglon).
+//! Soltar ficheros e imagenes llega despues.
 
 use anyhow::{Context, Result};
 use pixpin_geom::{Punto, Rect};
@@ -32,6 +34,8 @@ use crate::overlay::Recursos;
 const ANCHO_LOGICO: u32 = 1024;
 const ALTO_LOGICO: u32 = 768;
 const VK_ESCAPE: u32 = 0x1B;
+const VK_RETROCESO: u32 = 0x08;
+const VK_ENTRAR: u32 = 0x0D;
 
 /// Los colores de un tema.
 struct Tema {
@@ -181,9 +185,17 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     // una vez: es un indice pequeno, y lo caro (abrir cada `.pixpin`) no se
     // hace hasta que se elige uno.
     let indice = pixpin_proyecto::almacen::Indice::leer(ubicacion.raiz());
-    let fichas: Vec<pixpin_proyecto::almacen::Ficha> =
+    let mut fichas: Vec<pixpin_proyecto::almacen::Ficha> =
         indice.ordenadas().into_iter().cloned().collect();
     let ahora = pixpin_shell::entorno::ahora_local_ms();
+    // El codigo de este equipo va en cada nota que se escriba aqui: es lo
+    // que hace que el movil sepa de donde vino.
+    let identidad = pixpin_proyecto::identidad::Identidad::leer_o_crear(ubicacion.raiz(), "PC")
+        .map(|i| i.yo.codigo())
+        .unwrap_or_default();
+    // Lo escrito y sin enviar de cada proyecto, para que cambiar de
+    // conversacion y volver no se lo lleve por delante.
+    let mut borradores: std::collections::HashMap<String, String> = Default::default();
 
     let mut ancho_lista = chat::ancho_inicial(marco.ancho, escala);
     let mut arrastre: Option<Arrastre> = None;
@@ -244,8 +256,15 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         arrastre = Some(Arrastre::Asa(l.x - ancho_lista as i32));
                     } else if let Some(i) = disposicion.fila_en(l, scroll, fichas.len(), escala) {
                         if elegida != Some(i) {
+                            // Lo escrito y sin enviar se guarda antes de
+                            // cambiar; volver a este proyecto lo devuelve.
+                            if let Some(a) = abierto.take() {
+                                borradores.insert(a.ficha.id.clone(), a.borrador);
+                            }
                             elegida = Some(i);
-                            abierto = Some(abrir_proyecto(ubicacion, &fichas[i]));
+                            let mut nuevo = abrir_proyecto(ubicacion, &fichas[i]);
+                            nuevo.borrador = borradores.remove(&fichas[i].id).unwrap_or_default();
+                            abierto = Some(nuevo);
                         }
                         hay_que_pintar = true;
                     }
@@ -299,19 +318,15 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     // que se pincho la ultima vez: es lo que espera la mano.
                     let aqui = local(pixpin_shell::entorno::posicion_del_cursor());
                     if let Some(a) = abierto.as_mut().filter(|_| disposicion.chat.contiene(aqui)) {
-                        let area = Rect {
-                            x: disposicion.chat.x,
-                            y: disposicion.cabecera_chat.abajo(),
-                            ancho: disposicion.chat.ancho,
-                            alto: disposicion
-                                .chat
-                                .alto
-                                .saturating_sub(disposicion.cabecera_chat.alto),
-                        };
+                        let area = disposicion.historial(a.alto_caja.get(), escala);
                         let tope = pixpin_ui::historial::scroll_maximo(area, a.alto.get());
                         let paso = 3 * (chat::FILA * escala / 100) as i32;
                         let ahora_en = a.scroll.unwrap_or(tope);
-                        let nuevo = (ahora_en - delta.signum() * paso).clamp(0, tope);
+                        let nuevo = pixpin_ui::historial::scroll_ajustado(
+                            area,
+                            a.alto.get(),
+                            ahora_en - delta.signum() * paso,
+                        );
                         // Volver al final se guarda como «pegado»: si llegan
                         // mensajes nuevos, se siguen viendo sin tocar nada.
                         a.scroll = if nuevo >= tope { None } else { Some(nuevo) };
@@ -337,6 +352,63 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                 }
                 EventoOverlay::Pintar => hay_que_pintar = true,
                 EventoOverlay::Cerrar => cerrar = true,
+                // Escribir en la caja de abajo. Solo llega si hay un
+                // proyecto abierto: sin conversacion no hay donde guardarlo.
+                EventoOverlay::Caracter(c) if abierto.is_some() => {
+                    // WM_CHAR trae tambien los mandos (retroceso, enter);
+                    // esos se atienden por tecla, no como letra.
+                    if c >= ' ' || c == '\n' {
+                        if let Some(a) = abierto.as_mut() {
+                            a.borrador.push(c);
+                            a.colocado.borrow_mut().ancho = 0;
+                            hay_que_pintar = true;
+                        }
+                    }
+                }
+                EventoOverlay::Tecla { vk, shift, .. } if vk == VK_RETROCESO => {
+                    if let Some(a) = abierto.as_mut().filter(|a| !a.borrador.is_empty()) {
+                        a.borrador.pop();
+                        a.colocado.borrow_mut().ancho = 0;
+                        hay_que_pintar = true;
+                    }
+                    let _ = shift;
+                }
+                EventoOverlay::Tecla { vk, shift, .. } if vk == VK_ENTRAR => {
+                    if let Some(a) = abierto.as_mut() {
+                        if shift {
+                            // Mayusculas y entrar: un renglon mas, como en
+                            // Telegram. Entrar solo, se envia.
+                            a.borrador.push('\n');
+                        } else if !a.borrador.trim().is_empty() {
+                            match guardar_nota(ubicacion, a, &identidad) {
+                                Ok(()) => {
+                                    // Vuelve al final: lo que acabas de
+                                    // escribir tiene que verse.
+                                    a.scroll = None;
+                                    if let Some(i) = elegida {
+                                        fichas[i].tocado = a.ficha.tocado;
+                                        fichas[i].resumen = a.ficha.resumen.clone();
+                                    }
+                                }
+                                Err(e) => tracing::warn!(?e, "no se pudo guardar la nota"),
+                            }
+                        }
+                        a.colocado.borrow_mut().ancho = 0;
+                        hay_que_pintar = true;
+                    }
+                }
+                // Escapar con algo escrito no cierra: se perderia. Primero
+                // limpia, y el segundo escape ya cierra.
+                EventoOverlay::Tecla { vk, .. }
+                    if vk == VK_ESCAPE
+                        && abierto.as_ref().is_some_and(|a| !a.borrador.is_empty()) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        a.borrador.clear();
+                        a.colocado.borrow_mut().ancho = 0;
+                    }
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::Tecla { vk, .. } if vk == VK_ESCAPE => cerrar = true,
                 _ => {}
             }
@@ -381,7 +453,28 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                 let _ = motor.dibujar(&destino, |p: &Pintor| {
                     pintar(p, &disposicion, tema, escala, textos, sobre, &lista);
                     if let Some(a) = abierto_ref {
-                        pintar_historial(p, &disposicion, tema, escala, textos, a, ahora);
+                        // Medir lo escrito decide lo alta que es la caja y,
+                        // con ello, donde acaba el historial. Se hace una
+                        // vez y lo usan los dos.
+                        let ef = escala as f32 / 100.0;
+                        let tam = chat::REDACCION_TAM * ef;
+                        let ancho = (disposicion.chat.ancho as f32
+                            - 2.0 * chat::REDACCION_RELLENO_X as f32 * ef)
+                            .max(0.0);
+                        let alto_texto = if a.borrador.is_empty() {
+                            tam.ceil() as u32
+                        } else {
+                            p.medir_texto_ajustado(&a.borrador, tam, ancho).1.ceil() as u32
+                        };
+                        a.alto_caja.set(alto_texto);
+                        let c = Pinta {
+                            tema,
+                            escala,
+                            textos,
+                            ahora,
+                        };
+                        pintar_historial(p, &disposicion, &c, a, alto_texto);
+                        pintar_redaccion(p, &disposicion, &c, a, alto_texto);
                     }
                 });
                 let _ = superficie.presentar();
@@ -408,6 +501,11 @@ struct Abierto {
     /// Lineas del cuaderno que no se entendieron. Se ensenan: si faltan
     /// mensajes, el usuario tiene que enterarse.
     rotas: usize,
+    /// Lo escrito y todavia sin enviar.
+    borrador: String,
+    /// Lo alto que mide ese texto ya medido con la fuente. Lo apunta el
+    /// pintado; la rueda lo necesita para saber donde acaba el historial.
+    alto_caja: std::cell::Cell<u32>,
     /// Desde arriba. `None` es «pegado al final», que es como se abre y
     /// como se queda hasta que el usuario sube.
     scroll: Option<i32>,
@@ -775,15 +873,17 @@ fn clase_de(m: &pixpin_proyecto::cuaderno::Mensaje, textos: &Catalogo) -> Option
 }
 
 /// La columna de la derecha: cabecera del proyecto y sus mensajes.
-fn pintar_historial(
-    p: &Pintor,
-    d: &Disposicion,
-    tema: &Tema,
+/// Lo que hace falta para pintar, junto: el tema, la escala, los textos y
+/// la hora. Van juntos porque siempre viajan juntos.
+struct Pinta<'a> {
+    tema: &'a Tema,
     escala: u32,
-    textos: &Catalogo,
-    a: &Abierto,
+    textos: &'a Catalogo,
     ahora: i64,
-) {
+}
+
+fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_caja: u32) {
+    let (tema, escala, textos, ahora) = (c.tema, c.escala, c.textos, c.ahora);
     use pixpin_ui::historial as h;
     let e = escala as f32 / 100.0;
     if d.chat.ancho == 0 {
@@ -839,13 +939,8 @@ fn pintar_historial(
         tema.apagado,
     );
 
-    // El area de los mensajes, bajo la cabecera.
-    let area = Rect {
-        x: d.chat.x,
-        y: d.cabecera_chat.abajo(),
-        ancho: d.chat.ancho,
-        alto: d.chat.alto.saturating_sub(d.cabecera_chat.alto),
-    };
+    // El area de los mensajes: entre la cabecera y la caja de escribir.
+    let area = d.historial(alto_caja, escala);
     if a.mensajes.is_empty() {
         let vacio = textos.t("chat-sin-mensajes");
         let (w, alto) = p.medir_texto(&vacio, 13.0 * e);
@@ -995,8 +1090,98 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         ficha: ficha.clone(),
         mensajes,
         rotas: cuaderno.lineas_rotas,
+        borrador: String::new(),
+        alto_caja: std::cell::Cell::new(0),
         scroll: None,
         alto: std::cell::Cell::new(0),
         colocado: std::cell::RefCell::new(Colocado::default()),
     }
+}
+
+/// Guarda lo escrito como una nota del cuaderno y lo mete en el historial.
+///
+/// El orden importa: primero al disco y solo si eso sale bien se ensena. Al
+/// reves, un fallo de escritura dejaria en pantalla un mensaje que no
+/// existe, y el usuario creeria que lo tiene guardado.
+fn guardar_nota(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Result<()> {
+    use pixpin_proyecto::cuaderno;
+    let texto = a.borrador.trim().to_string();
+    let cuando = pixpin_shell::entorno::ahora_local_ms();
+    // El numero sigue al mayor que ya hay, que es lo que hace el codigo de
+    // chat (`47·K7Q2`) unico dentro de la conversacion.
+    let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let mensaje = cuaderno::Mensaje::nota(&texto, cuando, numero, aparato, &a.ficha.id);
+    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
+    cuaderno::anadir(&carpeta, &mensaje)?;
+
+    a.mensajes.push(mensaje);
+    a.borrador.clear();
+    // La ficha de la lista sube al momento: es la misma conversacion.
+    a.ficha.tocado = cuando;
+    a.ficha.resumen = texto;
+    let mut indice = pixpin_proyecto::almacen::Indice::leer(ubicacion.raiz());
+    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == a.ficha.id) {
+        f.tocado = a.ficha.tocado;
+        f.resumen = a.ficha.resumen.clone();
+        indice.guardar(ubicacion.raiz())?;
+    }
+    Ok(())
+}
+
+/// La caja de escribir, abajo de la columna del proyecto.
+fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_texto: u32) {
+    let (tema, escala, textos) = (c.tema, c.escala, c.textos);
+    let e = escala as f32 / 100.0;
+    let caja = d.redaccion(alto_texto, escala);
+    if caja.ancho == 0 || caja.alto == 0 {
+        return;
+    }
+    p.rellenar(rf(caja), tema.cabecera);
+    // Una linea arriba la separa del historial, como la cabecera.
+    p.rellenar(
+        RectF {
+            x: caja.x as f32,
+            y: caja.y as f32,
+            ancho: caja.ancho as f32,
+            alto: (1.0 * e).max(1.0),
+        },
+        tema.separador,
+    );
+
+    let x = caja.x as f32 + chat::REDACCION_RELLENO_X as f32 * e;
+    let y = caja.y as f32 + chat::REDACCION_RELLENO_Y as f32 * e;
+    let ancho = (caja.ancho as f32 - 2.0 * chat::REDACCION_RELLENO_X as f32 * e).max(0.0);
+    let tam = chat::REDACCION_TAM * e;
+    if a.borrador.is_empty() {
+        p.texto(&textos.t("chat-escribe"), x, y, tam, tema.apagado);
+        // El cursor, quieto y sin parpadeo: parpadear obligaria a despertar
+        // el hilo dos veces por segundo con la ventana en reposo.
+        p.rellenar(
+            RectF {
+                x: x - 2.0 * e,
+                y,
+                ancho: (1.0 * e).max(1.0),
+                alto: tam * 1.3,
+            },
+            tema.texto,
+        );
+        return;
+    }
+    p.empujar_recorte(rf(caja));
+    p.parrafo(&a.borrador, x, y, tam, ancho, &[], tema.texto);
+    // El cursor va al final de lo escrito.
+    let (ancho_ultima, alto_todo) = p.medir_texto_ajustado(&a.borrador, tam, ancho);
+    let _ = ancho_ultima;
+    let ultima = a.borrador.rsplit('\n').next().unwrap_or("");
+    let (ancho_ultima, _) = p.medir_texto(ultima, tam);
+    p.rellenar(
+        RectF {
+            x: x + ancho_ultima.min(ancho),
+            y: y + alto_todo - tam * 1.3,
+            ancho: (1.0 * e).max(1.0),
+            alto: tam * 1.3,
+        },
+        tema.texto,
+    );
+    p.soltar_recorte();
 }

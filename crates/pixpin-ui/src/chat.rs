@@ -60,6 +60,15 @@ pub const CONTADOR_TAM: f32 = 12.0;
 /// Margen a la derecha de la fila para la hora y el contador.
 pub const MARGEN_DERECHO: u32 = 10;
 
+/// La caja de escribir, abajo de la columna del proyecto. Crece con el
+/// texto hasta un tope; pasado ese tope se desplaza por dentro, que si no
+/// una nota larga se comeria el historial entero.
+pub const REDACCION_MINIMA: u32 = 52;
+pub const REDACCION_MAXIMA: u32 = 160;
+pub const REDACCION_RELLENO_X: u32 = 14;
+pub const REDACCION_RELLENO_Y: u32 = 14;
+pub const REDACCION_TAM: f32 = 14.0;
+
 /// Que se ve cuando solo cabe una columna.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Vista {
@@ -312,6 +321,42 @@ impl Disposicion {
             primera.min(cuantas),
             caben.min(cuantas.saturating_sub(primera)),
         )
+    }
+
+    /// Lo alto que es la caja de escribir con un texto de `alto_texto`.
+    ///
+    /// Crece desde el minimo y se planta en el maximo: a partir de ahi el
+    /// texto se desplaza por dentro. Una nota de cincuenta lineas no puede
+    /// dejar el historial sin sitio.
+    pub fn alto_redaccion(&self, alto_texto: u32, escala_por_cien: u32) -> u32 {
+        let e = |v: u32| v * escala_por_cien / 100;
+        (alto_texto + 2 * e(REDACCION_RELLENO_Y))
+            .clamp(e(REDACCION_MINIMA), e(REDACCION_MAXIMA))
+            // Y nunca mas de media columna, por estrecha que sea la ventana.
+            .min((self.chat.alto / 2).max(1))
+    }
+
+    /// La caja de escribir, pegada abajo de la columna del proyecto.
+    pub fn redaccion(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
+        let alto = self.alto_redaccion(alto_texto, escala_por_cien);
+        Rect {
+            x: self.chat.x,
+            y: self.chat.abajo() - alto as i32,
+            ancho: self.chat.ancho,
+            alto,
+        }
+    }
+
+    /// El historial: lo que queda entre la cabecera y la caja de escribir.
+    pub fn historial(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
+        let arriba = self.cabecera_chat.abajo();
+        let abajo = self.redaccion(alto_texto, escala_por_cien).y;
+        Rect {
+            x: self.chat.x,
+            y: arriba,
+            ancho: self.chat.ancho,
+            alto: (abajo - arriba).max(0) as u32,
+        }
     }
 
     /// Hasta donde se puede bajar. Si todo cabe, cero: la lista corta no se
@@ -823,5 +868,46 @@ mod pruebas_hora {
         assert_eq!(civil(11_017), (2000, 3, 1));
         assert_eq!(civil(0), (1970, 1, 1));
         assert_eq!(civil(-1), (1969, 12, 31));
+    }
+
+    #[test]
+    fn la_caja_de_escribir_crece_con_el_texto_pero_no_se_come_el_historial() {
+        let d = Disposicion::calcular(1024, 768, 100, 300, Vista::Ambas);
+        let una_linea = d.alto_redaccion(18, 100);
+        assert_eq!(una_linea, REDACCION_MINIMA, "vacia, la de siempre");
+        // Con varias lineas sube...
+        let cinco = d.alto_redaccion(5 * 18, 100);
+        assert!(cinco > una_linea);
+        // ...pero se planta.
+        assert_eq!(d.alto_redaccion(10_000, 100), REDACCION_MAXIMA);
+        // Y el historial siempre queda entre la cabecera y la caja.
+        for alto_texto in [18, 90, 10_000] {
+            let caja = d.redaccion(alto_texto, 100);
+            let hist = d.historial(alto_texto, 100);
+            assert_eq!(caja.abajo(), d.chat.abajo(), "pegada abajo");
+            assert_eq!(hist.y, d.cabecera_chat.abajo());
+            assert_eq!(hist.abajo(), caja.y, "sin hueco ni solape");
+            assert!(hist.alto > 0, "el historial no puede desaparecer");
+        }
+    }
+
+    #[test]
+    fn en_una_ventana_bajita_la_caja_no_se_lleva_mas_de_media_columna() {
+        // Caso negativo: la mas pequena que se admite, con un texto enorme.
+        let d = Disposicion::calcular(
+            ANCHO_MINIMO_VENTANA * 2,
+            ALTO_MINIMO_VENTANA,
+            100,
+            LISTA_MINIMA,
+            Vista::Ambas,
+        );
+        let caja = d.redaccion(10_000, 100);
+        assert!(
+            caja.alto <= d.chat.alto / 2,
+            "{} de {}",
+            caja.alto,
+            d.chat.alto
+        );
+        assert!(d.historial(10_000, 100).alto > 0);
     }
 }

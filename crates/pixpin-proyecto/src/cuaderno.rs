@@ -143,6 +143,45 @@ impl Mensaje {
     }
 }
 
+impl Mensaje {
+    /// Una nota escrita aqui, con sus tres codigos ya puestos.
+    ///
+    /// `numero` es el siguiente de su conversacion (ver
+    /// `Cuaderno::siguiente_numero`) y `aparato` el codigo de este equipo:
+    /// juntos hacen el codigo de chat (`47·K7Q2`) que ensena PixPin Android.
+    pub fn nota(texto: &str, cuando: i64, numero: i64, aparato: &str, proyecto: &str) -> Mensaje {
+        Mensaje {
+            // El id lleva la hora, como en el movil: ordena solo y no choca
+            // con los que ya hay.
+            id: format!("{cuando}"),
+            cuando,
+            clase: Some(Clase::Nota),
+            texto: texto.to_string(),
+            numero,
+            uid: Some(crate::codigos::nuevo()),
+            aparato: Some(aparato.to_string()),
+            proyecto: Some(proyecto.to_string()),
+            ..Default::default()
+        }
+    }
+}
+
+/// Anade un mensaje al cuaderno de una carpeta: **una linea al final**, sin
+/// releer ni reescribir nada. Guardar cuesta lo mismo con diez mensajes que
+/// con diez mil, y un corte a mitad se lleva ese mensaje y no el cuaderno.
+pub fn anadir(carpeta: &std::path::Path, m: &Mensaje) -> std::io::Result<()> {
+    use std::io::Write;
+    std::fs::create_dir_all(carpeta)?;
+    let linea = serde_json::to_string(m).map_err(std::io::Error::other)?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(carpeta.join("guardados.jsonl"))?;
+    // El salto va DESPUES de la linea: si el fichero se corta, lo roto es lo
+    // ultimo y lo anterior sigue entero.
+    writeln!(f, "{linea}")
+}
+
 /// Un cuaderno leido.
 #[derive(Debug, Clone, Default)]
 pub struct Cuaderno {
@@ -182,6 +221,20 @@ impl Cuaderno {
     pub fn leer_de(carpeta: &std::path::Path) -> std::io::Result<Cuaderno> {
         let texto = std::fs::read_to_string(carpeta.join("guardados.jsonl"))?;
         Ok(Cuaderno::leer(&texto))
+    }
+
+    /// El numero que le toca al siguiente mensaje de una conversacion.
+    ///
+    /// Se mira el mayor y se suma uno, en vez de contar cuantos hay: un
+    /// mensaje borrado dejaria hueco y dos mensajes distintos acabarian con
+    /// el mismo numero, que es justo lo que los tres codigos evitan.
+    pub fn siguiente_numero(&self, proyecto: Option<&str>) -> i64 {
+        self.de_conversacion(proyecto)
+            .iter()
+            .map(|m| m.numero)
+            .max()
+            .unwrap_or(0)
+            + 1
     }
 
     /// Los mensajes de una conversacion. `None` es la general.
@@ -326,5 +379,78 @@ mod pruebas {
         assert_eq!(c.mensajes[0].cuando, 0);
         assert!(c.mensajes[0].clase.is_none());
         assert!(!c.mensajes[0].fijado);
+    }
+
+    fn carpeta(etiqueta: &str) -> std::path::PathBuf {
+        let d =
+            std::env::temp_dir().join(format!("pixpin-cuaderno-{etiqueta}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        d
+    }
+
+    #[test]
+    fn escribir_una_nota_anade_una_linea_y_no_toca_las_de_antes() {
+        let d = carpeta("anadir");
+        let vieja = Mensaje::nota("lo de ayer", 1_725_500_000_000, 1, "K7Q2", "pr-1");
+        anadir(&d, &vieja).unwrap();
+        let antes = std::fs::read_to_string(d.join("guardados.jsonl")).unwrap();
+        let nueva = Mensaje::nota("lo de hoy", 1_725_600_000_000, 2, "K7Q2", "pr-1");
+        anadir(&d, &nueva).unwrap();
+        let texto = std::fs::read_to_string(d.join("guardados.jsonl")).unwrap();
+        assert!(texto.starts_with(&antes), "la linea de antes, intacta");
+        assert_eq!(texto.lines().count(), 2);
+
+        let c = Cuaderno::leer(&texto);
+        assert_eq!(c.lineas_rotas, 0);
+        assert_eq!(c.mensajes[1].texto, "lo de hoy");
+        assert_eq!(c.mensajes[1].clase, Some(Clase::Nota));
+        assert_eq!(c.mensajes[1].codigo_chat().as_deref(), Some("2·K7Q2"));
+        assert_eq!(c.mensajes[1].codigo_unico().len(), crate::codigos::LARGO);
+        // Dos notas seguidas no comparten codigo unico.
+        assert_ne!(c.mensajes[0].codigo_unico(), c.mensajes[1].codigo_unico());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn el_numero_siguiente_es_el_mayor_mas_uno_y_va_por_conversacion() {
+        let c = Cuaderno::leer(concat!(
+            r#"{"id":"a","numero":7,"proyecto":"pr-1"}"#,
+            "\n",
+            r#"{"id":"b","numero":3,"proyecto":"pr-1"}"#,
+            "\n",
+            r#"{"id":"c","numero":41,"proyecto":"otro"}"#,
+            "\n",
+            r#"{"id":"d","numero":2}"#,
+            "\n"
+        ));
+        assert_eq!(
+            c.siguiente_numero(Some("pr-1")),
+            8,
+            "el mayor, no cuantos hay"
+        );
+        assert_eq!(c.siguiente_numero(Some("otro")), 42);
+        assert_eq!(c.siguiente_numero(None), 3, "la general va aparte");
+        // Una conversacion sin nada empieza por el uno.
+        assert_eq!(c.siguiente_numero(Some("nueva")), 1);
+    }
+
+    #[test]
+    fn una_linea_rota_al_final_no_se_lleva_las_buenas() {
+        let d = carpeta("rota");
+        anadir(&d, &Mensaje::nota("buena", 1, 1, "K7Q2", "pr-1")).unwrap();
+        // Como si se hubiera cortado la luz a mitad de escribir la segunda.
+        std::fs::write(
+            d.join("guardados.jsonl"),
+            format!(
+                "{}{}",
+                std::fs::read_to_string(d.join("guardados.jsonl")).unwrap(),
+                r#"{"id":"a","cuando":"#
+            ),
+        )
+        .unwrap();
+        let c = Cuaderno::leer_de(&d).unwrap();
+        assert_eq!(c.mensajes.len(), 1, "la buena se lee");
+        assert_eq!(c.lineas_rotas, 1, "y la rota se cuenta, no se calla");
+        let _ = std::fs::remove_dir_all(&d);
     }
 }
