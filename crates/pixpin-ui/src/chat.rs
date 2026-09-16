@@ -73,6 +73,24 @@ pub const CONTADOR_RELLENO: u32 = 5;
 pub const HORA_HUECO: u32 = 5;
 /// El titulo de la barra, en seminegrita.
 pub const TITULO_TAM: f32 = 12.0;
+
+/// El buscador de la cabecera de la lista: capsula de 35 con 7 de margen.
+pub const BUSCADOR_ALTO: u32 = 35;
+pub const BUSCADOR_RADIO: u32 = 18;
+pub const BUSCADOR_MARGEN: u32 = 7;
+pub const BUSCADOR_TEXTO_X: u32 = 12;
+pub const BUSCADOR_TAM: f32 = 13.0;
+
+/// Los botones de al lado de la caja de escribir (adjuntar, enviar).
+pub const BOTON_ANCHO: u32 = 44;
+pub const BOTON_ALTO: u32 = 46;
+pub const BOTON_MARGEN: u32 = 2;
+
+/// La barra del mensaje fijado, bajo la cabecera del proyecto.
+pub const FIJADO_ALTO: u32 = 49;
+pub const FIJADO_MARGEN_X: u32 = 17;
+/// La rayita de color que lo marca a la izquierda.
+pub const FIJADO_RAYA: u32 = 2;
 /// Margen a la derecha de la fila para la hora y el contador.
 pub const MARGEN_DERECHO: u32 = 10;
 
@@ -354,6 +372,75 @@ impl Disposicion {
             .min((self.chat.alto / 2).max(1))
     }
 
+    /// El buscador, centrado en la cabecera de la lista.
+    pub fn buscador(&self, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let c = self.cabecera_lista;
+        if c.ancho == 0 {
+            return vacio();
+        }
+        let alto = e(BUSCADOR_ALTO).min(c.alto);
+        Rect {
+            x: c.x + e(BUSCADOR_MARGEN) as i32,
+            y: c.y + (c.alto as i32 - alto as i32) / 2,
+            ancho: c.ancho.saturating_sub(2 * e(BUSCADOR_MARGEN)),
+            alto,
+        }
+    }
+
+    /// El boton de adjuntar, a la izquierda de la caja de escribir; y el de
+    /// enviar, a la derecha. Ambos se apoyan abajo, como en Telegram.
+    pub fn boton_adjuntar(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let caja = self.redaccion(alto_texto, escala_por_cien);
+        Rect {
+            x: caja.x + e(BOTON_MARGEN) as i32,
+            y: caja.abajo() - e(BOTON_ALTO) as i32,
+            ancho: e(BOTON_ANCHO).min(caja.ancho),
+            alto: e(BOTON_ALTO).min(caja.alto),
+        }
+    }
+
+    pub fn boton_enviar(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let caja = self.redaccion(alto_texto, escala_por_cien);
+        let ancho = e(BOTON_ANCHO).min(caja.ancho);
+        Rect {
+            x: caja.derecha() - e(BOTON_MARGEN) as i32 - ancho as i32,
+            y: caja.abajo() - e(BOTON_ALTO) as i32,
+            ancho,
+            alto: e(BOTON_ALTO).min(caja.alto),
+        }
+    }
+
+    /// Lo que queda para el texto entre los dos botones.
+    pub fn texto_redaccion(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
+        let caja = self.redaccion(alto_texto, escala_por_cien);
+        let izquierda = self.boton_adjuntar(alto_texto, escala_por_cien).derecha();
+        let derecha = self.boton_enviar(alto_texto, escala_por_cien).x;
+        Rect {
+            x: izquierda,
+            y: caja.y,
+            ancho: (derecha - izquierda).max(0) as u32,
+            alto: caja.alto,
+        }
+    }
+
+    /// La barra del mensaje fijado, justo bajo la cabecera del proyecto.
+    /// Vacia si no hay ninguno fijado (lo decide quien llama).
+    pub fn fijado(&self, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        if self.chat.ancho == 0 {
+            return vacio();
+        }
+        Rect {
+            x: self.chat.x,
+            y: self.cabecera_chat.abajo(),
+            ancho: self.chat.ancho,
+            alto: e(FIJADO_ALTO).min(self.chat.alto),
+        }
+    }
+
     /// La caja de escribir, pegada abajo de la columna del proyecto.
     pub fn redaccion(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
         let alto = self.alto_redaccion(alto_texto, escala_por_cien);
@@ -365,9 +452,14 @@ impl Disposicion {
         }
     }
 
-    /// El historial: lo que queda entre la cabecera y la caja de escribir.
-    pub fn historial(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
-        let arriba = self.cabecera_chat.abajo();
+    /// El historial: lo que queda entre la cabecera (o la barra del mensaje
+    /// fijado, si la hay) y la caja de escribir.
+    pub fn historial(&self, alto_texto: u32, hay_fijado: bool, escala_por_cien: u32) -> Rect {
+        let arriba = if hay_fijado {
+            self.fijado(escala_por_cien).abajo()
+        } else {
+            self.cabecera_chat.abajo()
+        };
         let abajo = self.redaccion(alto_texto, escala_por_cien).y;
         Rect {
             x: self.chat.x,
@@ -907,7 +999,7 @@ mod pruebas_hora {
         // Y el historial siempre queda entre la cabecera y la caja.
         for alto_texto in [18, 90, 10_000] {
             let caja = d.redaccion(alto_texto, 100);
-            let hist = d.historial(alto_texto, 100);
+            let hist = d.historial(alto_texto, false, 100);
             assert_eq!(caja.abajo(), d.chat.abajo(), "pegada abajo");
             assert_eq!(hist.y, d.cabecera_chat.abajo());
             assert_eq!(hist.abajo(), caja.y, "sin hueco ni solape");
@@ -932,6 +1024,6 @@ mod pruebas_hora {
             caja.alto,
             d.chat.alto
         );
-        assert!(d.historial(10_000, 100).alto > 0);
+        assert!(d.historial(10_000, false, 100).alto > 0);
     }
 }

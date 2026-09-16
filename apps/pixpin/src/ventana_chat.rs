@@ -56,6 +56,10 @@ struct Tema {
     texto_elegido: Color,
     /// La pildora de pendientes.
     contador: Color,
+    /// El fondo del buscador de la cabecera.
+    buscador: Color,
+    /// El azul del boton de enviar (`historySendIconFg`).
+    enviar: Color,
     /// Las burbujas del historial, su texto, su hora y la pildora que
     /// separa los dias.
     burbuja_mia: Color,
@@ -85,6 +89,9 @@ const CLARO: Tema = Tema {
     fila_elegida: hex(0x419fd9),
     texto_elegido: hex(0xffffff),
     contador: hex(0x40a7e3),
+    // filterInputInactiveBg.
+    buscador: hex(0xf1f1f1),
+    enviar: hex(0x40a7e3),
     // msgOutBg, msgInBg y sus colores de texto y hora.
     burbuja_mia: hex(0xeffdde),
     burbuja_otra: hex(0xffffff),
@@ -113,6 +120,9 @@ const OSCURO: Tema = Tema {
     fila_elegida: hex(0x2b5278),
     texto_elegido: hex(0xffffff),
     contador: hex(0x4082bc),
+    // filterInputInactiveBg.
+    buscador: hex(0x242f3d),
+    enviar: hex(0x5288c1),
     // msgOutBg, msgInBg y sus colores de texto y hora.
     burbuja_mia: hex(0x2b5278),
     burbuja_otra: hex(0x182533),
@@ -226,6 +236,13 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     // Lo escrito y sin enviar de cada proyecto, para que cambiar de
     // conversacion y volver no se lo lleve por delante.
     let mut borradores: std::collections::HashMap<String, String> = Default::default();
+    // Lo escrito en el buscador de la lista.
+    let mut busqueda = String::new();
+    let mut buscando = false;
+    // Que fichas se ensenan y en que orden. Con el buscador vacio son
+    // todas; al escribir, solo las que coinciden. `elegida` sigue siendo un
+    // indice de `fichas`, para que filtrar no cambie de proyecto abierto.
+    let mut orden: Vec<usize> = (0..fichas.len()).collect();
 
     let mut ancho_lista = chat::ancho_inicial(marco.ancho, escala);
     let mut arrastre: Option<Arrastre> = None;
@@ -284,7 +301,55 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     } else if disposicion.asa.contiene(l) {
                         ventana.capturar_raton();
                         arrastre = Some(Arrastre::Asa(l.x - ancho_lista as i32));
-                    } else if let Some(i) = disposicion.fila_en(l, scroll, fichas.len(), escala) {
+                    } else if disposicion.buscador(escala).contiene(l) {
+                        buscando = true;
+                        hay_que_pintar = true;
+                    } else if abierto.as_ref().is_some_and(|a| {
+                        disposicion
+                            .boton_adjuntar(a.alto_caja.get(), escala)
+                            .contiene(l)
+                    }) {
+                        // Adjuntar: el dialogo del sistema, que es lo que en
+                        // Android hace el SAF.
+                        let rutas = pixpin_shell::elegir::pedir_ficheros(ventana.handle());
+                        if let Some(a) = abierto.as_mut() {
+                            let hechos = meter_ficheros(ubicacion, a, &identidad, &rutas);
+                            if hechos > 0 {
+                                a.scroll = None;
+                                if let Some(i) = elegida {
+                                    fichas[i].tocado = a.ficha.tocado;
+                                    fichas[i].resumen = a.ficha.resumen.clone();
+                                }
+                            }
+                            a.colocado.borrow_mut().ancho = 0;
+                        }
+                        buscando = false;
+                        hay_que_pintar = true;
+                    } else if abierto.as_ref().is_some_and(|a| {
+                        disposicion
+                            .boton_enviar(a.alto_caja.get(), escala)
+                            .contiene(l)
+                    }) {
+                        if let Some(a) = abierto.as_mut() {
+                            if !a.borrador.trim().is_empty() {
+                                match guardar_nota(ubicacion, a, &identidad) {
+                                    Ok(()) => {
+                                        a.scroll = None;
+                                        if let Some(i) = elegida {
+                                            fichas[i].tocado = a.ficha.tocado;
+                                            fichas[i].resumen = a.ficha.resumen.clone();
+                                        }
+                                    }
+                                    Err(e) => tracing::warn!(?e, "no se pudo guardar la nota"),
+                                }
+                                a.colocado.borrow_mut().ancho = 0;
+                            }
+                        }
+                        buscando = false;
+                        hay_que_pintar = true;
+                    } else if let Some(fila) = disposicion.fila_en(l, scroll, orden.len(), escala) {
+                        let i = orden[fila];
+                        buscando = false;
                         if elegida != Some(i) {
                             // Lo escrito y sin enviar se guarda antes de
                             // cambiar; volver a este proyecto lo devuelve.
@@ -324,7 +389,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         }
                         None => {
                             sobre = disposicion.boton_barra_en(l, escala);
-                            fila_sobre = disposicion.fila_en(l, scroll, fichas.len(), escala);
+                            fila_sobre = disposicion.fila_en(l, scroll, orden.len(), escala);
                             let cursor = chat::borde_en(l, marco.ancho, marco.alto, escala)
                                 .map(cursor_de)
                                 .unwrap_or(if disposicion.asa.contiene(l) {
@@ -348,7 +413,8 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     // que se pincho la ultima vez: es lo que espera la mano.
                     let aqui = local(pixpin_shell::entorno::posicion_del_cursor());
                     if let Some(a) = abierto.as_mut().filter(|_| disposicion.chat.contiene(aqui)) {
-                        let area = disposicion.historial(a.alto_caja.get(), escala);
+                        let area =
+                            disposicion.historial(a.alto_caja.get(), a.fijado.is_some(), escala);
                         let tope = pixpin_ui::historial::scroll_maximo(area, a.alto.get());
                         let paso = 3 * (chat::FILA * escala / 100) as i32;
                         let ahora_en = a.scroll.unwrap_or(tope);
@@ -368,7 +434,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     let paso = 3 * (chat::FILA * escala / 100) as i32;
                     let nuevo = disposicion.scroll_ajustado(
                         scroll - delta.signum() * paso,
-                        fichas.len(),
+                        orden.len(),
                         escala,
                     );
                     if nuevo != scroll {
@@ -376,7 +442,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         // Lo que hay bajo el raton cambia aunque el raton no
                         // se mueva.
                         let p = local(pixpin_shell::entorno::posicion_del_cursor());
-                        fila_sobre = disposicion.fila_en(p, scroll, fichas.len(), escala);
+                        fila_sobre = disposicion.fila_en(p, scroll, orden.len(), escala);
                         hay_que_pintar = true;
                     }
                 }
@@ -384,6 +450,29 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                 EventoOverlay::Cerrar => cerrar = true,
                 // Escribir en la caja de abajo. Solo llega si hay un
                 // proyecto abierto: sin conversacion no hay donde guardarlo.
+                // Con el buscador enfocado, lo que se teclea va ahi.
+                EventoOverlay::Caracter(c) if buscando => {
+                    if c >= ' ' {
+                        busqueda.push(c);
+                        orden = filtrar(&fichas, &busqueda);
+                        scroll = 0;
+                        hay_que_pintar = true;
+                    }
+                }
+                EventoOverlay::Tecla { vk, .. } if buscando && vk == VK_RETROCESO => {
+                    busqueda.pop();
+                    orden = filtrar(&fichas, &busqueda);
+                    scroll = 0;
+                    hay_que_pintar = true;
+                }
+                // Escapar del buscador lo limpia y suelta el foco, antes que
+                // cerrar la ventana entera.
+                EventoOverlay::Tecla { vk, .. } if buscando && vk == VK_ESCAPE => {
+                    buscando = false;
+                    busqueda.clear();
+                    orden = filtrar(&fichas, &busqueda);
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::Caracter(c) if abierto.is_some() => {
                     // WM_CHAR trae tambien los mandos (retroceso, enter);
                     // esos se atienden por tecla, no como letra.
@@ -402,28 +491,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     let rutas = pixpin_shell::overlay::ficheros_soltados();
                     match abierto.as_mut() {
                         Some(a) => {
-                            let mut hechos = 0;
-                            for ruta in &rutas {
-                                match std::fs::read(ruta) {
-                                    Ok(bytes) => {
-                                        let nombre = ruta
-                                            .file_name()
-                                            .map(|n| n.to_string_lossy().to_string())
-                                            .unwrap_or_else(|| "archivo".into());
-                                        // Uno que falle no puede llevarse los
-                                        // demas que venian con el.
-                                        match adjuntar(ubicacion, a, &identidad, &nombre, &bytes) {
-                                            Ok(()) => hechos += 1,
-                                            Err(e) => {
-                                                tracing::warn!(?e, nombre, "no se pudo guardar")
-                                            }
-                                        }
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(?e, ruta = %ruta.display(), "no se pudo leer")
-                                    }
-                                }
-                            }
+                            let hechos = meter_ficheros(ubicacion, a, &identidad, &rutas);
                             if hechos > 0 {
                                 a.scroll = None;
                                 if let Some(i) = elegida {
@@ -525,7 +593,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     ancho_lista,
                     Vista::Ambas,
                 );
-                scroll = d.scroll_ajustado(scroll, fichas.len(), escala);
+                scroll = d.scroll_ajustado(scroll, orden.len(), escala);
                 hay_que_pintar = true;
             }
         }
@@ -535,11 +603,13 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
             if let Ok(destino) = superficie.empezar(&motor) {
                 let lista = Lista {
                     fichas: &fichas,
+                    orden: &orden,
                     scroll,
                     sobre: fila_sobre,
                     elegida,
                     ahora,
                     textos,
+                    busqueda: &busqueda,
                 };
                 let abierto_ref = abierto.as_ref();
                 let _ = motor.dibujar(&destino, |p: &Pintor| {
@@ -593,6 +663,9 @@ struct Abierto {
     /// Lineas del cuaderno que no se entendieron. Se ensenan: si faltan
     /// mensajes, el usuario tiene que enterarse.
     rotas: usize,
+    /// Cual de los mensajes esta fijado, si hay alguno. En Android es el
+    /// campo `fijado`; aqui se ensena en una barra bajo la cabecera.
+    fijado: Option<usize>,
     /// Lo escrito y todavia sin enviar.
     borrador: String,
     /// Lo alto que mide ese texto ya medido con la fuente. Lo apunta el
@@ -621,12 +694,16 @@ struct Colocado {
 /// Lo que hace falta para pintar la lista.
 struct Lista<'a> {
     fichas: &'a [pixpin_proyecto::almacen::Ficha],
+    /// Que fichas se ensenan, por indice en `fichas`.
+    orden: &'a [usize],
     scroll: i32,
     sobre: Option<usize>,
     elegida: Option<usize>,
     /// La hora local de ahora, para decidir si una fecha es de hoy.
     ahora: i64,
     textos: &'a Catalogo,
+    /// Lo que hay escrito en el buscador.
+    busqueda: &'a str,
 }
 
 /// Los colores de los avatares, los mismos siete de Telegram. Cual toca sale
@@ -781,18 +858,30 @@ fn pintar(
         }
     }
 
-    // El titulo de la lista.
-    centrar_texto(
-        &textos.t("chat-titulo"),
-        d.cabecera_lista,
-        Some(16.0 * e),
-        15.0 * e,
-        tema.texto,
-    );
+    // El buscador, en el sitio del titulo: es lo que hay en Telegram y lo
+    // que hace falta en cuanto pasas de diez proyectos.
+    let caja = d.buscador(escala);
+    if caja.ancho > 0 {
+        p.rellenar_redondeado(rf(caja), chat::BUSCADOR_RADIO as f32 * e, tema.buscador);
+        let (texto_busqueda, color) = if lista.busqueda.is_empty() {
+            (textos.t("chat-buscar"), tema.apagado)
+        } else {
+            (lista.busqueda.to_string(), tema.texto)
+        };
+        let (_, alto_texto) = p.medir_texto(&texto_busqueda, chat::BUSCADOR_TAM * e);
+        p.texto_linea(
+            &texto_busqueda,
+            caja.x as f32 + chat::BUSCADOR_TEXTO_X as f32 * e,
+            caja.y as f32 + (caja.alto as f32 - alto_texto) / 2.0,
+            chat::BUSCADOR_TAM * e,
+            (caja.ancho as f32 - 2.0 * chat::BUSCADOR_TEXTO_X as f32 * e).max(0.0),
+            color,
+        );
+    }
 
     // Sin proyectos todavia: se dice, en vez de dejar la columna en blanco
     // que parece un fallo.
-    if lista.fichas.is_empty() {
+    if lista.orden.is_empty() {
         centrar_texto(
             &textos.t("chat-sin-proyectos"),
             d.filas,
@@ -827,11 +916,13 @@ fn pintar_filas(p: &Pintor, d: &Disposicion, tema: &Tema, escala: u32, lista: &L
     // Recorte al area de filas: la primera y la ultima suelen salirse, y sin
     // esto pintarian encima de la cabecera.
     p.empujar_recorte(rf(d.filas));
-    let (primera, cuantas) = d.visibles(lista.scroll, lista.fichas.len(), escala);
+    let (primera, cuantas) = d.visibles(lista.scroll, lista.orden.len(), escala);
     for i in primera..primera + cuantas {
-        let ficha = &lista.fichas[i];
+        let ficha = &lista.fichas[lista.orden[i]];
         let r = d.fila(i, lista.scroll, escala);
-        let elegida = lista.elegida == Some(i);
+        // Se compara contra el indice del PROYECTO, no contra el numero de
+        // fila: al filtrar, la fila 0 ya no es el primer proyecto.
+        let elegida = lista.elegida == Some(lista.orden[i]);
         if elegida {
             p.rellenar(rf(r), tema.fila_elegida);
         } else if lista.sobre == Some(i) {
@@ -1040,8 +1131,52 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
         tema.apagado,
     );
 
-    // El area de los mensajes: entre la cabecera y la caja de escribir.
-    let area = d.historial(alto_caja, escala);
+    // La barra del mensaje fijado, si lo hay: una rayita de color, el
+    // rotulo y la linea del mensaje, como en Telegram y en Android.
+    if let Some(fijado) = a.fijado.and_then(|i| a.mensajes.get(i)) {
+        let barra = d.fijado(escala);
+        p.rellenar(rf(barra), tema.cabecera);
+        p.rellenar(
+            RectF {
+                x: barra.x as f32 + chat::FIJADO_MARGEN_X as f32 * e,
+                y: barra.y as f32 + 8.0 * e,
+                ancho: (chat::FIJADO_RAYA as f32 * e).max(1.0),
+                alto: barra.alto as f32 - 16.0 * e,
+            },
+            tema.enviar,
+        );
+        let x = barra.x as f32 + (chat::FIJADO_MARGEN_X + 10) as f32 * e;
+        let ancho = (barra.derecha() as f32 - chat::FIJADO_MARGEN_X as f32 * e - x).max(0.0);
+        p.texto_linea(
+            &textos.t("chat-fijado"),
+            x,
+            barra.y as f32 + 7.0 * e,
+            chat::CONTADOR_TAM * e,
+            ancho,
+            tema.enviar,
+        );
+        p.texto_linea(
+            &fijado.resumen(),
+            x,
+            barra.y as f32 + 25.0 * e,
+            chat::CABECERA_TAM * e,
+            ancho,
+            tema.texto,
+        );
+        // La linea que la separa del historial.
+        p.rellenar(
+            RectF {
+                x: barra.x as f32,
+                y: barra.abajo() as f32 - (1.0 * e).max(1.0),
+                ancho: barra.ancho as f32,
+                alto: (1.0 * e).max(1.0),
+            },
+            tema.separador,
+        );
+    }
+
+    // El area de los mensajes: entre la cabecera (o el fijado) y la caja.
+    let area = d.historial(alto_caja, a.fijado.is_some(), escala);
     if a.mensajes.is_empty() {
         let vacio = textos.t("chat-sin-mensajes");
         let (w, alto) = p.medir_texto(&vacio, 13.0 * e);
@@ -1094,6 +1229,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                     ancho: ancho.ceil() as u32,
                     // Lo que nacio en otro aparato se ensena a la izquierda.
                     mio: m.origen.is_none(),
+                    cuando: m.cuando,
                     dia: m.cuando.div_euclid(86_400_000),
                 });
                 lineas.push(texto);
@@ -1206,10 +1342,14 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
     // Lo mas viejo arriba: el fichero se escribe anadiendo, pero un cuaderno
     // que viajo entre aparatos puede venir con las lineas mezcladas.
     mensajes.sort_by_key(|m| m.cuando);
+    // El ultimo fijado manda, como en Android: fijar otro sustituye al
+    // anterior en la barra.
+    let fijado = mensajes.iter().rposition(|m| m.fijado);
     Abierto {
         ficha: ficha.clone(),
         mensajes,
         rotas: cuaderno.lineas_rotas,
+        fijado,
         borrador: String::new(),
         alto_caja: std::cell::Cell::new(0),
         scroll: None,
@@ -1276,9 +1416,44 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
         tema.separador,
     );
 
-    let x = caja.x as f32 + chat::REDACCION_RELLENO_X as f32 * e;
+    // Los dos botones, como en Telegram: adjuntar a la izquierda y enviar a
+    // la derecha, apoyados abajo.
+    let icono_lado = 20.0 * e;
+    let centrado = |r: Rect| RectF {
+        x: r.x as f32 + (r.ancho as f32 - icono_lado) / 2.0,
+        y: r.y as f32 + (r.alto as f32 - icono_lado) / 2.0,
+        ancho: icono_lado,
+        alto: icono_lado,
+    };
+    let adjuntar = d.boton_adjuntar(alto_texto, escala);
+    p.icono(
+        &pixpin_render::iconos_excalidraw::FILE,
+        centrado(adjuntar),
+        tema.apagado,
+    );
+    // El de enviar solo se ensena si hay algo que enviar.
+    if !a.borrador.trim().is_empty() {
+        let enviar = d.boton_enviar(alto_texto, escala);
+        let c = centrado(enviar);
+        // Un triangulo a mano: son tres lineas y un icono aqui seria un
+        // recurso de mas.
+        let grosor = (2.0 * e).max(1.0);
+        let (x0, y0) = (c.x, c.y);
+        let m = icono_lado / 2.0;
+        p.linea((x0, y0), (x0 + icono_lado, y0 + m), grosor, tema.enviar);
+        p.linea(
+            (x0 + icono_lado, y0 + m),
+            (x0, y0 + icono_lado),
+            grosor,
+            tema.enviar,
+        );
+        p.linea((x0, y0), (x0, y0 + icono_lado), grosor, tema.enviar);
+    }
+
+    let zona = d.texto_redaccion(alto_texto, escala);
+    let x = zona.x as f32 + chat::REDACCION_RELLENO_X as f32 * e;
     let y = caja.y as f32 + chat::REDACCION_RELLENO_Y as f32 * e;
-    let ancho = (caja.ancho as f32 - 2.0 * chat::REDACCION_RELLENO_X as f32 * e).max(0.0);
+    let ancho = (zona.ancho as f32 - 2.0 * chat::REDACCION_RELLENO_X as f32 * e).max(0.0);
     let tam = chat::REDACCION_TAM * e;
     if a.borrador.is_empty() {
         p.texto(&textos.t("chat-escribe"), x, y, tam, tema.apagado);
@@ -1405,14 +1580,22 @@ fn adjuntar(
     Ok(())
 }
 
-/// La fecha del separador de dias, como la escribe Telegram: «15 de
-/// septiembre», con el ano solo si no es este.
+/// La fecha del separador de dias, como la escribe PixPin Android: «Hoy»,
+/// «Ayer», «15 de septiembre», y con el ano si es de otro.
 ///
-/// A proposito NO dice «Hoy» ni «Ayer»: Telegram Desktop tampoco, y una
-/// pildora que pone «Hoy» entre dos mensajes de hace un rato no separa nada.
+/// Telegram Desktop no usa «Hoy» ni «Ayer», pero esta app es el puerto de
+/// la de Android y ahi si se usan; manda el original.
 fn fecha_larga(cuando_ms: i64, ahora_ms: i64, textos: &Catalogo) -> String {
     if cuando_ms <= 0 {
         return String::new();
+    }
+    const DIA: i64 = 86_400_000;
+    let cuantos = ahora_ms.div_euclid(DIA) - cuando_ms.div_euclid(DIA);
+    if cuantos == 0 {
+        return textos.t("chat-hoy");
+    }
+    if cuantos == 1 {
+        return textos.t("chat-ayer");
     }
     let (ano, mes, dia) = pixpin_ui::chat::partes_fecha(cuando_ms);
     let (ano_ahora, _, _) = pixpin_ui::chat::partes_fecha(ahora_ms);
@@ -1424,4 +1607,49 @@ fn fecha_larga(cuando_ms: i64, ahora_ms: i64, textos: &Catalogo) -> String {
     }
     args.set("ano", ano);
     textos.t_args("chat-fecha-con-ano", &args)
+}
+
+/// Que proyectos pasan el filtro del buscador, por su indice.
+///
+/// Se compara sin distinguir mayusculas y buscando la palabra en cualquier
+/// sitio del nombre o de la ultima linea: escribir «playa» tiene que
+/// encontrar «Casa de playa», no solo lo que empieza por ahi.
+fn filtrar(fichas: &[pixpin_proyecto::almacen::Ficha], busqueda: &str) -> Vec<usize> {
+    let aguja = busqueda.trim().to_lowercase();
+    if aguja.is_empty() {
+        return (0..fichas.len()).collect();
+    }
+    fichas
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| {
+            f.nombre.to_lowercase().contains(&aguja) || f.resumen.to_lowercase().contains(&aguja)
+        })
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Copia unos ficheros al proyecto y los deja como mensajes. Devuelve
+/// cuantos entraron: uno que falle no puede llevarse los demas.
+fn meter_ficheros(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    aparato: &str,
+    rutas: &[std::path::PathBuf],
+) -> usize {
+    let mut hechos = 0;
+    for ruta in rutas {
+        let nombre = ruta
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "archivo".into());
+        match std::fs::read(ruta) {
+            Ok(bytes) => match adjuntar(ubicacion, a, aparato, &nombre, &bytes) {
+                Ok(()) => hechos += 1,
+                Err(e) => tracing::warn!(?e, nombre, "no se pudo guardar el adjunto"),
+            },
+            Err(e) => tracing::warn!(?e, ruta = %ruta.display(), "no se pudo leer"),
+        }
+    }
+    hechos
 }

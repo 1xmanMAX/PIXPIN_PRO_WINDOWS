@@ -32,6 +32,9 @@ pub const RADIO: u32 = 16;
 /// Entre dos burbujas seguidas del mismo lado, y al cambiar de lado.
 pub const HUECO: u32 = 2;
 pub const HUECO_GRUPO: u32 = 8;
+/// El «rato»: dos mensajes del mismo lado dentro de esta ventana van
+/// pegados. Cinco minutos, como PixPin Android (y como Telegram).
+pub const RATO_MS: i64 = 5 * 60 * 1000;
 /// La pildora con la fecha que separa los dias: 24 de alto, con 10 de aire
 /// encima y 2 debajo, y 12 de relleno a cada lado.
 pub const SEPARADOR_PILDORA: u32 = 24;
@@ -57,6 +60,9 @@ pub struct Entrada {
     pub ancho: u32,
     /// Mio: va a la derecha. De otro aparato: a la izquierda.
     pub mio: bool,
+    /// Cuando se escribio, en milisegundos. Decide si va pegado al de
+    /// arriba: dos del mismo lado dentro del mismo «rato» se agrupan.
+    pub cuando: i64,
     /// El dia (local) al que pertenece, para saber donde va un separador.
     pub dia: i64,
 }
@@ -107,6 +113,7 @@ pub fn colocar(area: Rect, entradas: &[Entrada], escala_por_cien: u32) -> (Vec<P
     let mut y = e(HUECO_GRUPO) as i32;
     let mut dia_anterior: Option<i64> = None;
     let mut mio_anterior: Option<bool> = None;
+    let mut cuando_anterior: Option<i64> = None;
     let ancho_maximo = ancho_contenido(area, escala_por_cien) + 2 * e(RELLENO_X);
 
     for entrada in entradas {
@@ -122,9 +129,12 @@ pub fn colocar(area: Rect, entradas: &[Entrada], escala_por_cien: u32) -> (Vec<P
             y += e(SEPARADOR) as i32;
             Some(r)
         } else {
-            // Dos del mismo lado se pegan; si cambia el lado se separan mas,
-            // que es lo que hace que se lea de quien es cada uno.
-            y += if mio_anterior == Some(entrada.mio) {
+            // Dos del mismo lado y del mismo rato se pegan; si cambia el lado
+            // o pasa mucho tiempo se separan mas, que es lo que hace que se
+            // lea de un vistazo de quien es cada tanda.
+            let mismo_grupo = mio_anterior == Some(entrada.mio)
+                && cuando_anterior.is_some_and(|c| entrada.cuando - c <= RATO_MS);
+            y += if mismo_grupo {
                 e(HUECO) as i32
             } else {
                 e(HUECO_GRUPO) as i32
@@ -146,6 +156,7 @@ pub fn colocar(area: Rect, entradas: &[Entrada], escala_por_cien: u32) -> (Vec<P
         y += alto as i32;
         dia_anterior = Some(entrada.dia);
         mio_anterior = Some(entrada.mio);
+        cuando_anterior = Some(entrada.cuando);
     }
     (puestos, (y + e(HUECO_GRUPO) as i32).max(0) as u32)
 }
@@ -208,6 +219,9 @@ mod pruebas {
             alto,
             ancho,
             mio,
+            // Mismo dia y misma hora: lo que cambia en las pruebas es el
+            // lado, salvo donde se diga.
+            cuando: dia * 86_400_000,
             dia,
         }
     }
@@ -357,5 +371,42 @@ mod pruebas {
         // se pueda mover ni se pinte nada.
         assert_eq!(scroll_minimo(area(), alto), scroll_maximo(area(), alto));
         assert_eq!(visibles(area(), &p, 0), (0, 0));
+    }
+
+    #[test]
+    fn dos_del_mismo_lado_se_pegan_solo_si_son_del_mismo_rato() {
+        let a = area();
+        let base = 10 * 86_400_000;
+        let con = |desfase: i64| Entrada {
+            alto: 20,
+            ancho: 100,
+            mio: true,
+            cuando: base + desfase,
+            dia: 10,
+        };
+        // Un minuto despues: misma tanda, pegados.
+        let (juntos, _) = colocar(a, &[con(0), con(60_000)], 100);
+        assert_eq!(
+            juntos[1].burbuja.y - juntos[0].burbuja.abajo(),
+            HUECO as i32
+        );
+        // Media hora despues: otra tanda, se separan aunque sean del mismo.
+        let (lejos, _) = colocar(a, &[con(0), con(30 * 60_000)], 100);
+        assert_eq!(
+            lejos[1].burbuja.y - lejos[0].burbuja.abajo(),
+            HUECO_GRUPO as i32
+        );
+        // Justo en el limite del rato todavia cuenta como la misma tanda.
+        let (limite, _) = colocar(a, &[con(0), con(RATO_MS)], 100);
+        assert_eq!(
+            limite[1].burbuja.y - limite[0].burbuja.abajo(),
+            HUECO as i32
+        );
+        // Y un milisegundo mas, ya no.
+        let (fuera, _) = colocar(a, &[con(0), con(RATO_MS + 1)], 100);
+        assert_eq!(
+            fuera[1].burbuja.y - fuera[0].burbuja.abajo(),
+            HUECO_GRUPO as i32
+        );
     }
 }

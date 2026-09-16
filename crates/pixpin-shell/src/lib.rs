@@ -11,6 +11,7 @@ pub mod atajo;
 pub mod atajos;
 pub mod bandeja;
 pub mod dialogo;
+pub mod elegir;
 pub mod encima;
 pub mod entorno;
 pub mod entrada;
