@@ -709,6 +709,11 @@ fn procesar_evento(
             invalidar_todas(piezas);
             Continuar::Si
         }
+        // El overlay de captura no acepta ficheros soltados (no llama a
+        // `aceptar_ficheros`), asi que esto no deberia llegar nunca; si
+        // llegara, se ignora antes que robarle el soltar a la ventana de
+        // debajo.
+        EventoOverlay::FicherosSoltados => Continuar::Si,
         EventoOverlay::Pintar => {
             if let Some(pieza) = piezas.iter().find(|z| z.ventana().handle() == hwnd) {
                 pintar(

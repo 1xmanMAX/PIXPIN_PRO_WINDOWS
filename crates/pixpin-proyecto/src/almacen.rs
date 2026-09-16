@@ -98,6 +98,74 @@ pub fn carpeta(raiz: &Path, id: &str) -> PathBuf {
     raiz.join("proyectos").join(id)
 }
 
+/// Deja un nombre de fichero en algo que se pueda escribir en cualquier
+/// disco: sin separadores, sin los signos que Windows prohibe y sin los
+/// nombres reservados. Un nombre que venga de fuera no puede decidir donde
+/// se escribe.
+pub fn nombre_seguro(nombre: &str) -> String {
+    const PROHIBIDOS: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+    let limpio: String = nombre
+        .chars()
+        .map(|c| {
+            if PROHIBIDOS.contains(&c) || (c as u32) < 0x20 {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    // Windows tampoco admite que acabe en punto o espacio.
+    let limpio = limpio.trim().trim_end_matches('.').trim();
+    if limpio.is_empty() {
+        return "archivo".to_string();
+    }
+    // Los nombres reservados de DOS siguen vivos y no se pueden crear.
+    const RESERVADOS: &[&str] = &[
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+    let raiz = limpio.split('.').next().unwrap_or(limpio);
+    if RESERVADOS.iter().any(|r| raiz.eq_ignore_ascii_case(r)) {
+        return format!("_{limpio}");
+    }
+    limpio.to_string()
+}
+
+/// Guarda un fichero dentro del proyecto y devuelve su ruta **relativa a la
+/// carpeta del proyecto**, que es lo que se apunta en el mensaje.
+///
+/// Se copia en vez de apuntar al original a proposito: el original se mueve,
+/// se renombra o se borra, y un proyecto que viaja no puede depender de una
+/// ruta del escritorio de nadie.
+///
+/// Si ya hay uno con ese nombre se le pone un numero, en vez de pisarlo: dos
+/// `captura.png` de dos sitios distintos son dos ficheros distintos.
+pub fn guardar_adjunto(
+    raiz: &Path,
+    id: &str,
+    nombre: &str,
+    bytes: &[u8],
+) -> std::io::Result<String> {
+    let carpeta = carpeta(raiz, id).join("archivos");
+    std::fs::create_dir_all(&carpeta)?;
+    let seguro = nombre_seguro(nombre);
+    let (tronco, extension) = match seguro.rsplit_once('.') {
+        Some((t, e)) if !t.is_empty() => (t.to_string(), format!(".{e}")),
+        _ => (seguro.clone(), String::new()),
+    };
+    let mut intento = seguro.clone();
+    let mut n = 1;
+    while carpeta.join(&intento).exists() {
+        intento = format!("{tronco} ({n}){extension}");
+        n += 1;
+        if n > 9999 {
+            return Err(std::io::Error::other("demasiados ficheros con ese nombre"));
+        }
+    }
+    std::fs::write(carpeta.join(&intento), bytes)?;
+    Ok(format!("archivos/{intento}"))
+}
+
 impl Indice {
     /// Lee el indice. Un fichero ilegible da la lista vacia y no impide
     /// abrir la ventana: es una lista, no los datos.
@@ -187,7 +255,7 @@ mod pruebas {
         }
     }
 
-    fn carpeta(etiqueta: &str) -> PathBuf {
+    fn carpeta_temporal(etiqueta: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
             "pixpin-proyectos-{etiqueta}-{}",
             std::process::id()
@@ -240,7 +308,7 @@ mod pruebas {
 
     #[test]
     fn el_indice_va_y_vuelve_del_disco_sin_perder_campos() {
-        let raiz = carpeta("disco");
+        let raiz = carpeta_temporal("disco");
         let mut i = Indice::default();
         let mut f = ficha("a", "Casa", 10);
         f.resto
@@ -253,5 +321,60 @@ mod pruebas {
         // Caso negativo: sin fichero, lista vacia y ningun error.
         let _ = std::fs::remove_dir_all(&raiz);
         assert_eq!(Indice::leer(&raiz), Indice::default());
+    }
+
+    #[test]
+    fn un_nombre_de_fuera_no_puede_decidir_donde_se_escribe() {
+        // Lo importante: nada que salga de la carpeta.
+        for malo in ["../../pasa.txt", r"c:\windows\system32\a.dll", "a/b/c.png"] {
+            let s = nombre_seguro(malo);
+            assert!(!s.contains('/') && !s.contains('\\'), "{malo} -> {s}");
+            assert!(!s.contains(':'), "{malo} -> {s}");
+        }
+        // Los nombres que Windows no deja crear.
+        assert_eq!(nombre_seguro("CON"), "_CON");
+        assert_eq!(nombre_seguro("nul.txt"), "_nul.txt");
+        assert_eq!(nombre_seguro("fin."), "fin");
+        assert_eq!(nombre_seguro("   "), "archivo");
+        // Y uno normal se queda como esta, acentos incluidos.
+        assert_eq!(nombre_seguro("Plano fachada ñ.pdf"), "Plano fachada ñ.pdf");
+    }
+
+    #[test]
+    fn dos_ficheros_con_el_mismo_nombre_no_se_pisan() {
+        let raiz = carpeta_temporal("adjuntos");
+        let a = guardar_adjunto(&raiz, "pr-1", "captura.png", b"primero").unwrap();
+        let b = guardar_adjunto(&raiz, "pr-1", "captura.png", b"segundo").unwrap();
+        assert_eq!(a, "archivos/captura.png");
+        assert_eq!(
+            b, "archivos/captura (1).png",
+            "el segundo no pisa al primero"
+        );
+        let base = carpeta(&raiz, "pr-1");
+        assert_eq!(std::fs::read(base.join(&a)).unwrap(), b"primero");
+        assert_eq!(std::fs::read(base.join(&b)).unwrap(), b"segundo");
+        // Y cada proyecto tiene los suyos.
+        let c = guardar_adjunto(&raiz, "pr-2", "captura.png", b"de otro").unwrap();
+        assert_eq!(c, "archivos/captura.png");
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn un_nombre_sin_extension_tambien_se_numera_bien() {
+        let raiz = carpeta_temporal("sin-extension");
+        assert_eq!(
+            guardar_adjunto(&raiz, "p", "LEEME", b"1").unwrap(),
+            "archivos/LEEME"
+        );
+        assert_eq!(
+            guardar_adjunto(&raiz, "p", "LEEME", b"2").unwrap(),
+            "archivos/LEEME (1)"
+        );
+        // Caso negativo: uno que empieza por punto es todo extension.
+        assert_eq!(
+            guardar_adjunto(&raiz, "p", ".gitignore", b"3").unwrap(),
+            "archivos/.gitignore"
+        );
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 }

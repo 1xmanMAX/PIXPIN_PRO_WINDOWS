@@ -46,6 +46,18 @@ thread_local! {
     /// La mitad alta de un par subrogado UTF-16 a la espera de su mitad
     /// baja (WM_CHAR entrega los dos por separado).
     static MITAD_ALTA: Cell<Option<u16>> = const { Cell::new(None) };
+    /// Lo ultimo que se solto encima, a la espera de que lo recojan. Va
+    /// aparte de la cola de eventos porque son rutas y el evento es `Copy`.
+    static SOLTADOS: std::cell::RefCell<Vec<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Recoge las rutas de lo ultimo que se solto, y deja el sitio vacio.
+///
+/// Se llama tras recibir `EventoOverlay::FicherosSoltados`. Si no se recoge,
+/// lo siguiente que se suelte se anade detras: nada se pierde en silencio.
+pub fn ficheros_soltados() -> Vec<std::path::PathBuf> {
+    SOLTADOS.with(|s| std::mem::take(&mut *s.borrow_mut()))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +90,10 @@ pub enum EventoOverlay {
     Rueda(i32),
     /// Un caracter escrito, ya compuesto (WM_CHAR, IME incluido) (D57).
     Caracter(char),
+    /// Se han soltado ficheros encima (WM_DROPFILES). Las rutas se recogen
+    /// con `ficheros_soltados`, no van aqui: este enum es `Copy` y meterle
+    /// un `Vec` obligaria a clonar en cada evento de raton.
+    FicherosSoltados,
     /// Una tecla soltada (WM_KEYUP). La capa viva lo usa para el pasante
     /// temporal con Ctrl mantenido (D50).
     TeclaSoltada(u32),
@@ -332,6 +348,18 @@ impl VentanaOverlay {
         // SAFETY: ventana propia y viva.
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_MINIMIZE);
+        }
+    }
+
+    /// Deja que se suelten ficheros encima (WM_DROPFILES).
+    ///
+    /// Apagado por omision: un overlay de captura que aceptara ficheros
+    /// robaria el soltar a la ventana que tiene debajo.
+    pub fn aceptar_ficheros(&self, si: bool) {
+        use windows::Win32::UI::Shell::DragAcceptFiles;
+        // SAFETY: ventana propia y viva.
+        unsafe {
+            DragAcceptFiles(self.hwnd, si);
         }
     }
 
@@ -852,6 +880,40 @@ extern "system" fn procedimiento_overlay(
             });
             if let Some(c) = caracter {
                 encolar(EventoOverlay::Caracter(c));
+            }
+            LRESULT(0)
+        }
+        WM_DROPFILES => {
+            use windows::Win32::UI::Shell::{DragFinish, DragQueryFileW, HDROP};
+            let arrastre = HDROP(wparam.0 as *mut _);
+            let mut rutas = Vec::new();
+            // SAFETY: `wparam` de WM_DROPFILES ES un HDROP valido hasta que se
+            // llama a DragFinish, que se llama justo debajo pase lo que pase.
+            unsafe {
+                // Con 0xFFFF_FFFF devuelve cuantos hay, no una ruta.
+                let cuantos = DragQueryFileW(arrastre, 0xFFFF_FFFF, None);
+                for i in 0..cuantos {
+                    // Primero se pregunta el largo (sin el cero final) y
+                    // luego se pide; pedir a ciegas con un buffer fijo
+                    // truncaria las rutas largas.
+                    let largo = DragQueryFileW(arrastre, i, None) as usize;
+                    if largo == 0 {
+                        continue;
+                    }
+                    let mut buffer = vec![0u16; largo + 1];
+                    let escritos = DragQueryFileW(arrastre, i, Some(&mut buffer)) as usize;
+                    if escritos == 0 {
+                        continue;
+                    }
+                    rutas.push(std::path::PathBuf::from(String::from_utf16_lossy(
+                        &buffer[..escritos],
+                    )));
+                }
+                DragFinish(arrastre);
+            }
+            if !rutas.is_empty() {
+                SOLTADOS.with(|s| s.borrow_mut().extend(rutas));
+                encolar(EventoOverlay::FicherosSoltados);
             }
             LRESULT(0)
         }

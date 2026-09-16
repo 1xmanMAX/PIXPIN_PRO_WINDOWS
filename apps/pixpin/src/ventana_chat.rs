@@ -36,6 +36,7 @@ const ALTO_LOGICO: u32 = 768;
 const VK_ESCAPE: u32 = 0x1B;
 const VK_RETROCESO: u32 = 0x08;
 const VK_ENTRAR: u32 = 0x0D;
+const VK_V: u32 = 0x56;
 
 /// Los colores de un tema.
 struct Tema {
@@ -175,6 +176,8 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     .context("sin superficie para el chat")?;
     ventana.mostrar();
     ventana.enfocar();
+    // Se pueden soltar ficheros encima para meterlos en el proyecto.
+    ventana.aceptar_ficheros(true);
 
     let tema = if pixpin_shell::entorno::tema_claro() {
         &CLARO
@@ -363,6 +366,68 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                             a.colocado.borrow_mut().ancho = 0;
                             hay_que_pintar = true;
                         }
+                    }
+                }
+                EventoOverlay::FicherosSoltados => {
+                    // Las rutas se recogen SIEMPRE, haya proyecto abierto o
+                    // no: si no, se quedarian ahi y aparecerian en el
+                    // siguiente que se abra, que seria peor que perderlas.
+                    let rutas = pixpin_shell::overlay::ficheros_soltados();
+                    match abierto.as_mut() {
+                        Some(a) => {
+                            let mut hechos = 0;
+                            for ruta in &rutas {
+                                match std::fs::read(ruta) {
+                                    Ok(bytes) => {
+                                        let nombre = ruta
+                                            .file_name()
+                                            .map(|n| n.to_string_lossy().to_string())
+                                            .unwrap_or_else(|| "archivo".into());
+                                        // Uno que falle no puede llevarse los
+                                        // demas que venian con el.
+                                        match adjuntar(ubicacion, a, &identidad, &nombre, &bytes) {
+                                            Ok(()) => hechos += 1,
+                                            Err(e) => {
+                                                tracing::warn!(?e, nombre, "no se pudo guardar")
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(?e, ruta = %ruta.display(), "no se pudo leer")
+                                    }
+                                }
+                            }
+                            if hechos > 0 {
+                                a.scroll = None;
+                                if let Some(i) = elegida {
+                                    fichas[i].tocado = a.ficha.tocado;
+                                    fichas[i].resumen = a.ficha.resumen.clone();
+                                }
+                            }
+                            a.colocado.borrow_mut().ancho = 0;
+                            hay_que_pintar = true;
+                        }
+                        None => tracing::info!(
+                            cuantos = rutas.len(),
+                            "ficheros soltados sin proyecto abierto"
+                        ),
+                    }
+                }
+                EventoOverlay::Tecla { vk, ctrl, .. } if vk == VK_V && ctrl => {
+                    if let Some(a) = abierto.as_mut() {
+                        match pegar(ubicacion, a, &identidad) {
+                            Ok(cuantos) if cuantos > 0 => {
+                                a.scroll = None;
+                                if let Some(i) = elegida {
+                                    fichas[i].tocado = a.ficha.tocado;
+                                    fichas[i].resumen = a.ficha.resumen.clone();
+                                }
+                            }
+                            Ok(_) => {}
+                            Err(e) => tracing::warn!(?e, "no se pudo pegar en el chat"),
+                        }
+                        a.colocado.borrow_mut().ancho = 0;
+                        hay_que_pintar = true;
                     }
                 }
                 EventoOverlay::Tecla { vk, shift, .. } if vk == VK_RETROCESO => {
@@ -1110,7 +1175,15 @@ fn guardar_nota(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::i
     // El numero sigue al mayor que ya hay, que es lo que hace el codigo de
     // chat (`47·K7Q2`) unico dentro de la conversacion.
     let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-    let mensaje = cuaderno::Mensaje::nota(&texto, cuando, numero, aparato, &a.ficha.id);
+    let mensaje = cuaderno::Mensaje::nota(
+        &texto,
+        &cuaderno::Sello {
+            cuando,
+            numero,
+            aparato: aparato.to_string(),
+            proyecto: a.ficha.id.clone(),
+        },
+    );
     let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
     cuaderno::anadir(&carpeta, &mensaje)?;
 
@@ -1184,4 +1257,95 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
         tema.texto,
     );
     p.soltar_recorte();
+}
+
+/// Mete en el proyecto lo que haya en el portapapeles. Devuelve cuantos
+/// mensajes salieron de ahi (cero si solo era texto, que va al borrador).
+///
+/// Los ficheros se COPIAN dentro del proyecto. Apuntar al original seria mas
+/// barato y estaria mal: el original se mueve, se renombra o se borra, y un
+/// proyecto que viaja al movil no puede llevar rutas del escritorio de nadie.
+fn pegar(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Result<usize> {
+    use pixpin_codec::ContenidoPortapapeles as Que;
+    let Some(que) = pixpin_codec::portapapeles::leer() else {
+        return Ok(0);
+    };
+    let ficheros: Vec<(String, Vec<u8>)> = match que {
+        Que::Texto(t) => {
+            // El texto va a la caja, no al cuaderno: pegar no es enviar, y
+            // asi se puede retocar antes.
+            a.borrador.push_str(&t);
+            return Ok(0);
+        }
+        Que::Imagen(imagen) => {
+            let bytes = pixpin_codec::codificar_png(&imagen).map_err(std::io::Error::other)?;
+            // Una imagen pegada no tiene nombre; se le pone la hora, que es
+            // lo unico verdadero que se sabe de ella.
+            let cuando = pixpin_shell::entorno::ahora_local_ms();
+            vec![(format!("pegado-{cuando}.png"), bytes)]
+        }
+        Que::Rutas(rutas) => rutas
+            .iter()
+            .filter_map(|r| {
+                let nombre = r.file_name()?.to_string_lossy().to_string();
+                // Uno que no se pueda leer no puede llevarse los demas.
+                match std::fs::read(r) {
+                    Ok(bytes) => Some((nombre, bytes)),
+                    Err(e) => {
+                        tracing::warn!(?e, ruta = %r.display(), "fichero que no se pudo leer");
+                        None
+                    }
+                }
+            })
+            .collect(),
+    };
+
+    let mut hechos = 0;
+    for (nombre, bytes) in ficheros {
+        if let Err(e) = adjuntar(ubicacion, a, aparato, &nombre, &bytes) {
+            tracing::warn!(?e, nombre, "fichero que no se pudo guardar");
+            continue;
+        }
+        hechos += 1;
+    }
+    Ok(hechos)
+}
+
+/// Copia un fichero al proyecto y lo deja como mensaje del cuaderno.
+fn adjuntar(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    aparato: &str,
+    nombre: &str,
+    bytes: &[u8],
+) -> std::io::Result<()> {
+    use pixpin_proyecto::{almacen, cuaderno};
+    let raiz = ubicacion.raiz();
+    let ruta = almacen::guardar_adjunto(raiz, &a.ficha.id, nombre, bytes)?;
+    let cuando = pixpin_shell::entorno::ahora_local_ms();
+    let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let mensaje = cuaderno::Mensaje::adjunto(
+        cuaderno::clase_de_nombre(nombre),
+        nombre,
+        &ruta,
+        bytes.len() as i64,
+        &cuaderno::Sello {
+            cuando,
+            numero,
+            aparato: aparato.to_string(),
+            proyecto: a.ficha.id.clone(),
+        },
+    );
+    // Primero al cuaderno y solo despues a la pantalla, como al escribir.
+    cuaderno::anadir(&almacen::carpeta(raiz, &a.ficha.id), &mensaje)?;
+    a.mensajes.push(mensaje);
+    a.ficha.tocado = cuando;
+    a.ficha.resumen = nombre.to_string();
+    let mut indice = almacen::Indice::leer(raiz);
+    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == a.ficha.id) {
+        f.tocado = a.ficha.tocado;
+        f.resumen = a.ficha.resumen.clone();
+        indice.guardar(raiz)?;
+    }
+    Ok(())
 }

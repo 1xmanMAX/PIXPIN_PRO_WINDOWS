@@ -143,26 +143,74 @@ impl Mensaje {
     }
 }
 
+/// Quien escribe, cuando y en que conversacion: lo que sella un mensaje
+/// nacido en este equipo. Van juntos porque siempre viajan juntos.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sello {
+    /// Milisegundos desde 1970.
+    pub cuando: i64,
+    /// El siguiente de su conversacion (ver `Cuaderno::siguiente_numero`).
+    pub numero: i64,
+    /// El codigo de este equipo (`K7Q2`).
+    pub aparato: String,
+    pub proyecto: String,
+}
+
 impl Mensaje {
     /// Una nota escrita aqui, con sus tres codigos ya puestos.
     ///
     /// `numero` es el siguiente de su conversacion (ver
     /// `Cuaderno::siguiente_numero`) y `aparato` el codigo de este equipo:
     /// juntos hacen el codigo de chat (`47·K7Q2`) que ensena PixPin Android.
-    pub fn nota(texto: &str, cuando: i64, numero: i64, aparato: &str, proyecto: &str) -> Mensaje {
+    pub fn nota(texto: &str, sello: &Sello) -> Mensaje {
         Mensaje {
             // El id lleva la hora, como en el movil: ordena solo y no choca
             // con los que ya hay.
-            id: format!("{cuando}"),
-            cuando,
+            id: format!("{}", sello.cuando),
+            cuando: sello.cuando,
             clase: Some(Clase::Nota),
             texto: texto.to_string(),
-            numero,
+            numero: sello.numero,
             uid: Some(crate::codigos::nuevo()),
-            aparato: Some(aparato.to_string()),
-            proyecto: Some(proyecto.to_string()),
+            aparato: Some(sello.aparato.clone()),
+            proyecto: Some(sello.proyecto.clone()),
             ..Default::default()
         }
+    }
+
+    /// Un mensaje con un fichero dentro del proyecto.
+    ///
+    /// `ruta` es relativa a la carpeta del proyecto (`archivos/foto.jpg`), no
+    /// del escritorio: una ruta absoluta de este equipo no significa nada en
+    /// el movil, y el proyecto tiene que poder viajar con sus ficheros.
+    pub fn adjunto(clase: Clase, nombre: &str, ruta: &str, bytes: i64, sello: &Sello) -> Mensaje {
+        Mensaje {
+            id: format!("{}", sello.cuando),
+            cuando: sello.cuando,
+            clase: Some(clase),
+            nombre: nombre.to_string(),
+            ruta: Some(ruta.to_string()),
+            bytes,
+            numero: sello.numero,
+            uid: Some(crate::codigos::nuevo()),
+            aparato: Some(sello.aparato.clone()),
+            proyecto: Some(sello.proyecto.clone()),
+            ..Default::default()
+        }
+    }
+}
+
+/// De que clase es un fichero segun su extension. Lo que no se reconoce es
+/// un archivo y ya: fingir que un `.xyz` es una imagen solo lleva a que el
+/// visor falle al abrirlo.
+pub fn clase_de_nombre(nombre: &str) -> Clase {
+    let extension = nombre.rsplit_once('.').map(|(_, e)| e.to_lowercase());
+    match extension.as_deref() {
+        Some("png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "tif" | "tiff" | "avif") => {
+            Clase::Imagen
+        }
+        Some("m4a" | "mp3" | "ogg" | "opus" | "wav" | "aac" | "flac") => Clase::Voz,
+        _ => Clase::Archivo,
     }
 }
 
@@ -249,6 +297,15 @@ impl Cuaderno {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    fn sello(cuando: i64, numero: i64) -> Sello {
+        Sello {
+            cuando,
+            numero,
+            aparato: "K7Q2".into(),
+            proyecto: "pr-1".into(),
+        }
+    }
 
     #[test]
     fn un_mensaje_con_sus_tres_codigos_se_reconoce_y_no_pierde_campos() {
@@ -391,10 +448,10 @@ mod pruebas {
     #[test]
     fn escribir_una_nota_anade_una_linea_y_no_toca_las_de_antes() {
         let d = carpeta("anadir");
-        let vieja = Mensaje::nota("lo de ayer", 1_725_500_000_000, 1, "K7Q2", "pr-1");
+        let vieja = Mensaje::nota("lo de ayer", &sello(1_725_500_000_000, 1));
         anadir(&d, &vieja).unwrap();
         let antes = std::fs::read_to_string(d.join("guardados.jsonl")).unwrap();
-        let nueva = Mensaje::nota("lo de hoy", 1_725_600_000_000, 2, "K7Q2", "pr-1");
+        let nueva = Mensaje::nota("lo de hoy", &sello(1_725_600_000_000, 2));
         anadir(&d, &nueva).unwrap();
         let texto = std::fs::read_to_string(d.join("guardados.jsonl")).unwrap();
         assert!(texto.starts_with(&antes), "la linea de antes, intacta");
@@ -437,7 +494,7 @@ mod pruebas {
     #[test]
     fn una_linea_rota_al_final_no_se_lleva_las_buenas() {
         let d = carpeta("rota");
-        anadir(&d, &Mensaje::nota("buena", 1, 1, "K7Q2", "pr-1")).unwrap();
+        anadir(&d, &Mensaje::nota("buena", &sello(1, 1))).unwrap();
         // Como si se hubiera cortado la luz a mitad de escribir la segunda.
         std::fs::write(
             d.join("guardados.jsonl"),
@@ -452,5 +509,35 @@ mod pruebas {
         assert_eq!(c.mensajes.len(), 1, "la buena se lee");
         assert_eq!(c.lineas_rotas, 1, "y la rota se cuenta, no se calla");
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn la_clase_sale_de_la_extension_y_lo_raro_es_un_archivo() {
+        assert_eq!(clase_de_nombre("fachada.JPG"), Clase::Imagen);
+        assert_eq!(clase_de_nombre("plano.png"), Clase::Imagen);
+        assert_eq!(clase_de_nombre("voz-1.m4a"), Clase::Voz);
+        assert_eq!(clase_de_nombre("presupuesto.pdf"), Clase::Archivo);
+        // Caso negativo: lo desconocido y lo que no tiene extension no se
+        // fingen imagenes.
+        assert_eq!(clase_de_nombre("cosa.xyz"), Clase::Archivo);
+        assert_eq!(clase_de_nombre("LEEME"), Clase::Archivo);
+    }
+
+    #[test]
+    fn un_adjunto_guarda_la_ruta_de_dentro_del_proyecto_no_la_del_escritorio() {
+        let m = Mensaje::adjunto(
+            Clase::Imagen,
+            "fachada.jpg",
+            "archivos/fachada.jpg",
+            204_800,
+            &sello(1_725_500_000_000, 4),
+        );
+        assert_eq!(m.ruta.as_deref(), Some("archivos/fachada.jpg"));
+        assert!(!m.ruta.as_deref().unwrap().contains(':'), "nada absoluto");
+        assert_eq!(m.nombre, "fachada.jpg");
+        assert_eq!(m.bytes, 204_800);
+        assert_eq!(m.codigo_chat().as_deref(), Some("4·K7Q2"));
+        // Lo que se ensena de el es su nombre: no tiene texto.
+        assert_eq!(m.resumen(), "fachada.jpg");
     }
 }
