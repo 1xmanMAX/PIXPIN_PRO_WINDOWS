@@ -15,8 +15,8 @@
 //! Pasos hechos: las dos columnas, el asa, la barra de titulo (mover,
 //! minimizar, maximizar y cerrar), redimensionar por los bordes, recordar
 //! donde quedo y la lista de proyectos (avatar, nombre, hojas, hora y
-//! contador), que pinta solo las filas que se ven. El historial de cada
-//! proyecto llega despues.
+//! contador), que pinta solo las filas que se ven, y el historial del
+//! proyecto elegido en burbujas. Escribir mensajes llega despues.
 
 use anyhow::{Context, Result};
 use pixpin_geom::{Punto, Rect};
@@ -51,6 +51,10 @@ struct Tema {
     texto_elegido: Color,
     /// La pildora de pendientes.
     contador: Color,
+    /// Las burbujas del historial y la pildora que separa los dias.
+    burbuja_mia: Color,
+    burbuja_otra: Color,
+    separador_dia: Color,
 }
 
 const CLARO: Tema = Tema {
@@ -67,6 +71,9 @@ const CLARO: Tema = Tema {
     fila_elegida: hex(0x3390ec),
     texto_elegido: hex(0xffffff),
     contador: hex(0x3390ec),
+    burbuja_mia: hex(0xeeffde),
+    burbuja_otra: hex(0xffffff),
+    separador_dia: hex(0xe4e4e4),
 };
 
 const OSCURO: Tema = Tema {
@@ -83,6 +90,9 @@ const OSCURO: Tema = Tema {
     fila_elegida: hex(0x2b5278),
     texto_elegido: hex(0xffffff),
     contador: hex(0x3390ec),
+    burbuja_mia: hex(0x2b5278),
+    burbuja_otra: hex(0x182533),
+    separador_dia: hex(0x1b2735),
 };
 
 fn rf(r: Rect) -> RectF {
@@ -181,6 +191,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     let mut scroll: i32 = 0;
     let mut fila_sobre: Option<usize> = None;
     let mut elegida: Option<usize> = None;
+    let mut abierto: Option<Abierto> = None;
     // Antes de maximizar, para poder volver.
     let mut antes_de_maximizar: Option<Rect> = None;
     let mut hay_que_pintar = true;
@@ -232,7 +243,10 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         ventana.capturar_raton();
                         arrastre = Some(Arrastre::Asa(l.x - ancho_lista as i32));
                     } else if let Some(i) = disposicion.fila_en(l, scroll, fichas.len(), escala) {
-                        elegida = Some(i);
+                        if elegida != Some(i) {
+                            elegida = Some(i);
+                            abierto = Some(abrir_proyecto(ubicacion, &fichas[i]));
+                        }
                         hay_que_pintar = true;
                     }
                 }
@@ -281,6 +295,29 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     arrastre = None;
                 }
                 EventoOverlay::Rueda(delta) => {
+                    // La rueda va a la columna donde esta el raton, no a la
+                    // que se pincho la ultima vez: es lo que espera la mano.
+                    let aqui = local(pixpin_shell::entorno::posicion_del_cursor());
+                    if let Some(a) = abierto.as_mut().filter(|_| disposicion.chat.contiene(aqui)) {
+                        let area = Rect {
+                            x: disposicion.chat.x,
+                            y: disposicion.cabecera_chat.abajo(),
+                            ancho: disposicion.chat.ancho,
+                            alto: disposicion
+                                .chat
+                                .alto
+                                .saturating_sub(disposicion.cabecera_chat.alto),
+                        };
+                        let tope = pixpin_ui::historial::scroll_maximo(area, a.alto.get());
+                        let paso = 3 * (chat::FILA * escala / 100) as i32;
+                        let ahora_en = a.scroll.unwrap_or(tope);
+                        let nuevo = (ahora_en - delta.signum() * paso).clamp(0, tope);
+                        // Volver al final se guarda como «pegado»: si llegan
+                        // mensajes nuevos, se siguen viendo sin tocar nada.
+                        a.scroll = if nuevo >= tope { None } else { Some(nuevo) };
+                        hay_que_pintar = true;
+                        continue;
+                    }
                     // Tres filas por muesca, como Telegram y como el ajuste
                     // de Windows por omision.
                     let paso = 3 * (chat::FILA * escala / 100) as i32;
@@ -340,8 +377,12 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     ahora,
                     textos,
                 };
+                let abierto_ref = abierto.as_ref();
                 let _ = motor.dibujar(&destino, |p: &Pintor| {
                     pintar(p, &disposicion, tema, escala, textos, sobre, &lista);
+                    if let Some(a) = abierto_ref {
+                        pintar_historial(p, &disposicion, tema, escala, textos, a, ahora);
+                    }
                 });
                 let _ = superficie.presentar();
             }
@@ -358,6 +399,33 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     }
     ventana.ocultar();
     Ok(())
+}
+
+/// El proyecto abierto en la columna de la derecha.
+struct Abierto {
+    ficha: pixpin_proyecto::almacen::Ficha,
+    mensajes: Vec<pixpin_proyecto::cuaderno::Mensaje>,
+    /// Lineas del cuaderno que no se entendieron. Se ensenan: si faltan
+    /// mensajes, el usuario tiene que enterarse.
+    rotas: usize,
+    /// Desde arriba. `None` es «pegado al final», que es como se abre y
+    /// como se queda hasta que el usuario sube.
+    scroll: Option<i32>,
+    /// Lo que ocupa todo el historial, que solo se sabe al medirlo (hace
+    /// falta la fuente). Lo apunta el pintado para que la rueda sepa su tope.
+    alto: std::cell::Cell<u32>,
+    /// La colocacion ya medida, y para que ancho se midio. Medir el texto de
+    /// mil mensajes en cada fotograma seria tirar el rato: solo se rehace si
+    /// cambia el ancho de la columna.
+    colocado: std::cell::RefCell<Colocado>,
+}
+
+#[derive(Default)]
+struct Colocado {
+    ancho: u32,
+    puestos: Vec<pixpin_ui::historial::Puesto>,
+    /// El texto ya compuesto de cada mensaje, en el mismo orden.
+    lineas: Vec<String>,
 }
 
 /// Lo que hace falta para pintar la lista.
@@ -541,15 +609,17 @@ fn pintar(
         pintar_filas(p, d, tema, escala, lista);
     }
 
-    // La columna de la derecha llega en el paso siguiente; de momento dice
-    // que hay que elegir.
-    centrar_texto(
-        &textos.t("chat-elige-proyecto"),
-        d.chat,
-        None,
-        13.0 * e,
-        tema.apagado,
-    );
+    // Sin proyecto elegido, la columna de la derecha dice que hay que
+    // elegir uno; con uno elegido la pinta `pintar_historial`.
+    if lista.elegida.is_none() {
+        centrar_texto(
+            &textos.t("chat-elige-proyecto"),
+            d.chat,
+            None,
+            13.0 * e,
+            tema.apagado,
+        );
+    }
 }
 
 /// Pinta **solo las filas que se ven**: una lista de mil proyectos cuesta lo
@@ -682,4 +752,251 @@ fn pintar_filas(p: &Pintor, d: &Disposicion, tema: &Tema, escala: u32, lista: &L
         );
     }
     p.soltar_recorte();
+}
+
+/// Que dice la etiqueta de un mensaje que no es solo texto.
+fn clase_de(m: &pixpin_proyecto::cuaderno::Mensaje, textos: &Catalogo) -> Option<String> {
+    use pixpin_proyecto::cuaderno::Clase;
+    let clave = match m.clase.as_ref()? {
+        // Una nota es solo su texto: ponerle «Nota» encima no anade nada.
+        Clase::Nota => return None,
+        Clase::Imagen => "chat-clase-imagen",
+        Clase::Archivo => "chat-clase-archivo",
+        Clase::Voz => "chat-clase-voz",
+        Clase::Dibujo => "chat-clase-dibujo",
+        Clase::Pagina => "chat-clase-pagina",
+        Clase::Proyecto => "chat-clase-proyecto",
+        Clase::MiniApp => "chat-clase-miniapp",
+        // Una clase que no conocemos se ensena con su propia palabra: es
+        // mas honrado que callarla o fingir que es una nota.
+        Clase::Otra(palabra) => return Some(palabra.clone()),
+    };
+    Some(textos.t(clave))
+}
+
+/// La columna de la derecha: cabecera del proyecto y sus mensajes.
+fn pintar_historial(
+    p: &Pintor,
+    d: &Disposicion,
+    tema: &Tema,
+    escala: u32,
+    textos: &Catalogo,
+    a: &Abierto,
+    ahora: i64,
+) {
+    use pixpin_ui::historial as h;
+    let e = escala as f32 / 100.0;
+    if d.chat.ancho == 0 {
+        return;
+    }
+
+    // La cabecera: el avatar del proyecto, su nombre y lo que tiene dentro.
+    let cab = d.cabecera_chat;
+    let avatar = chat::AVATAR as f32 * e * 0.8;
+    let ax = cab.x as f32 + 16.0 * e;
+    let ay = cab.y as f32 + (cab.alto as f32 - avatar) / 2.0;
+    let caja = RectF {
+        x: ax,
+        y: ay,
+        ancho: avatar,
+        alto: avatar,
+    };
+    p.rellenar_redondeado(caja, avatar / 2.0, color_avatar(&a.ficha.codigo_unico()));
+    let letras = iniciales(&a.ficha.nombre);
+    let (w, alto_letras) = p.medir_texto(&letras, avatar * 0.4);
+    p.texto(
+        &letras,
+        ax + (avatar - w) / 2.0,
+        ay + (avatar - alto_letras) / 2.0,
+        avatar * 0.4,
+        Color::BLANCO,
+    );
+    let texto_x = ax + avatar + 12.0 * e;
+    let ancho_nombre = (cab.derecha() as f32 - 16.0 * e - texto_x).max(0.0);
+    p.texto_linea(
+        &a.ficha.nombre,
+        texto_x,
+        cab.y as f32 + 10.0 * e,
+        15.0 * e,
+        ancho_nombre,
+        tema.texto,
+    );
+    let mut abajo = {
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("cuantas", a.ficha.hojas);
+        textos.t_args("chat-hojas", &args)
+    };
+    if a.rotas > 0 {
+        // Lo que no se pudo leer se dice, no se calla.
+        abajo.push_str(&format!("  ·  {} ?", a.rotas));
+    }
+    p.texto_linea(
+        &abajo,
+        texto_x,
+        cab.y as f32 + 30.0 * e,
+        chat::CONTADOR_TAM * e,
+        ancho_nombre,
+        tema.apagado,
+    );
+
+    // El area de los mensajes, bajo la cabecera.
+    let area = Rect {
+        x: d.chat.x,
+        y: d.cabecera_chat.abajo(),
+        ancho: d.chat.ancho,
+        alto: d.chat.alto.saturating_sub(d.cabecera_chat.alto),
+    };
+    if a.mensajes.is_empty() {
+        let vacio = textos.t("chat-sin-mensajes");
+        let (w, alto) = p.medir_texto(&vacio, 13.0 * e);
+        p.texto(
+            &vacio,
+            area.x as f32 + (area.ancho as f32 - w) / 2.0,
+            area.y as f32 + (area.alto as f32 - alto) / 2.0,
+            13.0 * e,
+            tema.apagado,
+        );
+        return;
+    }
+
+    // Medir el texto necesita la fuente, asi que se hace aqui; pero solo
+    // cuando cambia el ancho, no en cada fotograma.
+    let ancho_contenido = h::ancho_contenido(area, escala);
+    {
+        let mut c = a.colocado.borrow_mut();
+        if c.ancho != ancho_contenido || c.puestos.len() != a.mensajes.len() {
+            let mut entradas = Vec::with_capacity(a.mensajes.len());
+            let mut lineas = Vec::with_capacity(a.mensajes.len());
+            for m in &a.mensajes {
+                let mut texto = m.resumen();
+                if let Some(etiqueta) = clase_de(m, textos) {
+                    texto = if texto.is_empty() {
+                        etiqueta
+                    } else {
+                        format!("{etiqueta}\n{texto}")
+                    };
+                }
+                // La hora va en la misma caja, al final: se le reserva sitio
+                // para que no se monte sobre la ultima linea.
+                let (ancho, alto) =
+                    p.medir_texto_ajustado(&texto, h::TEXTO_TAM * e, ancho_contenido as f32);
+                entradas.push(h::Entrada {
+                    alto: alto.ceil() as u32,
+                    ancho: (ancho + h::HORA_HUECO as f32 * e).ceil() as u32,
+                    // Lo que nacio en otro aparato se ensena a la izquierda.
+                    mio: m.origen.is_none(),
+                    dia: m.cuando.div_euclid(86_400_000),
+                });
+                lineas.push(texto);
+            }
+            let (puestos, alto) = h::colocar(area, &entradas, escala);
+            a.alto.set(alto);
+            *c = Colocado {
+                ancho: ancho_contenido,
+                puestos,
+                lineas,
+            };
+        }
+    }
+
+    let c = a.colocado.borrow();
+    // Sin desplazamiento propio, pegado al final: lo ultimo es lo que importa.
+    let scroll = a
+        .scroll
+        .unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
+    p.empujar_recorte(rf(area));
+    let (primero, cuantos) = h::visibles(area, &c.puestos, scroll);
+    for i in primero..primero + cuantos {
+        let puesto = c.puestos[i];
+        let m = &a.mensajes[i];
+        let mover = |r: Rect| Rect {
+            y: r.y + area.y - scroll,
+            ..r
+        };
+
+        if let Some(sep) = puesto.separador {
+            let sep = mover(sep);
+            let fecha = pixpin_ui::chat::etiqueta_fecha(m.cuando, ahora);
+            if !fecha.is_empty() {
+                let (w, alto) = p.medir_texto(&fecha, h::SEPARADOR_TAM * e);
+                let ancho = w + 20.0 * e;
+                let caja = RectF {
+                    x: sep.x as f32 + (sep.ancho as f32 - ancho) / 2.0,
+                    y: sep.y as f32 + (sep.alto as f32 - alto - 6.0 * e) / 2.0,
+                    ancho,
+                    alto: alto + 6.0 * e,
+                };
+                p.rellenar_redondeado(caja, caja.alto / 2.0, tema.separador_dia);
+                p.texto(
+                    &fecha,
+                    caja.x + 10.0 * e,
+                    caja.y + 3.0 * e,
+                    h::SEPARADOR_TAM * e,
+                    tema.apagado,
+                );
+            }
+        }
+
+        let burbuja = mover(puesto.burbuja);
+        let color = if m.origen.is_none() {
+            tema.burbuja_mia
+        } else {
+            tema.burbuja_otra
+        };
+        p.rellenar_redondeado(rf(burbuja), h::RADIO as f32 * e, color);
+        let dentro = Rect {
+            y: burbuja.y + (h::RELLENO_Y as f32 * e) as i32,
+            ..mover(puesto.dentro(escala))
+        };
+        p.parrafo(
+            &c.lineas[i],
+            dentro.x as f32,
+            dentro.y as f32,
+            h::TEXTO_TAM * e,
+            dentro.ancho as f32,
+            &[],
+            tema.texto,
+        );
+        // La hora, abajo a la derecha de la burbuja.
+        let hora = pixpin_ui::chat::etiqueta_hora(m.cuando, ahora);
+        if !hora.is_empty() {
+            let (w, alto) = p.medir_texto(&hora, h::HORA_TAM * e);
+            p.texto(
+                &hora,
+                burbuja.derecha() as f32 - h::RELLENO_X as f32 * e - w,
+                burbuja.abajo() as f32 - h::RELLENO_Y as f32 * e - alto,
+                h::HORA_TAM * e,
+                tema.apagado,
+            );
+        }
+    }
+    p.soltar_recorte();
+}
+
+/// Abre un proyecto: lee su cuaderno de disco.
+///
+/// Que no haya cuaderno no es un fallo: un proyecto recien llegado del movil
+/// todavia no tiene ninguno. Se ensena vacio y ya esta.
+fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha) -> Abierto {
+    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &ficha.id);
+    let cuaderno = pixpin_proyecto::cuaderno::Cuaderno::leer_de(&carpeta).unwrap_or_default();
+    if cuaderno.lineas_rotas > 0 {
+        tracing::warn!(
+            proyecto = %ficha.nombre,
+            rotas = cuaderno.lineas_rotas,
+            "lineas del cuaderno que no se entendieron"
+        );
+    }
+    let mut mensajes = cuaderno.mensajes;
+    // Lo mas viejo arriba: el fichero se escribe anadiendo, pero un cuaderno
+    // que viajo entre aparatos puede venir con las lineas mezcladas.
+    mensajes.sort_by_key(|m| m.cuando);
+    Abierto {
+        ficha: ficha.clone(),
+        mensajes,
+        rotas: cuaderno.lineas_rotas,
+        scroll: None,
+        alto: std::cell::Cell::new(0),
+        colocado: std::cell::RefCell::new(Colocado::default()),
+    }
 }

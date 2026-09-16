@@ -12,6 +12,7 @@ pub mod anotador;
 pub mod barra;
 pub mod caja_herramientas;
 pub mod chat;
+pub mod historial;
 pub mod lupa;
 pub mod overlay;
 pub mod panel;

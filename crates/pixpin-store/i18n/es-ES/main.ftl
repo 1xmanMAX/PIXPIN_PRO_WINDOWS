@@ -158,3 +158,11 @@ chat-hojas = { $cuantas ->
     [one] 1 hoja
    *[other] { $cuantas } hojas
   }
+chat-sin-mensajes = Este proyecto aún no tiene nada
+chat-clase-imagen = Imagen
+chat-clase-archivo = Archivo
+chat-clase-voz = Nota de voz
+chat-clase-dibujo = Dibujo
+chat-clase-pagina = Página
+chat-clase-proyecto = Proyecto
+chat-clase-miniapp = Mini-aplicación

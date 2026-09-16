@@ -1,0 +1,315 @@
+//! El historial de un proyecto: los mensajes en burbujas.
+//!
+//! Geometria pura, como `chat`. Las medidas salen del mismo analisis de
+//! Telegram Desktop; **de ahi solo medidas y tecnicas, nunca su codigo, que
+//! es GPL-3.0.**
+//!
+//! Dos reglas que no son evidentes y conviene no deshacer:
+//!
+//! - **El historial se ancla abajo.** Lo ultimo es lo que importa, asi que
+//!   al abrir un proyecto se empieza pegado al final. Anclarlo arriba haria
+//!   que vieras el primer mensaje de hace dos anos.
+//! - **Aqui no se mide texto.** Medir necesita las fuentes del sistema, que
+//!   no son puras ni se pueden probar. Quien pinta mide y pasa el alto ya
+//!   hecho en `Entrada::alto`; esto solo reparte.
+
+use pixpin_geom::Rect;
+
+/// Medidas en pixeles logicos (al 100 %).
+/// Lo ancho que puede llegar a ser una burbuja, en centesimas del ancho de
+/// la columna y con un tope duro: una linea larguisima se lee mal.
+pub const BURBUJA_POR_CIEN: u32 = 72;
+pub const BURBUJA_MAXIMA: u32 = 480;
+/// Lo que se separa la burbuja del borde de la columna.
+pub const MARGEN: u32 = 12;
+/// El relleno de dentro de la burbuja.
+pub const RELLENO_X: u32 = 12;
+pub const RELLENO_Y: u32 = 7;
+pub const RADIO: u32 = 12;
+/// Entre dos burbujas seguidas del mismo lado, y al cambiar de lado.
+pub const HUECO: u32 = 4;
+pub const HUECO_GRUPO: u32 = 10;
+/// La pildora con la fecha que separa los dias.
+pub const SEPARADOR: u32 = 34;
+pub const SEPARADOR_TAM: f32 = 12.0;
+pub const TEXTO_TAM: f32 = 14.0;
+pub const HORA_TAM: f32 = 11.0;
+/// Lo que se le reserva a la hora dentro de la burbuja, a su derecha.
+pub const HORA_HUECO: u32 = 44;
+
+/// Un mensaje a colocar, ya medido por quien pinta.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Entrada {
+    /// El alto del contenido, sin el relleno de la burbuja.
+    pub alto: u32,
+    /// El ancho del contenido, para que la burbuja no sea mas ancha de lo
+    /// que ocupa: una de ancho fijo con dos palabras queda fatal.
+    pub ancho: u32,
+    /// Mio: va a la derecha. De otro aparato: a la izquierda.
+    pub mio: bool,
+    /// El dia (local) al que pertenece, para saber donde va un separador.
+    pub dia: i64,
+}
+
+/// Donde acaba cada mensaje.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Puesto {
+    pub burbuja: Rect,
+    /// La pildora de fecha que va justo encima, si este mensaje estrena dia.
+    pub separador: Option<Rect>,
+}
+
+impl Puesto {
+    /// Donde va el contenido dentro de la burbuja.
+    pub fn dentro(&self, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        Rect {
+            x: self.burbuja.x + e(RELLENO_X) as i32,
+            y: self.burbuja.y + e(RELLENO_Y) as i32,
+            ancho: self.burbuja.ancho.saturating_sub(2 * e(RELLENO_X)),
+            alto: self.burbuja.alto.saturating_sub(2 * e(RELLENO_Y)),
+        }
+    }
+
+    /// Lo alto que ocupa con su pildora, si la lleva.
+    pub fn arriba(&self) -> i32 {
+        self.separador.map_or(self.burbuja.y, |s| s.y)
+    }
+}
+
+/// Lo ancho que puede ser el CONTENIDO de una burbuja en esta columna. Es lo
+/// que quien pinta usa para medir el texto antes de llamar a `colocar`.
+pub fn ancho_contenido(area: Rect, escala_por_cien: u32) -> u32 {
+    let e = |v: u32| v * escala_por_cien / 100;
+    let util = area.ancho.saturating_sub(2 * e(MARGEN));
+    let tope = (util * BURBUJA_POR_CIEN / 100).min(e(BURBUJA_MAXIMA));
+    tope.saturating_sub(2 * e(RELLENO_X))
+}
+
+/// Reparte los mensajes de arriba abajo, del mas viejo al mas nuevo, con el
+/// origen en el alto cero. El desplazamiento lo aplica quien pinta.
+///
+/// Devuelve tambien el alto total que ocupa todo junto.
+pub fn colocar(area: Rect, entradas: &[Entrada], escala_por_cien: u32) -> (Vec<Puesto>, u32) {
+    let e = |v: u32| v * escala_por_cien / 100;
+    let mut puestos = Vec::with_capacity(entradas.len());
+    let mut y = e(HUECO_GRUPO) as i32;
+    let mut dia_anterior: Option<i64> = None;
+    let mut mio_anterior: Option<bool> = None;
+    let ancho_maximo = ancho_contenido(area, escala_por_cien) + 2 * e(RELLENO_X);
+
+    for entrada in entradas {
+        // Un dia nuevo estrena pildora de fecha; el primero tambien la lleva,
+        // que si no el historial empieza sin decir de cuando es.
+        let separador = if dia_anterior != Some(entrada.dia) {
+            let r = Rect {
+                x: area.x,
+                y,
+                ancho: area.ancho,
+                alto: e(SEPARADOR),
+            };
+            y += e(SEPARADOR) as i32;
+            Some(r)
+        } else {
+            // Dos del mismo lado se pegan; si cambia el lado se separan mas,
+            // que es lo que hace que se lea de quien es cada uno.
+            y += if mio_anterior == Some(entrada.mio) {
+                e(HUECO) as i32
+            } else {
+                e(HUECO_GRUPO) as i32
+            };
+            None
+        };
+
+        let ancho = (entrada.ancho + 2 * e(RELLENO_X)).clamp(2 * e(RELLENO_X), ancho_maximo);
+        let alto = entrada.alto + 2 * e(RELLENO_Y);
+        let x = if entrada.mio {
+            area.derecha() - e(MARGEN) as i32 - ancho as i32
+        } else {
+            area.x + e(MARGEN) as i32
+        };
+        puestos.push(Puesto {
+            burbuja: Rect { x, y, ancho, alto },
+            separador,
+        });
+        y += alto as i32;
+        dia_anterior = Some(entrada.dia);
+        mio_anterior = Some(entrada.mio);
+    }
+    (puestos, (y + e(HUECO_GRUPO) as i32).max(0) as u32)
+}
+
+/// Hasta donde se puede subir. Cero si todo cabe: un historial corto se
+/// queda quieto, pegado abajo.
+pub fn scroll_maximo(area: Rect, alto_total: u32) -> i32 {
+    (alto_total as i32 - area.alto as i32).max(0)
+}
+
+/// Cuales de los puestos se ven con este desplazamiento, para pintar solo
+/// esos. `scroll` cuenta desde arriba, ya ajustado.
+pub fn visibles(area: Rect, puestos: &[Puesto], scroll: i32) -> (usize, usize) {
+    let arriba = scroll;
+    let abajo = scroll + area.alto as i32;
+    let primero = puestos
+        .iter()
+        .position(|p| p.burbuja.abajo() >= arriba)
+        .unwrap_or(puestos.len());
+    let cuantos = puestos[primero..]
+        .iter()
+        .position(|p| p.arriba() > abajo)
+        .unwrap_or(puestos.len() - primero);
+    (primero, cuantos)
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+
+    fn area() -> Rect {
+        Rect {
+            x: 300,
+            y: 94,
+            ancho: 700,
+            alto: 600,
+        }
+    }
+
+    fn entrada(alto: u32, ancho: u32, mio: bool, dia: i64) -> Entrada {
+        Entrada {
+            alto,
+            ancho,
+            mio,
+            dia,
+        }
+    }
+
+    #[test]
+    fn una_burbuja_no_pasa_de_su_tope_ni_se_estira_si_es_corta() {
+        let a = area();
+        let maximo = ancho_contenido(a, 100);
+        let (p, _) = colocar(
+            a,
+            &[entrada(20, 10_000, true, 1), entrada(20, 30, true, 1)],
+            100,
+        );
+        assert_eq!(
+            p[0].burbuja.ancho,
+            maximo + 2 * RELLENO_X,
+            "la larga, al tope"
+        );
+        assert_eq!(
+            p[1].burbuja.ancho,
+            30 + 2 * RELLENO_X,
+            "la corta, a su medida"
+        );
+        // Y ninguna se sale de la columna.
+        for q in &p {
+            assert!(q.burbuja.x >= a.x, "{q:?}");
+            assert!(q.burbuja.derecha() <= a.derecha(), "{q:?}");
+        }
+    }
+
+    #[test]
+    fn lo_mio_va_a_la_derecha_y_lo_de_otro_aparato_a_la_izquierda() {
+        let a = area();
+        let (p, _) = colocar(
+            a,
+            &[entrada(20, 100, true, 1), entrada(20, 100, false, 1)],
+            100,
+        );
+        assert_eq!(p[0].burbuja.derecha(), a.derecha() - MARGEN as i32);
+        assert_eq!(p[1].burbuja.x, a.x + MARGEN as i32);
+    }
+
+    #[test]
+    fn cada_dia_estrena_su_pildora_de_fecha_y_solo_una() {
+        let a = area();
+        let (p, _) = colocar(
+            a,
+            &[
+                entrada(20, 100, true, 10),
+                entrada(20, 100, true, 10),
+                entrada(20, 100, true, 11),
+            ],
+            100,
+        );
+        assert!(p[0].separador.is_some(), "el primero dice de cuando es");
+        assert!(p[1].separador.is_none(), "mismo dia, sin repetir");
+        assert!(p[2].separador.is_some(), "dia nuevo");
+        // Y van en orden, sin solaparse.
+        assert!(p[0].burbuja.abajo() <= p[1].burbuja.y);
+        assert!(p[1].burbuja.abajo() <= p[2].separador.unwrap().y);
+    }
+
+    #[test]
+    fn dos_del_mismo_lado_se_pegan_mas_que_dos_de_lados_distintos() {
+        let a = area();
+        let (juntos, _) = colocar(
+            a,
+            &[entrada(20, 100, true, 1), entrada(20, 100, true, 1)],
+            100,
+        );
+        let (cambio, _) = colocar(
+            a,
+            &[entrada(20, 100, true, 1), entrada(20, 100, false, 1)],
+            100,
+        );
+        let pegado = juntos[1].burbuja.y - juntos[0].burbuja.abajo();
+        let separado = cambio[1].burbuja.y - cambio[0].burbuja.abajo();
+        assert_eq!(pegado, HUECO as i32);
+        assert_eq!(separado, HUECO_GRUPO as i32);
+        assert!(pegado < separado);
+    }
+
+    #[test]
+    fn un_historial_corto_no_se_desplaza_y_uno_largo_si() {
+        let a = area();
+        let cortas: Vec<Entrada> = (0..3).map(|_| entrada(20, 100, true, 1)).collect();
+        let (_, alto) = colocar(a, &cortas, 100);
+        assert_eq!(scroll_maximo(a, alto), 0);
+        let muchas: Vec<Entrada> = (0..200).map(|i| entrada(20, 100, true, i / 10)).collect();
+        let (_, alto) = colocar(a, &muchas, 100);
+        assert_eq!(scroll_maximo(a, alto), alto as i32 - a.alto as i32);
+        assert!(scroll_maximo(a, alto) > 0);
+    }
+
+    #[test]
+    fn de_doscientos_mensajes_solo_se_pintan_los_que_entran() {
+        let a = area();
+        let muchas: Vec<Entrada> = (0..200).map(|_| entrada(20, 100, true, 1)).collect();
+        let (p, alto) = colocar(a, &muchas, 100);
+        // Pegado al final, que es donde se abre.
+        let abajo = scroll_maximo(a, alto);
+        let (primero, cuantos) = visibles(a, &p, abajo);
+        assert!(cuantos < 30, "demasiadas: {cuantos}");
+        assert_eq!(primero + cuantos, p.len(), "el ultimo se ve");
+        // Y desde arriba se ve el primero.
+        let (primero, cuantos) = visibles(a, &p, 0);
+        assert_eq!(primero, 0);
+        assert!(cuantos < 30);
+    }
+
+    #[test]
+    fn el_contenido_va_dentro_de_su_burbuja_con_su_relleno() {
+        let a = area();
+        let (p, _) = colocar(a, &[entrada(40, 200, true, 1)], 200);
+        let d = p[0].dentro(200);
+        let b = p[0].burbuja;
+        assert_eq!(
+            d.x - b.x,
+            (RELLENO_X * 2) as i32,
+            "al 200 % el relleno dobla"
+        );
+        assert_eq!(d.ancho, 200, "el contenido cabe justo");
+        assert_eq!(d.alto, 40);
+        assert!(d.abajo() <= b.abajo());
+    }
+
+    #[test]
+    fn sin_mensajes_no_hay_nada_que_colocar() {
+        let (p, alto) = colocar(area(), &[], 100);
+        assert!(p.is_empty());
+        assert_eq!(scroll_maximo(area(), alto), 0);
+        assert_eq!(visibles(area(), &p, 0), (0, 0));
+    }
+}

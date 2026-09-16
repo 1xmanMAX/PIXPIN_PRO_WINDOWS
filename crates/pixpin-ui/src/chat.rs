@@ -748,6 +748,24 @@ pub fn etiqueta_hora(cuando_ms: i64, ahora_ms: i64) -> String {
     }
 }
 
+/// La fecha sola, para la pildora que separa los dias del historial.
+///
+/// Nunca da una hora, ni siquiera para hoy: una pildora que pone «13:13»
+/// entre dos mensajes no separa nada, confunde.
+pub fn etiqueta_fecha(cuando_ms: i64, ahora_ms: i64) -> String {
+    const DIA: i64 = 86_400_000;
+    if cuando_ms <= 0 {
+        return String::new();
+    }
+    let (a, m, d) = civil(cuando_ms.div_euclid(DIA));
+    let (ahora_a, _, _) = civil(ahora_ms.div_euclid(DIA));
+    if a == ahora_a {
+        format!("{d:02}/{m:02}")
+    } else {
+        format!("{d:02}/{m:02}/{:02}", a.rem_euclid(100))
+    }
+}
+
 /// Dia desde 1970 a (ano, mes, dia). Algoritmo `civil_from_days` de Howard
 /// Hinnant, de dominio publico; vale de 1601 en adelante de sobra.
 fn civil(dias: i64) -> (i64, u32, u32) {
@@ -780,6 +798,16 @@ mod pruebas_hora {
         assert_eq!(etiqueta_hora(AHORA - 86_400_000, AHORA), "14/09");
         // Y de otro ano, con ano.
         assert_eq!(etiqueta_hora(AHORA - 400 * 86_400_000, AHORA), "11/08/25");
+    }
+
+    #[test]
+    fn la_pildora_del_dia_siempre_es_fecha_nunca_una_hora() {
+        // Justo el caso que fallaba: un mensaje de hoy separaba los dias
+        // con «14:32», que no separa nada.
+        assert_eq!(etiqueta_fecha(AHORA, AHORA), "15/09");
+        assert_eq!(etiqueta_fecha(AHORA - 86_400_000, AHORA), "14/09");
+        assert_eq!(etiqueta_fecha(AHORA - 400 * 86_400_000, AHORA), "11/08/25");
+        assert_eq!(etiqueta_fecha(0, AHORA), "");
     }
 
     #[test]

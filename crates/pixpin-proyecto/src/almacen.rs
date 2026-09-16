@@ -90,6 +90,14 @@ pub fn ruta(raiz: &Path) -> PathBuf {
     raiz.join("proyectos").join("indice.json")
 }
 
+/// La carpeta de un proyecto, donde vive su cuaderno (`guardados.jsonl`) y
+/// lo que traiga consigo. Por `id` y no por codigo unico porque el codigo
+/// puede cambiar al recibir, y una carpeta que se renombra sola pierde lo
+/// que hubiera dentro.
+pub fn carpeta(raiz: &Path, id: &str) -> PathBuf {
+    raiz.join("proyectos").join(id)
+}
+
 impl Indice {
     /// Lee el indice. Un fichero ilegible da la lista vacia y no impide
     /// abrir la ventana: es una lista, no los datos.

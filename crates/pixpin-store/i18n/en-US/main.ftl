@@ -157,3 +157,11 @@ chat-hojas = { $cuantas ->
     [one] 1 sheet
    *[other] { $cuantas } sheets
   }
+chat-sin-mensajes = Nothing in this project yet
+chat-clase-imagen = Image
+chat-clase-archivo = File
+chat-clase-voz = Voice note
+chat-clase-dibujo = Drawing
+chat-clase-pagina = Page
+chat-clase-proyecto = Project
+chat-clase-miniapp = Mini app
