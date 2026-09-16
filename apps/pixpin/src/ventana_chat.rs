@@ -62,6 +62,10 @@ struct Tema {
     enviar: Color,
     /// El fondo sobre el que se ensena un lienzo: una hoja de papel.
     papel: Color,
+    /// La pildora de la pestana activa del panel de informacion, y su texto
+    /// (`lightButtonBgOver` y `lightButtonFg` de Telegram).
+    pestana_activa: Color,
+    texto_pestana_activa: Color,
     /// Las burbujas del historial, su texto, su hora y la pildora que
     /// separa los dias.
     burbuja_mia: Color,
@@ -95,6 +99,8 @@ const CLARO: Tema = Tema {
     buscador: hex(0xf1f1f1),
     enviar: hex(0x40a7e3),
     papel: hex(0xffffff),
+    pestana_activa: hex(0xe3f1fa),
+    texto_pestana_activa: hex(0x168acd),
     // msgOutBg, msgInBg y sus colores de texto y hora.
     burbuja_mia: hex(0xeffdde),
     burbuja_otra: hex(0xffffff),
@@ -129,6 +135,8 @@ const OSCURO: Tema = Tema {
     // En oscuro tampoco se pinta negro sobre negro: el lienzo lleva su
     // hoja clara, solo un poco apagada para no deslumbrar.
     papel: hex(0xe8e8e8),
+    pestana_activa: hex(0x1d2a39),
+    texto_pestana_activa: hex(0x6ab2f2),
     // msgOutBg, msgInBg y sus colores de texto y hora.
     burbuja_mia: hex(0x2b5278),
     burbuja_otra: hex(0x182533),
@@ -307,6 +315,34 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     } else if disposicion.asa.contiene(l) {
                         ventana.capturar_raton();
                         arrastre = Some(Arrastre::Asa(l.x - ancho_lista as i32));
+                    } else if abierto.as_ref().is_some_and(|a| a.info.is_some()) {
+                        // Con el panel abierto, la columna de la derecha es
+                        // suya: no se pincha ni el historial ni la caja.
+                        if let Some(a) = abierto.as_mut() {
+                            let d = pixpin_ui::info::Disposicion::calcular(
+                                disposicion.chat,
+                                disposicion.una_columna,
+                                escala,
+                            );
+                            if d.volver.contiene(l) {
+                                a.info = None;
+                            } else if let Some(i) = {
+                                let anchos = a.anchos_pestanas.borrow().clone();
+                                d.pestana_en(l, &d.pestanas(&anchos, escala))
+                            } {
+                                a.info = Some(SECCIONES[i]);
+                                a.scroll_info = 0;
+                            }
+                            hay_que_pintar = true;
+                        }
+                    } else if abierto.is_some() && disposicion.cabecera_chat.contiene(l) {
+                        // Pulsar el nombre abre la informacion del proyecto,
+                        // como en Telegram.
+                        if let Some(a) = abierto.as_mut() {
+                            a.info = Some(SECCIONES[0]);
+                            a.scroll_info = 0;
+                        }
+                        hay_que_pintar = true;
                     } else if let Some((a, indice)) = abierto.as_ref().and_then(|a| {
                         let area =
                             disposicion.historial(a.alto_caja.get(), a.fijado.is_some(), escala);
@@ -653,8 +689,15 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                             textos,
                             ahora,
                         };
-                        pintar_historial(p, &disposicion, &c, a, alto_texto);
-                        pintar_redaccion(p, &disposicion, &c, a, alto_texto);
+                        match a.info {
+                            // Con la informacion abierta, la columna de la
+                            // derecha es suya entera.
+                            Some(seccion) => pintar_info(p, &disposicion, &c, a, seccion),
+                            None => {
+                                pintar_historial(p, &disposicion, &c, a, alto_texto);
+                                pintar_redaccion(p, &disposicion, &c, a, alto_texto);
+                            }
+                        }
                     }
                 });
                 let _ = superficie.presentar();
@@ -693,6 +736,16 @@ struct Abierto {
     /// Lo alto que mide ese texto ya medido con la fuente. Lo apunta el
     /// pintado; la rueda lo necesita para saber donde acaba el historial.
     alto_caja: std::cell::Cell<u32>,
+    /// La pantalla de informacion esta abierta encima de la conversacion,
+    /// con su seccion y su desplazamiento propios.
+    info: Option<pixpin_proyecto::cuaderno::Seccion>,
+    scroll_info: i32,
+    /// Lo que ocupa la seccion abierta, que solo se sabe al colocarla.
+    alto_info: std::cell::Cell<u32>,
+    /// Lo ancho que mide el rotulo de cada pestana. Lo apunta el pintado,
+    /// que es quien tiene la fuente; el raton lo necesita para saber en cual
+    /// se pulso.
+    anchos_pestanas: std::cell::RefCell<Vec<f32>>,
     /// Desde arriba. `None` es «pegado al final», que es como se abre y
     /// como se queda hasta que el usuario sube.
     scroll: Option<i32>,
@@ -1401,6 +1454,10 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         rotas: cuaderno.lineas_rotas,
         fijado,
         borrador: String::new(),
+        info: None,
+        scroll_info: 0,
+        alto_info: std::cell::Cell::new(0),
+        anchos_pestanas: std::cell::RefCell::new(Vec::new()),
         alto_caja: std::cell::Cell::new(0),
         scroll: None,
         alto: std::cell::Cell::new(0),
@@ -1840,4 +1897,213 @@ fn abrir_mensaje(ubicacion: &Ubicacion, a: &Abierto, indice: usize) {
     if let Err(e) = pixpin_shell::abrir::abrir(&ruta) {
         tracing::warn!(?e, ruta = %ruta.display(), "no se pudo abrir");
     }
+}
+
+/// Las secciones del panel, en el orden en que se ensenan.
+const SECCIONES: [pixpin_proyecto::cuaderno::Seccion; 7] =
+    pixpin_proyecto::cuaderno::Seccion::TODAS;
+
+/// La pantalla de informacion del proyecto: ficha, pestanas y contenido.
+///
+/// Ocupa la columna de la derecha entera. En Telegram seria una tercera
+/// columna cuando la ventana es muy ancha; aqui la ventana no suele serlo
+/// tanto, y tapar la conversacion es lo que hace el propio Telegram en
+/// cuanto no le caben tres columnas.
+fn pintar_info(
+    p: &Pintor,
+    d: &Disposicion,
+    c: &Pinta,
+    a: &Abierto,
+    seccion: pixpin_proyecto::cuaderno::Seccion,
+) {
+    use pixpin_ui::info;
+    let (tema, escala, textos) = (c.tema, c.escala, c.textos);
+    let e = escala as f32 / 100.0;
+    let i = info::Disposicion::calcular(d.chat, d.una_columna, escala);
+    p.rellenar(rf(i.panel), tema.lista);
+
+    // La cabecera, con su flecha de volver y el titulo.
+    p.rellenar(rf(i.cabecera), tema.cabecera);
+    let grosor = (2.0 * e).max(1.0);
+    let (cx, cy) = (
+        i.volver.x as f32 + i.volver.ancho as f32 / 2.0,
+        i.volver.y as f32 + i.volver.alto as f32 / 2.0,
+    );
+    let brazo = 5.0 * e;
+    p.linea(
+        (cx + brazo, cy - brazo),
+        (cx - brazo, cy),
+        grosor,
+        tema.texto,
+    );
+    p.linea(
+        (cx - brazo, cy),
+        (cx + brazo, cy + brazo),
+        grosor,
+        tema.texto,
+    );
+    let titulo = textos.t("info-titulo");
+    let (_, alto_titulo) = p.medir_texto(&titulo, info::TITULO_TAM * e);
+    p.texto(
+        &titulo,
+        i.volver.derecha() as f32,
+        i.cabecera.y as f32 + (i.cabecera.alto as f32 - alto_titulo) / 2.0,
+        info::TITULO_TAM * e,
+        tema.texto,
+    );
+
+    // La ficha: avatar grande, nombre y cuantas cosas hay.
+    let avatar = info::FICHA_AVATAR as f32 * e;
+    let ax = i.ficha.x as f32 + info::FICHA_AVATAR_X as f32 * e;
+    let ay = i.ficha.y as f32 + info::FICHA_AVATAR_Y as f32 * e;
+    let caja = RectF {
+        x: ax,
+        y: ay,
+        ancho: avatar,
+        alto: avatar,
+    };
+    p.rellenar_redondeado(caja, avatar / 2.0, color_avatar(&a.ficha.codigo_unico()));
+    let letras = iniciales(&a.ficha.nombre);
+    let (w, h) = p.medir_texto(&letras, avatar * 0.4);
+    p.texto(
+        &letras,
+        ax + (avatar - w) / 2.0,
+        ay + (avatar - h) / 2.0,
+        avatar * 0.4,
+        Color::BLANCO,
+    );
+    let texto_x = i.ficha.x as f32 + info::FICHA_TEXTO_X as f32 * e;
+    let ancho_texto = (i.ficha.derecha() as f32 - 20.0 * e - texto_x).max(0.0);
+    p.texto_linea(
+        &a.ficha.nombre,
+        texto_x,
+        i.ficha.y as f32 + info::FICHA_NOMBRE_Y as f32 * e,
+        info::FICHA_NOMBRE_TAM * e,
+        ancho_texto,
+        tema.texto,
+    );
+    let cuantos = format!("{}", a.mensajes.len());
+    p.texto_linea(
+        &cuantos,
+        texto_x,
+        i.ficha.y as f32 + info::FICHA_ESTADO_Y as f32 * e,
+        info::FICHA_ESTADO_TAM * e,
+        ancho_texto,
+        tema.apagado,
+    );
+
+    // La tira de pestanas. Se miden aqui, que es donde esta la fuente, y se
+    // apuntan para que el raton sepa luego en cual se pulso.
+    let rotulos: Vec<String> = SECCIONES.iter().map(|s| textos.t(s.clave())).collect();
+    let anchos: Vec<f32> = rotulos
+        .iter()
+        .map(|r| p.medir_texto(r, info::PESTANA_TAM * e).0)
+        .collect();
+    *a.anchos_pestanas.borrow_mut() = anchos.clone();
+    let pestanas = i.pestanas(&anchos, escala);
+    p.rellenar_redondeado(rf(i.isla), i.isla.alto as f32 / 2.0, tema.cabecera);
+    p.empujar_recorte(rf(i.isla));
+    for (n, r) in pestanas.iter().enumerate() {
+        let activa = SECCIONES[n] == seccion;
+        if activa {
+            let pildora = i.pildora(*r, escala);
+            p.rellenar_redondeado(rf(pildora), pildora.alto as f32 / 2.0, tema.pestana_activa);
+        }
+        let (w, h) = p.medir_texto(&rotulos[n], info::PESTANA_TAM * e);
+        p.texto(
+            &rotulos[n],
+            r.x as f32 + (r.ancho as f32 - w) / 2.0,
+            r.y as f32 + (r.alto as f32 - h) / 2.0,
+            info::PESTANA_TAM * e,
+            if activa {
+                tema.texto_pestana_activa
+            } else {
+                tema.apagado
+            },
+        );
+    }
+    p.soltar_recorte();
+
+    // Y el contenido de la seccion.
+    let cuaderno = pixpin_proyecto::cuaderno::Cuaderno {
+        mensajes: a.mensajes.clone(),
+        lineas_rotas: 0,
+    };
+    let suyos = cuaderno.de_seccion(seccion);
+    if suyos.is_empty() {
+        let vacio = textos.t("chat-sin-mensajes");
+        let (w, h) = p.medir_texto(&vacio, 13.0 * e);
+        p.texto(
+            &vacio,
+            i.contenido.x as f32 + (i.contenido.ancho as f32 - w) / 2.0,
+            i.contenido.y as f32 + (i.contenido.alto as f32 - h) / 2.0,
+            13.0 * e,
+            tema.apagado,
+        );
+        a.alto_info.set(0);
+        return;
+    }
+
+    p.empujar_recorte(rf(i.contenido));
+    if seccion.es_cuadricula() {
+        let r = info::rejilla(i.contenido.ancho, escala);
+        a.alto_info.set(r.alto_total(suyos.len(), escala));
+        let (primera, cuantas) = r.visibles(i.contenido, suyos.len(), a.scroll_info, escala);
+        for (n, m) in suyos.iter().enumerate().skip(primera).take(cuantas) {
+            let celda = r.celda(n, i.contenido, a.scroll_info, escala);
+            p.rellenar_redondeado(rf(celda), 4.0 * e, tema.burbuja_otra);
+            // Sin miniatura todavia: se ensena su nombre, que es mejor que
+            // un cuadro vacio que no dice de que es.
+            p.texto_linea(
+                &m.resumen(),
+                celda.x as f32 + 6.0 * e,
+                celda.y as f32 + 6.0 * e,
+                chat::CONTADOR_TAM * e,
+                celda.ancho as f32 - 12.0 * e,
+                tema.apagado,
+            );
+        }
+    } else {
+        let alto = info::ARCHIVO_ALTO * escala / 100;
+        a.alto_info.set(alto * suyos.len() as u32);
+        let primera = (a.scroll_info / alto.max(1) as i32).max(0) as usize;
+        let caben = (i.contenido.alto / alto.max(1)) as usize + 2;
+        for (n, m) in suyos.iter().enumerate().skip(primera).take(caben) {
+            let fila = Rect {
+                x: i.contenido.x,
+                y: i.contenido.y + (n as u32 * alto) as i32 - a.scroll_info,
+                ancho: i.contenido.ancho,
+                alto,
+            };
+            let f = info::fila_archivo(fila, escala);
+            p.rellenar_redondeado(rf(f.miniatura), 6.0 * e, tema.burbuja_otra);
+            p.texto_linea(
+                &m.resumen(),
+                f.nombre.x as f32,
+                f.nombre.y as f32,
+                info::ARCHIVO_NOMBRE_TAM * e,
+                f.ancho_texto as f32,
+                tema.texto,
+            );
+            if let Some(etiqueta) = clase_de(m, textos) {
+                p.texto_linea(
+                    &etiqueta,
+                    f.estado.x as f32,
+                    f.estado.y as f32,
+                    info::ARCHIVO_ESTADO_TAM * e,
+                    f.ancho_texto as f32,
+                    tema.apagado,
+                );
+            }
+            p.texto_linea(
+                &pixpin_ui::chat::etiqueta_hora(m.cuando, c.ahora),
+                f.fecha.x as f32,
+                f.fecha.y as f32,
+                info::ARCHIVO_ESTADO_TAM * e,
+                f.ancho_texto as f32,
+                tema.apagado,
+            );
+        }
+    }
+    p.soltar_recorte();
 }
