@@ -34,6 +34,7 @@ pub mod indice;
 pub mod medida;
 pub mod organizar;
 pub mod pintado;
+pub mod portapapeles;
 pub mod seleccion;
 pub mod tinta;
 pub mod tiradores;

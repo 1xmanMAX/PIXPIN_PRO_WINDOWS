@@ -431,6 +431,9 @@ pub fn abrir(
 
     let mut escena = escena;
     let mut gesto = gesto_inicial(ajustes_iman);
+    // Lo copiado del lienzo. Vive con la ventana: cerrar el editor se lo
+    // lleva, que es lo que espera cualquiera.
+    let mut portapapeles: Vec<pixpin_motor2d::Elemento> = Vec::new();
     // D135: con fondo, la imagen centrada; sin fondo, el origen como antes.
     let mut camara = match &fondo {
         Some(f) => encuadre_inicial(
@@ -698,6 +701,81 @@ pub fn abrir(
                     continue;
                 }
             }
+            // 0. Los atajos de portapapeles y grupo. Van antes de traducir
+            // porque no son gestos: no tocan la maquina de estados, operan
+            // sobre lo que hay elegido.
+            if let EventoOverlay::Tecla {
+                vk, ctrl, shift, ..
+            } = ev
+            {
+                if ctrl
+                    && matches!(vk, v if v == b'C' as u32
+                    || v == b'X' as u32
+                    || v == b'V' as u32
+                    || v == b'D' as u32
+                    || v == b'G' as u32)
+                {
+                    use pixpin_motor2d::portapapeles as pp;
+                    use pixpin_ui::panel_lateral::AccionPanel;
+                    let hecho = match vk {
+                        v if v == b'C' as u32 => {
+                            portapapeles = pp::copiar(&escena, &gesto.seleccion);
+                            false
+                        }
+                        v if v == b'X' as u32 => {
+                            portapapeles = pp::copiar(&escena, &gesto.seleccion);
+                            !portapapeles.is_empty()
+                                && crate::panel_dibujo::aplicar(
+                                    AccionPanel::Borrar,
+                                    &mut gesto,
+                                    &mut escena,
+                                )
+                        }
+                        v if v == b'V' as u32 => {
+                            let nuevos = pp::pegar(
+                                &mut escena,
+                                &portapapeles,
+                                pp::DESPLAZAMIENTO,
+                                pp::DESPLAZAMIENTO,
+                            );
+                            let hubo = !nuevos.is_empty();
+                            if hubo {
+                                // Queda elegido lo pegado, como en
+                                // Excalidraw: asi se puede llevar a su sitio
+                                // de un tiron.
+                                gesto.seleccion.poner_todos(nuevos);
+                            }
+                            hubo
+                        }
+                        v if v == b'D' as u32 => crate::panel_dibujo::aplicar(
+                            AccionPanel::Duplicar,
+                            &mut gesto,
+                            &mut escena,
+                        ),
+                        _ => {
+                            // Ctrl+G agrupa; con mayusculas, desagrupa. La
+                            // logica ya estaba hecha y probada: le faltaba
+                            // una tecla.
+                            if shift {
+                                pixpin_motor2d::organizar::desagrupar(
+                                    &mut escena,
+                                    &gesto.seleccion,
+                                );
+                                true
+                            } else {
+                                pixpin_motor2d::organizar::agrupar(&mut escena, &gesto.seleccion)
+                                    .is_some()
+                            }
+                        }
+                    };
+                    if hecho {
+                        todo_sucio = true;
+                        ventana.invalidar();
+                    }
+                    continue;
+                }
+            }
+
             // 1. Traducir y, si le toca al motor, pasarselo.
             if let Some(g) = a_evento(
                 &ev,
