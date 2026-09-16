@@ -29,6 +29,9 @@ pub struct Estado {
     /// barra de grabar. `None` significa que nunca se toco, y entonces vale
     /// lo que diga `[gif] por_segundo` en los ajustes.
     pub gif_por_segundo: Option<u32>,
+    /// Donde y de que tamano quedo la ventana de chat: (x, y, ancho, alto)
+    /// en pixeles fisicos. `None` la primera vez.
+    pub chat_ventana: Option<[i32; 4]>,
 }
 
 fn fichero(ubicacion: &Ubicacion) -> PathBuf {

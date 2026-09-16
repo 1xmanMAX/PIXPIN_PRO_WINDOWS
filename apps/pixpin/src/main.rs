@@ -654,7 +654,7 @@ fn arrancar(
                     Some(r) => Ok(&*r),
                     nada => Recursos::nuevos().map(|r| &*nada.insert(r)),
                 };
-                if let Err(e) = recursos.and_then(|r| ventana_chat::abrir(r, &textos)) {
+                if let Err(e) = recursos.and_then(|r| ventana_chat::abrir(r, &textos, &ubicacion)) {
                     tracing::warn!(?e, "no se pudo abrir el chat de proyectos");
                 }
                 Continuar::Si

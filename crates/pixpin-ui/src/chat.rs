@@ -35,6 +35,13 @@ pub const PLEGAR_BAJO: u32 = 130;
 /// La lista plegada: solo los avatares.
 pub const LISTA_PLEGADA: u32 = 66;
 pub const ASA: u32 = 6;
+/// La barra de titulo propia: la ventana no tiene marco del sistema.
+pub const BARRA: u32 = 40;
+/// Cada boton de la barra (minimizar, maximizar, cerrar).
+pub const BOTON_BARRA_ANCHO: u32 = 46;
+/// Margen de los bordes por los que se redimensiona.
+pub const BORDE: u32 = 6;
+
 /// Cabecera de la lista y del chat.
 pub const CABECERA: u32 = 54;
 /// Fila de la lista de chats.
@@ -65,8 +72,31 @@ pub enum Vista {
 }
 
 /// Como queda repartida la ventana.
+/// Los botones de la barra de titulo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BotonBarra {
+    Minimizar,
+    Maximizar,
+    Cerrar,
+}
+
+/// Por donde se agarra para redimensionar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Borde {
+    Izquierda,
+    Derecha,
+    Arriba,
+    Abajo,
+    ArribaIzquierda,
+    ArribaDerecha,
+    AbajoIzquierda,
+    AbajoDerecha,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Disposicion {
+    /// La barra de titulo, arriba del todo.
+    pub barra: Rect,
     /// La columna de proyectos (vacia si no se ve).
     pub lista: Rect,
     /// La cabecera de la lista, dentro de `lista`.
@@ -122,16 +152,25 @@ impl Disposicion {
     ) -> Disposicion {
         let e = |v: u32| v * escala_por_cien / 100;
         let una_columna = ancho < e(ANCHO_DOS_COLUMNAS);
+        // Todo cuelga de debajo de la barra de titulo.
+        let barra = Rect {
+            x: 0,
+            y: 0,
+            ancho,
+            alto: e(BARRA).min(alto),
+        };
+        let arriba = barra.alto as i32;
+        let alto = alto.saturating_sub(barra.alto);
         let plegada = ancho_lista <= e(LISTA_PLEGADA);
         let columna = |x: i32, w: u32| Rect {
             x,
-            y: 0,
+            y: arriba,
             ancho: w,
             alto,
         };
         let con_cabecera = |r: Rect| Rect {
             x: r.x,
-            y: 0,
+            y: arriba,
             ancho: r.ancho,
             alto: e(CABECERA).min(alto),
         };
@@ -151,7 +190,7 @@ impl Disposicion {
                 },
                 filas: Rect {
                     x: lista.x,
-                    y: e(CABECERA).min(alto) as i32,
+                    y: arriba + e(CABECERA).min(alto) as i32,
                     ancho: lista.ancho,
                     alto: alto.saturating_sub(e(CABECERA)),
                 },
@@ -160,6 +199,7 @@ impl Disposicion {
                 } else {
                     vacio()
                 },
+                barra,
                 lista,
                 chat,
                 asa: vacio(),
@@ -175,22 +215,60 @@ impl Disposicion {
             cabecera_lista: con_cabecera(lista),
             filas: Rect {
                 x: 0,
-                y: e(CABECERA).min(alto) as i32,
+                y: arriba + e(CABECERA).min(alto) as i32,
                 ancho: w,
                 alto: alto.saturating_sub(e(CABECERA)),
             },
             cabecera_chat: con_cabecera(chat),
             lista,
             chat,
+            barra,
             asa: Rect {
                 x: w as i32 - (e(ASA) / 2) as i32,
-                y: 0,
+                y: arriba,
                 ancho: e(ASA).max(1),
                 alto,
             },
             plegada,
             una_columna,
         }
+    }
+
+    /// Los tres botones de la barra, de derecha a izquierda: cerrar,
+    /// maximizar y minimizar.
+    pub fn botones_barra(&self, escala_por_cien: u32) -> [(BotonBarra, Rect); 3] {
+        let w = BOTON_BARRA_ANCHO * escala_por_cien / 100;
+        let mut x = self.barra.derecha();
+        [
+            BotonBarra::Cerrar,
+            BotonBarra::Maximizar,
+            BotonBarra::Minimizar,
+        ]
+        .map(|b| {
+            x -= w as i32;
+            (
+                b,
+                Rect {
+                    x,
+                    y: self.barra.y,
+                    ancho: w,
+                    alto: self.barra.alto,
+                },
+            )
+        })
+    }
+
+    pub fn boton_barra_en(&self, p: Punto, escala_por_cien: u32) -> Option<BotonBarra> {
+        self.botones_barra(escala_por_cien)
+            .into_iter()
+            .find(|(_, r)| r.contiene(p))
+            .map(|(b, _)| b)
+    }
+
+    /// Si el punto sirve para arrastrar la ventana: la barra, menos sus
+    /// botones.
+    pub fn arrastra_ventana(&self, p: Punto, escala_por_cien: u32) -> bool {
+        self.barra.contiene(p) && self.boton_barra_en(p, escala_por_cien).is_none()
     }
 
     /// La fila `indice` de la lista, con el desplazamiento `scroll` ya
@@ -259,8 +337,8 @@ mod pruebas {
         assert_eq!(d.chat.x, 320);
         assert_eq!(d.lista.ancho + d.chat.ancho, 1200);
         assert_eq!(d.cabecera_lista.alto, CABECERA);
-        assert_eq!(d.filas.y, CABECERA as i32);
-        assert_eq!(d.filas.alto, 800 - CABECERA);
+        assert_eq!(d.filas.y, (BARRA + CABECERA) as i32);
+        assert_eq!(d.filas.alto, 800 - BARRA - CABECERA);
         // El asa cae sobre la linea que separa las dos columnas.
         assert!(d.asa.x <= d.chat.x && d.asa.derecha() >= d.chat.x);
     }
@@ -338,5 +416,163 @@ mod pruebas {
         // Caso negativo: con pocas, no se inventan filas de mas.
         let (p, c) = d.visibles(0, 3, 100);
         assert_eq!((p, c), (0, 3));
+    }
+}
+
+/// Por que borde se agarra el punto, si por alguno. Los bordes ganan a todo
+/// lo demas: son solo unos pixeles y sin ellos no se puede redimensionar.
+pub fn borde_en(p: Punto, ancho: u32, alto: u32, escala_por_cien: u32) -> Option<Borde> {
+    let m = (BORDE * escala_por_cien / 100).max(2) as i32;
+    if p.x < 0 || p.y < 0 || p.x >= ancho as i32 || p.y >= alto as i32 {
+        return None;
+    }
+    let izquierda = p.x < m;
+    let derecha = p.x >= ancho as i32 - m;
+    let arriba = p.y < m;
+    let abajo = p.y >= alto as i32 - m;
+    Some(match (izquierda, derecha, arriba, abajo) {
+        (true, _, true, _) => Borde::ArribaIzquierda,
+        (_, true, true, _) => Borde::ArribaDerecha,
+        (true, _, _, true) => Borde::AbajoIzquierda,
+        (_, true, _, true) => Borde::AbajoDerecha,
+        (true, ..) => Borde::Izquierda,
+        (_, true, ..) => Borde::Derecha,
+        (_, _, true, _) => Borde::Arriba,
+        (.., true) => Borde::Abajo,
+        _ => return None,
+    })
+}
+
+/// La ventana redimensionada al arrastrar `borde` hasta `cursor` (en
+/// coordenadas del escritorio), sin bajar de los minimos.
+pub fn redimensionar(marco: Rect, borde: Borde, cursor: Punto, escala_por_cien: u32) -> Rect {
+    let e = |v: u32| (v * escala_por_cien / 100) as i32;
+    let (mut x0, mut y0) = (marco.x, marco.y);
+    let (mut x1, mut y1) = (marco.derecha(), marco.abajo());
+    let toca_izquierda = matches!(
+        borde,
+        Borde::Izquierda | Borde::ArribaIzquierda | Borde::AbajoIzquierda
+    );
+    let toca_derecha = matches!(
+        borde,
+        Borde::Derecha | Borde::ArribaDerecha | Borde::AbajoDerecha
+    );
+    let toca_arriba = matches!(
+        borde,
+        Borde::Arriba | Borde::ArribaIzquierda | Borde::ArribaDerecha
+    );
+    let toca_abajo = matches!(
+        borde,
+        Borde::Abajo | Borde::AbajoIzquierda | Borde::AbajoDerecha
+    );
+    if toca_izquierda {
+        x0 = cursor.x.min(x1 - e(ANCHO_MINIMO_VENTANA));
+    }
+    if toca_derecha {
+        x1 = cursor.x.max(x0 + e(ANCHO_MINIMO_VENTANA));
+    }
+    if toca_arriba {
+        y0 = cursor.y.min(y1 - e(ALTO_MINIMO_VENTANA));
+    }
+    if toca_abajo {
+        y1 = cursor.y.max(y0 + e(ALTO_MINIMO_VENTANA));
+    }
+    Rect {
+        x: x0,
+        y: y0,
+        ancho: (x1 - x0) as u32,
+        alto: (y1 - y0) as u32,
+    }
+}
+
+#[cfg(test)]
+mod pruebas_ventana {
+    use super::*;
+
+    fn marco() -> Rect {
+        Rect {
+            x: 100,
+            y: 100,
+            ancho: 1000,
+            alto: 700,
+        }
+    }
+
+    #[test]
+    fn los_botones_van_a_la_derecha_de_la_barra_en_el_orden_de_windows() {
+        let d = Disposicion::calcular(1000, 700, 100, 320, Vista::Ambas);
+        let bs = d.botones_barra(100);
+        assert_eq!(bs[0].0, BotonBarra::Cerrar);
+        assert_eq!(bs[0].1.derecha(), 1000, "cerrar toca el borde derecho");
+        assert_eq!(bs[1].0, BotonBarra::Maximizar);
+        assert_eq!(bs[2].0, BotonBarra::Minimizar);
+        assert!(bs[2].1.x < bs[1].1.x && bs[1].1.x < bs[0].1.x);
+        let centro = |r: Rect| Punto {
+            x: r.x + r.ancho as i32 / 2,
+            y: r.y + r.alto as i32 / 2,
+        };
+        assert_eq!(
+            d.boton_barra_en(centro(bs[0].1), 100),
+            Some(BotonBarra::Cerrar)
+        );
+        // A la izquierda de los botones se arrastra la ventana.
+        assert!(d.arrastra_ventana(Punto { x: 200, y: 10 }, 100));
+        assert!(
+            !d.arrastra_ventana(centro(bs[0].1), 100),
+            "cerrar no arrastra"
+        );
+        // Caso negativo: bajo la barra ya es contenido.
+        assert!(!d.arrastra_ventana(
+            Punto {
+                x: 200,
+                y: BARRA as i32 + 5
+            },
+            100
+        ));
+    }
+
+    #[test]
+    fn las_columnas_empiezan_bajo_la_barra_de_titulo() {
+        let d = Disposicion::calcular(1000, 700, 100, 320, Vista::Ambas);
+        assert_eq!(d.barra.alto, BARRA);
+        assert_eq!(d.lista.y, BARRA as i32);
+        assert_eq!(d.cabecera_lista.y, BARRA as i32);
+        assert_eq!(d.filas.y, (BARRA + CABECERA) as i32);
+        assert_eq!(d.lista.abajo(), 700);
+    }
+
+    #[test]
+    fn las_esquinas_y_los_lados_se_reconocen_y_el_centro_no() {
+        let en = |x: i32, y: i32| borde_en(Punto { x, y }, 1000, 700, 100);
+        assert_eq!(en(0, 0), Some(Borde::ArribaIzquierda));
+        assert_eq!(en(999, 0), Some(Borde::ArribaDerecha));
+        assert_eq!(en(0, 699), Some(Borde::AbajoIzquierda));
+        assert_eq!(en(999, 699), Some(Borde::AbajoDerecha));
+        assert_eq!(en(500, 1), Some(Borde::Arriba));
+        assert_eq!(en(2, 300), Some(Borde::Izquierda));
+        assert_eq!(en(500, 300), None, "el centro no redimensiona");
+        assert_eq!(en(-1, 300), None, "fuera de la ventana tampoco");
+    }
+
+    #[test]
+    fn redimensionar_mueve_el_lado_que_se_agarra_y_respeta_los_minimos() {
+        let r = redimensionar(marco(), Borde::Derecha, Punto { x: 1400, y: 0 }, 100);
+        assert_eq!((r.x, r.ancho), (100, 1300));
+        let r = redimensionar(marco(), Borde::Izquierda, Punto { x: 300, y: 0 }, 100);
+        assert_eq!(
+            (r.x, r.derecha()),
+            (300, 1100),
+            "el lado opuesto no se mueve"
+        );
+        // Caso negativo: no se puede encoger por debajo del minimo.
+        let r = redimensionar(marco(), Borde::Derecha, Punto { x: 120, y: 0 }, 100);
+        assert_eq!(r.ancho, ANCHO_MINIMO_VENTANA);
+        let r = redimensionar(
+            marco(),
+            Borde::AbajoDerecha,
+            Punto { x: 1400, y: 1000 },
+            100,
+        );
+        assert_eq!((r.ancho, r.alto), (1300, 900));
     }
 }

@@ -325,6 +325,16 @@ impl VentanaOverlay {
     /// entre capturas porque crearlas (con su DComp y su swapchain) costaba
     /// ~90 ms de los 50 permitidos; una ventana oculta no recibe entrada ni
     /// se dibuja, asi que retenerla no cuesta nada.
+    /// La manda a la barra de tareas. La ventana de chat la usa desde su
+    /// propia barra de titulo, que no es la del sistema.
+    pub fn minimizar(&self) {
+        use windows::Win32::UI::WindowsAndMessaging::{SW_MINIMIZE, ShowWindow};
+        // SAFETY: ventana propia y viva.
+        unsafe {
+            let _ = ShowWindow(self.hwnd, SW_MINIMIZE);
+        }
+    }
+
     pub fn ocultar(&self) {
         // SAFETY: la ventana es propia y esta viva.
         unsafe {
@@ -387,6 +397,17 @@ impl VentanaOverlay {
     /// el overlay. Para los gestos con Alt: el boton se pulso ANTES de que
     /// el overlay existiera, y sin captura el arrastre se perderia al soltar
     /// fuera de la ventana (o al soltar sin haberse movido nunca encima).
+    /// Suelta la captura del raton tomada con `capturar_raton`. Sin esto,
+    /// el resto del escritorio se queda sin raton hasta que la ventana
+    /// muera.
+    pub fn soltar_raton(&self) {
+        // SAFETY: libera la captura de este hilo; si no habia ninguna, no
+        // hace nada.
+        unsafe {
+            let _ = ReleaseCapture();
+        }
+    }
+
     pub fn capturar_raton(&self) {
         // SAFETY: SetCapture sobre ventana propia.
         unsafe { SetCapture(self.hwnd) };
