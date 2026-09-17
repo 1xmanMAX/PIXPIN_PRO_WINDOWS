@@ -2090,7 +2090,11 @@ fn pintar_info(
                 alto,
             };
             let f = info::fila_archivo(fila, escala);
-            p.rellenar_redondeado(rf(f.miniatura), 6.0 * e, tema.burbuja_otra);
+            // La miniatura solo si hay fichero: una nota no tiene ninguno, y
+            // un recuadro vacio al lado de un texto parece algo que no cargo.
+            if m.ruta.is_some() || !m.nombre.is_empty() {
+                p.rellenar_redondeado(rf(f.miniatura), 6.0 * e, tema.burbuja_otra);
+            }
             p.texto_linea(
                 &m.resumen(),
                 f.nombre.x as f32,
