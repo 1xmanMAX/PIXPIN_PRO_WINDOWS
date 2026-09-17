@@ -14,7 +14,7 @@
 //! Mientras un overlay esta abierto el gancho se suspende: un Alt+clic
 //! dentro del overlay es del overlay, no un gesto nuevo.
 
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -38,6 +38,27 @@ static SUSPENDIDO: AtomicBool = AtomicBool::new(false);
 /// llega al estado del teclado del sistema, asi que para Windows el boton
 /// jamas estuvo abajo.
 static EN_CURSO: AtomicBool = AtomicBool::new(false);
+/// Cuantos editores de lienzo hay abiertos. Dentro del editor, Alt + arrastrar
+/// duplica lo elegido (D93); si el gancho se lo tragara, abriria una captura
+/// encima del dibujo. Es un contador porque el editor puede estar abierto
+/// desde un pin y desde el chat, en hilos distintos.
+static EDITORES: AtomicUsize = AtomicUsize::new(0);
+
+/// Mientras viva, los gestos con Alt no se interceptan. La toma el editor.
+pub struct PausaGestos(());
+
+impl PausaGestos {
+    pub fn tomar() -> Self {
+        EDITORES.fetch_add(1, Ordering::SeqCst);
+        PausaGestos(())
+    }
+}
+
+impl Drop for PausaGestos {
+    fn drop(&mut self) {
+        EDITORES.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 /// Si el boton del ultimo gesto sigue pulsado. El overlay lo consulta al
 /// abrirse para arrancar ya arrastrando.
@@ -106,7 +127,10 @@ extern "system" fn procedimiento(codigo: i32, wparam: WPARAM, lparam: LPARAM) ->
     if codigo == HC_ACTION as i32 && matches!(mensaje, WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP) {
         EN_CURSO.store(false, Ordering::SeqCst);
     }
-    if codigo == HC_ACTION as i32 && !SUSPENDIDO.load(Ordering::SeqCst) {
+    if codigo == HC_ACTION as i32
+        && !SUSPENDIDO.load(Ordering::SeqCst)
+        && EDITORES.load(Ordering::SeqCst) == 0
+    {
         let boton = match mensaje {
             WM_LBUTTONDOWN => Some(0usize),
             WM_RBUTTONDOWN => Some(1usize),
@@ -142,6 +166,21 @@ extern "system" fn procedimiento(codigo: i32, wparam: WPARAM, lparam: LPARAM) ->
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn la_pausa_del_editor_se_suelta_al_cerrarlo() {
+        let antes = EDITORES.load(Ordering::SeqCst);
+        {
+            let _a = PausaGestos::tomar();
+            let _b = PausaGestos::tomar();
+            assert_eq!(EDITORES.load(Ordering::SeqCst), antes + 2, "dos editores");
+        }
+        assert_eq!(
+            EDITORES.load(Ordering::SeqCst),
+            antes,
+            "cerrados los dos, los gestos vuelven"
+        );
+    }
 
     #[test]
     fn el_punto_empaquetado_se_desempaqueta_con_signo() {

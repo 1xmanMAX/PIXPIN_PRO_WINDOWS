@@ -44,7 +44,7 @@ pub use entrada::{
     boton_del_raton_pulsado, escape_pulsado, modificadores, modificadores_pulsados, rueda_en,
 };
 pub use explorador::{ComDelHilo, seleccion_del_explorador};
-pub use gestos::{GanchoRaton, gesto_en_curso};
+pub use gestos::{GanchoRaton, PausaGestos, gesto_en_curso};
 pub use instancia::{ErrorInstanciaUnica, InstanciaUnica, adquirir_instancia_unica};
 pub use overlay::esperar_composicion;
 pub use ventana::{

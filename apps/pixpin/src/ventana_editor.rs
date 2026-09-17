@@ -412,6 +412,8 @@ pub fn abrir(
     let area = monitor.area_trabajo;
 
     let ventana = VentanaOverlay::nueva(area).context("no se pudo abrir el editor")?;
+    // Alt + arrastrar es del editor (duplicar), no un gesto de captura.
+    let _pausa = pixpin_shell::PausaGestos::tomar();
     // PIXPIN_TINTA_CLASICA vuelve a la presentacion de antes, para medir la
     // diferencia en el mismo equipo con el mismo binario.
     let tinta_clasica = std::env::var_os("PIXPIN_TINTA_CLASICA").is_some();
