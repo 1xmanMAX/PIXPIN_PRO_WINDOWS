@@ -1787,6 +1787,18 @@ fn a_color(c: ColorRgba) -> Color {
     }
 }
 
+/// Cambia de herramienta y suelta lo elegido si la nueva dibuja.
+///
+/// Sin esto, con algo elegido y el lapiz en la mano quedaban unos tiradores
+/// flotando sobre el dibujo: el clic encima ya no los mueve (eso es solo de
+/// la mano), asi que serian unos agarres que no hacen lo que prometen.
+fn elegir_herramienta(gesto: &mut Gesto, h: Herramienta) {
+    if h != Herramienta::Mano {
+        gesto.seleccion.limpiar();
+    }
+    gesto.herramienta = h;
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -2489,16 +2501,4 @@ mod pruebas {
             "los ajustes de prueba tienen que diferir de los de fabrica o esto no mide nada"
         );
     }
-}
-
-/// Cambia de herramienta y suelta lo elegido si la nueva dibuja.
-///
-/// Sin esto, con algo elegido y el lapiz en la mano quedaban unos tiradores
-/// flotando sobre el dibujo: el clic encima ya no los mueve (eso es solo de
-/// la mano), asi que serian unos agarres que no hacen lo que prometen.
-fn elegir_herramienta(gesto: &mut Gesto, h: Herramienta) {
-    if h != Herramienta::Mano {
-        gesto.seleccion.limpiar();
-    }
-    gesto.herramienta = h;
 }
