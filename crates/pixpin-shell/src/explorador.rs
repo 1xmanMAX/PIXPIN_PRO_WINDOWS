@@ -121,12 +121,12 @@ fn es_clase_del_escritorio(clase: &str) -> bool {
 ///
 /// Hace falta porque la funcion se llama tanto desde el hilo de interfaz,
 /// que ya tiene COM en STA, como desde una prueba, que no tiene nada.
-struct ComDelHilo {
+pub struct ComDelHilo {
     hay_que_soltar: bool,
 }
 
 impl ComDelHilo {
-    fn iniciar() -> ComDelHilo {
+    pub fn iniciar() -> ComDelHilo {
         // SAFETY: CoInitializeEx no tiene precondiciones. Devuelve
         // RPC_E_CHANGED_MODE (un Err) si el hilo ya esta en otro
         // apartamento: en ese caso COM sirve igual y NO hay que emparejar

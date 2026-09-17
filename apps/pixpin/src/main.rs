@@ -436,6 +436,11 @@ fn arrancar(
         pixpin_shell::despertar(ventana.handle());
     }
 
+    // El chat de proyectos es la interfaz principal (D141): se abre al
+    // arrancar, como la ventana de cualquier aplicacion. Cerrarlo deja
+    // PixPin en la bandeja, con los gestos y el atajo vivos.
+    ventana_chat::lanzar(lengua, ubicacion.clone());
+
     ventana.ejecutar(|evento| {
         // Todo lo que abre el overlay de captura, en un sitio: los atajos,
         // «Capturar» de la bandeja y los gestos con Alt (D81). El gesto
@@ -504,6 +509,10 @@ fn arrancar(
                 boton: BotonGesto::Derecho,
                 punto,
             } => Some((ModoConfirmacion::Pinear, Some(punto))),
+            Evento::Gesto {
+                boton: BotonGesto::Central,
+                punto,
+            } => Some((ModoConfirmacion::PinEnVivo, Some(punto))),
             _ => match comando {
                 Some(comandos::Comando::CapturarRegion) => Some((ModoConfirmacion::ConBarra, None)),
                 // El retardo abre la MISMA captura; lo unico distinto es
@@ -652,13 +661,9 @@ fn arrancar(
                 Continuar::Si
             }
             _ if comando == Some(comandos::Comando::AbrirChat) => {
-                let recursos = match &mut recursos_overlay {
-                    Some(r) => Ok(&*r),
-                    nada => Recursos::nuevos().map(|r| &*nada.insert(r)),
-                };
-                if let Err(e) = recursos.and_then(|r| ventana_chat::abrir(r, &textos, &ubicacion)) {
-                    tracing::warn!(?e, "no se pudo abrir el chat de proyectos");
-                }
+                // En su propio hilo (D141): el principal sigue atendiendo
+                // atajos y gestos mientras el chat esta abierto.
+                ventana_chat::lanzar(lengua, ubicacion.clone());
                 Continuar::Si
             }
             _ if comando == Some(comandos::Comando::AbrirAjustes) => {

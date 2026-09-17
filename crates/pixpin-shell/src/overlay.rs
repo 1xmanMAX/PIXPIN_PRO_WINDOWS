@@ -192,6 +192,57 @@ impl VentanaOverlay {
         Ok(Self { hwnd, area })
     }
 
+    /// Una ventana de aplicacion corriente, con la misma clase y el mismo
+    /// bombeo que el overlay, pero SIN estar siempre encima y con su boton
+    /// en la barra de tareas (D141).
+    ///
+    /// Es la de la ventana de chat, que es la interfaz principal: el usuario
+    /// la quiere como cualquier otra ventana, que se tapa al cambiar de
+    /// programa. `WS_MINIMIZEBOX | WS_SYSMENU` son los que dejan minimizarla
+    /// y recuperarla pulsando su boton de la barra de tareas; sin ellos una
+    /// `WS_POPUP` no responde a ese clic.
+    pub fn nueva_normal(area: Rect, titulo: &str) -> Result<Self, ErrorOverlay> {
+        REGISTRO.call_once(registrar_clase);
+        let titulo: Vec<u16> = titulo.encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: la clase quedo registrada en call_once; el titulo es una
+        // cadena terminada en cero que vive hasta despues de la llamada.
+        let hwnd = unsafe {
+            CreateWindowExW(
+                WS_EX_NOREDIRECTIONBITMAP | WS_EX_APPWINDOW,
+                w!("PixPinOverlay"),
+                windows::core::PCWSTR(titulo.as_ptr()),
+                WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU,
+                area.x,
+                area.y,
+                area.ancho as i32,
+                area.alto as i32,
+                None,
+                None,
+                Some(
+                    GetModuleHandleW(None)
+                        .map_err(ErrorOverlay::Creacion)?
+                        .into(),
+                ),
+                None,
+            )
+            .map_err(ErrorOverlay::Creacion)?
+        };
+        Ok(Self { hwnd, area })
+    }
+
+    /// Si esta minimizada, la devuelve a su sitio; y la trae al frente. Es
+    /// lo que hace pedir la ventana de chat cuando ya esta abierta.
+    pub fn restaurar_de_hwnd(hwnd: HWND) {
+        // SAFETY: consultas y cambios de estado sobre una ventana de este
+        // proceso; si ya no existe, las llamadas fallan sin efecto.
+        unsafe {
+            if IsIconic(hwnd).as_bool() {
+                let _ = ShowWindow(hwnd, SW_RESTORE);
+            }
+            let _ = SetForegroundWindow(hwnd);
+        }
+    }
+
     /// Lleva la ventana a otro sitio y otro tamano sin rehacerla.
     ///
     /// El marco de la grabacion se mueve y se estira mientras el usuario

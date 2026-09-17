@@ -87,22 +87,21 @@ pub enum FormatoColor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Atajos {
-    /// Capturar region y mostrar la barra de resultado. Sin atajo por
-    /// defecto (D81): el usuario no lo quiso; queda en la bandeja y en el
-    /// TOML para quien lo quiera.
+    /// Capturar region y mostrar la barra de resultado. Es el unico atajo
+    /// de fabrica (D140): lleva a la seleccion y alli se elige que hacer.
     pub region: Option<Atajo>,
     /// Capturar region y copiar directo al portapapeles, sin confirmacion.
-    pub copiar: Atajo,
+    pub copiar: Option<Atajo>,
     /// Captura larga con scroll.
-    pub scroll: Atajo,
+    pub scroll: Option<Atajo>,
     /// Cuentagotas global. Sin atajo por defecto (D81).
     pub cuentagotas: Option<Atajo>,
     /// Recortar y dejar flotando como pin (S2).
-    pub pin: Atajo,
+    pub pin: Option<Atajo>,
     /// Pinear el contenido del portapapeles (S2-B).
-    pub portapapeles: Atajo,
+    pub portapapeles: Option<Atajo>,
     /// Anotar sobre la pantalla con la capa viva (S3-C).
-    pub anotar: Atajo,
+    pub anotar: Option<Atajo>,
     /// Anotar sobre una captura estatica de la pantalla (S3-C, D56). Sin
     /// atajo por defecto (D81).
     pub anotar_congelada: Option<Atajo>,
@@ -113,13 +112,16 @@ impl Default for Atajos {
         // `expect` es correcto aqui: si una constante del propio codigo no
         // parsea, es un fallo de programacion y debe verse en el primer test.
         Self {
-            region: None,
-            copiar: "Ctrl+Alt+C".parse().expect("atajo por defecto valido"),
-            scroll: "Ctrl+Alt+S".parse().expect("atajo por defecto valido"),
+            // El unico atajo de fabrica (D140). Los demas nacen sin atajo:
+            // lo rapido va por los gestos con Alt, y quien quiera alguno lo
+            // escribe en el TOML.
+            region: Some("Ctrl+Alt+X".parse().expect("atajo por defecto valido")),
+            copiar: None,
+            scroll: None,
             cuentagotas: None,
-            pin: "Ctrl+Alt+F".parse().expect("atajo por defecto valido"),
-            portapapeles: "Ctrl+Alt+V".parse().expect("atajo por defecto valido"),
-            anotar: "Ctrl+Alt+A".parse().expect("atajo por defecto valido"),
+            pin: None,
+            portapapeles: None,
+            anotar: None,
             anotar_congelada: None,
         }
     }
@@ -343,7 +345,7 @@ mod pruebas {
     /// notaria si ese ya era su valor.
     fn todo_cambiado() -> Ajustes {
         let atajos = Atajos {
-            copiar: "Ctrl+Shift+F9".parse().unwrap(),
+            copiar: Some("Ctrl+Shift+F9".parse().unwrap()),
             ..Atajos::default()
         };
         let mut comandos = std::collections::BTreeMap::new();
@@ -515,16 +517,23 @@ arranque_con_windows = true
     #[test]
     fn los_valores_por_defecto_son_los_del_diseno() {
         let a = Ajustes::default();
-        // Sin atajo por defecto (D81): el usuario los quito; van por gesto
-        // (Alt + boton) y por la bandeja.
-        assert_eq!(a.atajos.region, None);
-        assert_eq!(a.atajos.cuentagotas, None);
-        assert_eq!(a.atajos.anotar_congelada, None);
-        assert_eq!(a.atajos.copiar.to_string(), "Ctrl+Alt+C");
-        assert_eq!(a.atajos.scroll.to_string(), "Ctrl+Alt+S");
-        assert_eq!(a.atajos.pin.to_string(), "Ctrl+Alt+F");
-        assert_eq!(a.atajos.portapapeles.to_string(), "Ctrl+Alt+V");
-        assert_eq!(a.atajos.anotar.to_string(), "Ctrl+Alt+A");
+        // Un solo atajo general (D140); lo demas va por gesto (Alt + boton)
+        // y por la bandeja.
+        assert_eq!(
+            a.atajos.region.map(|r| r.to_string()).as_deref(),
+            Some("Ctrl+Alt+X")
+        );
+        for otro in [
+            a.atajos.copiar,
+            a.atajos.scroll,
+            a.atajos.cuentagotas,
+            a.atajos.pin,
+            a.atajos.portapapeles,
+            a.atajos.anotar,
+            a.atajos.anotar_congelada,
+        ] {
+            assert_eq!(otro, None, "ningun otro atajo de fabrica");
+        }
         assert_eq!(a.idioma, PreferenciaIdioma::Sistema);
         assert_eq!(a.formato_color, FormatoColor::Hex);
         assert!(!a.arranque_con_windows);
@@ -565,7 +574,7 @@ arranque_con_windows = true
         let a = cargar(&u).unwrap();
 
         assert!(a.arranque_con_windows);
-        assert_eq!(a.atajos.copiar.to_string(), "Ctrl+Alt+C");
+        assert_eq!(a.atajos, Atajos::default());
     }
 
     #[test]

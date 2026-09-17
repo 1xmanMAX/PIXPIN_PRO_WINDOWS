@@ -87,11 +87,12 @@ pub fn tecla_pulsada_ahora(vk: u32) -> bool {
 /// la refleja, asi que sirve de segunda opinion cuando la bandera del
 /// gancho no basta.
 pub fn boton_del_raton_pulsado() -> bool {
-    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_LBUTTON, VK_RBUTTON};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_LBUTTON, VK_MBUTTON, VK_RBUTTON};
     // SAFETY: consulta pura del estado de los botones.
     unsafe {
         (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0
             || (GetAsyncKeyState(VK_RBUTTON.0 as i32) as u16 & 0x8000) != 0
+            || (GetAsyncKeyState(VK_MBUTTON.0 as i32) as u16 & 0x8000) != 0
     }
 }
 

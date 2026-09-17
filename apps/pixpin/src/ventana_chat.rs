@@ -211,6 +211,52 @@ enum Arrastre {
 }
 
 /// Abre la ventana y no vuelve hasta que se cierra.
+/// La ventana de chat abierta, si la hay. Es un `HWND` como entero para poder
+/// vivir en un estatico que miran dos hilos.
+static ABIERTA: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+/// Abre la ventana de chat en SU PROPIO HILO, o trae al frente la que ya
+/// este abierta (D141).
+///
+/// En su propio hilo porque es la interfaz principal y pasa horas abierta.
+/// Cuando corria en el hilo principal, su bucle se quedaba con todos los
+/// mensajes: los atajos globales y los gestos con Alt se encolaban y nadie
+/// los atendia hasta cerrarla, y el gancho de raton se tragaba el clic, asi
+/// que Alt + arrastrar no hacia nada. Con un hilo aparte el principal sigue
+/// bombeando. Todo lo que la ventana necesita nace dentro del hilo: su
+/// dispositivo de dibujo, sus textos y su apartamento COM (los dialogos de
+/// abrir ficheros lo exigen en STA).
+pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion) {
+    use std::sync::atomic::Ordering;
+    let ya = ABIERTA.load(Ordering::SeqCst);
+    if ya > 0 {
+        VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(ya as *mut _));
+        return;
+    }
+    if ya < 0 {
+        // Naciendo todavia: la ventana aparecera sola.
+        return;
+    }
+    // Se marca antes de que exista la ventana: dos peticiones seguidas no
+    // pueden abrir dos chats. El hilo pone el HWND de verdad al crearla.
+    ABIERTA.store(-1, Ordering::SeqCst);
+    let lanzado = std::thread::Builder::new()
+        .name("chat".into())
+        .spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            let textos = Catalogo::nuevo(idioma);
+            let hecho = Recursos::nuevos().and_then(|r| abrir(&r, &textos, &ubicacion));
+            if let Err(e) = hecho {
+                tracing::warn!(?e, "no se pudo abrir el chat de proyectos");
+            }
+            ABIERTA.store(0, Ordering::SeqCst);
+        });
+    if let Err(e) = lanzado {
+        tracing::warn!(?e, "no se pudo lanzar el hilo del chat");
+        ABIERTA.store(0, Ordering::SeqCst);
+    }
+}
+
 pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Result<()> {
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
     let monitor = monitores
@@ -246,8 +292,14 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
         }
     });
 
-    let mut ventana =
-        VentanaOverlay::nueva(marco).context("no se pudo abrir la ventana de chat")?;
+    // Una ventana normal (D141): se tapa al cambiar de programa y tiene su
+    // boton en la barra de tareas, como cualquier aplicacion.
+    let mut ventana = VentanaOverlay::nueva_normal(marco, &textos.t("app-nombre"))
+        .context("no se pudo abrir la ventana de chat")?;
+    ABIERTA.store(
+        ventana.handle().0 as isize,
+        std::sync::atomic::Ordering::SeqCst,
+    );
     let motor = recursos.motor();
     let superficie = Superficie::nueva(
         &motor,

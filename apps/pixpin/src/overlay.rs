@@ -404,6 +404,18 @@ pub fn ejecutar_overlay(
     // 4. El bucle modal. Las ventanas viven en `piezas`; el slice del
     //    contrato queda vacio porque el bombeo no filtra por ventana.
     bucle_modal(&[], |hwnd, evento| {
+        // El gesto de Alt + central (D140) termina al soltar el central: para
+        // la seleccion es la misma soltada que la del izquierdo. Fuera de un
+        // gesto el central no significa nada aqui.
+        let evento = match evento {
+            EventoOverlay::BotonCentralSoltado(p) if gesto => {
+                if let Some(z) = piezas.first() {
+                    z.ventana().soltar_raton();
+                }
+                EventoOverlay::BotonSoltado(p)
+            }
+            otro => otro,
+        };
         procesar_evento(
             hwnd,
             evento,

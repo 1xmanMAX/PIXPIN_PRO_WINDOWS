@@ -22,7 +22,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, HC_ACTION, HHOOK, MSLLHOOKSTRUCT, PostMessageW, SetWindowsHookExW,
-    UnhookWindowsHookEx, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP,
+    UnhookWindowsHookEx, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
+    WM_RBUTTONDOWN, WM_RBUTTONUP,
 };
 
 use crate::ventana::WM_GESTO;
@@ -102,13 +103,14 @@ extern "system" fn procedimiento(codigo: i32, wparam: WPARAM, lparam: LPARAM) ->
     let mensaje = wparam.0 as u32;
     // La soltada siempre pasa (el overlay la necesita) y cierra el gesto,
     // este suspendido el gancho o no.
-    if codigo == HC_ACTION as i32 && (mensaje == WM_LBUTTONUP || mensaje == WM_RBUTTONUP) {
+    if codigo == HC_ACTION as i32 && matches!(mensaje, WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP) {
         EN_CURSO.store(false, Ordering::SeqCst);
     }
     if codigo == HC_ACTION as i32 && !SUSPENDIDO.load(Ordering::SeqCst) {
         let boton = match mensaje {
             WM_LBUTTONDOWN => Some(0usize),
             WM_RBUTTONDOWN => Some(1usize),
+            WM_MBUTTONDOWN => Some(2usize),
             _ => None,
         };
         let destino = DESTINO.load(Ordering::SeqCst);

@@ -53,6 +53,8 @@ pub enum BotonGesto {
     Izquierdo,
     /// Alt + derecho: seleccionar y pinear directo.
     Derecho,
+    /// Alt + central: seleccionar y dejar un pin en vivo (D140).
+    Central,
 }
 
 /// Primer identificador de la seccion «Grupos ocultos»: al elegir uno, el
@@ -288,10 +290,10 @@ extern "system" fn procedimiento(
         // notificada.
         WM_DESPERTAR => Some(Evento::Despertar),
         WM_GESTO => {
-            let boton = if wparam.0 == 0 {
-                BotonGesto::Izquierdo
-            } else {
-                BotonGesto::Derecho
+            let boton = match wparam.0 {
+                0 => BotonGesto::Izquierdo,
+                1 => BotonGesto::Derecho,
+                _ => BotonGesto::Central,
             };
             // Las coordenadas van en dos palabras de 16 bits con signo: un
             // monitor a la izquierda del principal tiene x negativa.

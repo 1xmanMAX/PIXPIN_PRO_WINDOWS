@@ -103,23 +103,24 @@ pub const CATALOGO: &[Descriptor] = &[
         comando: Comando::CapturarRegion,
         nombre: "capturar-region",
         clave_titulo: "comando-capturar-region",
-        // Sin atajo por defecto: el usuario quito Ctrl+Alt+X y prefiere el
-        // gesto con Alt y la entrada de la bandeja (D81).
-        atajo_por_defecto: None,
+        // El UNICO atajo de fabrica (D140): lleva a la seleccion con la
+        // barra, y ahi se elige que hacer con la captura. Lo rapido va por
+        // los gestos con Alt; demasiados atajos le estorbaban al usuario.
+        atajo_por_defecto: Some("Ctrl+Alt+X"),
         en_bandeja: true,
     },
     Descriptor {
         comando: Comando::CapturarYCopiar,
         nombre: "capturar-y-copiar",
         clave_titulo: "comando-capturar-y-copiar",
-        atajo_por_defecto: Some("Ctrl+Alt+C"),
+        atajo_por_defecto: None,
         en_bandeja: false,
     },
     Descriptor {
         comando: Comando::CapturarConScroll,
         nombre: "capturar-con-scroll",
         clave_titulo: "comando-capturar-con-scroll",
-        atajo_por_defecto: Some("Ctrl+Alt+S"),
+        atajo_por_defecto: None,
         en_bandeja: false,
     },
     Descriptor {
@@ -133,11 +134,7 @@ pub const CATALOGO: &[Descriptor] = &[
         comando: Comando::GrabarGif,
         nombre: "grabar-gif",
         clave_titulo: "comando-grabar-gif",
-        // El mismo que en el original, y hace juego con el Ctrl+2 de
-        // esconder los pines. Sin atajo, lo unico que abria la grabacion
-        // era el menu de la bandeja, que para algo que se usa a menudo
-        // es un viaje de mas.
-        atajo_por_defecto: Some("Ctrl+1"),
+        atajo_por_defecto: None,
         en_bandeja: true,
     },
     Descriptor {
@@ -158,7 +155,7 @@ pub const CATALOGO: &[Descriptor] = &[
         comando: Comando::Pinear,
         nombre: "pinear",
         clave_titulo: "comando-pinear",
-        atajo_por_defecto: Some("Ctrl+Alt+F"),
+        atajo_por_defecto: None,
         en_bandeja: false,
     },
     Descriptor {
@@ -174,14 +171,14 @@ pub const CATALOGO: &[Descriptor] = &[
         comando: Comando::PinearPortapapeles,
         nombre: "pinear-portapapeles",
         clave_titulo: "comando-pinear-portapapeles",
-        atajo_por_defecto: Some("Ctrl+Alt+V"),
+        atajo_por_defecto: None,
         en_bandeja: false,
     },
     Descriptor {
         comando: Comando::Anotar,
         nombre: "anotar",
         clave_titulo: "comando-anotar",
-        atajo_por_defecto: Some("Ctrl+Alt+A"),
+        atajo_por_defecto: None,
         en_bandeja: false,
     },
     Descriptor {
@@ -191,11 +188,6 @@ pub const CATALOGO: &[Descriptor] = &[
         atajo_por_defecto: None,
         en_bandeja: false,
     },
-    // Esconder y sacar los pines es de uso constante y el usuario lo pidio
-    // con esta tecla, la misma del PixPin original. Aviso conocido: Ctrl+2
-    // se lo quita a las demas aplicaciones mientras PixPin este abierto, y
-    // en un navegador esa combinacion cambia de pestana. Se cambia en el
-    // fichero de ajustes si estorba.
     Descriptor {
         comando: Comando::PinearSeleccion,
         nombre: "pinear-seleccion",
@@ -234,7 +226,7 @@ pub const CATALOGO: &[Descriptor] = &[
         comando: Comando::AlternarPines,
         nombre: "alternar-pines",
         clave_titulo: "comando-alternar-pines",
-        atajo_por_defecto: Some("Ctrl+2"),
+        atajo_por_defecto: None,
         en_bandeja: true,
     },
     // Los otros dos de pines nacen SIN atajo: son de uso ocasional y meter
@@ -258,10 +250,9 @@ pub const CATALOGO: &[Descriptor] = &[
         comando: Comando::CopiarTexto,
         nombre: "copiar-texto",
         clave_titulo: "comando-copiar-texto",
-        // Con atajo de fabrica: sin el, la unica via era el menu de la
-        // bandeja, y una funcion que se usa a menudo escondida ahi es una
-        // funcion que nadie encuentra. Ctrl+Alt+T de «texto».
-        atajo_por_defecto: Some("Ctrl+Alt+T"),
+        // Sin atajo de fabrica (D140): el OCR sigue en la bandeja y en la
+        // barra de la seleccion, que es donde se elige que hacer.
+        atajo_por_defecto: None,
         en_bandeja: true,
     },
     Descriptor {
@@ -416,12 +407,12 @@ impl Enlaces {
         let v = &a.atajos;
         for (comando, atajo) in [
             (Comando::CapturarRegion, v.region),
-            (Comando::CapturarYCopiar, Some(v.copiar)),
-            (Comando::CapturarConScroll, Some(v.scroll)),
+            (Comando::CapturarYCopiar, v.copiar),
+            (Comando::CapturarConScroll, v.scroll),
             (Comando::Cuentagotas, v.cuentagotas),
-            (Comando::Pinear, Some(v.pin)),
-            (Comando::PinearPortapapeles, Some(v.portapapeles)),
-            (Comando::Anotar, Some(v.anotar)),
+            (Comando::Pinear, v.pin),
+            (Comando::PinearPortapapeles, v.portapapeles),
+            (Comando::Anotar, v.anotar),
             (Comando::AnotarCongelada, v.anotar_congelada),
         ] {
             e.poner(comando, atajo);
@@ -560,12 +551,13 @@ mod pruebas {
     fn una_cadena_vacia_deja_el_comando_sin_atajo() {
         // Distinto de no nombrarlo: no nombrarlo conserva el de por defecto.
         let mut e = Enlaces::default();
-        assert!(e.atajo_de(Comando::Pinear).is_some());
-        let tabla = BTreeMap::from([("pinear".to_string(), String::new())]);
+        e.poner(Comando::Pinear, Some("Ctrl+Shift+F2".parse().unwrap()));
+        assert!(e.atajo_de(Comando::CapturarRegion).is_some());
+        let tabla = BTreeMap::from([("capturar-region".to_string(), String::new())]);
         assert!(e.aplicar_tabla(&tabla).is_empty());
-        assert_eq!(e.atajo_de(Comando::Pinear), None);
+        assert_eq!(e.atajo_de(Comando::CapturarRegion), None);
         assert!(
-            e.atajo_de(Comando::Anotar).is_some(),
+            e.atajo_de(Comando::Pinear).is_some(),
             "los que no se nombran no se tocan"
         );
     }
@@ -592,7 +584,8 @@ mod pruebas {
     fn solo_se_registran_los_que_tienen_atajo() {
         let e = Enlaces::default();
         let ids: Vec<u32> = e.registrables().iter().map(|(id, _)| *id).collect();
-        assert!(ids.contains(&Comando::Pinear.id()));
+        assert!(ids.contains(&Comando::CapturarRegion.id()));
+        assert_eq!(ids.len(), 1, "un solo atajo de fabrica (D140)");
         assert!(
             !ids.contains(&Comando::Cuentagotas.id()),
             "el cuentagotas nace sin atajo (D81)"
@@ -603,11 +596,11 @@ mod pruebas {
     #[test]
     fn detecta_dos_comandos_con_el_mismo_atajo() {
         let mut e = Enlaces::default();
-        let repetido = e.atajo_de(Comando::Pinear);
+        let repetido = e.atajo_de(Comando::CapturarRegion);
         e.poner(Comando::Cuentagotas, repetido);
         let (a, b) = e.choque().expect("tiene que detectarlo");
         assert!(
-            [a, b].contains(&Comando::Pinear) && [a, b].contains(&Comando::Cuentagotas),
+            [a, b].contains(&Comando::CapturarRegion) && [a, b].contains(&Comando::Cuentagotas),
             "{a:?} y {b:?}"
         );
     }
@@ -617,7 +610,7 @@ mod pruebas {
         // Migracion: quien tenga el TOML de antes no puede quedarse sin
         // atajos de golpe.
         let mut a = crate::ajustes::Ajustes::default();
-        a.atajos.pin = "Ctrl+Shift+F2".parse().unwrap();
+        a.atajos.pin = Some("Ctrl+Shift+F2".parse().unwrap());
         a.atajos.cuentagotas = Some("Ctrl+Shift+F3".parse().unwrap());
 
         let (e, avisos) = Enlaces::de_ajustes(&a);
@@ -631,8 +624,8 @@ mod pruebas {
             "Ctrl+Shift+F3"
         );
         assert_eq!(
-            e.atajo_de(Comando::CapturarYCopiar).unwrap().to_string(),
-            "Ctrl+Alt+C",
+            e.atajo_de(Comando::CapturarRegion).unwrap().to_string(),
+            "Ctrl+Alt+X",
             "lo que no toco sigue como estaba"
         );
     }
@@ -640,7 +633,7 @@ mod pruebas {
     #[test]
     fn la_tabla_nueva_manda_sobre_la_vieja() {
         let mut a = crate::ajustes::Ajustes::default();
-        a.atajos.pin = "Ctrl+Shift+F2".parse().unwrap();
+        a.atajos.pin = Some("Ctrl+Shift+F2".parse().unwrap());
         a.comandos
             .insert("pinear".to_string(), "Ctrl+Shift+F8".to_string());
 
