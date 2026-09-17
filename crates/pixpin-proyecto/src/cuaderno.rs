@@ -340,24 +340,9 @@ impl Cuaderno {
     /// porque quien busca un plano lo busca ahi y no le importa de que clase
     /// es por dentro.
     pub fn de_seccion(&self, seccion: Seccion) -> Vec<&Mensaje> {
-        self.mensajes
-            .iter()
-            .filter(|m| {
-                if m.en_buzon {
-                    return seccion == Seccion::Buzon;
-                }
-                match seccion {
-                    Seccion::Todo => true,
-                    Seccion::Buzon => false,
-                    Seccion::Fijados => m.fijado,
-                    Seccion::Fotos => m.clase == Some(Clase::Imagen),
-                    Seccion::Archivos => {
-                        matches!(m.clase, Some(Clase::Archivo) | Some(Clase::Pagina))
-                    }
-                    Seccion::Voz => m.clase == Some(Clase::Voz),
-                    Seccion::Dibujos => m.clase == Some(Clase::Dibujo),
-                }
-            })
+        indices_de_seccion(&self.mensajes, seccion)
+            .into_iter()
+            .map(|n| &self.mensajes[n])
             .collect()
     }
 
@@ -368,6 +353,39 @@ impl Cuaderno {
             .filter(|m| m.proyecto.as_deref() == proyecto)
             .collect()
     }
+}
+
+/// QUE mensajes son de una seccion, por su posicion en la lista.
+///
+/// Va aparte de `Cuaderno::de_seccion` porque quien pinta necesita el numero
+/// y no solo el mensaje: con el llega a lo que guarda en paralelo —el lienzo
+/// ya leido de cada dibujo, por ejemplo— sin tener que buscarlo.
+///
+/// Es una funcion libre y no un metodo para poder llamarla con un
+/// `&[Mensaje]` prestado: el panel la usa en cada fotograma, y montar un
+/// `Cuaderno` solo para preguntar obliga a clonar la conversacion entera.
+pub fn indices_de_seccion(mensajes: &[Mensaje], seccion: Seccion) -> Vec<usize> {
+    mensajes
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| {
+            if m.en_buzon {
+                return seccion == Seccion::Buzon;
+            }
+            match seccion {
+                Seccion::Todo => true,
+                Seccion::Buzon => false,
+                Seccion::Fijados => m.fijado,
+                Seccion::Fotos => m.clase == Some(Clase::Imagen),
+                Seccion::Archivos => {
+                    matches!(m.clase, Some(Clase::Archivo) | Some(Clase::Pagina))
+                }
+                Seccion::Voz => m.clase == Some(Clase::Voz),
+                Seccion::Dibujos => m.clase == Some(Clase::Dibujo),
+            }
+        })
+        .map(|(n, _)| n)
+        .collect()
 }
 
 #[cfg(test)]
@@ -648,6 +666,33 @@ mod pruebas {
         assert_eq!(ids(Seccion::Dibujos), ["d"]);
         assert_eq!(ids(Seccion::Fijados), ["p"]);
         assert_eq!(ids(Seccion::Buzon), ["b"]);
+    }
+
+    #[test]
+    fn los_indices_de_una_seccion_apuntan_a_sus_mismos_mensajes() {
+        let c = Cuaderno::leer(concat!(
+            r#"{"id":"n","clase":"NOTA","texto":"hola"}"#,
+            "\n",
+            r#"{"id":"i","clase":"IMAGEN","nombre":"a.jpg"}"#,
+            "\n",
+            r#"{"id":"d","clase":"DIBUJO","nombre":"croquis"}"#,
+            "\n"
+        ));
+        // Son posiciones en la lista ENTERA, no en la seccion: en eso esta
+        // toda la gracia, porque quien pinta guarda cosas en paralelo a esa
+        // lista y las alcanza con este numero.
+        assert_eq!(indices_de_seccion(&c.mensajes, Seccion::Dibujos), [2]);
+        for s in Seccion::TODAS {
+            let por_indice: Vec<&str> = indices_de_seccion(&c.mensajes, s)
+                .into_iter()
+                .map(|n| c.mensajes[n].id.as_str())
+                .collect();
+            let directos: Vec<&str> = c.de_seccion(s).iter().map(|m| m.id.as_str()).collect();
+            assert_eq!(por_indice, directos, "{s:?}");
+        }
+        // Caso negativo: sin mensajes no hay indices que devolver, y no se
+        // inventa el cero.
+        assert!(indices_de_seccion(&[], Seccion::Todo).is_empty());
     }
 
     #[test]

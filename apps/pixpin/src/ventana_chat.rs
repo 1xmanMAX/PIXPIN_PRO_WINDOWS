@@ -175,6 +175,18 @@ fn rf(r: Rect) -> RectF {
     }
 }
 
+/// El mismo rectangulo, metido `cuanto` hacia dentro por los cuatro lados.
+/// Nunca al reves: encogerlo mas de lo que mide lo deja en nada, no en un
+/// rectangulo del reves.
+fn encoger(r: RectF, cuanto: f32) -> RectF {
+    RectF {
+        x: r.x + cuanto,
+        y: r.y + cuanto,
+        ancho: (r.ancho - 2.0 * cuanto).max(0.0),
+        alto: (r.alto - 2.0 * cuanto).max(0.0),
+    }
+}
+
 fn cursor_de(borde: Borde) -> FormaCursorWin {
     match borde {
         Borde::Izquierda | Borde::Derecha => FormaCursorWin::RedimEO,
@@ -283,6 +295,10 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     // El menu del clip, cuando esta desplegado. Vive fuera de `abierto`
     // porque cambiar de conversacion tiene que cerrarlo.
     let mut menu_adjuntar = false;
+    // Las fotos ya leidas y reducidas, para el panel de informacion. Sobrevive
+    // a cambiar de proyecto a proposito: van por ruta, y volver al anterior no
+    // tiene por que releerlas del disco.
+    let mut miniaturas = crate::miniaturas::Miniaturas::nuevo();
     // Antes de maximizar, para poder volver.
     let mut antes_de_maximizar: Option<Rect> = None;
     let mut hay_que_pintar = true;
@@ -711,6 +727,22 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
 
         if hay_que_pintar {
             hay_que_pintar = false;
+            // Las fotos que se van a ver, leidas y subidas ANTES de empezar
+            // el fotograma: crear recursos de dibujo a medias no se puede, y
+            // leer del disco dentro del fotograma se notaria.
+            if let Some(a) = abierto.as_ref() {
+                if let Some(seccion) = a.info {
+                    let d = pixpin_ui::info::Disposicion::calcular(
+                        disposicion.chat,
+                        disposicion.una_columna,
+                        escala,
+                    );
+                    let rutas = fotos_a_la_vista(a, seccion, &d, escala);
+                    if !rutas.is_empty() {
+                        miniaturas.asegurar(&rutas, &motor);
+                    }
+                }
+            }
             if let Ok(destino) = superficie.empezar(&motor) {
                 let lista = Lista {
                     fichas: &fichas,
@@ -723,7 +755,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     busqueda: &busqueda,
                 };
                 let abierto_ref = abierto.as_ref();
-                let _ = motor.dibujar(&destino, |p: &Pintor| {
+                let resultado = motor.dibujar(&destino, |p: &Pintor| {
                     pintar(p, &disposicion, tema, escala, textos, sobre, &lista);
                     if let Some(a) = abierto_ref {
                         // Medir lo escrito decide lo alta que es la caja y,
@@ -745,6 +777,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                             escala,
                             textos,
                             ahora,
+                            miniaturas: &miniaturas,
                         };
                         match a.info {
                             // Con la informacion abierta, la columna de la
@@ -762,6 +795,12 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         }
                     }
                 });
+                if resultado.is_err() {
+                    // Dispositivo perdido: los bitmaps de las miniaturas eran
+                    // del viejo y D2D los rechazaria. Los pixeles se quedan,
+                    // asi que volver a subirlos no toca el disco.
+                    miniaturas.soltar();
+                }
                 let _ = superficie.presentar();
             }
         }
@@ -782,6 +821,10 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
 /// El proyecto abierto en la columna de la derecha.
 struct Abierto {
     ficha: pixpin_proyecto::almacen::Ficha,
+    /// Donde viven los proyectos. Se guarda aqui porque quien pinta tiene que
+    /// resolver la ruta de una foto para buscar su miniatura, y hasta el
+    /// pintado no llega la `Ubicacion`.
+    raiz: std::path::PathBuf,
     mensajes: Vec<pixpin_proyecto::cuaderno::Mensaje>,
     /// Lineas del cuaderno que no se entendieron. Se ensenan: si faltan
     /// mensajes, el usuario tiene que enterarse.
@@ -1208,6 +1251,9 @@ struct Pinta<'a> {
     escala: u32,
     textos: &'a Catalogo,
     ahora: i64,
+    /// Las fotos ya leidas. Solo se consultan: lo que falte por cargar se
+    /// preparo antes de empezar el fotograma.
+    miniaturas: &'a crate::miniaturas::Miniaturas,
 }
 
 fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_caja: u32) {
@@ -1514,6 +1560,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         .collect();
     Abierto {
         ficha: ficha.clone(),
+        raiz: ubicacion.raiz().to_path_buf(),
         mensajes,
         vistas,
         rotas: cuaderno.lineas_rotas,
@@ -1805,6 +1852,63 @@ fn filtrar(fichas: &[pixpin_proyecto::almacen::Ficha], busqueda: &str) -> Vec<us
 
 /// Copia unos ficheros al proyecto y los deja como mensajes. Devuelve
 /// cuantos entraron: uno que falle no puede llevarse los demas.
+/// La ruta del fichero de un mensaje dentro del proyecto, si lo tiene y si
+/// esta en este equipo.
+///
+/// `ruta` es relativa a la carpeta del proyecto. Una que venga del movil
+/// puede ser absoluta y de otro aparato: esa no se resuelve aqui, porque
+/// apuntaria a un disco que no es este.
+fn ruta_del_mensaje(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    m: &pixpin_proyecto::cuaderno::Mensaje,
+) -> Option<std::path::PathBuf> {
+    let relativa = m.ruta.as_deref().filter(|r| !r.is_empty())?;
+    if std::path::Path::new(relativa).is_absolute() {
+        return None;
+    }
+    Some(pixpin_proyecto::almacen::carpeta(raiz, proyecto).join(relativa))
+}
+
+/// Las fotos que se ven ahora mismo en el panel, en cuadricula o en lista.
+///
+/// Solo las visibles, y en el orden en que se ven: con trescientas fotos, lo
+/// que importa es que salgan primero las que el usuario esta mirando.
+fn fotos_a_la_vista(
+    a: &Abierto,
+    seccion: pixpin_proyecto::cuaderno::Seccion,
+    d: &pixpin_ui::info::Disposicion,
+    escala: u32,
+) -> Vec<std::path::PathBuf> {
+    use pixpin_proyecto::cuaderno::Clase;
+    let suyos = pixpin_proyecto::cuaderno::indices_de_seccion(&a.mensajes, seccion);
+    let (primera, cuantas) = if seccion.es_cuadricula() {
+        let r = pixpin_ui::info::rejilla(d.contenido.ancho, escala);
+        r.visibles(d.contenido, suyos.len(), a.scroll_info, escala)
+    } else {
+        // La misma cuenta que al pintar las filas, incluida la fila de mas
+        // por arriba y por abajo que asoma al desplazar.
+        let alto = (pixpin_ui::info::ARCHIVO_ALTO * escala / 100).max(1);
+        (
+            (a.scroll_info / alto as i32).max(0) as usize,
+            (d.contenido.alto / alto) as usize + 2,
+        )
+    };
+    suyos
+        .into_iter()
+        .skip(primera)
+        .take(cuantas)
+        .filter_map(|n| {
+            let m = a.mensajes.get(n)?;
+            // Solo las fotos: un dibujo ya se pinta de su lienzo, y de un
+            // archivo no hay nada que descomprimir.
+            (m.clase == Some(Clase::Imagen))
+                .then(|| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
+                .flatten()
+        })
+        .collect()
+}
+
 /// El menu del clip, encima de todo lo demas.
 ///
 /// Mide sus rotulos SIEMPRE, este abierto o cerrado, y los apunta: el ancho
@@ -2207,11 +2311,9 @@ fn pintar_info(
     p.soltar_recorte();
 
     // Y el contenido de la seccion.
-    let cuaderno = pixpin_proyecto::cuaderno::Cuaderno {
-        mensajes: a.mensajes.clone(),
-        lineas_rotas: 0,
-    };
-    let suyos = cuaderno.de_seccion(seccion);
+    // Por indice y no por referencia: con el numero se llega tambien a
+    // `a.vistas`, que es donde esta el lienzo ya leido de cada dibujo.
+    let suyos = pixpin_proyecto::cuaderno::indices_de_seccion(&a.mensajes, seccion);
     if suyos.is_empty() {
         let vacio = textos.t("chat-sin-mensajes");
         let (w, h) = p.medir_texto(&vacio, 13.0 * e);
@@ -2231,26 +2333,56 @@ fn pintar_info(
         let r = info::rejilla(i.contenido.ancho, escala);
         a.alto_info.set(r.alto_total(suyos.len(), escala));
         let (primera, cuantas) = r.visibles(i.contenido, suyos.len(), a.scroll_info, escala);
-        for (n, m) in suyos.iter().enumerate().skip(primera).take(cuantas) {
+        for (n, indice) in suyos
+            .iter()
+            .copied()
+            .enumerate()
+            .skip(primera)
+            .take(cuantas)
+        {
             let celda = r.celda(n, i.contenido, a.scroll_info, escala);
-            p.rellenar_redondeado(rf(celda), 4.0 * e, tema.burbuja_otra);
-            // Sin miniatura todavia: se ensena su nombre, que es mejor que
-            // un cuadro vacio que no dice de que es.
-            p.texto_linea(
-                &m.resumen(),
-                celda.x as f32 + 6.0 * e,
-                celda.y as f32 + 6.0 * e,
-                chat::CONTADOR_TAM * e,
-                celda.ancho as f32 - 12.0 * e,
-                tema.apagado,
-            );
+            let m = &a.mensajes[indice];
+            // Una foto de verdad, si ya esta leida.
+            let foto = ruta_del_mensaje(&a.raiz, &a.ficha.id, m)
+                .and_then(|ruta| c.miniaturas.ya(&ruta));
+            if let Some((b, w, h)) = foto {
+                p.empujar_recorte(rf(celda));
+                crate::miniaturas::pintar_recortado(p, b, rf(celda), w, h);
+                p.soltar_recorte();
+                continue;
+            }
+            match a.vistas.get(indice).and_then(|v| v.as_ref()) {
+                // Un dibujo se ensena dibujado. Sobre papel blanco y no
+                // sobre el gris de la celda: los trazos vienen de un lienzo
+                // claro y sobre gris se pierden, igual que en las burbujas.
+                Some(vista) => {
+                    p.rellenar_redondeado(rf(celda), 4.0 * e, tema.papel);
+                    p.empujar_recorte(rf(celda));
+                    pintar_lienzo(p, vista, encoger(rf(celda), 4.0 * e));
+                    p.soltar_recorte();
+                }
+                // Lo que no tiene miniatura ensena su nombre: es mejor que
+                // un cuadro vacio que no dice de que es.
+                None => {
+                    p.rellenar_redondeado(rf(celda), 4.0 * e, tema.burbuja_otra);
+                    p.texto_linea(
+                        &m.resumen(),
+                        celda.x as f32 + 6.0 * e,
+                        celda.y as f32 + 6.0 * e,
+                        chat::CONTADOR_TAM * e,
+                        celda.ancho as f32 - 12.0 * e,
+                        tema.apagado,
+                    );
+                }
+            }
         }
     } else {
         let alto = info::ARCHIVO_ALTO * escala / 100;
         a.alto_info.set(alto * suyos.len() as u32);
         let primera = (a.scroll_info / alto.max(1) as i32).max(0) as usize;
         let caben = (i.contenido.alto / alto.max(1)) as usize + 2;
-        for (n, m) in suyos.iter().enumerate().skip(primera).take(caben) {
+        for (n, indice) in suyos.iter().copied().enumerate().skip(primera).take(caben) {
+            let m = &a.mensajes[indice];
             let fila = Rect {
                 x: i.contenido.x,
                 y: i.contenido.y + (n as u32 * alto) as i32 - a.scroll_info,
@@ -2260,8 +2392,19 @@ fn pintar_info(
             let f = info::fila_archivo(fila, escala);
             // La miniatura solo si hay fichero: una nota no tiene ninguno, y
             // un recuadro vacio al lado de un texto parece algo que no cargo.
-            if m.ruta.is_some() || !m.nombre.is_empty() {
-                p.rellenar_redondeado(rf(f.miniatura), 6.0 * e, tema.burbuja_otra);
+            let foto = ruta_del_mensaje(&a.raiz, &a.ficha.id, m).and_then(|r| c.miniaturas.ya(&r));
+            match foto {
+                Some((b, w, h)) => {
+                    p.empujar_recorte(rf(f.miniatura));
+                    crate::miniaturas::pintar_recortado(p, b, rf(f.miniatura), w, h);
+                    p.soltar_recorte();
+                }
+                None if m.ruta.is_some() || !m.nombre.is_empty() => {
+                    p.rellenar_redondeado(rf(f.miniatura), 6.0 * e, tema.burbuja_otra)
+                }
+                // Una nota no tiene fichero, y un recuadro vacio al lado de
+                // un texto parece algo que no cargo.
+                None => {}
             }
             p.texto_linea(
                 &m.resumen(),
