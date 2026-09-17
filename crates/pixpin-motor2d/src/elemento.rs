@@ -109,6 +109,17 @@ pub enum Figura {
     /// guarda, se mueve, se estira y sale en la exportacion. Es lo que
     /// permite medir sobre la imagen que recibe otro.
     EscalaGrafica,
+    /// Un marco: un recuadro con nombre que agrupa POR CONTENCION lo que
+    /// cae dentro (`frame` de Excalidraw). Moverlo mueve lo de dentro, que
+    /// es para lo que sirve: preparar laminas y moverlas de una pieza.
+    ///
+    /// Quien esta dentro no se guarda en ninguna lista: se mira la caja cada
+    /// vez. Una lista seria una segunda verdad sobre lo mismo, y habria que
+    /// mantenerla al mover, al borrar y al deshacer.
+    Marco {
+        #[serde(default)]
+        nombre: String,
+    },
 }
 
 fn verdadero() -> bool {

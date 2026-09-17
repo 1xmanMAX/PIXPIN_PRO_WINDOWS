@@ -58,6 +58,10 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
         // Cuantos cuadros y cuanto mide cada uno lo decide la escala, no el
         // usuario: ofrecerlo seria ofrecer mentir.
         Figura::EscalaGrafica => &[ColorTrazo, Opacidad],
+        // El marco es andamiaje, no dibujo: se pinta siempre igual y no
+        // ofrece nada que cambiar. Ofrecer color seria invitar a usarlo como
+        // una figura mas.
+        Figura::Marco { .. } => &[],
     }
 }
 
@@ -65,7 +69,13 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
 pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad] {
     match h {
         // No dejan rastro: no hay nada que ajustar.
-        Herramienta::Mano | Herramienta::Lupa | Herramienta::Borrador | Herramienta::Escalar => &[],
+        // El marco se pinta siempre igual, asi que tampoco tiene nada que
+        // ajustar antes de dibujarlo.
+        Herramienta::Mano
+        | Herramienta::Lupa
+        | Herramienta::Borrador
+        | Herramienta::Escalar
+        | Herramienta::Marco => &[],
         Herramienta::Lapiz | Herramienta::Resaltador => &[ColorTrazo, Grosor, Opacidad],
         Herramienta::Linea => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
         Herramienta::Flecha => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad, PuntaFlecha],

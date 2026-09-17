@@ -76,7 +76,7 @@ pub const BOTONES: [BotonCaja; 14] = [
 /// En el orden de la barra de Excalidraw (seleccion, rectangulo, elipse,
 /// flecha, linea, dibujo, texto, borrador) y despues, en su propio grupo,
 /// las que Excalidraw no tiene.
-pub const BOTONES_EDITOR: [BotonCaja; 17] = [
+pub const BOTONES_EDITOR: [BotonCaja; 18] = [
     BotonCaja::Elegir(Herramienta::Mano),
     BotonCaja::Elegir(Herramienta::Rectangulo),
     BotonCaja::Elegir(Herramienta::Elipse),
@@ -91,6 +91,7 @@ pub const BOTONES_EDITOR: [BotonCaja; 17] = [
     BotonCaja::Elegir(Herramienta::Cota),
     BotonCaja::Elegir(Herramienta::Escalar),
     BotonCaja::Elegir(Herramienta::EscalaGrafica),
+    BotonCaja::Elegir(Herramienta::Marco),
     BotonCaja::Deshacer,
     BotonCaja::Rehacer,
     BotonCaja::Salir,
@@ -119,7 +120,8 @@ pub fn grupo(b: BotonCaja) -> u8 {
             | Herramienta::Lupa
             | Herramienta::Cota
             | Herramienta::Escalar
-            | Herramienta::EscalaGrafica,
+            | Herramienta::EscalaGrafica
+            | Herramienta::Marco,
         ) => 1,
         BotonCaja::Elegir(_) => 0,
         BotonCaja::Deshacer | BotonCaja::Rehacer | BotonCaja::Color | BotonCaja::Salir => 2,
@@ -498,7 +500,7 @@ mod pruebas {
             .iter()
             .filter(|b| matches!(b, BotonCaja::Elegir(_)))
             .count();
-        assert_eq!(herramientas, 14, "faltan o sobran herramientas en la caja");
+        assert_eq!(herramientas, 15, "faltan o sobran herramientas en la caja");
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Elegir(Herramienta::Cota)));
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Elegir(Herramienta::Escalar)));
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Elegir(Herramienta::EscalaGrafica)));
@@ -570,18 +572,18 @@ mod pruebas {
     }
 
     #[test]
-    fn la_caja_con_diecisiete_botones_sigue_cabiendo_entera_en_el_area_de_trabajo() {
+    fn la_caja_con_dieciocho_botones_sigue_cabiendo_entera_en_el_area_de_trabajo() {
         // `colocar` promete en su documentacion que la caja siempre queda
         // entera en el area de trabajo. BOTONES_EDITOR es la lista mas
-        // larga de las dos (17, tres mas que BOTONES): si la promesa se
+        // larga de las dos (18, cuatro mas que BOTONES): si la promesa se
         // sostiene para ella, se sostiene para cualquiera de las dos.
         //
         // El area es la de un monitor normal, no la "bajo" de
         // `la_caja_nunca_se_sale_del_area_de_trabajo`: esa es a proposito
-        // mas baja que diecisiete botones (para probar el tope, no el caso
+        // mas baja que dieciocho botones (para probar el tope, no el caso
         // de uso), asi que no sirve para comprobar que "cabe entera".
         let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES_EDITOR);
-        assert_eq!(BOTONES_EDITOR.len(), 17);
+        assert_eq!(BOTONES_EDITOR.len(), 18);
         assert!(
             c.marco.arriba() >= area().arriba() && c.marco.abajo() <= area().abajo(),
             "se sale por arriba o por abajo: {c:?}"

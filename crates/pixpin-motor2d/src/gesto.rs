@@ -97,6 +97,8 @@ pub enum Herramienta {
     Escalar,
     /// La reglita a cuadros que sobrevive a la fotocopia.
     EscalaGrafica,
+    /// Un marco: recuadro con nombre que se lleva consigo lo que encierra.
+    Marco,
 }
 
 impl Herramienta {
@@ -605,6 +607,11 @@ impl Gesto {
                 puntos: reservados(),
             },
             Herramienta::EscalaGrafica => Figura::EscalaGrafica,
+            Herramienta::Marco => Figura::Marco {
+                // Sin nombre: ponerle uno automatico obligaria a contar los
+                // marcos aqui, y el motor no sabe de nombres bonitos.
+                nombre: String::new(),
+            },
             // Rectangulo y todo lo demas que deje rastro.
             _ => Figura::Rectangulo,
         };
@@ -1016,7 +1023,28 @@ impl Gesto {
 
             Estado::Moviendo { anterior } => {
                 let (dx, dy) = (p.x - anterior.x, p.y - anterior.y);
-                for &id in self.seleccion.ids() {
+                // Un marco arrastra lo que encierra (fase 5): es para lo que
+                // sirve. Se pregunta primero si hay alguno porque lo normal
+                // es que no: `con_contenidos` reserva memoria, y esto corre en
+                // cada movimiento del raton (prueba `asignaciones`).
+                let hay_marco = self
+                    .seleccion
+                    .ids()
+                    .iter()
+                    .any(|id| escena.buscar(*id).is_some_and(crate::marco::es_marco));
+                let ids: Vec<u64> = if hay_marco {
+                    crate::marco::con_contenidos(&escena.elementos, self.seleccion.ids())
+                } else {
+                    Vec::new()
+                };
+                let sueltos;
+                let ids: &[u64] = if hay_marco {
+                    &ids
+                } else {
+                    sueltos = self.seleccion.ids();
+                    sueltos
+                };
+                for &id in ids {
                     // Sin esto el paso queda vacio y no hay nada que
                     // deshacer. Es el error mas facil de cometer aqui.
                     escena.apuntar_edicion(id);

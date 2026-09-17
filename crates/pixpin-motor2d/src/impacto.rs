@@ -60,6 +60,10 @@ pub fn toca(e: &Elemento, p: Punto2) -> bool {
             }
         }
 
+        // Un marco se agarra por su borde, nunca por dentro: dentro esta lo
+        // que contiene, y pinchar ahi tiene que elegir eso y no el marco.
+        Figura::Marco { .. } => cerca_del_borde_del_rectangulo(p, e, margen),
+
         // Lo que se ve del foco es el hueco: se agarra por dentro.
         Figura::Foco { .. } => dentro_de_la_caja(p, e, margen),
 

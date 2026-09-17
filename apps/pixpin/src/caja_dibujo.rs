@@ -95,6 +95,7 @@ fn icono(b: BotonCaja) -> &'static pixpin_render::icono::Icono {
         BotonCaja::Elegir(Herramienta::Cota) => &i::LINE_EDITOR_ICON,
         BotonCaja::Elegir(Herramienta::Escalar) => &i::RESIZE_ICON,
         BotonCaja::Elegir(Herramienta::EscalaGrafica) => &i::GRID_ICON,
+        BotonCaja::Elegir(Herramienta::Marco) => &MARCO,
         BotonCaja::Deshacer => &i::UNDO_ICON,
         BotonCaja::Rehacer => &i::REDO_ICON,
         BotonCaja::Color => &i::PALETTE,
@@ -227,3 +228,22 @@ pub fn pintar_barra(
         }
     }
 }
+
+/// El icono del marco: «frame» de Tabler Icons (MIT, ver
+/// THIRD-PARTY-NOTICES.md). Los de Excalidraw se generan y no se editan a
+/// mano, y su juego no trae este.
+const MARCO: pixpin_render::icono::Icono = pixpin_render::icono::Icono {
+    vista: (0.0, 0.0, 24.0, 24.0),
+    trazos: &[pixpin_render::icono::TrazoIcono {
+        d: "M4 7l16 0M4 17l16 0M7 4l0 16M17 4l0 16",
+        relleno: pixpin_render::icono::Pintura::Nada,
+        trazo: pixpin_render::icono::Pintura::Actual,
+        grosor: 1.75,
+        extremo_redondo: true,
+        union_redonda: true,
+        opacidad: 1.0,
+        par_impar: false,
+        matriz: None,
+        mascara: None,
+    }],
+};

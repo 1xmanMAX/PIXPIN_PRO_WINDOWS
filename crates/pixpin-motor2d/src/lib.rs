@@ -31,6 +31,7 @@ pub mod formato;
 pub mod gesto;
 pub mod impacto;
 pub mod indice;
+pub mod marco;
 pub mod medida;
 pub mod organizar;
 pub mod pintado;

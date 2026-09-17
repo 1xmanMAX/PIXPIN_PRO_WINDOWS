@@ -183,6 +183,8 @@ fn tecla_a_herramienta(c: char) -> Option<Herramienta> {
         'A' => Some(Herramienta::Cota),
         'E' => Some(Herramienta::Escalar),
         'G' => Some(Herramienta::EscalaGrafica),
+        // «C» de marCo: la «F» de «frame» ya la usa el foco.
+        'C' => Some(Herramienta::Marco),
         _ => None,
     }
 }

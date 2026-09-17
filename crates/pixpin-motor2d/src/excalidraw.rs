@@ -298,6 +298,16 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
     let y = num_o(v, "y", 0.0);
     let figura = match tipo {
         "rectangle" => Figura::Rectangulo,
+        // El marco de Excalidraw. Sus hijos llevan alli un `frameId`; aqui la
+        // pertenencia se mira por la caja (ver `marco.rs`), asi que ese campo
+        // se queda en `resto` y vuelve tal cual al guardar.
+        "frame" => Figura::Marco {
+            nombre: v
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or_default()
+                .to_string(),
+        },
         "ellipse" => Figura::Elipse,
         "line" => Figura::Linea {
             puntos: puntos_desde(v, x, y),
@@ -514,6 +524,10 @@ fn elemento_hacia(e: &Elemento, original: &Value) -> Value {
         }
         Figura::EscalaGrafica => {
             mapa.insert("type".into(), Value::String("pixpin-scalebar".to_string()));
+        }
+        Figura::Marco { nombre } => {
+            mapa.insert("type".into(), Value::String("frame".to_string()));
+            mapa.insert("name".into(), Value::String(nombre.clone()));
         }
         Figura::Rectangulo | Figura::Elipse | Figura::Foco { .. } | Figura::Imagen { .. } => {}
     }
@@ -894,6 +908,26 @@ mod pruebas {
                 Entrada::Ajeno(_) => None,
             })
             .expect("el lienzo trae al menos un elemento nuestro")
+    }
+
+    #[test]
+    fn un_marco_va_y_vuelve_con_su_nombre() {
+        let texto = r##"{"type":"excalidraw","elements":[
+            {"id":"f1","type":"frame","x":0,"y":0,"width":300,"height":200,
+             "name":"Lamina 1","strokeColor":"#000000","frameId":null}
+        ]}"##;
+        let lienzo = leer(texto).unwrap();
+        let elementos = lienzo.elementos();
+        assert_eq!(elementos.len(), 1);
+        assert!(
+            matches!(&elementos[0].figura, Figura::Marco { nombre } if nombre == "Lamina 1"),
+            "no se leyo como marco: {:?}",
+            elementos[0].figura
+        );
+
+        let salida = escribir(&lienzo);
+        assert!(salida.contains("\"frame\""), "se perdio el tipo");
+        assert!(salida.contains("Lamina 1"), "se perdio el nombre");
     }
 
     #[test]
