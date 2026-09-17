@@ -41,6 +41,9 @@ const VK_V: u32 = 0x56;
 /// El lado mayor de la vista previa de una foto, guardada: el doble del ancho
 /// de la burbuja al 100 %, para que al 200 % no se vea pastosa.
 const PREVIA_LADO: u32 = 2 * pixpin_ui::historial::VISTA_ANCHO;
+/// Cuanto crece la burbuja del lienzo que esta vivo. En el tamano de la
+/// ojeada (260x180) no se puede dibujar; al doble, si.
+const VIVO_FACTOR: f32 = 2.0;
 
 /// Los colores de un tema.
 struct Tema {
@@ -393,6 +396,38 @@ pub fn abrir(
             match evento {
                 EventoOverlay::BotonPulsado(p) => {
                     let l = local(p);
+                    // El lienzo vivo manda dentro de su burbuja: ahi el clic
+                    // es un trazo, no una pulsacion de la conversacion.
+                    let en_el_lienzo = abierto
+                        .as_mut()
+                        .and_then(|a| a.vivo.as_mut())
+                        .and_then(|v| {
+                            let q = v.punto(l)?;
+                            v.gesto.evento(
+                                pixpin_motor2d::gesto::EventoGesto::Pulsar {
+                                    p: q,
+                                    shift: false,
+                                    alt: false,
+                                    presion: None,
+                                },
+                                &mut v.escena,
+                                1.0,
+                            );
+                            v.tocado = true;
+                            Some(())
+                        })
+                        .is_some();
+                    if en_el_lienzo {
+                        hay_que_pintar = true;
+                        continue;
+                    }
+                    // Fuera de su burbuja, el lienzo se apaga y se guarda; el
+                    // clic sigue su camino normal (puede encender otro).
+                    if let Some(a) = abierto.as_mut().filter(|a| a.vivo.is_some()) {
+                        apagar_lienzo(ubicacion, a);
+                        a.colocado.borrow_mut().ancho = 0;
+                        hay_que_pintar = true;
+                    }
                     // Los bordes primero: son unos pocos pixeles y si otra
                     // cosa se los quedara no se podria redimensionar.
                     // El cuadro de confirmar es modal: mientras esta, se lleva
@@ -420,13 +455,6 @@ pub fn abrir(
                                             fichas[i].tocado = a.ficha.tocado;
                                             fichas[i].resumen = a.ficha.resumen.clone();
                                         }
-                                    }
-                                    // Una sola foto se abre en el lienzo, igual
-                                    // que al pegarla.
-                                    if hechos == 1
-                                        && let Some(ruta) = ultima_foto(a)
-                                    {
-                                        abrir_foto_en_lienzo(&ruta, lienzo);
                                     }
                                     a.colocado.borrow_mut().ancho = 0;
                                 }
@@ -594,12 +622,25 @@ pub fn abrir(
                     }) {
                         // Una tabla se abre para escribir en ella, en el sitio
                         // del historial; lo demas, con su aplicacion.
-                        let es_tabla = abierto.as_ref().is_some_and(|a| {
-                            matches!(a.vistas.get(indice), Some(Some(Ojeada::Tabla(_))))
-                        });
+                        let vista = |f: fn(&Option<Ojeada>) -> bool| {
+                            abierto
+                                .as_ref()
+                                .and_then(|a| a.vistas.get(indice))
+                                .is_some_and(f)
+                        };
+                        let es_tabla = vista(|v| matches!(v, Some(Ojeada::Tabla(_))));
+                        // Una foto se enciende EN SU SITIO: el lienzo vive en
+                        // la burbuja y no en una ventana aparte. Los demas
+                        // siguen quietos, que es lo que pidio el usuario.
+                        let es_foto = vista(|v| matches!(v, Some(Ojeada::Foto { .. })));
                         match abierto.as_mut() {
                             Some(a) if es_tabla => abrir_hoja(a, indice),
-                            Some(a) => abrir_mensaje(ubicacion, a, indice, lienzo),
+                            Some(a) if es_foto => {
+                                if encender_lienzo(a, indice) {
+                                    a.colocado.borrow_mut().ancho = 0;
+                                }
+                            }
+                            Some(a) => abrir_mensaje(ubicacion, a, indice),
                             None => {}
                         }
                         buscando = false;
@@ -671,6 +712,7 @@ pub fn abrir(
                             // puede llevarse por delante lo que se escribio.
                             if let Some(a) = abierto.as_mut() {
                                 cerrar_hoja(ubicacion, a);
+                                apagar_lienzo(ubicacion, a);
                             }
                             if let Some(a) = abierto.take() {
                                 borradores.insert(a.ficha.id.clone(), a.borrador);
@@ -685,6 +727,36 @@ pub fn abrir(
                 }
                 EventoOverlay::RatonMovido(p) => {
                     let l = local(p);
+                    // Mientras el trazo esta en marcha, el raton es del lienzo
+                    // vivo aunque se salga de su burbuja: soltar fuera no puede
+                    // dejar el trazo a medias.
+                    let trazando = abierto
+                        .as_mut()
+                        .and_then(|a| a.vivo.as_mut())
+                        .filter(|v| !v.gesto.en_reposo())
+                        .map(|v| {
+                            let d = v.destino.get();
+                            let escala = v.escala().max(0.0001);
+                            let q = pixpin_motor2d::Punto2::nuevo(
+                                (l.x as f32 - d.x) / escala,
+                                (l.y as f32 - d.y) / escala,
+                            );
+                            v.gesto.evento(
+                                pixpin_motor2d::gesto::EventoGesto::Mover {
+                                    p: q,
+                                    shift: false,
+                                    alt: false,
+                                    presion: None,
+                                },
+                                &mut v.escena,
+                                1.0,
+                            );
+                        })
+                        .is_some();
+                    if trazando {
+                        hay_que_pintar = true;
+                        continue;
+                    }
                     match &arrastre {
                         Some(Arrastre::Asa(agarre)) => {
                             let nuevo = chat::ancho_ajustado(l.x - agarre, marco.ancho, escala);
@@ -739,7 +811,7 @@ pub fn abrir(
                                 pixpin_ui::historial::scroll_maximo(area, a.alto.get())
                             });
                             let i = pixpin_ui::historial::mensaje_en(area, &c.puestos, scroll, l)?;
-                            if !matches!(a.vistas.get(i), Some(Some(Ojeada::Foto))) {
+                            if !matches!(a.vistas.get(i), Some(Some(Ojeada::Foto { .. }))) {
                                 return None;
                             }
                             ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(i)?)
@@ -749,7 +821,26 @@ pub fn abrir(
                         hay_que_pintar = true;
                     }
                 }
-                EventoOverlay::BotonSoltado(_) => {
+                EventoOverlay::BotonSoltado(p) => {
+                    if let Some(v) = abierto
+                        .as_mut()
+                        .and_then(|a| a.vivo.as_mut())
+                        .filter(|v| !v.gesto.en_reposo())
+                    {
+                        let l = local(p);
+                        let d = v.destino.get();
+                        let escala = v.escala().max(0.0001);
+                        let q = pixpin_motor2d::Punto2::nuevo(
+                            (l.x as f32 - d.x) / escala,
+                            (l.y as f32 - d.y) / escala,
+                        );
+                        v.gesto.evento(
+                            pixpin_motor2d::gesto::EventoGesto::Soltar { p: q },
+                            &mut v.escena,
+                            1.0,
+                        );
+                        hay_que_pintar = true;
+                    }
                     if arrastre.is_some() {
                         ventana.soltar_raton();
                     }
@@ -889,11 +980,6 @@ pub fn abrir(
                                 fichas[i].tocado = a.ficha.tocado;
                                 fichas[i].resumen = a.ficha.resumen.clone();
                             }
-                        }
-                        if hechos == 1
-                            && let Some(ruta) = ultima_foto(a)
-                        {
-                            abrir_foto_en_lienzo(&ruta, lienzo);
                         }
                         a.colocado.borrow_mut().ancho = 0;
                     }
@@ -1062,15 +1148,6 @@ pub fn abrir(
                                     fichas[i].tocado = a.ficha.tocado;
                                     fichas[i].resumen = a.ficha.resumen.clone();
                                 }
-                                // Una foto pegada se abre en el lienzo: pegarla
-                                // es traerla para trabajar con ella. Solo si
-                                // entro UNA; con varias seria un desfile de
-                                // ventanas.
-                                if cuantos == 1
-                                    && let Some(ruta) = ultima_foto(a)
-                                {
-                                    abrir_foto_en_lienzo(&ruta, lienzo);
-                                }
                             }
                             Ok(_) => {}
                             Err(e) => tracing::warn!(?e, "no se pudo pegar en el chat"),
@@ -1123,15 +1200,28 @@ pub fn abrir(
                     }
                     hay_que_pintar = true;
                 }
+                // Escape apaga primero el lienzo vivo (y lo guarda); solo
+                // sin ninguno encendido cierra la ventana.
+                EventoOverlay::Tecla { vk, .. }
+                    if vk == VK_ESCAPE && abierto.as_ref().is_some_and(|a| a.vivo.is_some()) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        apagar_lienzo(ubicacion, a);
+                        a.colocado.borrow_mut().ancho = 0;
+                    }
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::Tecla { vk, .. } if vk == VK_ESCAPE => cerrar = true,
                 _ => {}
             }
         }
         if cerrar {
-            // Cerrar la ventana con una hoja abierta la guarda: es lo mismo
-            // que cerrarla con Escape, y perderla aqui seria una trampa.
+            // Cerrar la ventana con una hoja o un lienzo abiertos los guarda:
+            // es lo mismo que cerrarlos con Escape, y perderlos aqui seria una
+            // trampa.
             if let Some(a) = abierto.as_mut() {
                 cerrar_hoja(ubicacion, a);
+                apagar_lienzo(ubicacion, a);
             }
             break;
         }
@@ -1385,6 +1475,8 @@ struct Abierto {
     /// aparte por cada tabla llenaria el escritorio, y la hoja es del
     /// proyecto, no de la aplicacion.
     hoja: Option<HojaAbierta>,
+    /// El lienzo que esta vivo dentro de su burbuja, si hay alguno.
+    vivo: Option<LienzoVivo>,
 }
 
 /// Una hoja de calculo abierta para escribir en ella.
@@ -1993,9 +2085,14 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                 // Un dibujo ensena su lienzo: la vista previa manda sobre
                 // el texto, que queda como pie.
                 if a.vistas.get(indice).is_some_and(|v| v.is_some()) {
-                    let vista_ancho = (h::VISTA_ANCHO as f32 * e).min(ancho_contenido as f32);
+                    // El que esta vivo se hace grande: en 260x180 no se puede
+                    // dibujar. Los demas se quedan como estan, quietos.
+                    let vivo = a.vivo.as_ref().is_some_and(|v| v.indice == indice);
+                    let factor = if vivo { VIVO_FACTOR } else { 1.0 };
+                    let vista_ancho =
+                        (h::VISTA_ANCHO as f32 * e * factor).min(ancho_contenido as f32);
                     ancho = ancho.max(vista_ancho);
-                    alto += h::VISTA_ALTO as f32 * e + h::RELLENO_Y as f32 * e;
+                    alto += h::VISTA_ALTO as f32 * e * factor + h::RELLENO_Y as f32 * e;
                 }
                 entradas.push(h::Entrada {
                     alto: alto.ceil() as u32,
@@ -2089,13 +2186,86 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                 Ojeada::Tabla(t) => pintar_ojeada_tabla(p, tema, escala, t, hoja),
                 // La foto llena la hoja, recortada como en Telegram. Mientras
                 // no esta leida se queda el papel, que ya dice «aqui va algo».
-                Ojeada::Foto => {
+                Ojeada::Foto { doc, dibujo } => {
                     let foto = ruta_del_mensaje(&a.raiz, &a.ficha.id, m)
                         .and_then(|ruta| previas.ya(&ruta));
-                    if let Some((b, w, alto)) = foto {
-                        p.empujar_recorte(hoja);
-                        crate::miniaturas::pintar_recortado(p, b, hoja, w, alto);
-                        p.soltar_recorte();
+                    let vivo = a.vivo.as_ref().filter(|v| v.indice == i);
+                    match vivo {
+                        // El lienzo vivo: la foto ENTERA (no recortada, o se
+                        // dibujaria sobre un trozo que no se ve) y encima lo
+                        // dibujado. Su caja en pantalla se apunta aqui, que es
+                        // donde se sabe, y con ella se traduce el raton.
+                        Some(v) => {
+                            let (dw, dh) = v.doc;
+                            let escala = (hoja.ancho / dw.max(1.0)).min(hoja.alto / dh.max(1.0));
+                            let dest = RectF {
+                                x: hoja.x + (hoja.ancho - dw * escala) / 2.0,
+                                y: hoja.y + (hoja.alto - dh * escala) / 2.0,
+                                ancho: dw * escala,
+                                alto: dh * escala,
+                            };
+                            v.destino.set(dest);
+                            if let Some((b, w, alto)) = foto {
+                                let _ = (w, alto);
+                                p.bitmap_con(b, dest, None, pixpin_render::Interpolacion::Lineal);
+                            }
+                            pintar_lienzo(
+                                p,
+                                &LienzoVisto {
+                                    ordenes: pixpin_motor2d::ordenes_de_escena(&v.escena),
+                                    caja: (0.0, 0.0, dw, dh),
+                                },
+                                dest,
+                            );
+                            // Un borde que diga cual esta vivo: sin el, dos
+                            // fotos seguidas se ven igual y no se sabe en cual
+                            // va a caer el trazo.
+                            let g = (2.0 * e).max(2.0);
+                            for lado in [
+                                RectF { alto: g, ..dest },
+                                RectF {
+                                    y: dest.y + dest.alto - g,
+                                    alto: g,
+                                    ..dest
+                                },
+                                RectF { ancho: g, ..dest },
+                                RectF {
+                                    x: dest.x + dest.ancho - g,
+                                    ancho: g,
+                                    ..dest
+                                },
+                            ] {
+                                p.rellenar(lado, tema.enviar);
+                            }
+                        }
+                        // Quieta: la foto y, encima, lo que se haya dibujado en
+                        // ella. Encajada entera y no recortada, porque los
+                        // trazos van en coordenadas de la foto: recortarla los
+                        // dejaria corridos respecto a lo que se ve.
+                        None => {
+                            let (dw, dh) = *doc;
+                            let escala = (hoja.ancho / dw.max(1.0)).min(hoja.alto / dh.max(1.0));
+                            let dest = RectF {
+                                x: hoja.x + (hoja.ancho - dw * escala) / 2.0,
+                                y: hoja.y + (hoja.alto - dh * escala) / 2.0,
+                                ancho: dw * escala,
+                                alto: dh * escala,
+                            };
+                            if let Some((b, w, alto)) = foto {
+                                let _ = (w, alto);
+                                p.bitmap_con(b, dest, None, pixpin_render::Interpolacion::Lineal);
+                            }
+                            if !dibujo.is_empty() {
+                                pintar_lienzo(
+                                    p,
+                                    &LienzoVisto {
+                                        ordenes: dibujo.clone(),
+                                        caja: (0.0, 0.0, dw, dh),
+                                    },
+                                    dest,
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -2173,6 +2343,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         alto: std::cell::Cell::new(0),
         colocado: std::cell::RefCell::new(Colocado::default()),
         hoja: None,
+        vivo: None,
     }
 }
 
@@ -2666,7 +2837,7 @@ fn fotos_del_historial(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::pa
         .unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
     let (primero, cuantos) = h::visibles(area, &c.puestos, scroll);
     (primero..primero + cuantos)
-        .filter(|i| matches!(a.vistas.get(*i), Some(Some(Ojeada::Foto))))
+        .filter(|i| matches!(a.vistas.get(*i), Some(Some(Ojeada::Foto { .. }))))
         .filter_map(|i| ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(i)?))
         .collect()
 }
@@ -2951,9 +3122,23 @@ fn leer_vista(
     // Una foto ensena su vista previa si su fichero esta en este equipo;
     // una que llego del movil sin el fichero se queda en texto.
     if m.clase == Some(Clase::Imagen) {
-        return ruta_del_mensaje(ubicacion.raiz(), proyecto, m)
-            .filter(|r| r.is_file())
-            .map(|_| Ojeada::Foto);
+        let ruta = ruta_del_mensaje(ubicacion.raiz(), proyecto, m).filter(|r| r.is_file())?;
+        // Solo la cabecera: descomprimir cada foto del proyecto al abrirlo
+        // seria medio segundo por cada una.
+        let (w, h) = pixpin_codec::imagen::medidas(&ruta)
+            .inspect_err(
+                |e| tracing::info!(?e, ruta = %ruta.display(), "foto que no se pudo medir"),
+            )
+            .ok()?;
+        // Lo dibujado encima, si lo hay: una foto anotada tiene que verse
+        // anotada tambien cuando su burbuja esta quieta.
+        let dibujo = pixpin_motor2d::cargar(&dibujo_de_foto(&ruta))
+            .map(|e| pixpin_motor2d::ordenes_de_escena(&e))
+            .unwrap_or_default();
+        return Some(Ojeada::Foto {
+            doc: (w as f32, h as f32),
+            dibujo,
+        });
     }
     // Una tabla no tiene fichero: su documento es el propio texto del
     // mensaje, asi que se lee sin tocar el disco.
@@ -3005,9 +3190,15 @@ enum Ojeada {
     /// En caja porque una `Tabla` es mucho mas grande que un `LienzoVisto`, y
     /// sin ella todas las entradas del vector pagarian ese tamano.
     Tabla(Box<pixpin_proyecto::tabla::Tabla>),
-    /// Una foto del proyecto. No guarda nada: su fichero sale del mensaje,
-    /// y sus pixeles, de las vistas previas, que se cargan poco a poco.
-    Foto,
+    /// Una foto del proyecto: cuanto mide y lo que se haya dibujado encima.
+    ///
+    /// Sus pixeles no estan aqui: salen de las vistas previas, que se cargan
+    /// poco a poco. El tamano si, porque los trazos van en coordenadas de la
+    /// foto y sin el no se sabe donde caen.
+    Foto {
+        doc: (f32, f32),
+        dibujo: Vec<pixpin_motor2d::Orden>,
+    },
 }
 
 /// Una ojeada a una tabla dentro de su burbuja: las primeras celdas y ya.
@@ -3134,18 +3325,10 @@ fn pintar_lienzo(p: &Pintor, vista: &LienzoVisto, destino: RectF) {
 /// que abrir algo que el usuario no pidio. Los dibujos todavia no abren el
 /// editor: escribir de vuelta el `.excalidraw` sin perder lo que el movil
 /// mete y aqui no se entiende es un trabajo aparte, y a medias seria peor.
-fn abrir_mensaje(ubicacion: &Ubicacion, a: &Abierto, indice: usize, lienzo: OpcionesLienzo) {
+fn abrir_mensaje(ubicacion: &Ubicacion, a: &Abierto, indice: usize) {
     let Some(m) = a.mensajes.get(indice) else {
         return;
     };
-    // Una foto se abre en el lienzo, centrada, para dibujar encima: es lo
-    // que el usuario pidio en vez del visor de Windows.
-    if matches!(a.vistas.get(indice), Some(Some(Ojeada::Foto))) {
-        if let Some(ruta) = ruta_del_mensaje(ubicacion.raiz(), &a.ficha.id, m) {
-            abrir_foto_en_lienzo(&ruta, lienzo);
-            return;
-        }
-    }
     let Some(relativa) = m.ruta.as_deref().filter(|r| !r.is_empty()) else {
         return;
     };
@@ -3366,7 +3549,7 @@ fn pintar_info(
                 .vistas
                 .get(indice)
                 .and_then(|v| v.as_ref())
-                .filter(|v| !matches!(v, Ojeada::Foto));
+                .filter(|v| !matches!(v, Ojeada::Foto { .. }));
             match vista {
                 // Un dibujo se ensena dibujado. Sobre papel blanco y no
                 // sobre el gris de la celda: los trazos vienen de un lienzo
@@ -3378,7 +3561,7 @@ fn pintar_info(
                     match vista {
                         Ojeada::Lienzo(l) => pintar_lienzo(p, l, dentro),
                         Ojeada::Tabla(t) => pintar_ojeada_tabla(p, tema, escala, t, dentro),
-                        Ojeada::Foto => {}
+                        Ojeada::Foto { .. } => {}
                     }
                     p.soltar_recorte();
                 }
@@ -4077,12 +4260,204 @@ fn menu_de_foto(
     }
 }
 
-/// La foto del ultimo mensaje, si lo ultimo que entro fue una foto de este
-/// equipo. Es lo que se abre en el lienzo al pegar o al adjuntar una sola.
-fn ultima_foto(a: &Abierto) -> Option<std::path::PathBuf> {
-    let indice = a.mensajes.len().checked_sub(1)?;
-    if !matches!(a.vistas.get(indice), Some(Some(Ojeada::Foto))) {
-        return None;
+// --- El lienzo vivo dentro de la burbuja ------------------------------
+
+/// El lienzo que esta VIVO ahora mismo: el que se pulso.
+///
+/// Los demas se quedan quietos en su burbuja —ya pintados, sin gastar nada—
+/// y solo este recibe el raton. Es lo que pidio el usuario: «todos esos
+/// canvas ya estan abiertos en modo bajo consumo, en estatico; solo en el
+/// que estoy escribiendo es el que esta trabajando». Por eso no se abre
+/// ninguna ventana al pulsar.
+struct LienzoVivo {
+    /// Que mensaje del historial es.
+    indice: usize,
+    escena: pixpin_motor2d::Escena,
+    gesto: pixpin_motor2d::gesto::Gesto,
+    /// Donde se guarda lo dibujado: el `.pixpin2d` de al lado de la foto. La
+    /// foto no se toca nunca (D48).
+    dibujo: std::path::PathBuf,
+    /// Si ese fichero ya existia: decide si una escena vacia se guarda (D146).
+    habia: bool,
+    /// El tamano del documento, que son los pixeles de la foto. Se usa el
+    /// tamano ORIGINAL y no el de la vista previa para que lo dibujado aqui
+    /// caiga donde toca al abrir la misma foto en el editor grande.
+    doc: (f32, f32),
+    /// La caja en pantalla del ultimo pintado, para traducir el raton. La
+    /// apunta quien pinta, que es el unico que sabe donde acabo la burbuja.
+    destino: std::cell::Cell<RectF>,
+    tocado: bool,
+}
+
+impl LienzoVivo {
+    /// El punto de la pantalla en coordenadas del documento. `None` si cae
+    /// fuera de la burbuja: ahi el clic es para salir, no para dibujar.
+    fn punto(&self, l: Punto) -> Option<pixpin_motor2d::Punto2> {
+        let d = self.destino.get();
+        let escala = self.escala();
+        if escala <= 0.0 {
+            return None;
+        }
+        let (x, y) = (l.x as f32, l.y as f32);
+        if x < d.x || x > d.x + d.ancho || y < d.y || y > d.y + d.alto {
+            return None;
+        }
+        Some(pixpin_motor2d::Punto2::nuevo(
+            (x - d.x) / escala,
+            (y - d.y) / escala,
+        ))
     }
-    ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(indice)?)
+
+    /// Cuanto mide en pantalla un pixel del documento.
+    fn escala(&self) -> f32 {
+        let d = self.destino.get();
+        let (w, h) = self.doc;
+        if w <= 0.0 || h <= 0.0 {
+            return 0.0;
+        }
+        (d.ancho / w).min(d.alto / h)
+    }
+}
+
+/// Enciende el lienzo de un mensaje con foto. Devuelve si se pudo.
+///
+/// Lee la foto entera una vez, solo para saber cuanto mide: las coordenadas
+/// de lo que se dibuje tienen que ser las suyas, o el mismo dibujo se veria
+/// corrido al abrirlo en el editor grande.
+fn encender_lienzo(a: &mut Abierto, indice: usize) -> bool {
+    if a.vivo.as_ref().is_some_and(|v| v.indice == indice) {
+        return true;
+    }
+    if !matches!(a.vistas.get(indice), Some(Some(Ojeada::Foto { .. }))) {
+        return false;
+    }
+    let Some(m) = a.mensajes.get(indice) else {
+        return false;
+    };
+    let Some(foto) = ruta_del_mensaje(&a.raiz, &a.ficha.id, m) else {
+        return false;
+    };
+    // El tamano ya lo midio la ojeada al abrir el proyecto.
+    let Some(Some(Ojeada::Foto { doc, .. })) = a.vistas.get(indice) else {
+        return false;
+    };
+    let doc = *doc;
+    let dibujo = dibujo_de_foto(&foto);
+    let (escena, habia) = match crate::pines::escena_para_lienzo(&dibujo) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(?e, ruta = %dibujo.display(), "dibujo corrupto; no se enciende");
+            return false;
+        }
+    };
+    a.vivo = Some(LienzoVivo {
+        indice,
+        escena,
+        gesto: pixpin_motor2d::gesto::Gesto::nuevo(),
+        dibujo,
+        habia,
+        doc,
+        destino: std::cell::Cell::new(RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: 0.0,
+            alto: 0.0,
+        }),
+        tocado: false,
+    });
+    true
+}
+
+/// Apaga el lienzo vivo y guarda lo dibujado si cambio algo.
+fn apagar_lienzo(ubicacion: &Ubicacion, a: &mut Abierto) {
+    let Some(v) = a.vivo.take() else {
+        return;
+    };
+    if !v.tocado {
+        return;
+    }
+    match crate::pines::guardar_lienzo(&v.dibujo, &v.escena, v.habia) {
+        Ok(guardado) => tracing::info!(
+            guardado,
+            elementos = v.escena.cuantos_visibles(),
+            "lienzo de la burbuja guardado"
+        ),
+        Err(e) => tracing::error!(?e, ruta = %v.dibujo.display(), "no se pudo guardar el lienzo"),
+    }
+    // La burbuja vuelve a quedarse quieta, pero con lo dibujado: se rehace su
+    // ojeada, o el trazo desapareceria al apagar el lienzo.
+    if let Some(m) = a.mensajes.get(v.indice).cloned() {
+        a.vistas[v.indice] = leer_vista(ubicacion, &a.ficha.id, &m);
+    }
+}
+
+#[cfg(test)]
+mod pruebas_lienzo_vivo {
+    use super::*;
+
+    fn vivo(destino: RectF, doc: (f32, f32)) -> LienzoVivo {
+        LienzoVivo {
+            indice: 0,
+            escena: pixpin_motor2d::Escena::nueva(),
+            gesto: pixpin_motor2d::gesto::Gesto::nuevo(),
+            dibujo: std::path::PathBuf::from("x.pixpin2d"),
+            habia: false,
+            doc,
+            destino: std::cell::Cell::new(destino),
+            tocado: false,
+        }
+    }
+
+    #[test]
+    fn el_raton_se_traduce_a_coordenadas_de_la_foto() {
+        // Una foto de 1000x500 vista en una caja de 500x250: la mitad de
+        // grande. El centro de la caja es el centro de la foto.
+        let v = vivo(
+            RectF {
+                x: 100.0,
+                y: 40.0,
+                ancho: 500.0,
+                alto: 250.0,
+            },
+            (1000.0, 500.0),
+        );
+        assert_eq!(v.escala(), 0.5);
+        let q = v.punto(Punto { x: 350, y: 165 }).expect("cae dentro");
+        assert_eq!((q.x, q.y), (500.0, 250.0));
+    }
+
+    #[test]
+    fn fuera_de_la_burbuja_no_hay_trazo() {
+        // El clic de al lado es para apagar el lienzo, no para dibujar en el
+        // borde: sin esto, pulsar en la conversacion pintaria una raya.
+        let v = vivo(
+            RectF {
+                x: 100.0,
+                y: 40.0,
+                ancho: 500.0,
+                alto: 250.0,
+            },
+            (1000.0, 500.0),
+        );
+        assert!(
+            v.punto(Punto { x: 90, y: 165 }).is_none(),
+            "por la izquierda"
+        );
+        assert!(v.punto(Punto { x: 350, y: 400 }).is_none(), "por abajo");
+    }
+
+    #[test]
+    fn una_foto_sin_tamano_no_divide_por_cero() {
+        let v = vivo(
+            RectF {
+                x: 0.0,
+                y: 0.0,
+                ancho: 100.0,
+                alto: 100.0,
+            },
+            (0.0, 0.0),
+        );
+        assert_eq!(v.escala(), 0.0);
+        assert!(v.punto(Punto { x: 10, y: 10 }).is_none());
+    }
 }

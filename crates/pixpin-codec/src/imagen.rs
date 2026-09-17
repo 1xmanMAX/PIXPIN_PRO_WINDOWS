@@ -102,6 +102,19 @@ pub fn cargar(ruta: &Path) -> Result<ImagenRgba, ErrorCodec> {
     })
 }
 
+/// Cuanto mide una imagen, SIN descomprimirla: solo su cabecera.
+///
+/// Lo quiere el chat para cada foto que ensena: los trazos que se dibujan
+/// encima van en coordenadas de la foto, asi que hay que saber su tamano
+/// para colocarlos. Cargarlas enteras para eso seria descomprimir doce
+/// megapixeles por burbuja.
+pub fn medidas(ruta: &Path) -> Result<(u32, u32), ErrorCodec> {
+    image::image_dimensions(ruta).map_err(|fuente| ErrorCodec::Lectura {
+        ruta: ruta.to_path_buf(),
+        fuente,
+    })
+}
+
 /// PNG en memoria: para el almacen, que guarda bytes, no rutas.
 pub fn codificar_png(imagen: &ImagenRgba) -> Result<Vec<u8>, ErrorCodec> {
     if imagen.ancho == 0 || imagen.alto == 0 {
