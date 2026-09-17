@@ -76,6 +76,10 @@ pub const TITULO_TAM: f32 = 12.0;
 
 /// El buscador de la cabecera de la lista: capsula de 35 con 7 de margen.
 pub const BUSCADOR_ALTO: u32 = 35;
+/// El boton redondo de proyecto nuevo: el mismo tamano y el mismo aire que
+/// el lapiz de Telegram en su esquina.
+pub const NUEVO_LADO: u32 = 54;
+pub const NUEVO_MARGEN: u32 = 16;
 pub const BUSCADOR_RADIO: u32 = 18;
 pub const BUSCADOR_MARGEN: u32 = 7;
 pub const BUSCADOR_TEXTO_X: u32 = 12;
@@ -385,6 +389,33 @@ impl Disposicion {
             y: c.y + (c.alto as i32 - alto as i32) / 2,
             ancho: c.ancho.saturating_sub(2 * e(BUSCADOR_MARGEN)),
             alto,
+        }
+    }
+
+    /// El boton redondo de proyecto nuevo, flotando en la esquina de abajo a
+    /// la derecha de la lista.
+    ///
+    /// Flotando y no en la cabecera porque la cabecera ya la ocupa entera el
+    /// buscador, que es lo que se usa a diario; crear un proyecto se hace de
+    /// vez en cuando. Es el mismo sitio y el mismo gesto que el lapiz de
+    /// Telegram, y que el boton de anadir de tantas aplicaciones.
+    pub fn boton_nuevo(&self, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let lado = e(NUEVO_LADO);
+        // Plegada la lista es una tira de avatares: un boton redondo de este
+        // tamano taparia dos de ellos. Y en una lista mas estrecha que el
+        // propio boton, tampoco: valdria mas tapar filas que poder pulsarlo.
+        if self.plegada
+            || self.filas.ancho < lado + e(NUEVO_MARGEN)
+            || self.filas.alto < lado + e(NUEVO_MARGEN)
+        {
+            return vacio();
+        }
+        Rect {
+            x: self.filas.derecha() - (lado + e(NUEVO_MARGEN)) as i32,
+            y: self.filas.abajo() - (lado + e(NUEVO_MARGEN)) as i32,
+            ancho: lado,
+            alto: lado,
         }
     }
 
@@ -719,6 +750,31 @@ mod pruebas_ventana {
             ancho: 1000,
             alto: 700,
         }
+    }
+
+    #[test]
+    fn el_boton_de_proyecto_nuevo_flota_en_la_esquina_de_la_lista() {
+        let d = Disposicion::calcular(1000, 700, 100, 320, Vista::Ambas);
+        let b = d.boton_nuevo(100);
+        assert_eq!((b.ancho, b.alto), (NUEVO_LADO, NUEVO_LADO));
+        // Abajo a la derecha de las filas, con el mismo aire por los dos
+        // lados: es lo que lo hace leerse como flotante y no como pegado.
+        assert_eq!(d.filas.derecha() - b.derecha(), NUEVO_MARGEN as i32);
+        assert_eq!(d.filas.abajo() - b.abajo(), NUEVO_MARGEN as i32);
+        assert!(d.filas.contiene(Punto { x: b.x, y: b.y }));
+    }
+
+    #[test]
+    fn en_una_lista_plegada_no_hay_boton_de_proyecto_nuevo() {
+        // Caso negativo: en una columna mas estrecha que el propio boton,
+        // ensenarlo taparia las filas y ni siquiera se podria pulsar bien.
+        let d = Disposicion::calcular(1000, 700, 100, 20, Vista::Ambas);
+        assert_eq!(d.boton_nuevo(100).ancho, 0);
+        // Y en una ventana tan estrecha que solo cabe una columna, con el
+        // proyecto a la vista, no hay lista donde ponerlo.
+        let d = Disposicion::calcular(420, 700, 100, 320, Vista::SoloChat);
+        assert_eq!(d.filas.ancho, 0, "no hay lista");
+        assert_eq!(d.boton_nuevo(100).ancho, 0);
     }
 
     #[test]

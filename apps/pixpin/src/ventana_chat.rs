@@ -471,6 +471,15 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                             } {
                                 a.info = Some(SECCIONES[i]);
                                 a.scroll_info = 0;
+                            } else if !a.buscando_info && d.cabecera.contiene(l) {
+                                // Pulsar el nombre del proyecto lo pone a
+                                // escribir. Va el ultimo de la cabecera: el
+                                // aspa y la lupa estan ahi dentro y mandan
+                                // ellas. Se cierra el panel porque el nombre
+                                // se escribe en la cabecera de la
+                                // conversacion, que es donde se ve de verdad.
+                                a.info = None;
+                                a.renombrando = true;
                             }
                             hay_que_pintar = true;
                         }
@@ -493,6 +502,28 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                             .map(|i| (a, i))
                     }) {
                         abrir_mensaje(ubicacion, a, indice);
+                        buscando = false;
+                    } else if disposicion.boton_nuevo(escala).contiene(l) {
+                        // Proyecto nuevo: se crea, se pone el primero y se
+                        // abre con el nombre ya listo para escribirlo. Nace
+                        // sin nombre a proposito: teclear es mas rapido que
+                        // borrar «Proyecto 3» para poner el de verdad.
+                        let cuando = pixpin_shell::entorno::ahora_local_ms();
+                        let mut indice = pixpin_proyecto::almacen::Indice::leer(ubicacion.raiz());
+                        let ficha = pixpin_proyecto::almacen::Ficha::nueva("", cuando, &identidad);
+                        indice.proyectos.push(ficha.clone());
+                        match indice.guardar(ubicacion.raiz()) {
+                            Ok(()) => {
+                                fichas.push(ficha.clone());
+                                orden = filtrar(&fichas, &busqueda);
+                                elegida = Some(fichas.len() - 1);
+                                let mut nuevo = abrir_proyecto(ubicacion, &ficha);
+                                nuevo.renombrando = true;
+                                abierto = Some(nuevo);
+                                scroll = 0;
+                            }
+                            Err(e) => tracing::warn!(?e, "no se pudo crear el proyecto"),
+                        }
                         buscando = false;
                     } else if disposicion.buscador(escala).contiene(l) {
                         buscando = true;
@@ -633,6 +664,47 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                 // Escribir en la caja de abajo. Solo llega si hay un
                 // proyecto abierto: sin conversacion no hay donde guardarlo.
                 // Con el buscador enfocado, lo que se teclea va ahi.
+                // Poniendole nombre al proyecto, lo que se teclea es el
+                // nombre. Manda sobre escribir una nota: un proyecto recien
+                // creado no tiene nombre, y eso es lo primero que resolver.
+                EventoOverlay::Caracter(c)
+                    if pendientes.is_none() && abierto.as_ref().is_some_and(|a| a.renombrando) =>
+                {
+                    if c >= ' ' {
+                        if let Some(a) = abierto.as_mut() {
+                            a.ficha.nombre.push(c);
+                            hay_que_pintar = true;
+                        }
+                    }
+                }
+                EventoOverlay::Tecla { vk, .. }
+                    if vk == VK_RETROCESO
+                        && pendientes.is_none()
+                        && abierto.as_ref().is_some_and(|a| a.renombrando) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        a.ficha.nombre.pop();
+                        hay_que_pintar = true;
+                    }
+                }
+                // Entrar o escapar dejan de escribir el nombre. Los dos
+                // guardan: escapar aqui no puede «deshacer», porque el
+                // proyecto ya existe y quedaria sin nombre para siempre.
+                EventoOverlay::Tecla { vk, .. }
+                    if (vk == VK_ENTRAR || vk == VK_ESCAPE)
+                        && pendientes.is_none()
+                        && abierto.as_ref().is_some_and(|a| a.renombrando) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        a.renombrando = false;
+                        guardar_nombre(ubicacion, a);
+                        if let Some(i) = elegida {
+                            fichas[i].nombre = a.ficha.nombre.clone();
+                            orden = filtrar(&fichas, &busqueda);
+                        }
+                    }
+                    hay_que_pintar = true;
+                }
                 // El cuadro de confirmar es modal tambien para el teclado: lo
                 // que se escribe es el pie, escapar cancela y entrar acepta.
                 EventoOverlay::Caracter(c) if pendientes.is_some() => {
@@ -1025,6 +1097,10 @@ struct Abierto {
     /// es «no se esta buscando»: no hace falta un booleano aparte, porque
     /// una busqueda en blanco no filtra nada (ver `resaltado`).
     busqueda_info: String,
+    /// Se esta escribiendo el nombre del proyecto en la cabecera. Un
+    /// proyecto recien creado nace asi: teclear es mas rapido que borrar
+    /// un nombre puesto por la aplicacion para poner el de verdad.
+    renombrando: bool,
     /// La lupa esta encendida. Va aparte de `busqueda_info` porque al
     /// pulsarla la caja aparece vacia, y sin esto no habria donde escribir.
     buscando_info: bool,
@@ -1222,6 +1298,33 @@ fn pintar(
                 p.linea((cx - m, cy + m), (cx + m, cy - m), grosor, color);
             }
         }
+    }
+
+    // El boton de proyecto nuevo, flotando sobre la lista. Se pinta despues
+    // de las filas para que quede encima de la que pase por debajo.
+    let nuevo = d.boton_nuevo(escala);
+    if nuevo.ancho > 0 {
+        p.rellenar_redondeado(rf(nuevo), nuevo.alto as f32 / 2.0, tema.enviar);
+        // Una cruz a mano: dos lineas y un icono aqui seria un recurso de
+        // mas, como el triangulo de enviar.
+        let brazo = nuevo.ancho as f32 * 0.22;
+        let (cx, cy) = (
+            nuevo.x as f32 + nuevo.ancho as f32 / 2.0,
+            nuevo.y as f32 + nuevo.alto as f32 / 2.0,
+        );
+        let grosor = (2.0 * e).max(1.0);
+        p.linea(
+            (cx - brazo, cy),
+            (cx + brazo, cy),
+            grosor,
+            tema.texto_elegido,
+        );
+        p.linea(
+            (cx, cy - brazo),
+            (cx, cy + brazo),
+            grosor,
+            tema.texto_elegido,
+        );
     }
 
     // El buscador, en el sitio del titulo: es lo que hay en Telegram y lo
@@ -1472,13 +1575,22 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
     let texto_x = cab.x as f32 + chat::CABECERA_TEXTO_X as f32 * e;
     let ancho_nombre =
         (cab.derecha() as f32 - chat::CABECERA_MARGEN_DERECHO as f32 * e - texto_x).max(0.0);
+    // Mientras se le pone nombre, se ensena lo escrito con una barra detras,
+    // y un aviso en gris si aun no hay nada.
+    let (nombre, color_nombre) = if a.renombrando && a.ficha.nombre.is_empty() {
+        (textos.t("chat-nombre-nuevo"), tema.apagado)
+    } else if a.renombrando {
+        (format!("{}|", a.ficha.nombre), tema.texto)
+    } else {
+        (a.ficha.nombre.clone(), tema.texto)
+    };
     p.texto_linea(
-        &a.ficha.nombre,
+        &nombre,
         texto_x,
         cab.y as f32 + chat::CABECERA_NOMBRE_Y as f32 * e,
         chat::CABECERA_TAM * e,
         ancho_nombre,
-        tema.texto,
+        color_nombre,
     );
     let mut abajo = {
         let mut args = fluent_bundle::FluentArgs::new();
@@ -1755,6 +1867,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         info: None,
         scroll_info: 0,
         busqueda_info: String::new(),
+        renombrando: false,
         buscando_info: false,
         alto_info: std::cell::Cell::new(0),
         anchos_pestanas: std::cell::RefCell::new(Vec::new()),
@@ -2345,6 +2458,26 @@ fn menu_del_clip(d: &Disposicion, a: &Abierto, marco: Rect, escala: u32) -> menu
         (menu::TEXTO_TAM * escala as f32 / 100.0).ceil() as u32,
         escala,
     )
+}
+
+/// Apunta en el indice el nombre que se acaba de escribir.
+///
+/// Un nombre en blanco no se guarda como tal: se deja el que ya hubiera, o
+/// se pone uno cualquiera. Una lista con una fila sin nombre no se puede
+/// usar —no hay donde pulsar con seguridad ni que buscar—, y el usuario
+/// puede cambiarlo cuando quiera.
+fn guardar_nombre(ubicacion: &Ubicacion, a: &mut Abierto) {
+    if a.ficha.nombre.trim().is_empty() {
+        a.ficha.nombre = "Proyecto".into();
+    }
+    let raiz = ubicacion.raiz();
+    let mut indice = pixpin_proyecto::almacen::Indice::leer(raiz);
+    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == a.ficha.id) {
+        f.nombre = a.ficha.nombre.clone();
+        if let Err(e) = indice.guardar(raiz) {
+            tracing::warn!(?e, "no se pudo guardar el nombre del proyecto");
+        }
+    }
 }
 
 /// Crea una hoja de calculo vacia en la conversacion.

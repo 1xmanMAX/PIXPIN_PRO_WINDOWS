@@ -39,6 +39,30 @@ pub struct Ficha {
 }
 
 impl Ficha {
+    /// Un proyecto creado AQUI, vacio y con sus tres codigos recien puestos.
+    ///
+    /// Se le pone `aparato` y `uid` propios, no los de nadie: es lo que hace
+    /// que, cuando este proyecto llegue al movil, se reconozca como el mismo
+    /// si vuelve, en vez de duplicarse en cada viaje (ver `recibir`).
+    ///
+    /// No crea la carpeta: eso lo hace quien escriba el primer mensaje, y
+    /// asi un proyecto que se crea y se descarta no deja nada en el disco.
+    pub fn nueva(nombre: &str, cuando: i64, aparato: &str) -> Ficha {
+        Ficha {
+            id: codigos::nuevo(),
+            nombre: nombre.to_string(),
+            uid: Some(codigos::nuevo()),
+            creado: cuando,
+            aparato: Some(aparato.to_string()),
+            tocado: cuando,
+            hojas: 0,
+            resumen: String::new(),
+            sin_leer: 0,
+            paquete: None,
+            resto: Default::default(),
+        }
+    }
+
     /// La ficha de un proyecto recien abierto, con sus tres codigos tal como
     /// vienen: son los que deciden si esto ya estaba aqui.
     pub fn de_proyecto(p: &crate::Proyecto, paquete: Option<&std::path::Path>) -> Ficha {
@@ -281,6 +305,30 @@ mod pruebas {
         i.proyectos.push(ficha("c", "Taller", 20));
         let nombres: Vec<&str> = i.ordenadas().iter().map(|f| f.nombre.as_str()).collect();
         assert_eq!(nombres, ["Obra", "Taller", "Casa"]);
+    }
+
+    #[test]
+    fn un_proyecto_creado_aqui_nace_con_sus_tres_codigos_y_no_se_duplica() {
+        let f = Ficha::nueva("Obra nueva", 1_000, "K7Q2");
+        assert_eq!(f.nombre, "Obra nueva");
+        assert_eq!(f.aparato.as_deref(), Some("K7Q2"));
+        assert_eq!((f.creado, f.tocado), (1_000, 1_000));
+        assert!(f.uid.is_some(), "sin uid no se reconoceria al volver");
+        assert_eq!(f.paquete, None, "no salio de ningun fichero");
+
+        // Dos creados seguidos son cosas distintas: si compartieran codigos,
+        // el segundo pisaria al primero al viajar.
+        let otro = Ficha::nueva("Obra nueva", 1_000, "K7Q2");
+        assert_ne!(f.id, otro.id);
+        assert_ne!(f.uid, otro.uid);
+        assert!(!f.misma_que(&otro), "mismo nombre no es la misma cosa");
+
+        // Y el que vuelve del movil se reconoce en vez de duplicarse.
+        let mut i = Indice::default();
+        i.proyectos.push(f.clone());
+        let (que, _) = i.recibir(f);
+        assert_eq!(que, Recibido::Actualizado);
+        assert_eq!(i.proyectos.len(), 1);
     }
 
     #[test]
