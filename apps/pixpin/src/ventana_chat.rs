@@ -545,6 +545,28 @@ pub fn abrir(
                             }
                             hay_que_pintar = true;
                         }
+                    } else if abierto.as_ref().is_some_and(|a| a.hoja.is_some()) {
+                        // Con la hoja abierta, la conversacion no esta debajo:
+                        // el clic es de la hoja o de su cabecera, que es por
+                        // donde se vuelve.
+                        if let Some(a) = abierto.as_mut() {
+                            if disposicion.cabecera_chat.contiene(l) {
+                                cerrar_hoja(ubicacion, a);
+                            } else {
+                                let t = disposicion_hoja(&disposicion, escala);
+                                if let Some(h) = a.hoja.as_mut() {
+                                    if let Some((columna, fila)) =
+                                        t.celda_en(l, h.scroll_x, h.scroll_y, escala)
+                                    {
+                                        // Pulsar otra celda deja escrito lo que
+                                        // se estaba tecleando, como en Excel.
+                                        h.confirmar();
+                                        h.sel = pixpin_proyecto::tabla::Ref { columna, fila };
+                                    }
+                                }
+                            }
+                        }
+                        hay_que_pintar = true;
                     } else if abierto.is_some() && disposicion.cabecera_chat.contiene(l) {
                         // Pulsar el nombre abre la informacion del proyecto,
                         // como en Telegram.
@@ -553,7 +575,7 @@ pub fn abrir(
                             a.scroll_info = 0;
                         }
                         hay_que_pintar = true;
-                    } else if let Some((a, indice)) = abierto.as_ref().and_then(|a| {
+                    } else if let Some((_, indice)) = abierto.as_ref().and_then(|a| {
                         let area =
                             disposicion.historial(a.alto_caja.get(), a.fijado.is_some(), escala);
                         let c = a.colocado.borrow();
@@ -563,8 +585,18 @@ pub fn abrir(
                         pixpin_ui::historial::mensaje_en(area, &c.puestos, scroll, l)
                             .map(|i| (a, i))
                     }) {
-                        abrir_mensaje(ubicacion, a, indice, lienzo);
+                        // Una tabla se abre para escribir en ella, en el sitio
+                        // del historial; lo demas, con su aplicacion.
+                        let es_tabla = abierto.as_ref().is_some_and(|a| {
+                            matches!(a.vistas.get(indice), Some(Some(Ojeada::Tabla(_))))
+                        });
+                        match abierto.as_mut() {
+                            Some(a) if es_tabla => abrir_hoja(a, indice),
+                            Some(a) => abrir_mensaje(ubicacion, a, indice, lienzo),
+                            None => {}
+                        }
                         buscando = false;
+                        hay_que_pintar = true;
                     } else if disposicion.boton_nuevo(escala).contiene(l) {
                         // Proyecto nuevo: se crea, se pone el primero y se
                         // abre con el nombre ya listo para escribirlo. Nace
@@ -628,6 +660,11 @@ pub fn abrir(
                         if elegida != Some(i) {
                             // Lo escrito y sin enviar se guarda antes de
                             // cambiar; volver a este proyecto lo devuelve.
+                            // Y la hoja abierta se guarda: cambiar de proyecto no
+                            // puede llevarse por delante lo que se escribio.
+                            if let Some(a) = abierto.as_mut() {
+                                cerrar_hoja(ubicacion, a);
+                            }
                             if let Some(a) = abierto.take() {
                                 borradores.insert(a.ficha.id.clone(), a.borrador);
                             }
@@ -682,6 +719,27 @@ pub fn abrir(
                         ventana.soltar_raton();
                     }
                     arrastre = None;
+                }
+                EventoOverlay::Rueda(delta)
+                    if abierto.as_ref().is_some_and(|a| a.hoja.is_some()) =>
+                {
+                    let t = disposicion_hoja(&disposicion, escala);
+                    if let Some(h) = abierto.as_mut().and_then(|a| a.hoja.as_mut()) {
+                        let paso = 3 * (pixpin_ui::tabla::FILA_ALTO * escala / 100) as i32;
+                        let (columnas, filas) = h.tabla.tamano();
+                        // Una de mas por cada lado: si la hoja acabara justo en
+                        // la ultima celda escrita, no habria donde anadir.
+                        let (x, y) = t.sujetar(
+                            h.scroll_x,
+                            h.scroll_y - delta.signum() * paso,
+                            columnas + 1,
+                            filas + 1,
+                            escala,
+                        );
+                        h.scroll_x = x;
+                        h.scroll_y = y;
+                    }
+                    hay_que_pintar = true;
                 }
                 EventoOverlay::Rueda(delta) => {
                     // La rueda va a la columna donde esta el raton, no a la
@@ -804,6 +862,64 @@ pub fn abrir(
                 // La lupa del panel manda sobre todo lo demas: mientras esta
                 // encendida, lo que se teclea es lo que se busca ahi dentro,
                 // no una nota ni el buscador de la lista.
+                // La hoja de calculo se lleva el teclado entero mientras esta
+                // abierta: escribir en una celda es escribir, y cualquier
+                // otra cosa que se colara aqui iria a parar al borrador.
+                EventoOverlay::Caracter(c)
+                    if abierto.as_ref().is_some_and(|a| a.hoja.is_some()) =>
+                {
+                    if c >= ' '
+                        && let Some(h) = abierto.as_mut().and_then(|a| a.hoja.as_mut())
+                    {
+                        // Teclear sobre una celda empieza de cero, sin lo que
+                        // hubiera: es lo que hace cualquier hoja de calculo.
+                        h.edicion.get_or_insert_with(String::new).push(c);
+                        hay_que_pintar = true;
+                    }
+                }
+                EventoOverlay::Tecla { vk, shift, .. }
+                    if abierto.as_ref().is_some_and(|a| a.hoja.is_some()) =>
+                {
+                    let t = disposicion_hoja(&disposicion, escala);
+                    let cerrar_la_hoja = vk == VK_ESCAPE
+                        && abierto
+                            .as_ref()
+                            .and_then(|a| a.hoja.as_ref())
+                            .is_some_and(|h| h.edicion.is_none());
+                    if cerrar_la_hoja {
+                        if let Some(a) = abierto.as_mut() {
+                            cerrar_hoja(ubicacion, a);
+                        }
+                    } else if let Some(h) = abierto.as_mut().and_then(|a| a.hoja.as_mut()) {
+                        match vk {
+                            // Escapar con algo tecleado deja la celda como
+                            // estaba: es la unica forma de arrepentirse.
+                            VK_ESCAPE => h.edicion = None,
+                            VK_ENTRAR => h.mover(0, 1, &t, escala),
+                            VK_TAB if shift => h.mover(-1, 0, &t, escala),
+                            VK_TAB => h.mover(1, 0, &t, escala),
+                            VK_IZQUIERDA => h.mover(-1, 0, &t, escala),
+                            VK_DERECHA => h.mover(1, 0, &t, escala),
+                            VK_ARRIBA => h.mover(0, -1, &t, escala),
+                            VK_ABAJO => h.mover(0, 1, &t, escala),
+                            VK_RETROCESO => match h.edicion.as_mut() {
+                                Some(texto) => {
+                                    texto.pop();
+                                }
+                                // Sin nada tecleado, retroceso vacia la celda:
+                                // es lo que la mano espera, y Suprimir hace lo
+                                // mismo para quien venga de otra hoja.
+                                None => h.edicion = Some(String::new()),
+                            },
+                            VK_SUPR => {
+                                h.edicion = Some(String::new());
+                                h.confirmar();
+                            }
+                            _ => {}
+                        }
+                    }
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::Caracter(c) if abierto.as_ref().is_some_and(|a| a.buscando_info) => {
                     if c >= ' ' {
                         if let Some(a) = abierto.as_mut() {
@@ -963,6 +1079,11 @@ pub fn abrir(
             }
         }
         if cerrar {
+            // Cerrar la ventana con una hoja abierta la guarda: es lo mismo
+            // que cerrarla con Escape, y perderla aqui seria una trampa.
+            if let Some(a) = abierto.as_mut() {
+                cerrar_hoja(ubicacion, a);
+            }
             break;
         }
 
@@ -1064,6 +1185,14 @@ pub fn abrir(
                             // Con la informacion abierta, la columna de la
                             // derecha es suya entera.
                             Some(seccion) => pintar_info(p, &disposicion, &c, a, seccion),
+                            // Con una hoja abierta, la conversacion deja su sitio:
+                            // una tabla necesita todo el ancho y el alto que
+                            // haya, y el historial vuelve al cerrarla.
+                            None if a.hoja.is_some() => {
+                                if let Some(h) = a.hoja.as_ref() {
+                                    pintar_hoja(p, &disposicion, &c, h);
+                                }
+                            }
                             None => {
                                 pintar_historial(p, &disposicion, &c, a, alto_texto);
                                 pintar_redaccion(p, &disposicion, &c, a, alto_texto);
@@ -1202,6 +1331,30 @@ struct Abierto {
     /// mil mensajes en cada fotograma seria tirar el rato: solo se rehace si
     /// cambia el ancho de la columna.
     colocado: std::cell::RefCell<Colocado>,
+    /// La hoja de calculo que se esta editando, si hay alguna. Se edita
+    /// DENTRO de la conversacion, en el sitio del historial: una ventana
+    /// aparte por cada tabla llenaria el escritorio, y la hoja es del
+    /// proyecto, no de la aplicacion.
+    hoja: Option<HojaAbierta>,
+}
+
+/// Una hoja de calculo abierta para escribir en ella.
+struct HojaAbierta {
+    /// Que mensaje del historial es. La tabla ES su texto (no hay fichero),
+    /// asi que guardar es reescribir ese mensaje.
+    indice: usize,
+    tabla: pixpin_proyecto::tabla::Tabla,
+    /// La celda elegida. Siempre hay una: una hoja sin celda elegida no
+    /// sabe donde escribir la primera tecla.
+    sel: pixpin_proyecto::tabla::Ref,
+    /// Lo que se esta tecleando en la celda. `None` es «elegida pero no se
+    /// esta escribiendo», que es cuando las flechas andan por la hoja.
+    edicion: Option<String>,
+    scroll_x: i32,
+    scroll_y: i32,
+    /// Si cambio algo desde que se abrio. Sin esto, abrir una tabla y
+    /// cerrarla la reescribiria en el disco para nada.
+    tocada: bool,
 }
 
 #[derive(Default)]
@@ -1970,6 +2123,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         scroll: None,
         alto: std::cell::Cell::new(0),
         colocado: std::cell::RefCell::new(Colocado::default()),
+        hoja: None,
     }
 }
 
@@ -3403,3 +3557,433 @@ const CLIP: pixpin_render::icono::Icono = pixpin_render::icono::Icono {
         mascara: None,
     }],
 };
+
+// --- La hoja de calculo, dentro de la conversacion ---------------------
+
+const VK_TAB: u32 = 0x09;
+const VK_SUPR: u32 = 0x2E;
+const VK_IZQUIERDA: u32 = 0x25;
+const VK_ARRIBA: u32 = 0x26;
+const VK_DERECHA: u32 = 0x27;
+const VK_ABAJO: u32 = 0x28;
+
+/// El hueco de la hoja: la conversacion menos su cabecera. La cabecera se
+/// queda porque es donde se lee de que proyecto es y por donde se vuelve.
+fn hueco_hoja(d: &Disposicion) -> Rect {
+    let arriba = d.cabecera_chat.abajo();
+    Rect {
+        x: d.chat.x,
+        y: arriba,
+        ancho: d.chat.ancho,
+        alto: (d.chat.abajo() - arriba).max(0) as u32,
+    }
+}
+
+fn disposicion_hoja(d: &Disposicion, escala: u32) -> pixpin_ui::tabla::Disposicion {
+    pixpin_ui::tabla::Disposicion::calcular(hueco_hoja(d), escala)
+}
+
+impl HojaAbierta {
+    /// Deja escrito en la tabla lo que se estaba tecleando.
+    ///
+    /// Escribir la misma cadena que ya estaba NO cuenta como tocarla: entrar
+    /// en una celda y salir sin cambiar nada no puede marcar el proyecto como
+    /// modificado ni reescribir el cuaderno.
+    fn confirmar(&mut self) {
+        let Some(texto) = self.edicion.take() else {
+            return;
+        };
+        let texto = texto.trim().to_string();
+        if self.tabla.celda(self.sel) != texto {
+            self.tabla.poner(self.sel, &texto);
+            self.tocada = true;
+        }
+    }
+
+    /// Mueve la celda elegida y deja que la hoja la siga. Confirma antes: las
+    /// flechas y el tabulador salen de la celda, como en cualquier hoja.
+    fn mover(&mut self, dx: i32, dy: i32, d: &pixpin_ui::tabla::Disposicion, escala: u32) {
+        self.confirmar();
+        let columna = (self.sel.columna as i64 + dx as i64).max(0) as u32;
+        let fila = (self.sel.fila as i64 + dy as i64).max(0) as u32;
+        self.sel = pixpin_proyecto::tabla::Ref { columna, fila };
+        let (x, y) = d.seguir(columna, fila, self.scroll_x, self.scroll_y, escala);
+        self.scroll_x = x;
+        self.scroll_y = y;
+    }
+
+    /// Lo que se ensena en la barra de formulas: lo que se teclea, o lo
+    /// guardado tal cual. En la barra va la FORMULA, no su resultado: es
+    /// donde se mira lo que de verdad hay escrito.
+    fn en_la_barra(&self) -> &str {
+        match &self.edicion {
+            Some(t) => t,
+            None => self.tabla.celda(self.sel),
+        }
+    }
+}
+
+/// Abre la tabla de un mensaje para escribir en ella. No hace nada si ese
+/// mensaje no es una tabla o si su texto no se entiende: abrirla vacia y
+/// guardarla al cerrar pisaria lo que hubiera.
+fn abrir_hoja(a: &mut Abierto, indice: usize) {
+    let Some(m) = a.mensajes.get(indice) else {
+        return;
+    };
+    match pixpin_proyecto::tabla::Tabla::leer(&m.texto) {
+        Ok(tabla) => {
+            a.hoja = Some(HojaAbierta {
+                indice,
+                tabla,
+                sel: pixpin_proyecto::tabla::Ref {
+                    columna: 0,
+                    fila: 0,
+                },
+                edicion: None,
+                scroll_x: 0,
+                scroll_y: 0,
+                tocada: false,
+            })
+        }
+        Err(e) => tracing::warn!(?e, "tabla que no se entiende; no se abre para no pisarla"),
+    }
+}
+
+/// Cierra la hoja, guardandola si se toco.
+fn cerrar_hoja(ubicacion: &Ubicacion, a: &mut Abierto) {
+    let Some(mut h) = a.hoja.take() else {
+        return;
+    };
+    h.confirmar();
+    if !h.tocada {
+        return;
+    }
+    if let Err(e) = guardar_hoja(ubicacion, a, &mut h) {
+        tracing::error!(
+            ?e,
+            "no se pudo guardar la tabla; el mensaje sigue como estaba"
+        );
+    }
+}
+
+/// Escribe la tabla en su mensaje del cuaderno y refresca lo que se ve.
+fn guardar_hoja(ubicacion: &Ubicacion, a: &mut Abierto, h: &mut HojaAbierta) -> Result<()> {
+    h.tabla.tocado = pixpin_shell::entorno::ahora_local_ms();
+    let texto = h
+        .tabla
+        .escribir()
+        .context("tabla que no se pudo escribir")?;
+    let Some(m) = a.mensajes.get_mut(h.indice) else {
+        return Ok(());
+    };
+    m.texto = texto;
+    let mensaje = m.clone();
+    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
+    if !pixpin_proyecto::cuaderno::reemplazar(&carpeta, &mensaje)? {
+        // No estaba: mejor anadirlo que perderlo.
+        pixpin_proyecto::cuaderno::anadir(&carpeta, &mensaje)?;
+    }
+    a.vistas[h.indice] = Some(Ojeada::Tabla(Box::new(h.tabla.clone())));
+    // La ojeada de la burbuja cambio de tamano: hay que volver a colocar.
+    a.colocado.borrow_mut().ancho = 0;
+    Ok(())
+}
+
+/// La hoja de calculo en el sitio del historial.
+///
+/// En la celda va el RESULTADO (una formula ensena su numero) y en la barra
+/// de arriba, lo escrito. Es lo que hace cualquier hoja, y sin ello una hoja
+/// llena de `=SUMA(...)` no se podria leer de un vistazo.
+fn pintar_hoja(p: &Pintor, d: &Disposicion, c: &Pinta, h: &HojaAbierta) {
+    use pixpin_proyecto::formula;
+    use pixpin_proyecto::tabla::{Ref, ref_a};
+    use pixpin_ui::tabla as ui;
+    let (tema, escala) = (c.tema, c.escala);
+    let e = escala as f32 / 100.0;
+    let t = disposicion_hoja(d, escala);
+    let linea = (1.0 * e).max(1.0);
+
+    p.rellenar(rf(t.hoja), tema.papel);
+    // La barra de formulas y las cabeceras, en el gris de la cabecera del
+    // chat: son marco, no dato.
+    p.rellenar(rf(t.barra_formulas), tema.cabecera);
+    p.rellenar(rf(t.esquina), tema.cabecera);
+    p.rellenar(rf(t.cabecera_columnas), tema.cabecera);
+    p.rellenar(rf(t.cabecera_filas), tema.cabecera);
+
+    // El nombre de la celda elegida y lo que tiene escrito.
+    let tam = ui::BARRA_FORMULAS_TAM * e;
+    let (_, alto_texto) = p.medir_texto("A1", tam);
+    let y = t.barra_formulas.y as f32 + (t.barra_formulas.alto as f32 - alto_texto) / 2.0;
+    let x = t.barra_formulas.x as f32 + ui::BARRA_FORMULAS_X as f32 * e;
+    p.texto(&ref_a(h.sel), x, y, tam, tema.apagado);
+    // Por donde se vuelve, a la derecha del todo: sin la caja de escribir
+    // ni el historial delante, nada mas dice como salir de la hoja.
+    let volver = c.textos.t("hoja-volver");
+    let (ancho_volver, _) = p.medir_texto(&volver, tam);
+    p.texto(
+        &volver,
+        t.barra_formulas.derecha() as f32 - ancho_volver - ui::BARRA_FORMULAS_X as f32 * e,
+        y,
+        tam,
+        tema.apagado,
+    );
+    let x_texto = x + 46.0 * e;
+    p.texto_linea(
+        h.en_la_barra(),
+        x_texto,
+        y,
+        tam,
+        (t.barra_formulas.derecha() as f32 - x_texto - ancho_volver - 20.0 * e).max(0.0),
+        tema.texto_papel,
+    );
+
+    let (columnas, filas) = h.tabla.tamano();
+    let (primera_columna, cuantas_columnas, primera_fila, cuantas_filas) =
+        t.visibles(h.scroll_x, h.scroll_y, escala);
+
+    p.empujar_recorte(rf(t.celdas));
+    for fila in primera_fila..primera_fila + cuantas_filas {
+        for columna in primera_columna..primera_columna + cuantas_columnas {
+            let r = Ref { columna, fila };
+            let caja = t.celda(columna, fila, h.scroll_x, h.scroll_y, escala);
+            // Las lineas de la rejilla: solo dos por celda, la de la derecha
+            // y la de abajo, que son las que comparten con sus vecinas.
+            p.rellenar(
+                RectF {
+                    x: caja.derecha() as f32 - linea,
+                    y: caja.y as f32,
+                    ancho: linea,
+                    alto: caja.alto as f32,
+                },
+                tema.separador,
+            );
+            p.rellenar(
+                RectF {
+                    x: caja.x as f32,
+                    y: caja.abajo() as f32 - linea,
+                    ancho: caja.ancho as f32,
+                    alto: linea,
+                },
+                tema.separador,
+            );
+            let escribiendo = h.edicion.is_some() && r == h.sel;
+            let texto = if escribiendo {
+                h.en_la_barra().to_string()
+            } else {
+                let guardado = h.tabla.celda(r);
+                if guardado.is_empty() {
+                    continue;
+                }
+                formula::evaluar(&h.tabla, r).to_string()
+            };
+            if texto.is_empty() {
+                continue;
+            }
+            let (tx, ancho) = t.texto_celda(caja, escala);
+            let tam = ui::CELDA_TAM * e;
+            let (_, alto_texto) = p.medir_texto(&texto, tam);
+            p.texto_linea(
+                &texto,
+                tx as f32,
+                caja.y as f32 + (caja.alto as f32 - alto_texto) / 2.0,
+                tam,
+                ancho as f32,
+                tema.texto_papel,
+            );
+        }
+    }
+
+    // El recuadro de la celda elegida, encima de la rejilla y de dos pixeles:
+    // con uno se confunde con las lineas de al lado.
+    let caja = t.celda(h.sel.columna, h.sel.fila, h.scroll_x, h.scroll_y, escala);
+    let grueso = (2.0 * e).max(2.0);
+    for lado in [
+        RectF {
+            x: caja.x as f32,
+            y: caja.y as f32,
+            ancho: caja.ancho as f32,
+            alto: grueso,
+        },
+        RectF {
+            x: caja.x as f32,
+            y: caja.abajo() as f32 - grueso,
+            ancho: caja.ancho as f32,
+            alto: grueso,
+        },
+        RectF {
+            x: caja.x as f32,
+            y: caja.y as f32,
+            ancho: grueso,
+            alto: caja.alto as f32,
+        },
+        RectF {
+            x: caja.derecha() as f32 - grueso,
+            y: caja.y as f32,
+            ancho: grueso,
+            alto: caja.alto as f32,
+        },
+    ] {
+        p.rellenar(lado, tema.enviar);
+    }
+    p.soltar_recorte();
+
+    // Los rotulos: las letras arriba y los numeros a la izquierda. Se pintan
+    // DESPUES de las celdas para que el desplazamiento no las tape.
+    let tam = ui::CABECERA_TAM * e;
+    p.empujar_recorte(rf(t.cabecera_columnas));
+    for columna in primera_columna..primera_columna + cuantas_columnas {
+        let caja = t.cabecera_de_columna(columna, h.scroll_x, escala);
+        let rotulo = ref_a(Ref { columna, fila: 0 });
+        let rotulo = rotulo.trim_end_matches('1');
+        let (w, alto_texto) = p.medir_texto(rotulo, tam);
+        let color = if columna == h.sel.columna {
+            tema.texto_papel
+        } else {
+            tema.apagado
+        };
+        p.texto(
+            rotulo,
+            caja.x as f32 + (caja.ancho as f32 - w) / 2.0,
+            caja.y as f32 + (caja.alto as f32 - alto_texto) / 2.0,
+            tam,
+            color,
+        );
+    }
+    p.soltar_recorte();
+    p.empujar_recorte(rf(t.cabecera_filas));
+    for fila in primera_fila..primera_fila + cuantas_filas {
+        let caja = t.cabecera_de_fila(fila, h.scroll_y, escala);
+        let rotulo = (fila + 1).to_string();
+        let (w, alto_texto) = p.medir_texto(&rotulo, tam);
+        let color = if fila == h.sel.fila {
+            tema.texto_papel
+        } else {
+            tema.apagado
+        };
+        p.texto(
+            &rotulo,
+            caja.x as f32 + (caja.ancho as f32 - w) / 2.0,
+            caja.y as f32 + (caja.alto as f32 - alto_texto) / 2.0,
+            tam,
+            color,
+        );
+    }
+    p.soltar_recorte();
+    let _ = (columnas, filas);
+}
+
+#[cfg(test)]
+mod pruebas_hoja {
+    use super::HojaAbierta;
+    use pixpin_geom::Rect;
+    use pixpin_proyecto::tabla::{Ref, Tabla};
+
+    fn hoja() -> HojaAbierta {
+        HojaAbierta {
+            indice: 0,
+            tabla: Tabla::default(),
+            sel: Ref {
+                columna: 0,
+                fila: 0,
+            },
+            edicion: None,
+            scroll_x: 0,
+            scroll_y: 0,
+            tocada: false,
+        }
+    }
+
+    fn rejilla() -> pixpin_ui::tabla::Disposicion {
+        pixpin_ui::tabla::Disposicion::calcular(
+            Rect {
+                x: 0,
+                y: 0,
+                ancho: 600,
+                alto: 400,
+            },
+            100,
+        )
+    }
+
+    #[test]
+    fn escribir_en_una_celda_la_deja_escrita_y_marca_la_tabla() {
+        let mut h = hoja();
+        h.edicion = Some("  12  ".into());
+        h.confirmar();
+        assert_eq!(h.tabla.celda(h.sel), "12", "se guarda sin los espacios");
+        assert!(h.tocada);
+    }
+
+    #[test]
+    fn volver_a_escribir_lo_mismo_no_marca_la_tabla() {
+        // Si contara como cambio, entrar en una celda y salir reescribiria el
+        // cuaderno entero y el proyecto subiria de sitio en la lista.
+        let mut h = hoja();
+        h.tabla.poner(h.sel, "12");
+        h.edicion = Some("12".into());
+        h.confirmar();
+        assert!(!h.tocada);
+    }
+
+    #[test]
+    fn una_celda_vaciada_desaparece_del_mapa() {
+        // Una cadena vacia guardada viajaria por la red como un cambio, y la
+        // tabla creceria con celdas que no tienen nada.
+        let mut h = hoja();
+        h.tabla.poner(h.sel, "12");
+        h.edicion = Some(String::new());
+        h.confirmar();
+        assert!(h.tabla.celdas.is_empty());
+        assert!(h.tocada);
+    }
+
+    #[test]
+    fn moverse_confirma_lo_tecleado_y_no_se_sale_de_la_hoja() {
+        let mut h = hoja();
+        h.edicion = Some("7".into());
+        h.mover(0, 1, &rejilla(), 100);
+        assert_eq!(
+            h.tabla.celda(Ref {
+                columna: 0,
+                fila: 0
+            }),
+            "7"
+        );
+        assert_eq!(
+            h.sel,
+            Ref {
+                columna: 0,
+                fila: 1
+            }
+        );
+
+        // Caso negativo: arriba y a la izquierda del todo no hay nada, y una
+        // resta sin sujetar daria la vuelta al `u32`.
+        h.mover(-1, -1, &rejilla(), 100);
+        assert_eq!(
+            h.sel,
+            Ref {
+                columna: 0,
+                fila: 0
+            }
+        );
+        h.mover(-1, -1, &rejilla(), 100);
+        assert_eq!(
+            h.sel,
+            Ref {
+                columna: 0,
+                fila: 0
+            }
+        );
+    }
+
+    #[test]
+    fn la_barra_ensena_la_formula_y_no_su_resultado() {
+        let mut h = hoja();
+        h.tabla.poner(h.sel, "=1+1");
+        assert_eq!(h.en_la_barra(), "=1+1");
+        h.edicion = Some("=2+2".into());
+        assert_eq!(h.en_la_barra(), "=2+2", "y lo que se teclea manda");
+    }
+}

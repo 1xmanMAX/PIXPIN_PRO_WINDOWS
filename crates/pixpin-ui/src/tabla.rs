@@ -219,6 +219,40 @@ impl Disposicion {
         )
     }
 
+    /// El desplazamiento que hace falta para que una celda se vea entera.
+    ///
+    /// Mueve lo MINIMO: si ya se ve, no toca nada. Es lo que se espera al
+    /// andar con las flechas —la hoja no salta— y lo que hace cualquier hoja
+    /// de calculo. No se sujeta a los topes a proposito: al escribir en una
+    /// celda mas alla de lo escrito, la hoja tiene que poder seguirla, y esa
+    /// celda todavia no cuenta para el tamano de la tabla.
+    pub fn seguir(
+        &self,
+        columna: u32,
+        fila: u32,
+        scroll_x: i32,
+        scroll_y: i32,
+        escala_por_cien: u32,
+    ) -> (i32, i32) {
+        let (paso_x, paso_y) = pasos(escala_por_cien);
+        let seguir_eje = |indice: u32, paso: u32, visible: u32, scroll: i32| {
+            let inicio = (indice * paso) as i32;
+            let fin = inicio + paso as i32;
+            if inicio < scroll {
+                inicio
+            } else if fin > scroll + visible as i32 {
+                // Que quede pegada al borde de abajo (o de la derecha).
+                fin - visible as i32
+            } else {
+                scroll
+            }
+        };
+        (
+            seguir_eje(columna, paso_x, self.celdas.ancho, scroll_x).max(0),
+            seguir_eje(fila, paso_y, self.celdas.alto, scroll_y).max(0),
+        )
+    }
+
     /// El desplazamiento, sujeto entre cero y su tope.
     pub fn sujetar(
         &self,
@@ -255,6 +289,22 @@ mod pruebas {
             ancho: 800,
             alto: 500,
         }
+    }
+
+    #[test]
+    fn la_hoja_sigue_a_la_celda_elegida_solo_cuando_hace_falta() {
+        let d = Disposicion::calcular(hueco(), 100);
+        // Una celda que ya se ve no mueve nada: andar con las flechas por el
+        // trozo visible no puede hacer saltar la hoja.
+        assert_eq!(d.seguir(1, 1, 0, 0, 100), (0, 0));
+
+        // Una muy a la derecha se trae pegada al borde derecho.
+        let (x, _) = d.seguir(40, 0, 0, 0, 100);
+        assert_eq!(x, (41 * COLUMNA_ANCHO) as i32 - d.celdas.ancho as i32);
+
+        // Y al volver hacia atras, pegada al borde izquierdo y sin pasarse
+        // de cero: un desplazamiento negativo dejaria la hoja flotando.
+        assert_eq!(d.seguir(0, 0, 900, 0, 100), (0, 0));
     }
 
     #[test]

@@ -300,6 +300,44 @@ pub fn anadir(carpeta: &std::path::Path, m: &Mensaje) -> std::io::Result<()> {
     writeln!(f, "{linea}")
 }
 
+/// Cambia un mensaje que ya estaba escrito, dejando el resto del fichero como
+/// estaba. Devuelve si lo encontro.
+///
+/// Es lo contrario de [`anadir`] y cuesta lo que el cuaderno entero, asi que
+/// solo se usa para lo que de verdad se edita en el sitio: el documento de
+/// una mini-aplicacion —una tabla, por ejemplo—, que ES el texto del mensaje.
+/// Un mensaje nuevo por cada tecla convertiria la conversacion en un diario
+/// de pulsaciones.
+///
+/// **Las lineas que no se entienden se copian tal cual**, sin tocarlas: una
+/// version mas nueva del movil puede escribir cosas que aqui no se leen, y
+/// reescribir el fichero no puede ser la forma de perderlas. Se escribe a un
+/// temporal y se renombra: un corte a mitad deja el cuaderno anterior entero.
+pub fn reemplazar(carpeta: &std::path::Path, m: &Mensaje) -> std::io::Result<bool> {
+    let fichero = carpeta.join("guardados.jsonl");
+    let texto = std::fs::read_to_string(&fichero)?;
+    let nueva = serde_json::to_string(m).map_err(std::io::Error::other)?;
+    let mut salida = String::with_capacity(texto.len() + nueva.len());
+    let mut encontrado = false;
+    for linea in texto.lines() {
+        let suya = serde_json::from_str::<Mensaje>(linea).is_ok_and(|otro| otro.id == m.id);
+        if suya {
+            salida.push_str(&nueva);
+            encontrado = true;
+        } else {
+            salida.push_str(linea);
+        }
+        salida.push('\n');
+    }
+    if !encontrado {
+        return Ok(false);
+    }
+    let temporal = fichero.with_extension("jsonl.tmp");
+    std::fs::write(&temporal, salida)?;
+    std::fs::rename(&temporal, &fichero)?;
+    Ok(true)
+}
+
 /// Un cuaderno leido.
 #[derive(Debug, Clone, Default)]
 pub struct Cuaderno {
@@ -420,6 +458,47 @@ pub fn indices_de_seccion(mensajes: &[Mensaje], seccion: Seccion) -> Vec<usize> 
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    fn carpeta_temporal(etiqueta: &str) -> std::path::PathBuf {
+        let d =
+            std::env::temp_dir().join(format!("pixpin-cuaderno-{etiqueta}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn reemplazar_cambia_solo_su_linea_y_conserva_lo_que_no_se_entiende() {
+        let d = carpeta_temporal("reemplazar");
+        let mut uno = Mensaje::nota("primero", &sello(1, 1));
+        uno.id = "m1".into();
+        let mut dos = Mensaje::nota("segundo", &sello(2, 2));
+        dos.id = "m2".into();
+        anadir(&d, &uno).unwrap();
+        // Una linea de una version mas nueva, que aqui no se entiende.
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(d.join("guardados.jsonl"))
+            .map(|mut f| std::io::Write::write_all(&mut f, b"{lo que venga del futuro}\n"))
+            .unwrap()
+            .unwrap();
+        anadir(&d, &dos).unwrap();
+
+        dos.texto = "segundo, corregido".into();
+        assert!(reemplazar(&d, &dos).unwrap());
+
+        let c = Cuaderno::leer_de(&d).unwrap();
+        assert_eq!(c.mensajes.len(), 2);
+        assert_eq!(c.mensajes[0].texto, "primero", "el otro no se toca");
+        assert_eq!(c.mensajes[1].texto, "segundo, corregido");
+        assert_eq!(c.lineas_rotas, 1, "la linea rara sigue ahi");
+
+        // Caso negativo: un mensaje que no esta no escribe nada.
+        let mut ajeno = Mensaje::nota("de otro sitio", &sello(3, 3));
+        ajeno.id = "m9".into();
+        assert!(!reemplazar(&d, &ajeno).unwrap());
+        assert_eq!(Cuaderno::leer_de(&d).unwrap().mensajes.len(), 2);
+    }
 
     fn sello(cuando: i64, numero: i64) -> Sello {
         Sello {

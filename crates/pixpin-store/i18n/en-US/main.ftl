@@ -207,3 +207,4 @@ confirmar-aceptar = Add
 adjuntar-tabla = New table
 tabla-nueva = Table
 chat-nombre-nuevo = Project name…
+hoja-volver = Esc to go back

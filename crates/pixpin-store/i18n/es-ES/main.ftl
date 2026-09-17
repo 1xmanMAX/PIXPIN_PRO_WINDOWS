@@ -208,3 +208,4 @@ confirmar-aceptar = Añadir
 adjuntar-tabla = Tabla nueva
 tabla-nueva = Tabla
 chat-nombre-nuevo = Nombre del proyecto…
+hoja-volver = Esc para volver
