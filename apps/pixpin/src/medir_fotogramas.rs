@@ -115,7 +115,15 @@ pub struct MedidorFotogramas {
 }
 
 impl MedidorFotogramas {
+    /// Se enciende con `[rendimiento] medir_fotogramas` del TOML o con la
+    /// variable de entorno `PIXPIN_MEDIR_FOTOGRAMAS`.
+    ///
+    /// La variable existe para poder pedirle una medida al usuario sin
+    /// tocarle el fichero de ajustes: se arranca una vez con ella puesta, se
+    /// miran las lineas «fotogramas del editor» del registro y se cierra. Un
+    /// ajuste que hay que poner y luego acordarse de quitar se queda puesto.
     pub fn nuevo(activo: bool) -> Self {
+        let activo = activo || std::env::var_os("PIXPIN_MEDIR_FOTOGRAMAS").is_some();
         Self {
             activo,
             ..Default::default()

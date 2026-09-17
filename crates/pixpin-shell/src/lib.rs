@@ -50,3 +50,57 @@ pub use overlay::esperar_composicion;
 pub use ventana::{
     BotonGesto, Continuar, Evento, VentanaMensajes, WM_BANDEJA, WM_GESTO, despertar,
 };
+
+/// Un menu contextual sencillo donde este el raton: cada entrada es su
+/// identificador y su rotulo ya traducido. Devuelve el elegido, o `None` si
+/// se cerro sin elegir.
+///
+/// Vive aqui y no en `pixpin-pin` porque ya lo quieren dos sitios (el pin
+/// tiene el suyo, con submenu de grupos; el chat quiere uno llano). Las dos
+/// trampas de siempre: el menu se destruye SIEMPRE, y `SetForegroundWindow`
+/// va antes de `TrackPopupMenu` o el menu no se cierra al pulsar fuera.
+pub fn menu_llano(
+    hwnd: windows::Win32::Foundation::HWND,
+    entradas: &[(u32, String)],
+) -> Option<u32> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, MF_STRING, SetForegroundWindow,
+        TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu,
+    };
+    use windows::core::HSTRING;
+
+    if entradas.is_empty() {
+        return None;
+    }
+    // SAFETY: el menu se crea y se destruye aqui; las cadenas viven como
+    // HSTRING durante la llamada y el hwnd es una ventana propia.
+    unsafe {
+        let menu = CreatePopupMenu().ok()?;
+        for (id, rotulo) in entradas {
+            let texto = HSTRING::from(rotulo.as_str());
+            if AppendMenuW(menu, MF_STRING, *id as usize, &texto).is_err() {
+                let _ = DestroyMenu(menu);
+                return None;
+            }
+        }
+        let mut p = POINT::default();
+        let _ = GetCursorPos(&mut p);
+        let _ = SetForegroundWindow(hwnd);
+        let elegido = TrackPopupMenu(
+            menu,
+            TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD,
+            p.x,
+            p.y,
+            None,
+            hwnd,
+            None,
+        );
+        let _ = DestroyMenu(menu);
+        if elegido.0 == 0 {
+            None
+        } else {
+            Some(elegido.0 as u32)
+        }
+    }
+}

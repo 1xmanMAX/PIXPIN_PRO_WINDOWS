@@ -756,6 +756,9 @@ fn procesar_evento(
         | EventoOverlay::Atajo(_)
         | EventoOverlay::Muestra(_)
         | EventoOverlay::BotonCentralPulsado(_)
+        // El derecho ya se convirtio en izquierdo antes de llegar aqui: en la
+        // captura vale lo mismo (el gesto de Alt + derecho).
+        | EventoOverlay::BotonDerechoPulsado(_)
         | EventoOverlay::BotonCentralSoltado(_) => Continuar::Si,
     }
 }

@@ -208,3 +208,6 @@ adjuntar-tabla = New table
 tabla-nueva = Table
 chat-nombre-nuevo = Project name…
 hoja-volver = Esc to go back
+menu-foto-lienzo = Open in canvas
+menu-foto-pin = Pin it again
+menu-foto-abrir = Open with Windows

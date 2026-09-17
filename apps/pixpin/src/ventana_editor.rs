@@ -242,7 +242,7 @@ fn tecla_a_pluma(c: char) -> Option<CambioPluma> {
 fn pulsar_boton(boton: BotonCaja, gesto: &mut Gesto, escena: &mut Escena) -> bool {
     match boton {
         BotonCaja::Elegir(h) => {
-            gesto.herramienta = h;
+            elegir_herramienta(gesto, h);
             true
         }
         BotonCaja::Deshacer => {
@@ -730,7 +730,7 @@ pub fn abrir(
 
             if let EventoOverlay::Caracter(c) = ev {
                 if let Some(h) = tecla_a_herramienta(c) {
-                    gesto.herramienta = h;
+                    elegir_herramienta(&mut gesto, h);
                     ventana.invalidar();
                     todo_sucio = true;
                     continue;
@@ -2489,4 +2489,16 @@ mod pruebas {
             "los ajustes de prueba tienen que diferir de los de fabrica o esto no mide nada"
         );
     }
+}
+
+/// Cambia de herramienta y suelta lo elegido si la nueva dibuja.
+///
+/// Sin esto, con algo elegido y el lapiz en la mano quedaban unos tiradores
+/// flotando sobre el dibujo: el clic encima ya no los mueve (eso es solo de
+/// la mano), asi que serian unos agarres que no hacen lo que prometen.
+fn elegir_herramienta(gesto: &mut Gesto, h: Herramienta) {
+    if h != Herramienta::Mano {
+        gesto.seleccion.limpiar();
+    }
+    gesto.herramienta = h;
 }

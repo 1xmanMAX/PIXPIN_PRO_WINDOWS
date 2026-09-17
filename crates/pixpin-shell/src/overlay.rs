@@ -69,6 +69,10 @@ pub enum EventoOverlay {
     /// desplazar el lienzo como Excalidraw (D136). Escritorio virtual, como
     /// `BotonPulsado`.
     BotonCentralPulsado(Punto),
+    /// Boton derecho. Va aparte del izquierdo porque el chat abre con el su
+    /// menu contextual; la captura, en cambio, lo trata igual que el
+    /// izquierdo (el gesto de Alt + derecho arranca una seleccion).
+    BotonDerechoPulsado(Punto),
     BotonCentralSoltado(Punto),
     Tecla {
         vk: u32,
@@ -838,7 +842,13 @@ extern "system" fn procedimiento_overlay(
         // El boton derecho vale lo mismo que el izquierdo: el gesto de
         // «Alt + derecho y arrastrar» pinea directo, y la seleccion que
         // arranca con el derecho se termina con el derecho.
-        WM_LBUTTONDOWN | WM_RBUTTONDOWN => {
+        WM_RBUTTONDOWN => {
+            // SAFETY: SetCapture sobre ventana propia, como el izquierdo.
+            unsafe { SetCapture(hwnd) };
+            encolar(EventoOverlay::BotonDerechoPulsado(punto(lparam)));
+            LRESULT(0)
+        }
+        WM_LBUTTONDOWN => {
             // SAFETY: SetCapture sobre ventana propia: el arrastre no se
             // pierde al salir del borde.
             unsafe { SetCapture(hwnd) };

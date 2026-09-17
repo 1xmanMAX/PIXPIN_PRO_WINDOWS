@@ -698,7 +698,14 @@ impl Gesto {
         // La pista de un gesto anterior no puede sobrevivir a este clic.
         self.anclaje_activo = None;
 
-        // 1. Un tirador manda sobre lo que haya debajo.
+        // Elegir, agarrar tiradores y mover es SOLO de la mano (el selector).
+        // Con el lapiz en la mano, pulsar encima de un trazo tiene que
+        // dibujar, no arrastrarlo: el usuario lo reporto dibujando sobre lo
+        // que acababa de trazar y llevandoselo por delante.
+        let selecciona = self.herramienta == Herramienta::Mano;
+
+        // 1. Un tirador manda sobre lo que haya debajo. Este SI vale con
+        // cualquier herramienta: si se ve el tirador, tiene que agarrar.
         if let Some(ts) = self.tiradores(escena, escala) {
             match ts.en(p, escala) {
                 Some(Agarre::Tamano(t)) => {
@@ -733,7 +740,7 @@ impl Gesto {
             .iter()
             .filter_map(|id| escena.buscar(*id))
             .any(|e| crate::impacto::toca(e, p));
-        if sobre_lo_elegido && !shift {
+        if selecciona && sobre_lo_elegido && !shift {
             // La instantanea de cada elemento se toma aqui, al pulsar, y no
             // en el primer `mover`: eso deja el camino caliente del
             // arrastre —los avisos del raton que siguen— en cero
@@ -751,7 +758,7 @@ impl Gesto {
         }
 
         // 3. Lo que haya bajo el cursor.
-        if let Some(id) = elemento_en(&escena.elementos, p) {
+        if selecciona && let Some(id) = elemento_en(&escena.elementos, p) {
             if shift {
                 self.seleccion.alternar(id);
             } else {
@@ -1403,6 +1410,35 @@ mod pruebas {
             alt: false,
             presion: None,
         }
+    }
+
+    #[test]
+    fn con_el_lapiz_pulsar_encima_de_un_trazo_dibuja_y_no_lo_mueve() {
+        // El fallo que reporto el usuario: dibujaba encima de lo que acababa
+        // de trazar y se lo llevaba por delante en vez de seguir dibujando.
+        let mut escena = Escena::nueva();
+        let id = escena.anadir(rect(0.0, 0.0, 100.0, 100.0));
+        let antes = escena.buscar(id).unwrap().clone();
+
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Lapiz;
+        g.evento(pulsar(Punto2::nuevo(50.0, 50.0)), &mut escena, 1.0);
+        g.evento(mover(Punto2::nuevo(80.0, 80.0)), &mut escena, 1.0);
+        g.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(80.0, 80.0),
+            },
+            &mut escena,
+            1.0,
+        );
+
+        assert_eq!(
+            escena.buscar(id).unwrap().x,
+            antes.x,
+            "el rectangulo se movio"
+        );
+        assert_eq!(escena.elementos.len(), 2, "y el trazo nuevo no se hizo");
+        assert_eq!(g.seleccion.cuantos(), 0, "ni se eligio nada");
     }
 
     /// Igual que `pulsar`/`mover`, pero llevando la presion del lapiz.

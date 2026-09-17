@@ -209,3 +209,6 @@ adjuntar-tabla = Tabla nueva
 tabla-nueva = Tabla
 chat-nombre-nuevo = Nombre del proyecto…
 hoja-volver = Esc para volver
+menu-foto-lienzo = Abrir en lienzo
+menu-foto-pin = Volver a fijar como pin
+menu-foto-abrir = Abrir con Windows

@@ -421,6 +421,13 @@ pub fn abrir(
                                             fichas[i].resumen = a.ficha.resumen.clone();
                                         }
                                     }
+                                    // Una sola foto se abre en el lienzo, igual
+                                    // que al pegarla.
+                                    if hechos == 1
+                                        && let Some(ruta) = ultima_foto(a)
+                                    {
+                                        abrir_foto_en_lienzo(&ruta, lienzo);
+                                    }
                                     a.colocado.borrow_mut().ancho = 0;
                                 }
                             }
@@ -714,6 +721,34 @@ pub fn abrir(
                         }
                     }
                 }
+                // El clic derecho sobre una foto abre su menu. Va antes que nada
+                // mas: con el menu delante, el clic ya esta atendido.
+                EventoOverlay::BotonDerechoPulsado(p) => {
+                    let l = local(p);
+                    let foto = abierto
+                        .as_ref()
+                        .filter(|a| a.hoja.is_none() && a.info.is_none())
+                        .and_then(|a| {
+                            let area = disposicion.historial(
+                                a.alto_caja.get(),
+                                a.fijado.is_some(),
+                                escala,
+                            );
+                            let c = a.colocado.borrow();
+                            let scroll = a.scroll.unwrap_or_else(|| {
+                                pixpin_ui::historial::scroll_maximo(area, a.alto.get())
+                            });
+                            let i = pixpin_ui::historial::mensaje_en(area, &c.puestos, scroll, l)?;
+                            if !matches!(a.vistas.get(i), Some(Some(Ojeada::Foto))) {
+                                return None;
+                            }
+                            ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(i)?)
+                        });
+                    if let Some(ruta) = foto {
+                        menu_de_foto(&ventana, textos, &ruta, lienzo);
+                        hay_que_pintar = true;
+                    }
+                }
                 EventoOverlay::BotonSoltado(_) => {
                     if arrastre.is_some() {
                         ventana.soltar_raton();
@@ -854,6 +889,11 @@ pub fn abrir(
                                 fichas[i].tocado = a.ficha.tocado;
                                 fichas[i].resumen = a.ficha.resumen.clone();
                             }
+                        }
+                        if hechos == 1
+                            && let Some(ruta) = ultima_foto(a)
+                        {
+                            abrir_foto_en_lienzo(&ruta, lienzo);
                         }
                         a.colocado.borrow_mut().ancho = 0;
                     }
@@ -1021,6 +1061,15 @@ pub fn abrir(
                                 if let Some(i) = elegida {
                                     fichas[i].tocado = a.ficha.tocado;
                                     fichas[i].resumen = a.ficha.resumen.clone();
+                                }
+                                // Una foto pegada se abre en el lienzo: pegarla
+                                // es traerla para trabajar con ella. Solo si
+                                // entro UNA; con varias seria un desfile de
+                                // ventanas.
+                                if cuantos == 1
+                                    && let Some(ruta) = ultima_foto(a)
+                                {
+                                    abrir_foto_en_lienzo(&ruta, lienzo);
                                 }
                             }
                             Ok(_) => {}
@@ -2336,8 +2385,11 @@ fn adjuntar(
     );
     // Primero al cuaderno y solo despues a la pantalla, como al escribir.
     cuaderno::anadir(&almacen::carpeta(raiz, &a.ficha.id), &mensaje)?;
+    // Su ojeada AHORA, no al reabrir el proyecto: una foto recien adjuntada
+    // salia como una fila con el nombre del fichero («pegado-…png») en vez
+    // de verse, y solo aparecia al volver a entrar.
+    a.vistas.push(leer_vista(ubicacion, &a.ficha.id, &mensaje));
     a.mensajes.push(mensaje);
-    a.vistas.push(None);
     a.ficha.tocado = cuando;
     a.ficha.resumen = nombre.to_string();
     let mut indice = almacen::Indice::leer(raiz);
@@ -2781,7 +2833,7 @@ fn crear_tabla(
     );
     let raiz = ubicacion.raiz();
     cuaderno::anadir(&almacen::carpeta(raiz, &a.ficha.id), &mensaje)?;
-    a.vistas.push(None);
+    a.vistas.push(leer_vista(ubicacion, &a.ficha.id, &mensaje));
     a.mensajes.push(mensaje);
     a.ficha.tocado = cuando;
     a.ficha.resumen = nombre;
@@ -3986,4 +4038,51 @@ mod pruebas_hoja {
         h.edicion = Some("=2+2".into());
         assert_eq!(h.en_la_barra(), "=2+2", "y lo que se teclea manda");
     }
+}
+
+/// El menu del clic derecho sobre una foto del historial.
+///
+/// Solo sobre fotos: son las unicas que tienen tres cosas distintas que se
+/// pueden querer hacer con ellas. Volver a fijarla como pin se hace por la
+/// ventana de mensajes (`enviar_ficheros`), que es quien tiene los pines: el
+/// chat corre en otro hilo y no puede crearlos por su cuenta.
+fn menu_de_foto(
+    ventana: &VentanaOverlay,
+    textos: &Catalogo,
+    ruta: &std::path::Path,
+    lienzo: OpcionesLienzo,
+) {
+    const LIENZO: u32 = 1;
+    const PIN: u32 = 2;
+    const ABRIR: u32 = 3;
+    let entradas = [
+        (LIENZO, textos.t("menu-foto-lienzo")),
+        (PIN, textos.t("menu-foto-pin")),
+        (ABRIR, textos.t("menu-foto-abrir")),
+    ];
+    match pixpin_shell::menu_llano(ventana.handle(), &entradas) {
+        Some(LIENZO) => abrir_foto_en_lienzo(ruta, lienzo),
+        Some(PIN) => {
+            if !pixpin_shell::mensajero::enviar_ficheros(std::slice::from_ref(&ruta.to_path_buf()))
+            {
+                tracing::warn!("no se pudo pedir el pin: no contesta la ventana principal");
+            }
+        }
+        Some(ABRIR) => {
+            if let Err(e) = pixpin_shell::abrir::abrir(ruta) {
+                tracing::warn!(?e, ruta = %ruta.display(), "no se pudo abrir");
+            }
+        }
+        _ => {}
+    }
+}
+
+/// La foto del ultimo mensaje, si lo ultimo que entro fue una foto de este
+/// equipo. Es lo que se abre en el lienzo al pegar o al adjuntar una sola.
+fn ultima_foto(a: &Abierto) -> Option<std::path::PathBuf> {
+    let indice = a.mensajes.len().checked_sub(1)?;
+    if !matches!(a.vistas.get(indice), Some(Some(Ojeada::Foto))) {
+        return None;
+    }
+    ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(indice)?)
 }
