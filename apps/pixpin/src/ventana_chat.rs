@@ -63,6 +63,9 @@ struct Tema {
     enviar: Color,
     /// El fondo sobre el que se ensena un lienzo: una hoja de papel.
     papel: Color,
+    /// Lo que se escribe ENCIMA del papel. No vale `texto`: en el tema
+    /// oscuro ese es casi blanco, y sobre una hoja clara no se veria.
+    texto_papel: Color,
     /// La pildora de la pestana activa del panel de informacion, y su texto
     /// (`lightButtonBgOver` y `lightButtonFg` de Telegram).
     pestana_activa: Color,
@@ -102,6 +105,7 @@ const CLARO: Tema = Tema {
     buscador: hex(0xf1f1f1),
     enviar: hex(0x40a7e3),
     papel: hex(0xffffff),
+    texto_papel: hex(0x111111),
     pestana_activa: hex(0xe3f1fa),
     texto_pestana_activa: hex(0x168acd),
     velo: Color {
@@ -144,6 +148,7 @@ const OSCURO: Tema = Tema {
     // En oscuro tampoco se pinta negro sobre negro: el lienzo lleva su
     // hoja clara, solo un poco apagada para no deslumbrar.
     papel: hex(0xe8e8e8),
+    texto_papel: hex(0x111111),
     pestana_activa: hex(0x1d2a39),
     texto_pestana_activa: hex(0x6ab2f2),
     velo: Color {
@@ -408,15 +413,20 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                                 menu::Entrada::Archivo => {
                                     pixpin_shell::elegir::pedir_ficheros(ventana.handle())
                                 }
-                                menu::Entrada::Lienzo => Vec::new(),
+                                menu::Entrada::Lienzo | menu::Entrada::Tabla => Vec::new(),
                             };
                             match n {
-                                // Un lienzo nuevo esta vacio: no hay nada que
-                                // ensenar en un cuadro de confirmar, y
-                                // pedirlo dos veces seria un estorbo.
-                                menu::Entrada::Lienzo => {
+                                // Un lienzo o una tabla nacen vacios: no hay
+                                // nada que ensenar en un cuadro de confirmar,
+                                // y pedirlo dos veces seria un estorbo.
+                                menu::Entrada::Lienzo | menu::Entrada::Tabla => {
                                     if let Some(a) = abierto.as_mut() {
-                                        match crear_lienzo(ubicacion, a, &identidad) {
+                                        let hecho = if n == menu::Entrada::Tabla {
+                                            crear_tabla(ubicacion, a, &identidad, textos)
+                                        } else {
+                                            crear_lienzo(ubicacion, a, &identidad)
+                                        };
+                                        match hecho {
                                             Ok(()) => {
                                                 a.scroll = None;
                                                 if let Some(i) = elegida {
@@ -424,9 +434,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                                                     fichas[i].resumen = a.ficha.resumen.clone();
                                                 }
                                             }
-                                            Err(e) => {
-                                                tracing::warn!(?e, "no se pudo crear el lienzo")
-                                            }
+                                            Err(e) => tracing::warn!(?e, "no se pudo crear"),
                                         }
                                         a.colocado.borrow_mut().ancho = 0;
                                     }
@@ -1000,7 +1008,7 @@ struct Abierto {
     /// El lienzo de cada mensaje que sea un dibujo, si se pudo leer. Va en
     /// paralelo a `mensajes` y se lee UNA vez al abrir el proyecto: leer y
     /// traducir un excalidraw en cada fotograma seria tirar el rato.
-    vistas: Vec<Option<LienzoVisto>>,
+    vistas: Vec<Option<Ojeada>>,
     /// Cual de los mensajes esta fijado, si hay alguno. En Android es el
     /// campo `fijado`; aqui se ensena en una barra bajo la cabecera.
     fijado: Option<usize>,
@@ -1676,10 +1684,13 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                 ancho: dentro.ancho as f32,
                 alto: alto_vista,
             };
-            // Fondo de papel: un dibujo se hace sobre blanco, y su trazo
-            // oscuro sobre la burbuja azul no se leeria.
+            // Fondo de papel: tanto un dibujo como una tabla se hacen sobre
+            // blanco, y su trazo oscuro sobre la burbuja azul no se leeria.
             p.rellenar_redondeado(hoja, 6.0 * e, tema.papel);
-            pintar_lienzo(p, vista, hoja);
+            match vista {
+                Ojeada::Lienzo(l) => pintar_lienzo(p, l, hoja),
+                Ojeada::Tabla(t) => pintar_ojeada_tabla(p, tema, escala, t, hoja),
+            }
             texto_y += alto_vista + h::RELLENO_Y as f32 * e;
         }
         p.parrafo(
@@ -2297,6 +2308,7 @@ fn pintar_menu(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, marco: Rect,
             menu::Entrada::Imagen => &pixpin_render::iconos_excalidraw::IMAGE_ICON,
             menu::Entrada::Archivo => &pixpin_render::iconos_excalidraw::FILE,
             menu::Entrada::Lienzo => &pixpin_render::iconos_excalidraw::FREEDRAW_ICON,
+            menu::Entrada::Tabla => &pixpin_render::iconos_excalidraw::GRID_ICON,
         };
         p.icono(icono, rf(m.icono(fila, escala)), tema.apagado);
         let (_, alto_texto) = p.medir_texto(rotulo, menu::TEXTO_TAM * e);
@@ -2333,6 +2345,55 @@ fn menu_del_clip(d: &Disposicion, a: &Abierto, marco: Rect, escala: u32) -> menu
         (menu::TEXTO_TAM * escala as f32 / 100.0).ceil() as u32,
         escala,
     )
+}
+
+/// Crea una hoja de calculo vacia en la conversacion.
+///
+/// A diferencia del lienzo, NO hay fichero: el documento entero va en el
+/// texto del mensaje, que es como Android guarda sus mini-aplicaciones. Ver
+/// la cabecera de `pixpin_proyecto::tabla`.
+fn crear_tabla(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    aparato: &str,
+    textos: &Catalogo,
+) -> std::io::Result<()> {
+    use pixpin_proyecto::{almacen, cuaderno};
+    let nombre = textos.t("tabla-nueva");
+    let tabla = pixpin_proyecto::tabla::Tabla {
+        nombre: nombre.clone(),
+        ..Default::default()
+    };
+    let documento = tabla
+        .escribir()
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    let cuando = pixpin_shell::entorno::ahora_local_ms();
+    let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let mensaje = cuaderno::Mensaje::miniapp(
+        pixpin_proyecto::tabla::MINIAPP,
+        &nombre,
+        &documento,
+        &cuaderno::Sello {
+            cuando,
+            numero,
+            aparato: aparato.to_string(),
+            proyecto: a.ficha.id.clone(),
+        },
+    );
+    let raiz = ubicacion.raiz();
+    cuaderno::anadir(&almacen::carpeta(raiz, &a.ficha.id), &mensaje)?;
+    a.vistas.push(None);
+    a.mensajes.push(mensaje);
+    a.ficha.tocado = cuando;
+    a.ficha.resumen = nombre;
+    let mut indice = almacen::Indice::leer(raiz);
+    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == a.ficha.id) {
+        f.tocado = a.ficha.tocado;
+        f.resumen = a.ficha.resumen.clone();
+        indice.guardar(raiz)?;
+    }
+    Ok(())
 }
 
 /// Crea un lienzo vacio en el proyecto y lo anuncia en el cuaderno.
@@ -2435,8 +2496,23 @@ fn leer_vista(
     ubicacion: &Ubicacion,
     proyecto: &str,
     m: &pixpin_proyecto::cuaderno::Mensaje,
-) -> Option<LienzoVisto> {
+) -> Option<Ojeada> {
     use pixpin_proyecto::cuaderno::Clase;
+    // Una tabla no tiene fichero: su documento es el propio texto del
+    // mensaje, asi que se lee sin tocar el disco.
+    if m.clase == Some(Clase::MiniApp)
+        && m.miniapp.as_deref() == Some(pixpin_proyecto::tabla::MINIAPP)
+    {
+        let tabla = pixpin_proyecto::tabla::Tabla::leer(&m.texto)
+            .inspect_err(|e| tracing::warn!(?e, "tabla que no se entiende"))
+            .ok()?;
+        // Una tabla sin nada escrito no ensena rejilla: seria un recuadro
+        // vacio que no dice mas que su nombre.
+        if tabla.celdas.is_empty() {
+            return None;
+        }
+        return Some(Ojeada::Tabla(Box::new(tabla)));
+    }
     if m.clase != Some(Clase::Dibujo) {
         return None;
     }
@@ -2459,7 +2535,72 @@ fn leer_vista(
     if ordenes.is_empty() {
         return None;
     }
-    Some(LienzoVisto { ordenes, caja })
+    Some(Ojeada::Lienzo(LienzoVisto { ordenes, caja }))
+}
+
+/// Lo que se ensena dentro de una burbuja ademas del texto.
+///
+/// Se lee UNA vez al abrir el proyecto y se guarda en paralelo a los
+/// mensajes: releer y traducir un excalidraw en cada fotograma seria tirar el
+/// rato, y con una tabla pasa lo mismo aunque no haya fichero.
+enum Ojeada {
+    Lienzo(LienzoVisto),
+    /// En caja porque una `Tabla` es mucho mas grande que un `LienzoVisto`, y
+    /// sin ella todas las entradas del vector pagarian ese tamano.
+    Tabla(Box<pixpin_proyecto::tabla::Tabla>),
+}
+
+/// Una ojeada a una tabla dentro de su burbuja: las primeras celdas y ya.
+///
+/// Se pintan a tamano de verdad y se corta lo que no cabe, en vez de encoger
+/// la hoja entera para que quepa: una tabla encogida no se lee, y la burbuja
+/// no es para leerla sino para reconocerla. Quien quiera verla, la abre.
+fn pintar_ojeada_tabla(
+    p: &Pintor,
+    tema: &Tema,
+    escala: u32,
+    t: &pixpin_proyecto::tabla::Tabla,
+    destino: RectF,
+) {
+    use pixpin_ui::tabla as ui;
+    let e = escala as f32 / 100.0;
+    let (columnas, filas) = t.tamano();
+    if columnas == 0 || filas == 0 {
+        return;
+    }
+    p.empujar_recorte(destino);
+    let ancho = ui::COLUMNA_ANCHO as f32 * e;
+    let alto = ui::FILA_ALTO as f32 * e;
+    let linea = (1.0 * e).max(1.0);
+    // Una de mas por cada lado: la ultima queda cortada a proposito, que es
+    // lo que dice «sigue».
+    let cuantas_x = (destino.ancho / ancho).ceil() as u32 + 1;
+    let cuantas_y = (destino.alto / alto).ceil() as u32 + 1;
+    for fila in 0..filas.min(cuantas_y) {
+        for columna in 0..columnas.min(cuantas_x) {
+            let celda = RectF {
+                x: destino.x + columna as f32 * ancho,
+                y: destino.y + fila as f32 * alto,
+                ancho,
+                alto,
+            };
+            p.trazar(celda, linea, tema.separador);
+            let contenido = t.celda(pixpin_proyecto::tabla::Ref { columna, fila });
+            if contenido.is_empty() {
+                continue;
+            }
+            let (_, alto_texto) = p.medir_texto(contenido, ui::CELDA_TAM * e);
+            p.texto_linea(
+                contenido,
+                celda.x + ui::CELDA_RELLENO as f32 * e,
+                celda.y + (alto - alto_texto) / 2.0,
+                ui::CELDA_TAM * e,
+                (ancho - 2.0 * ui::CELDA_RELLENO as f32 * e).max(0.0),
+                tema.texto_papel,
+            );
+        }
+    }
+    p.soltar_recorte();
 }
 
 /// Pinta un lienzo dentro de `destino`, entero y sin deformarlo.
@@ -2758,7 +2899,11 @@ fn pintar_info(
                 Some(vista) => {
                     p.rellenar_redondeado(rf(celda), 4.0 * e, tema.papel);
                     p.empujar_recorte(rf(celda));
-                    pintar_lienzo(p, vista, encoger(rf(celda), 4.0 * e));
+                    let dentro = encoger(rf(celda), 4.0 * e);
+                    match vista {
+                        Ojeada::Lienzo(l) => pintar_lienzo(p, l, dentro),
+                        Ojeada::Tabla(t) => pintar_ojeada_tabla(p, tema, escala, t, dentro),
+                    }
                     p.soltar_recorte();
                 }
                 // Lo que no tiene miniatura ensena su nombre: es mejor que

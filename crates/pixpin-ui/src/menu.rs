@@ -33,10 +33,16 @@ pub enum Entrada {
     Imagen,
     Archivo,
     Lienzo,
+    Tabla,
 }
 
 impl Entrada {
-    pub const TODAS: [Entrada; 3] = [Entrada::Imagen, Entrada::Archivo, Entrada::Lienzo];
+    pub const TODAS: [Entrada; 4] = [
+        Entrada::Imagen,
+        Entrada::Archivo,
+        Entrada::Lienzo,
+        Entrada::Tabla,
+    ];
 
     /// La clave de su rotulo traducido.
     pub fn clave(self) -> &'static str {
@@ -44,6 +50,7 @@ impl Entrada {
             Entrada::Imagen => "adjuntar-imagen",
             Entrada::Archivo => "adjuntar-archivo",
             Entrada::Lienzo => "adjuntar-lienzo",
+            Entrada::Tabla => "adjuntar-tabla",
         }
     }
 }

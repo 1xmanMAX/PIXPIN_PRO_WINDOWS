@@ -205,3 +205,5 @@ confirmar-resto = y { $cuantos } más
 confirmar-pie = Añade un comentario…
 confirmar-cancelar = Cancelar
 confirmar-aceptar = Añadir
+adjuntar-tabla = Tabla nueva
+tabla-nueva = Tabla

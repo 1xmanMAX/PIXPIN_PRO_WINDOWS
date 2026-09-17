@@ -225,6 +225,29 @@ impl Mensaje {
         }
     }
 
+    /// Una mini-aplicacion: el documento entero va dentro del mensaje.
+    ///
+    /// Es el hueco que dejo PixPin Android para lo que no conoce: ante una
+    /// palabra de `miniapp` que no reconoce ensena el texto tal cual, asi que
+    /// una hoja de calculo hecha aqui llega al movil sin romperle nada. Por
+    /// eso el documento va en `texto` y no en un fichero aparte: un fichero
+    /// que el movil no sabe abrir seria un mensaje vacio.
+    pub fn miniapp(cual: &str, nombre: &str, documento: &str, sello: &Sello) -> Mensaje {
+        Mensaje {
+            id: format!("{}", sello.cuando),
+            cuando: sello.cuando,
+            clase: Some(Clase::MiniApp),
+            miniapp: Some(cual.to_string()),
+            nombre: nombre.to_string(),
+            texto: documento.to_string(),
+            numero: sello.numero,
+            uid: Some(crate::codigos::nuevo()),
+            aparato: Some(sello.aparato.clone()),
+            proyecto: Some(sello.proyecto.clone()),
+            ..Default::default()
+        }
+    }
+
     /// Un mensaje con un fichero dentro del proyecto.
     ///
     /// `ruta` es relativa a la carpeta del proyecto (`archivos/foto.jpg`), no
@@ -377,9 +400,15 @@ pub fn indices_de_seccion(mensajes: &[Mensaje], seccion: Seccion) -> Vec<usize> 
                 Seccion::Buzon => false,
                 Seccion::Fijados => m.fijado,
                 Seccion::Fotos => m.clase == Some(Clase::Imagen),
-                Seccion::Archivos => {
-                    matches!(m.clase, Some(Clase::Archivo) | Some(Clase::Pagina))
-                }
+                // Las cuatro que pone Android en esta seccion
+                // (`Seccion.ARCHIVOS` en `Mensajes.kt`): lo que se abre
+                // aparte. Una pagina de plano, un acceso a otro proyecto y
+                // una mini-aplicacion se buscan aqui, y quien las busca no
+                // piensa en de que clase son por dentro.
+                Seccion::Archivos => matches!(
+                    m.clase,
+                    Some(Clase::Archivo | Clase::Pagina | Clase::Proyecto | Clase::MiniApp)
+                ),
                 Seccion::Voz => m.clase == Some(Clase::Voz),
                 Seccion::Dibujos => m.clase == Some(Clase::Dibujo),
             }
@@ -666,6 +695,25 @@ mod pruebas {
         assert_eq!(ids(Seccion::Dibujos), ["d"]);
         assert_eq!(ids(Seccion::Fijados), ["p"]);
         assert_eq!(ids(Seccion::Buzon), ["b"]);
+    }
+
+    #[test]
+    fn una_mini_aplicacion_lleva_su_documento_dentro_del_mensaje() {
+        let m = Mensaje::miniapp("tabla", "Mediciones", r#"{"nombre":"x"}"#, &sello(10, 1));
+        assert_eq!(m.clase, Some(Clase::MiniApp));
+        assert_eq!(m.miniapp.as_deref(), Some("tabla"));
+        assert_eq!(m.texto, r#"{"nombre":"x"}"#);
+        // El documento va en `texto`, NO en un fichero: un fichero que el
+        // movil no sabe abrir seria un mensaje vacio alli.
+        assert_eq!(m.ruta, None);
+        assert_eq!(m.referencia, None);
+        // Y sale en «archivos», que es donde Android pone las mini-apps.
+        let c = Cuaderno {
+            mensajes: vec![m],
+            lineas_rotas: 0,
+        };
+        assert_eq!(c.de_seccion(Seccion::Archivos).len(), 1);
+        assert!(c.de_seccion(Seccion::Fotos).is_empty());
     }
 
     #[test]

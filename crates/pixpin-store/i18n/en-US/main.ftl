@@ -204,3 +204,5 @@ confirmar-resto = and { $cuantos } more
 confirmar-pie = Add a comment…
 confirmar-cancelar = Cancel
 confirmar-aceptar = Add
+adjuntar-tabla = New table
+tabla-nueva = Table

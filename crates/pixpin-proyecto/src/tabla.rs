@@ -1,8 +1,20 @@
 //! Las tablas de calculo del proyecto.
 //!
-//! El mismo `tablas/<id>.json` que escribe PixPin Android, para que una tabla
-//! hecha en el movil se abra aqui y al reves. La forma es deliberadamente
-//! sencilla: **un mapa de celda a texto**, no una matriz.
+//! **Esto no existe en PixPin Android.** Se comprobo en su codigo: lo que
+//! alli se llama «tabla» es `TablaDeCoordenadas` (`motor/Tablas.kt`), una
+//! lista de puntos X/Y con color que se mete DENTRO de un dibujo para
+//! replantear; no tiene celdas, ni referencias `B7`, ni formulas. Y sus
+//! siete mini-aplicaciones son tareas, gastos, cronometro, temporizador,
+//! contador, ruleta y alarma: ninguna es una hoja de calculo.
+//!
+//! Asi que la hoja es de PixPin Max, y viaja por el hueco que Android SI
+//! dejo: un mensaje de clase `MINIAPP` lleva el documento entero en `texto`
+//! y la palabra de su tipo en `miniapp` —aqui, `"tabla"`—, y ante una
+//! palabra que no conoce el movil ensena ese texto tal cual en vez de
+//! romperse. No hay fichero aparte: la tabla ES el texto del mensaje.
+//!
+//! La forma es deliberadamente sencilla: **un mapa de celda a texto**, no
+//! una matriz.
 //!
 //! Que sea un mapa y no una matriz no es capricho: una tabla con una celda en
 //! la `A1` y otra en la `Z900` ocupa dos entradas y no ochocientas mil. Y
@@ -16,6 +28,11 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+
+/// La palabra que va en `Mensaje.miniapp` para decir que el texto es una
+/// tabla. Se escribe una vez aqui porque es un dato guardado: cambiarla
+/// dejaria de reconocer las tablas ya escritas.
+pub const MINIAPP: &str = "tabla";
 
 /// Una tabla, tal como viaja.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
