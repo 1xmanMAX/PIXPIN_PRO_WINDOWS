@@ -66,6 +66,8 @@ struct Tema {
     /// (`lightButtonBgOver` y `lightButtonFg` de Telegram).
     pestana_activa: Color,
     texto_pestana_activa: Color,
+    /// El velo de detras de una capa (`layerBg`): negro a la mitad.
+    velo: Color,
     /// Las burbujas del historial, su texto, su hora y la pildora que
     /// separa los dias.
     burbuja_mia: Color,
@@ -101,6 +103,12 @@ const CLARO: Tema = Tema {
     papel: hex(0xffffff),
     pestana_activa: hex(0xe3f1fa),
     texto_pestana_activa: hex(0x168acd),
+    velo: Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 0.498,
+    },
     // msgOutBg, msgInBg y sus colores de texto y hora.
     burbuja_mia: hex(0xeffdde),
     burbuja_otra: hex(0xffffff),
@@ -137,6 +145,12 @@ const OSCURO: Tema = Tema {
     papel: hex(0xe8e8e8),
     pestana_activa: hex(0x1d2a39),
     texto_pestana_activa: hex(0x6ab2f2),
+    velo: Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: 0.498,
+    },
     // msgOutBg, msgInBg y sus colores de texto y hora.
     burbuja_mia: hex(0x2b5278),
     burbuja_otra: hex(0x182533),
@@ -1919,77 +1933,77 @@ fn pintar_info(
     use pixpin_ui::info;
     let (tema, escala, textos) = (c.tema, c.escala, c.textos);
     let e = escala as f32 / 100.0;
-    let i = info::Disposicion::calcular(d.chat, d.una_columna, escala);
-    p.rellenar(rf(i.panel), tema.lista);
+    // El velo oscurece TODA la ventana, no solo la conversacion: es lo que
+    // dice que lo de debajo esta esperando, y lo que hace que el recuadro se
+    // lea como una capa y no como otra columna mas.
+    let ventana = Rect {
+        x: 0,
+        y: 0,
+        ancho: d.barra.ancho,
+        alto: d.chat.abajo().max(d.lista.abajo()).max(0) as u32,
+    };
+    p.rellenar(rf(ventana), tema.velo);
 
-    // La cabecera, con su flecha de volver y el titulo.
-    p.rellenar(rf(i.cabecera), tema.cabecera);
-    let grosor = (2.0 * e).max(1.0);
-    let (cx, cy) = (
-        i.volver.x as f32 + i.volver.ancho as f32 / 2.0,
-        i.volver.y as f32 + i.volver.alto as f32 / 2.0,
-    );
-    let brazo = 5.0 * e;
-    p.linea(
-        (cx + brazo, cy - brazo),
-        (cx - brazo, cy),
-        grosor,
+    let (caja, _completa) = info::capa_en(ventana, escala);
+    let i = info::Disposicion::capa(caja, escala);
+    p.rellenar_redondeado(rf(i.panel), info::CAPA_RADIO as f32 * e, tema.lista);
+
+    // La cabecera: el nombre del proyecto y, debajo, lo que tiene dentro. No
+    // hay flecha de volver: en una capa se cierra con el aspa.
+    let lupa = i.buscar(escala);
+    let ancho_titulo = (lupa.x - i.cabecera.x) as f32 - info::CAPA_TITULO_X as f32 * e;
+    p.texto_linea(
+        &a.ficha.nombre,
+        i.cabecera.x as f32 + info::CAPA_TITULO_X as f32 * e,
+        i.cabecera.y as f32 + info::CAPA_TITULO_Y as f32 * e,
+        info::CAPA_TITULO_TAM * e,
+        ancho_titulo.max(0.0),
         tema.texto,
     );
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("cuantas", a.ficha.hojas);
+    p.texto_linea(
+        &textos.t_args("chat-hojas", &args),
+        i.cabecera.x as f32 + info::CAPA_TITULO_X as f32 * e,
+        i.cabecera.y as f32 + info::CAPA_SUBTITULO_Y as f32 * e,
+        info::CAPA_SUBTITULO_TAM * e,
+        ancho_titulo.max(0.0),
+        tema.apagado,
+    );
+
+    // El aspa de cerrar, pegada al borde derecho, y la lupa a su izquierda.
+    let grosor = (2.0 * e).max(1.0);
+    let centro = |r: Rect| {
+        (
+            r.x as f32 + r.ancho as f32 / 2.0,
+            r.y as f32 + r.alto as f32 / 2.0,
+        )
+    };
+    let (cx, cy) = centro(i.volver);
+    let brazo = 5.0 * e;
     p.linea(
-        (cx - brazo, cy),
+        (cx - brazo, cy - brazo),
         (cx + brazo, cy + brazo),
         grosor,
         tema.texto,
     );
-    let titulo = textos.t("info-titulo");
-    let (_, alto_titulo) = p.medir_texto(&titulo, info::TITULO_TAM * e);
-    p.texto(
-        &titulo,
-        i.volver.derecha() as f32,
-        i.cabecera.y as f32 + (i.cabecera.alto as f32 - alto_titulo) / 2.0,
-        info::TITULO_TAM * e,
+    p.linea(
+        (cx - brazo, cy + brazo),
+        (cx + brazo, cy - brazo),
+        grosor,
         tema.texto,
     );
-
-    // La ficha: avatar grande, nombre y cuantas cosas hay.
-    let avatar = info::FICHA_AVATAR as f32 * e;
-    let ax = i.ficha.x as f32 + info::FICHA_AVATAR_X as f32 * e;
-    let ay = i.ficha.y as f32 + info::FICHA_AVATAR_Y as f32 * e;
-    let caja = RectF {
-        x: ax,
-        y: ay,
-        ancho: avatar,
-        alto: avatar,
-    };
-    p.rellenar_redondeado(caja, avatar / 2.0, color_avatar(&a.ficha.codigo_unico()));
-    let letras = iniciales(&a.ficha.nombre);
-    let (w, h) = p.medir_texto(&letras, avatar * 0.4);
-    p.texto(
-        &letras,
-        ax + (avatar - w) / 2.0,
-        ay + (avatar - h) / 2.0,
-        avatar * 0.4,
-        Color::BLANCO,
-    );
-    let texto_x = i.ficha.x as f32 + info::FICHA_TEXTO_X as f32 * e;
-    let ancho_texto = (i.ficha.derecha() as f32 - 20.0 * e - texto_x).max(0.0);
-    p.texto_linea(
-        &a.ficha.nombre,
-        texto_x,
-        i.ficha.y as f32 + info::FICHA_NOMBRE_Y as f32 * e,
-        info::FICHA_NOMBRE_TAM * e,
-        ancho_texto,
+    let (lx, ly) = centro(lupa);
+    let lado = 16.0 * e;
+    p.icono(
+        &pixpin_render::iconos_excalidraw::SEARCH_ICON,
+        RectF {
+            x: lx - lado / 2.0,
+            y: ly - lado / 2.0,
+            ancho: lado,
+            alto: lado,
+        },
         tema.texto,
-    );
-    let cuantos = format!("{}", a.mensajes.len());
-    p.texto_linea(
-        &cuantos,
-        texto_x,
-        i.ficha.y as f32 + info::FICHA_ESTADO_Y as f32 * e,
-        info::FICHA_ESTADO_TAM * e,
-        ancho_texto,
-        tema.apagado,
     );
 
     // La tira de pestanas. Se miden aqui, que es donde esta la fuente, y se

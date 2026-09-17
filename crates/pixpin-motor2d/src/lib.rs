@@ -37,6 +37,7 @@ pub mod pintado;
 pub mod portapapeles;
 pub mod relleno;
 pub mod seleccion;
+pub mod texto;
 pub mod tinta;
 pub mod tiradores;
 pub mod transformar;

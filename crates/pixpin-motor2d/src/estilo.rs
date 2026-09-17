@@ -9,6 +9,7 @@
 
 use crate::elemento::{ColorRgba, EstiloTrazo, Figura};
 use crate::escena::Escena;
+use crate::relleno::EstiloRelleno;
 use crate::seleccion::Seleccion;
 
 /// Los tres grosores del panel de Excalidraw (`strokeWidth` 1, 2 y 4).
@@ -66,6 +67,8 @@ pub struct EstiloDibujo {
     pub trazo: ColorRgba,
     /// `None` = transparente, el fondo por defecto de Excalidraw.
     pub relleno: Option<ColorRgba>,
+    /// Como se pinta ese fondo: solido, rayado o cruzado.
+    pub estilo_relleno: EstiloRelleno,
     pub grosor: NivelGrosor,
     pub estilo: EstiloTrazo,
     /// 0 arquitecto, 1 artista, 2 caricaturista.
@@ -76,12 +79,13 @@ pub struct EstiloDibujo {
 
 impl Default for EstiloDibujo {
     /// Los valores por defecto de Excalidraw: trazo `#1e1e1e`, sin fondo,
-    /// grosor medio, trazo continuo, «artista» y opaco.
+    /// relleno rayado, grosor medio, trazo continuo, «artista» y opaco.
     fn default() -> Self {
         let gris = 0x1e as f32 / 255.0;
         Self {
             trazo: ColorRgba::opaco(gris, gris, gris),
             relleno: None,
+            estilo_relleno: EstiloRelleno::default(),
             grosor: NivelGrosor::Medio,
             estilo: EstiloTrazo::Solido,
             rugosidad: 1.0,
@@ -95,6 +99,8 @@ impl Default for EstiloDibujo {
 pub enum CambioEstilo {
     Trazo(ColorRgba),
     Relleno(Option<ColorRgba>),
+    /// Como se pinta el fondo: solido, rayado o cruzado.
+    EstiloRelleno(EstiloRelleno),
     Grosor(NivelGrosor),
     Estilo(EstiloTrazo),
     Rugosidad(f32),
@@ -106,6 +112,7 @@ impl EstiloDibujo {
         match cambio {
             CambioEstilo::Trazo(c) => self.trazo = c,
             CambioEstilo::Relleno(c) => self.relleno = c,
+            CambioEstilo::EstiloRelleno(r) => self.estilo_relleno = r,
             CambioEstilo::Grosor(g) => self.grosor = g,
             CambioEstilo::Estilo(e) => self.estilo = e,
             CambioEstilo::Rugosidad(r) => self.rugosidad = r.clamp(0.0, 2.0),
@@ -129,6 +136,7 @@ pub fn aplicar_a(escena: &mut Escena, sel: &Seleccion, cambio: CambioEstilo) {
     let cambia = |e: &crate::elemento::Elemento| match cambio {
         CambioEstilo::Trazo(c) => e.trazo != c,
         CambioEstilo::Relleno(c) => e.relleno != c,
+        CambioEstilo::EstiloRelleno(r) => e.estilo_relleno != r,
         CambioEstilo::Grosor(g) => e.grosor != grosor_para(&e.figura, g),
         CambioEstilo::Estilo(s) => e.estilo != s,
         CambioEstilo::Rugosidad(r) => e.rugosidad != r.clamp(0.0, 2.0),
@@ -150,6 +158,7 @@ pub fn aplicar_a(escena: &mut Escena, sel: &Seleccion, cambio: CambioEstilo) {
             match cambio {
                 CambioEstilo::Trazo(c) => e.trazo = c,
                 CambioEstilo::Relleno(c) => e.relleno = c,
+                CambioEstilo::EstiloRelleno(r) => e.estilo_relleno = r,
                 CambioEstilo::Grosor(g) => e.grosor = grosor_para(&e.figura, g),
                 CambioEstilo::Estilo(s) => e.estilo = s,
                 CambioEstilo::Rugosidad(r) => e.rugosidad = r.clamp(0.0, 2.0),
@@ -251,9 +260,57 @@ mod pruebas {
     }
 
     #[test]
+    fn el_relleno_elegido_va_a_lo_seleccionado_y_queda_para_lo_proximo() {
+        // Las dos mitades del panel de Excalidraw: cambia lo elegido y ademas
+        // deja el valor como el de lo proximo que se dibuje.
+        let mut escena = Escena::nueva();
+        let a = rect(&mut escena);
+        let mut sel = Seleccion::nueva();
+        sel.poner(a);
+        let cambio = CambioEstilo::EstiloRelleno(EstiloRelleno::Cruzado);
+        aplicar_a(&mut escena, &sel, cambio);
+        assert_eq!(
+            escena.buscar(a).unwrap().estilo_relleno,
+            EstiloRelleno::Cruzado
+        );
+
+        let mut actual = EstiloDibujo::default();
+        actual.aplicar(cambio);
+        assert_eq!(actual.estilo_relleno, EstiloRelleno::Cruzado);
+
+        // Y se deshace en un solo paso, como los demas cambios de estilo.
+        assert!(escena.deshacer());
+        assert_eq!(
+            escena.buscar(a).unwrap().estilo_relleno,
+            EstiloRelleno::default()
+        );
+    }
+
+    #[test]
+    fn cambiar_el_relleno_de_nada_no_abre_un_paso_de_deshacer_vacio() {
+        // Caso negativo: sin seleccion no hay a quien aplicarselo, y un paso
+        // vacio en el historial obligaria a pulsar deshacer dos veces para
+        // deshacer una sola cosa.
+        let mut escena = Escena::nueva();
+        let a = rect(&mut escena);
+        let vacia = Seleccion::nueva();
+        aplicar_a(
+            &mut escena,
+            &vacia,
+            CambioEstilo::EstiloRelleno(EstiloRelleno::Solido),
+        );
+        // El unico paso del historial sigue siendo el de haber anadido el
+        // rectangulo: deshacer una vez tiene que quitarlo.
+        assert!(escena.deshacer());
+        assert!(escena.buscar(a).is_none_or(|e| e.borrado));
+    }
+
+    #[test]
     fn el_estilo_por_defecto_es_el_de_excalidraw_y_los_limites_se_respetan() {
         let mut e = EstiloDibujo::default();
         assert_eq!(e.relleno, None);
+        // El rayado, no el solido: es lo que dibuja Excalidraw sin `fillStyle`.
+        assert_eq!(e.estilo_relleno, EstiloRelleno::Rayado);
         assert_eq!(e.grosor, NivelGrosor::Medio);
         e.aplicar(CambioEstilo::Opacidad(3.0));
         assert_eq!(e.opacidad, 1.0);

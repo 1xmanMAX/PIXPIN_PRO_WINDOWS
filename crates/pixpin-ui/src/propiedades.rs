@@ -19,6 +19,8 @@ use pixpin_motor2d::gesto::Herramienta;
 pub enum Propiedad {
     ColorTrazo,
     Relleno,
+    /// Como se pinta ese relleno: solido, rayado o cruzado.
+    EstiloRelleno,
     Grosor,
     Estilo,
     Rugosidad,
@@ -38,9 +40,15 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
         Figura::Resaltador { .. } => &[ColorTrazo, Grosor, Opacidad],
         Figura::Linea { .. } => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
         Figura::Flecha { .. } => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad, PuntaFlecha],
-        Figura::Rectangulo | Figura::Elipse => {
-            &[ColorTrazo, Relleno, Grosor, Estilo, Rugosidad, Opacidad]
-        }
+        Figura::Rectangulo | Figura::Elipse => &[
+            ColorTrazo,
+            Relleno,
+            EstiloRelleno,
+            Grosor,
+            Estilo,
+            Rugosidad,
+            Opacidad,
+        ],
         Figura::Texto { .. } => &[ColorTrazo, Opacidad, Fuente, TamanoTexto],
         // El foco oscurece lo de alrededor: su color es el del velo.
         Figura::Foco { .. } => &[Opacidad],
@@ -61,9 +69,15 @@ pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad] {
         Herramienta::Lapiz | Herramienta::Resaltador => &[ColorTrazo, Grosor, Opacidad],
         Herramienta::Linea => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
         Herramienta::Flecha => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad, PuntaFlecha],
-        Herramienta::Rectangulo | Herramienta::Elipse => {
-            &[ColorTrazo, Relleno, Grosor, Estilo, Rugosidad, Opacidad]
-        }
+        Herramienta::Rectangulo | Herramienta::Elipse => &[
+            ColorTrazo,
+            Relleno,
+            EstiloRelleno,
+            Grosor,
+            Estilo,
+            Rugosidad,
+            Opacidad,
+        ],
         Herramienta::Texto => &[ColorTrazo, Opacidad, Fuente, TamanoTexto],
         Herramienta::Foco => &[Opacidad],
         // Mismas propiedades que su Figura correspondiente, arriba.
@@ -151,6 +165,15 @@ mod pruebas {
         let p = de_figura(&Figura::Rectangulo);
         assert!(p.contains(&Propiedad::Relleno));
         assert!(p.contains(&Propiedad::Rugosidad));
+    }
+
+    #[test]
+    fn solo_lo_que_encierra_un_area_puede_elegir_como_se_raya() {
+        // Caso negativo: una linea no tiene interior, asi que rayarlo o
+        // cruzarlo no significa nada y el control no se ofrece.
+        let linea = de_figura(&Figura::Linea { puntos: Vec::new() });
+        assert!(!linea.contains(&Propiedad::EstiloRelleno));
+        assert!(de_figura(&Figura::Elipse).contains(&Propiedad::EstiloRelleno));
     }
 
     #[test]

@@ -679,6 +679,46 @@ pub fn abrir(
             // (`pedir_medida`, mas abajo) y nunca lo comparte con este, asi
             // que una letra no puede robarle un caracter mientras esta
             // abierto.
+            // Escribiendo, las teclas son del texto: una «r» es una erre y no
+            // la herramienta rectangulo. Va antes que todo lo demas.
+            if gesto.esta_escribiendo() {
+                use pixpin_motor2d::texto::TeclaTexto;
+                const VK_IZQUIERDA: u32 = 0x25;
+                const VK_DERECHA: u32 = 0x27;
+                const VK_INICIO: u32 = 0x24;
+                const VK_FIN: u32 = 0x23;
+                const VK_RETROCESO: u32 = 0x08;
+                const VK_SUPRIMIR: u32 = 0x2E;
+                const VK_ESCAPE_TEXTO: u32 = 0x1B;
+                const VK_ENTRAR: u32 = 0x0D;
+                let atendido = match ev {
+                    // Los mandos llegan tambien como caracter; se atienden
+                    // por tecla, que es donde se distinguen bien.
+                    EventoOverlay::Caracter(c) if c >= ' ' => gesto.escribir(c, &mut escena),
+                    EventoOverlay::Tecla { vk, .. } => match vk {
+                        VK_ESCAPE_TEXTO => gesto.cerrar_texto(&mut escena),
+                        VK_IZQUIERDA => gesto.tecla_de_texto(TeclaTexto::Izquierda, &mut escena),
+                        VK_DERECHA => gesto.tecla_de_texto(TeclaTexto::Derecha, &mut escena),
+                        VK_INICIO => gesto.tecla_de_texto(TeclaTexto::Inicio, &mut escena),
+                        VK_FIN => gesto.tecla_de_texto(TeclaTexto::Fin, &mut escena),
+                        VK_RETROCESO => gesto.tecla_de_texto(TeclaTexto::Retroceso, &mut escena),
+                        VK_SUPRIMIR => gesto.tecla_de_texto(TeclaTexto::Suprimir, &mut escena),
+                        VK_ENTRAR => gesto.tecla_de_texto(TeclaTexto::Entrar, &mut escena),
+                        _ => false,
+                    },
+                    _ => false,
+                };
+                if atendido {
+                    todo_sucio = true;
+                    ventana.invalidar();
+                }
+                // Las teclas se consumen aunque no hagan nada; el raton no,
+                // que es como se sale a pulsar en otro sitio.
+                if matches!(ev, EventoOverlay::Caracter(_) | EventoOverlay::Tecla { .. }) {
+                    continue;
+                }
+            }
+
             if let EventoOverlay::Caracter(c) = ev {
                 if let Some(h) = tecla_a_herramienta(c) {
                     gesto.herramienta = h;

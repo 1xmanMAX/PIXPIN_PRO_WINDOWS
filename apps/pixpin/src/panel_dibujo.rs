@@ -11,6 +11,7 @@ use pixpin_motor2d::escena::Escena;
 use pixpin_motor2d::estilo::{CambioEstilo, EstiloDibujo, NivelGrosor};
 use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
 use pixpin_motor2d::organizar::{self, Alineacion, Reparto};
+use pixpin_motor2d::relleno::EstiloRelleno;
 use pixpin_render::iconos_excalidraw as i;
 use pixpin_render::{Color, Pintor, RectF};
 use pixpin_ui::panel_lateral::{AccionPanel, Capa, ContextoPanel, Control, PanelLateral, Seccion};
@@ -66,6 +67,7 @@ pub fn panel_para(
             EstiloDibujo {
                 trazo: primero.trazo,
                 relleno: primero.relleno,
+                estilo_relleno: primero.estilo_relleno,
                 grosor: NivelGrosor::de_elemento(&primero.figura, primero.grosor),
                 estilo: primero.estilo,
                 rugosidad: primero.rugosidad,
@@ -157,6 +159,15 @@ fn icono_de(accion: AccionPanel) -> Option<&'static pixpin_render::icono::Icono>
         AccionPanel::Estilo(CambioEstilo::Grosor(NivelGrosor::Grueso)) => {
             &i::STROKE_WIDTH_EXTRA_BOLD_ICON
         }
+        AccionPanel::Estilo(CambioEstilo::EstiloRelleno(EstiloRelleno::Rayado)) => {
+            &i::FILL_HACHURE_ICON
+        }
+        AccionPanel::Estilo(CambioEstilo::EstiloRelleno(EstiloRelleno::Cruzado)) => {
+            &i::FILL_CROSS_HATCH_ICON
+        }
+        AccionPanel::Estilo(CambioEstilo::EstiloRelleno(EstiloRelleno::Solido)) => {
+            &i::FILL_SOLID_ICON
+        }
         AccionPanel::Estilo(CambioEstilo::Estilo(EstiloTrazo::Solido)) => {
             &i::STROKE_STYLE_SOLID_ICON
         }
@@ -192,6 +203,7 @@ fn titulo(s: Seccion) -> &'static str {
     match s {
         Seccion::Trazo => "Trazo",
         Seccion::Fondo => "Fondo",
+        Seccion::Relleno => "Relleno",
         Seccion::Grosor => "Grosor del trazo",
         Seccion::EstiloTrazo => "Estilo del trazo",
         Seccion::TrazoAMano => "Estilo de trazo a mano",

@@ -231,6 +231,10 @@ pub struct Gesto {
     /// El «actual» del panel lateral: con esto nacen las figuras nuevas.
     /// El grosor del lapiz sigue en `grosor_tinta` (las teclas 1/2/3).
     pub estilo: crate::estilo::EstiloDibujo,
+    /// El texto que se esta escribiendo: que elemento es y como va su
+    /// cursor. Mientras esto tiene algo, las teclas son del texto y no
+    /// atajos de herramienta.
+    pub escribiendo: Option<(u64, crate::texto::EdicionTexto)>,
 }
 
 impl Default for Gesto {
@@ -245,6 +249,7 @@ impl Default for Gesto {
             grosor_tinta: crate::tinta::GROSOR_MEDIO,
             variabilidad: crate::tinta::Variabilidad::Variable,
             estilo: crate::estilo::EstiloDibujo::default(),
+            escribiendo: None,
             forma_elipse: None,
         }
     }
@@ -613,7 +618,7 @@ impl Gesto {
             angulo: 0.0,
             trazo: self.estilo.trazo,
             // El fondo solo tiene sentido en lo que encierra un area.
-            estilo_relleno: Default::default(),
+            estilo_relleno: self.estilo.estilo_relleno,
             relleno: match self.herramienta {
                 Herramienta::Rectangulo | Herramienta::Elipse => self.estilo.relleno,
                 _ => None,
@@ -784,10 +789,44 @@ impl Gesto {
                 pide: None,
             };
         }
-        // El texto no entra en esta entrega (ver arriba): con la herramienta
-        // de texto puesta, un clic en vacio no hace nada en vez de dejar un
-        // rectangulo, que es lo que pasaria al caer en el `_` de
-        // `nuevo_elemento`.
+        // Con la herramienta de texto, pulsar abre uno para escribir: el que
+        // haya bajo el cursor si es un texto, y si no uno nuevo ahi mismo.
+        if self.herramienta == Herramienta::Texto {
+            self.cerrar_texto(escena);
+            let elementos: Vec<Elemento> = escena.visibles().cloned().collect();
+            let debajo = elemento_en(&elementos, p).and_then(|id| {
+                escena.buscar(id).and_then(|e| match &e.figura {
+                    Figura::Texto { texto, .. } => Some((id, texto.clone())),
+                    _ => None,
+                })
+            });
+            let (id, contenido) = match debajo {
+                Some(par) => par,
+                None => {
+                    // Nace vacio. Si al terminar sigue vacio, `cerrar_texto`
+                    // lo quita: un elemento invisible solo estorba al elegir.
+                    let mut e = self.nuevo_elemento(p);
+                    e.figura = Figura::Texto {
+                        texto: String::new(),
+                        tam: crate::texto::TAM_POR_DEFECTO,
+                        familia: crate::texto::FAMILIA_POR_DEFECTO.to_string(),
+                    };
+                    e.x = p.x;
+                    e.y = p.y;
+                    escena.abrir_paso();
+                    let id = escena.anadir(e);
+                    escena.cerrar_paso();
+                    (id, String::new())
+                }
+            };
+            self.seleccion.poner(id);
+            self.escribiendo = Some((id, crate::texto::EdicionTexto::nueva(contenido)));
+            return Respuesta {
+                region: Region::Todo,
+                cursor: FormaCursor::Texto,
+                pide: None,
+            };
+        }
         if self.herramienta.deja_rastro() && self.herramienta != Herramienta::Texto {
             // Igual que en calibrar: la figura nace ya pegada al vertice
             // ajeno, pero la decision de que NACE se tomo con el punto
@@ -1209,6 +1248,87 @@ fn anadir_a_lapiz(
     }
 }
 
+impl Gesto {
+    /// Mete una letra en el texto que se esta escribiendo. Devuelve si algo
+    /// cambio, para que la ventana sepa si repintar.
+    pub fn escribir(&mut self, c: char, escena: &mut Escena) -> bool {
+        let Some((id, edicion)) = self.escribiendo.as_mut() else {
+            return false;
+        };
+        edicion.insertar(c);
+        let texto = edicion.texto().to_string();
+        Self::volcar_texto(escena, *id, &texto);
+        true
+    }
+
+    /// Una tecla de edicion (flechas, borrar, entrar).
+    pub fn tecla_de_texto(&mut self, t: crate::texto::TeclaTexto, escena: &mut Escena) -> bool {
+        let Some((id, edicion)) = self.escribiendo.as_mut() else {
+            return false;
+        };
+        if !edicion.tecla(t) {
+            return false;
+        }
+        let texto = edicion.texto().to_string();
+        Self::volcar_texto(escena, *id, &texto);
+        true
+    }
+
+    /// Termina de escribir.
+    ///
+    /// Un texto que quedo vacio se borra: dejarlo seria un elemento
+    /// invisible que se puede elegir sin querer y que nadie sabria quitar.
+    pub fn cerrar_texto(&mut self, escena: &mut Escena) -> bool {
+        let Some((id, edicion)) = self.escribiendo.take() else {
+            return false;
+        };
+        if edicion.esta_vacio() {
+            escena.abrir_paso();
+            escena.apuntar_edicion(id);
+            if let Some(e) = escena.buscar_mut(id) {
+                e.borrado = true;
+                e.tocar();
+            }
+            escena.cerrar_paso();
+            self.seleccion.limpiar();
+        }
+        true
+    }
+
+    /// Si se esta escribiendo ahora mismo. La ventana lo mira para saber si
+    /// una tecla es texto o un atajo de herramienta.
+    pub fn esta_escribiendo(&self) -> bool {
+        self.escribiendo.is_some()
+    }
+
+    /// Lo escrito y donde va el cursor, para pintarlo.
+    pub fn texto_en_curso(&self) -> Option<(u64, &crate::texto::EdicionTexto)> {
+        self.escribiendo.as_ref().map(|(id, e)| (*id, e))
+    }
+
+    /// Escribe el texto en su elemento y le ajusta la caja.
+    ///
+    /// Todo dentro de UN paso de deshacer por pulsacion no vale: serian
+    /// treinta pasos para una palabra. Se apunta la edicion una vez, al
+    /// abrirse el texto, y aqui solo se cambia el contenido.
+    fn volcar_texto(escena: &mut Escena, id: u64, texto: &str) {
+        let Some(e) = escena.buscar_mut(id) else {
+            return;
+        };
+        let tam = match &e.figura {
+            Figura::Texto { tam, .. } => *tam,
+            _ => crate::texto::TAM_POR_DEFECTO,
+        };
+        if let Figura::Texto { texto: dentro, .. } = &mut e.figura {
+            dentro.clear();
+            dentro.push_str(texto);
+        }
+        let (ancho, alto) = crate::texto::medida_estimada(texto, tam);
+        e.ancho = ancho;
+        e.alto = alto;
+        e.tocar();
+    }
+}
 #[cfg(test)]
 mod pruebas {
     use super::*;

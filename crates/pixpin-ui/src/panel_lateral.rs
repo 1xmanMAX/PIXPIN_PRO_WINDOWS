@@ -14,6 +14,7 @@ use pixpin_geom::{Punto, Rect};
 use pixpin_motor2d::elemento::{ColorRgba, EstiloTrazo};
 use pixpin_motor2d::estilo::{CambioEstilo, EstiloDibujo, NivelGrosor};
 use pixpin_motor2d::organizar::{Alineacion, Reparto};
+use pixpin_motor2d::relleno::EstiloRelleno;
 
 use crate::propiedades::Propiedad;
 
@@ -79,6 +80,7 @@ pub enum AccionPanel {
 pub enum Seccion {
     Trazo,
     Fondo,
+    Relleno,
     Grosor,
     EstiloTrazo,
     TrazoAMano,
@@ -289,6 +291,23 @@ impl PanelLateral {
             c.colores(&lista, s.relleno);
             c.separar();
         }
+        // Con el fondo transparente no hay nada que rayar: Excalidraw esconde
+        // esta seccion igual (su `hasBackground` mira el color, no la figura).
+        if tiene(Propiedad::EstiloRelleno) && s.relleno.is_some() {
+            c.titulo(Seccion::Relleno);
+            let f = |v| {
+                (
+                    AccionPanel::Estilo(CambioEstilo::EstiloRelleno(v)),
+                    s.estilo_relleno == v,
+                )
+            };
+            c.fila(&[
+                f(EstiloRelleno::Rayado),
+                f(EstiloRelleno::Cruzado),
+                f(EstiloRelleno::Solido),
+            ]);
+            c.separar();
+        }
         if tiene(Propiedad::Grosor) {
             c.titulo(Seccion::Grosor);
             let g = |n| (AccionPanel::Estilo(CambioEstilo::Grosor(n)), s.grosor == n);
@@ -427,6 +446,28 @@ mod pruebas {
         }
     }
 
+    /// Como `ctx` pero con fondo puesto, que es cuando el relleno se ofrece.
+    fn ctx_con_fondo(propiedades: &[Propiedad]) -> ContextoPanel<'_> {
+        ContextoPanel {
+            propiedades,
+            estilo: EstiloDibujo {
+                relleno: COLORES_FONDO[1],
+                ..EstiloDibujo::default()
+            },
+            seleccionados: 0,
+        }
+    }
+
+    fn secciones(p: &PanelLateral) -> Vec<Seccion> {
+        p.controles
+            .iter()
+            .filter_map(|c| match c {
+                Control::Titulo { seccion, .. } => Some(*seccion),
+                _ => None,
+            })
+            .collect()
+    }
+
     fn centro(r: Rect) -> Punto {
         Punto {
             x: r.x + r.ancho as i32 / 2,
@@ -439,16 +480,8 @@ mod pruebas {
         let props =
             crate::propiedades::de_herramienta(pixpin_motor2d::gesto::Herramienta::Rectangulo);
         let p = PanelLateral::construir(area(), 100, ctx(props, 0)).unwrap();
-        let secciones: Vec<Seccion> = p
-            .controles
-            .iter()
-            .filter_map(|c| match c {
-                Control::Titulo { seccion, .. } => Some(*seccion),
-                _ => None,
-            })
-            .collect();
         assert_eq!(
-            secciones,
+            secciones(&p),
             vec![
                 Seccion::Trazo,
                 Seccion::Fondo,
@@ -463,6 +496,65 @@ mod pruebas {
     }
 
     #[test]
+    fn el_relleno_se_ofrece_con_fondo_puesto_y_se_esconde_sin_el() {
+        let props = [Propiedad::Relleno, Propiedad::EstiloRelleno];
+        let con = PanelLateral::construir(area(), 100, ctx_con_fondo(&props)).unwrap();
+        assert_eq!(secciones(&con), vec![Seccion::Fondo, Seccion::Relleno]);
+
+        // Caso negativo: con el fondo transparente no hay nada que rayar, y
+        // ofrecer tres botones que no cambian nada visible es enganar.
+        let sin = PanelLateral::construir(area(), 100, ctx(&props, 0)).unwrap();
+        assert_eq!(secciones(&sin), vec![Seccion::Fondo]);
+    }
+
+    #[test]
+    fn una_linea_elegida_no_ensena_la_seccion_de_relleno() {
+        // Caso negativo del otro lado: la propiedad ni siquiera llega, porque
+        // una linea no tiene interior.
+        let props = crate::propiedades::de_figura(&pixpin_motor2d::elemento::Figura::Linea {
+            puntos: Vec::new(),
+        });
+        let p = PanelLateral::construir(area(), 100, ctx_con_fondo(props)).unwrap();
+        assert!(!secciones(&p).contains(&Seccion::Relleno));
+    }
+
+    #[test]
+    fn pulsar_el_rayado_cruzado_pide_ese_estilo_de_relleno() {
+        let props = [Propiedad::Relleno, Propiedad::EstiloRelleno];
+        let p = PanelLateral::construir(area(), 100, ctx_con_fondo(&props)).unwrap();
+        let cruzado = AccionPanel::Estilo(CambioEstilo::EstiloRelleno(EstiloRelleno::Cruzado));
+        let rect = p
+            .controles
+            .iter()
+            .find_map(|c| match *c {
+                Control::Opcion { rect, accion, .. } if accion == cruzado => Some(rect),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(p.destino(centro(rect)), DestinoPanel::Accion(cruzado));
+
+        // Y el boton marcado es el del estilo actual, el rayado.
+        let marcados: Vec<AccionPanel> = p
+            .controles
+            .iter()
+            .filter_map(|c| match *c {
+                Control::Opcion {
+                    accion,
+                    activa: true,
+                    ..
+                } => Some(accion),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            marcados,
+            vec![AccionPanel::Estilo(CambioEstilo::EstiloRelleno(
+                EstiloRelleno::Rayado
+            ))]
+        );
+    }
+
+    #[test]
     fn sin_nada_que_ajustar_no_hay_panel() {
         assert!(PanelLateral::construir(area(), 100, ctx(&[], 0)).is_none());
     }
@@ -472,12 +564,22 @@ mod pruebas {
         let props = [
             Propiedad::ColorTrazo,
             Propiedad::Relleno,
+            Propiedad::EstiloRelleno,
             Propiedad::Grosor,
             Propiedad::Estilo,
             Propiedad::Rugosidad,
             Propiedad::Opacidad,
         ];
-        let p = PanelLateral::construir(area(), 150, ctx(&props, 3)).unwrap();
+        // Con fondo puesto y tres elegidos: el panel mas alto que existe.
+        let p = PanelLateral::construir(
+            area(),
+            150,
+            ContextoPanel {
+                seleccionados: 3,
+                ..ctx_con_fondo(&props)
+            },
+        )
+        .unwrap();
         let rects: Vec<Rect> = p
             .controles
             .iter()
