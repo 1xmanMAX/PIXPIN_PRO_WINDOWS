@@ -14,13 +14,29 @@ use std::path::PathBuf;
 
 use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, CoTaskMemFree};
+use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
 use windows::Win32::UI::Shell::{
     FOS_ALLOWMULTISELECT, FOS_FILEMUSTEXIST, FileOpenDialog, IFileOpenDialog, SIGDN_FILESYSPATH,
 };
+use windows::core::w;
 
-/// Pide ficheros al usuario. Lista vacia si cancela o si el dialogo falla:
-/// no poder abrirlo no puede tumbar la ventana que lo pidio.
+/// Pide ficheros al usuario, de cualquier clase.
 pub fn pedir_ficheros(hwnd_padre: HWND) -> Vec<PathBuf> {
+    pedir(hwnd_padre, false)
+}
+
+/// Pide fotos o videos.
+///
+/// El filtro solo estrecha lo que el dialogo ensena de entrada; el usuario
+/// siempre puede cambiarlo a «todos». Por eso quien llama sigue teniendo que
+/// tragar con lo que venga: esto es comodidad, no una garantia.
+pub fn pedir_imagenes(hwnd_padre: HWND) -> Vec<PathBuf> {
+    pedir(hwnd_padre, true)
+}
+
+/// Lista vacia si cancela o si el dialogo falla: no poder abrirlo no puede
+/// tumbar la ventana que lo pidio.
+fn pedir(hwnd_padre: HWND, solo_imagenes: bool) -> Vec<PathBuf> {
     // SAFETY: COM ya esta inicializado en el hilo de interfaz (lo hace la
     // bandeja); el dialogo es un objeto local que muere al salir de aqui, y
     // cada cadena que devuelve se libera con CoTaskMemFree.
@@ -34,6 +50,26 @@ pub fn pedir_ficheros(hwnd_padre: HWND) -> Vec<PathBuf> {
         // esta no tiene sentido.
         let opciones = dialogo.GetOptions().unwrap_or_default();
         let _ = dialogo.SetOptions(opciones | FOS_ALLOWMULTISELECT | FOS_FILEMUSTEXIST);
+        if solo_imagenes {
+            // Las cadenas tienen que vivir hasta despues de la llamada: el
+            // dialogo guarda los punteros, no copia.
+            let (fotos, todos) = (w!("Fotos y videos"), w!("Todos los archivos"));
+            let (patron, estrella) = (
+                w!("*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp;*.avif;*.mp4;*.mov;*.mkv;*.webm"),
+                w!("*.*"),
+            );
+            let filtros = [
+                COMDLG_FILTERSPEC {
+                    pszName: fotos,
+                    pszSpec: patron,
+                },
+                COMDLG_FILTERSPEC {
+                    pszName: todos,
+                    pszSpec: estrella,
+                },
+            ];
+            let _ = dialogo.SetFileTypes(&filtros);
+        }
         if dialogo.Show(Some(hwnd_padre)).is_err() {
             // Cancelar llega como error; no es un fallo que anotar.
             return Vec::new();

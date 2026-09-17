@@ -30,6 +30,7 @@
 //! que `a_evento`, solo que de salida en vez de entrada.
 
 use crate::fondo_lienzo::{FondoLienzo, encuadre_inicial};
+use crate::imagenes_lienzo::ImagenesLienzo;
 use crate::navegacion::{self, vista_efectiva};
 use anyhow::{Context, Result};
 use pixpin_geom::Punto;
@@ -398,6 +399,10 @@ pub fn abrir(
     let mut motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
     // D139: se reduce aqui, que es donde se sabe cuanto admite la GPU.
     let mut fondo = fondo.map(|img| FondoLienzo::nuevo(img, motor.lado_maximo_bitmap()));
+    // Las imagenes que se peguen durante esta sesion. Nace vacia: lo que
+    // trae la escena de disco no puede traer pixeles todavia (ver el aviso
+    // de alcance en `imagenes_lienzo`).
+    let mut imagenes = ImagenesLienzo::nuevo(motor.lado_maximo_bitmap());
 
     let disposicion =
         pixpin_capture::enumerar_monitores().context("sin monitores para el editor")?;
@@ -772,12 +777,51 @@ pub fn abrir(
                                 )
                         }
                         v if v == b'V' as u32 => {
-                            let nuevos = pp::pegar(
-                                &mut escena,
-                                &portapapeles,
-                                pp::DESPLAZAMIENTO,
-                                pp::DESPLAZAMIENTO,
-                            );
+                            use crate::imagenes_lienzo as img;
+                            // El portapapeles del sistema solo se abre si no
+                            // hay nada copiado dentro: ver `decidir_pegado`.
+                            let del_sistema = if portapapeles.is_empty() {
+                                pixpin_codec::portapapeles::leer()
+                            } else {
+                                None
+                            };
+                            let nuevos =
+                                match img::decidir_pegado(!portapapeles.is_empty(), del_sistema) {
+                                    img::Pegado::Elementos => pp::pegar(
+                                        &mut escena,
+                                        &portapapeles,
+                                        pp::DESPLAZAMIENTO,
+                                        pp::DESPLAZAMIENTO,
+                                    ),
+                                    img::Pegado::Imagen(bruta) => {
+                                        let vista = efectiva.ventana(ancho_px, alto_px);
+                                        match imagenes.guardar(bruta) {
+                                            None => Vec::new(),
+                                            Some(id_objeto) => {
+                                                // El tamano se toma de lo que de
+                                                // verdad se subio: si la GPU
+                                                // obligo a reducir, la caja tiene
+                                                // que seguir a los pixeles o la
+                                                // imagen saldria estirada.
+                                                let (w, h) = imagenes
+                                                    .tamano(id_objeto)
+                                                    .expect("recien guardada");
+                                                let (ancho, alto) = img::tamano_al_pegar(
+                                                    w,
+                                                    h,
+                                                    vista.2 - vista.0,
+                                                    vista.3 - vista.1,
+                                                );
+                                                let (x, y) =
+                                                    img::esquina_centrada(vista, ancho, alto);
+                                                vec![escena.anadir(img::elemento_imagen(
+                                                    id_objeto, x, y, ancho, alto,
+                                                ))]
+                                            }
+                                        }
+                                    }
+                                    img::Pegado::Nada => Vec::new(),
+                                };
                             let hubo = !nuevos.is_empty();
                             if hubo {
                                 // Queda elegido lo pegado, como en
@@ -894,6 +938,11 @@ pub fn abrir(
                     if let Some(f) = fondo.as_mut() {
                         f.asegurar(&motor);
                     }
+                    // Lo que no este subido cuando se hornea la capa se
+                    // queda fuera de ella, y la capa sigue valiendo: seria
+                    // una imagen que no aparece hasta soltar el raton.
+                    imagenes.asegurar(&motor);
+                    let imagenes = &imagenes;
                     let _ = capa.preparar(&mut motor, estampa, |p| {
                         p.limpiar(Color::BLANCO);
                         let origen = efectiva.a_pantalla(Punto2::nuevo(0.0, 0.0));
@@ -930,6 +979,8 @@ pub fn abrir(
                                         orden,
                                         vista,
                                         Some((&mut cache_tinta, (e.id, e.version, indice))),
+                                        imagenes,
+                                        efectiva.zoom,
                                     );
                                     indice += 1;
                                 },
@@ -958,6 +1009,7 @@ pub fn abrir(
                         &rejilla,
                         &capa,
                         &mut fondo,
+                        &mut imagenes,
                         &caja,
                         escala_por_cien,
                         ancho_px,
@@ -1079,6 +1131,7 @@ pub fn abrir(
                 &rejilla,
                 &capa,
                 &mut fondo,
+                &mut imagenes,
                 &caja,
                 raton_barra,
                 escala_por_cien,
@@ -1263,6 +1316,7 @@ fn pintar(
     rejilla: &Rejilla,
     capa: &CapaEstatica,
     fondo: &mut Option<FondoLienzo>,
+    imagenes: &mut ImagenesLienzo,
     caja_herramientas: &CajaHerramientas,
     raton_barra: Option<Punto>,
     escala_por_cien: u32,
@@ -1276,6 +1330,9 @@ fn pintar(
     if let Some(f) = fondo.as_mut() {
         f.asegurar(motor);
     }
+    // Antes de `dibujar`: crear un bitmap con el `BeginDraw` abierto no es
+    // lo que espera Direct2D.
+    imagenes.asegurar(motor);
     let Ok(destino) = superficie.empezar(motor) else {
         return None;
     };
@@ -1305,115 +1362,127 @@ fn pintar(
     let zona = if capa_vale { zona } else { None };
 
     let fondo_ref = fondo.as_ref();
-    let error = motor.dibujar(&destino, |p| {
-        // El mundo se dibuja en sus propias coordenadas; la matriz activa es
-        // lo unico que cambia al encuadrar o acercar (camara.rs lo explica:
-        // "la geometria se calcula UNA VEZ en coordenadas del mundo").
-        let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
-        if !capa_vale {
-            p.limpiar(Color::BLANCO);
-        }
-        p.poner_vista((0.0, 0.0), camara.zoom, (origen.x, origen.y));
-        // D140/D142: con la capa valida la imagen ya esta copiada; si no, va
-        // la primera, debajo de todo, y solo si se ve.
-        if !capa_vale {
-            if let Some(f) = fondo_ref {
-                f.pintar(p, vista, camara.zoom);
+    // El prestamo compartido del almacen dura solo este bloque: al salir,
+    // `imagenes` vuelve a ser mutable, que es lo que necesita `soltar` si el
+    // dispositivo se ha perdido.
+    let error = {
+        let imagenes: &ImagenesLienzo = imagenes;
+        motor.dibujar(&destino, |p| {
+            // El mundo se dibuja en sus propias coordenadas; la matriz activa es
+            // lo unico que cambia al encuadrar o acercar (camara.rs lo explica:
+            // "la geometria se calcula UNA VEZ en coordenadas del mundo").
+            let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
+            if !capa_vale {
+                p.limpiar(Color::BLANCO);
             }
-        }
+            p.poner_vista((0.0, 0.0), camara.zoom, (origen.x, origen.y));
+            // D140/D142: con la capa valida la imagen ya esta copiada; si no, va
+            // la primera, debajo de todo, y solo si se ve.
+            if !capa_vale {
+                if let Some(f) = fondo_ref {
+                    f.pintar(p, vista, camara.zoom);
+                }
+            }
 
-        for id in candidatos {
-            // Con la capa valida, lo que no esta excluido ya esta copiado
-            // en `destino`: repintarlo aqui seria pagar dos veces.
-            if capa_vale && !ahora_excluidos.contains(&id) {
-                continue;
-            }
-            let Some(e) = escena.buscar(id) else {
-                continue;
-            };
-            if e.borrado {
-                continue;
-            }
-            // Lo que se esta dibujando (trazo, linea, flecha, rectangulo,
-            // elipse) con su punta en el punto predicho: se pinta una copia.
-            // La escena no se toca, asi que al soltar queda lo real.
-            let en_curso = gesto.elemento_en_curso().filter(|(id, _)| *id == e.id);
-            if let (Some(q), Some((_, origen))) = (prediccion, en_curso) {
-                if let Some(copia) = pixpin_motor2d::tinta::prediccion::con_punta(e, origen, q) {
-                    for orden in pixpin_motor2d::pintado::ordenes_a_distancia(&copia, camara.zoom) {
-                        dibujar_orden(p, &orden, vista, None);
-                    }
+            for id in candidatos {
+                // Con la capa valida, lo que no esta excluido ya esta copiado
+                // en `destino`: repintarlo aqui seria pagar dos veces.
+                if capa_vale && !ahora_excluidos.contains(&id) {
                     continue;
                 }
+                let Some(e) = escena.buscar(id) else {
+                    continue;
+                };
+                if e.borrado {
+                    continue;
+                }
+                // Lo que se esta dibujando (trazo, linea, flecha, rectangulo,
+                // elipse) con su punta en el punto predicho: se pinta una copia.
+                // La escena no se toca, asi que al soltar queda lo real.
+                let en_curso = gesto.elemento_en_curso().filter(|(id, _)| *id == e.id);
+                if let (Some(q), Some((_, origen))) = (prediccion, en_curso) {
+                    if let Some(copia) = pixpin_motor2d::tinta::prediccion::con_punta(e, origen, q)
+                    {
+                        for orden in
+                            pixpin_motor2d::pintado::ordenes_a_distancia(&copia, camara.zoom)
+                        {
+                            dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom);
+                        }
+                        continue;
+                    }
+                }
+                // Lo excluido es lo que se arrastra o el trazo en curso: su
+                // version sube en CADA fotograma, asi que cachear su tinta
+                // seria teselar de nuevo cada vez sin acertar nunca -pagar la
+                // realizacion sin cobrar el ahorro-. Se pinta sin cache, como
+                // antes de esta tarea.
+                let mut indice = 0u32;
+                let clave_tinta = !ahora_excluidos.contains(&e.id);
+                por_cada_orden(cache, e, camara.zoom, escena.escala.as_ref(), |orden| {
+                    let tinta =
+                        clave_tinta.then_some((&mut *cache_tinta, (e.id, e.version, indice)));
+                    dibujar_orden(p, orden, vista, tinta, imagenes, camara.zoom);
+                    indice += 1;
+                });
             }
-            // Lo excluido es lo que se arrastra o el trazo en curso: su
-            // version sube en CADA fotograma, asi que cachear su tinta
-            // seria teselar de nuevo cada vez sin acertar nunca -pagar la
-            // realizacion sin cobrar el ahorro-. Se pinta sin cache, como
-            // antes de esta tarea.
-            let mut indice = 0u32;
-            let clave_tinta = !ahora_excluidos.contains(&e.id);
-            por_cada_orden(cache, e, camara.zoom, escena.escala.as_ref(), |orden| {
-                let tinta = clave_tinta.then_some((&mut *cache_tinta, (e.id, e.version, indice)));
-                dibujar_orden(p, orden, vista, tinta);
-                indice += 1;
-            });
-        }
 
-        // Encima de todo: el marco de la seleccion, sus tiradores y la
-        // marquesina si la hay.
-        //
-        // `Gesto::tiradores` es la MISMA llamada que usa el gesto para
-        // decidir que agarra el clic (`cursor_en`, `pulsar`): pintar con
-        // una copia propia del angulo es como se desincronizaron una vez
-        // -tiradores rectos que se picaban girados-, asi que aqui no hay
-        // una segunda formula, solo la unica fuente de verdad.
-        if let Some(caja) = gesto.seleccion.caja(escena) {
-            let tiradores = gesto.tiradores(escena, escala);
-            let angulo = tiradores.as_ref().map_or(0.0, |t| t.angulo);
-            p.marco(caja, angulo, escala);
-            if let Some(tiradores) = tiradores {
-                for orden in tiradores.ordenes(escala) {
-                    dibujar_orden(p, &orden, vista, None);
+            // Encima de todo: el marco de la seleccion, sus tiradores y la
+            // marquesina si la hay.
+            //
+            // `Gesto::tiradores` es la MISMA llamada que usa el gesto para
+            // decidir que agarra el clic (`cursor_en`, `pulsar`): pintar con
+            // una copia propia del angulo es como se desincronizaron una vez
+            // -tiradores rectos que se picaban girados-, asi que aqui no hay
+            // una segunda formula, solo la unica fuente de verdad.
+            if let Some(caja) = gesto.seleccion.caja(escena) {
+                let tiradores = gesto.tiradores(escena, escala);
+                let angulo = tiradores.as_ref().map_or(0.0, |t| t.angulo);
+                p.marco(caja, angulo, escala);
+                if let Some(tiradores) = tiradores {
+                    for orden in tiradores.ordenes(escala) {
+                        dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom);
+                    }
                 }
             }
-        }
-        if let Some(m) = gesto.marquesina() {
-            p.marquesina(m, escala);
-        }
-        // La pista del iman: encima de todo, porque es lo que dice donde va
-        // a caer el punto. Si quedara debajo de una figura, justo el caso en
-        // el que hace falta -dibujar sobre algo- seria el caso en el que no
-        // se ve.
-        if let Some(a) = gesto.anclaje_activo {
-            dibujar_orden(
+            if let Some(m) = gesto.marquesina() {
+                p.marquesina(m, escala);
+            }
+            // La pista del iman: encima de todo, porque es lo que dice donde va
+            // a caer el punto. Si quedara debajo de una figura, justo el caso en
+            // el que hace falta -dibujar sobre algo- seria el caso en el que no
+            // se ve.
+            if let Some(a) = gesto.anclaje_activo {
+                dibujar_orden(
+                    p,
+                    &pixpin_motor2d::enganche::pista(&a, camara.zoom),
+                    vista,
+                    None,
+                    imagenes,
+                    camara.zoom,
+                );
+            }
+            // La caja es un dialogo en pantalla, no algo del lienzo: no se mueve
+            // ni se escala con la camara. `desplazar(0.0, 0.0)` deshace la vista
+            // del mundo que `poner_vista` dejo puesta arriba, igual que hace
+            // `dibujar_cajetin` mas abajo.
+            p.desplazar(0.0, 0.0);
+            crate::caja_dibujo::pintar_barra(
                 p,
-                &pixpin_motor2d::enganche::pista(&a, camara.zoom),
-                vista,
-                None,
+                caja_herramientas,
+                gesto.herramienta,
+                escala_por_cien,
+                raton_barra,
+                |b| match b {
+                    BotonCaja::Elegir(h) => tecla_de(h),
+                    _ => None,
+                },
             );
-        }
-        // La caja es un dialogo en pantalla, no algo del lienzo: no se mueve
-        // ni se escala con la camara. `desplazar(0.0, 0.0)` deshace la vista
-        // del mundo que `poner_vista` dejo puesta arriba, igual que hace
-        // `dibujar_cajetin` mas abajo.
-        p.desplazar(0.0, 0.0);
-        crate::caja_dibujo::pintar_barra(
-            p,
-            caja_herramientas,
-            gesto.herramienta,
-            escala_por_cien,
-            raton_barra,
-            |b| match b {
-                BotonCaja::Elegir(h) => tecla_de(h),
-                _ => None,
-            },
-        );
-        if let Some(panel) = panel {
-            crate::panel_dibujo::pintar(p, panel, escala_por_cien);
-        }
-        encima(p);
-    });
+            if let Some(panel) = panel {
+                crate::panel_dibujo::pintar(p, panel, escala_por_cien);
+            }
+            encima(p);
+        })
+    };
     if error.is_err() {
         // Dispositivo perdido: las realizaciones de tinta son del dispositivo
         // viejo y ya no valen (D2D las rechazaria en el siguiente fotograma).
@@ -1422,6 +1491,8 @@ fn pintar(
         if let Some(f) = fondo.as_mut() {
             f.soltar();
         }
+        // Y los de las imagenes pegadas, por lo mismo.
+        imagenes.soltar();
     }
     let t_presentar = std::time::Instant::now();
     let _ = superficie.presentar_sincronizado(zona);
@@ -1467,6 +1538,7 @@ fn pedir_medida(
     rejilla: &Rejilla,
     capa: &CapaEstatica,
     fondo: &mut Option<FondoLienzo>,
+    imagenes: &mut ImagenesLienzo,
     caja: &CajaHerramientas,
     escala_por_cien: u32,
     ancho_px: f32,
@@ -1519,6 +1591,7 @@ fn pedir_medida(
                         rejilla,
                         capa,
                         fondo,
+                        imagenes,
                         caja,
                         None,
                         escala_por_cien,
@@ -1591,11 +1664,16 @@ fn dibujar_cajetin(
 /// `vista` es la caja del mundo que se ve (en las mismas coordenadas que
 /// `Orden`), y hace falta para `Orden::Velo`: el motor no sabe cuanto mide
 /// el lienzo (lo dice `pintado.rs`), asi que quien pinta pone el marco.
+///
+/// `imagenes` y `zoom` solo los usa `Orden::Imagen`: el almacen resuelve el
+/// `id_objeto` y el zoom efectivo elige el muestreo (D141).
 fn dibujar_orden(
     p: &pixpin_render::Pintor<'_>,
     orden: &Orden,
     vista: (f32, f32, f32, f32),
     tinta: Option<(&mut pixpin_render::CacheTinta, (u64, u32, u32))>,
+    imagenes: &ImagenesLienzo,
+    zoom: f32,
 ) {
     match orden {
         Orden::Poligono { puntos, color } | Orden::Relleno { puntos, color } => {
@@ -1659,9 +1737,28 @@ fn dibujar_orden(
             // fuera de ella.
             p.texto_ajustado(texto, *x, *y, *tam, *ancho_max, a_color(*color));
         }
-        Orden::Imagen { .. } => {
-            // Resolver el bitmap por `id_objeto` es tarea futura: nada de lo
-            // que se puede dibujar en esta entrega produce `Figura::Imagen`.
+        Orden::Imagen {
+            id_objeto,
+            x,
+            y,
+            ancho,
+            alto,
+            opacidad,
+        } => {
+            // El motor no sabe de bitmaps: solo dice «aqui va la imagen
+            // numero N». Quien la tiene es el almacen del lienzo.
+            imagenes.pintar(
+                p,
+                *id_objeto,
+                RectF {
+                    x: *x,
+                    y: *y,
+                    ancho: *ancho,
+                    alto: *alto,
+                },
+                zoom,
+                *opacidad,
+            );
         }
     }
 }

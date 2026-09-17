@@ -56,6 +56,7 @@ mod editor;
 mod fondo_lienzo;
 mod gif;
 mod grabador;
+mod imagenes_lienzo;
 mod medir_fotogramas;
 mod navegacion;
 mod overlay;

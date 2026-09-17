@@ -193,3 +193,6 @@ info-dibujos = Drawings
 info-fijados = Pinned
 info-buzon = Inbox
 info-titulo = Info
+adjuntar-imagen = Photo or video
+adjuntar-archivo = File
+adjuntar-lienzo = New canvas

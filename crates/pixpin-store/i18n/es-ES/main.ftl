@@ -194,3 +194,6 @@ info-dibujos = Dibujos
 info-fijados = Fijados
 info-buzon = Buzón
 info-titulo = Información
+adjuntar-imagen = Foto o vídeo
+adjuntar-archivo = Archivo
+adjuntar-lienzo = Lienzo nuevo

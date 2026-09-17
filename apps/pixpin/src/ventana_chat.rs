@@ -26,6 +26,7 @@ use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, FormaCursorWin, VentanaOverlay};
 use pixpin_store::{Catalogo, Ubicacion};
 use pixpin_ui::chat::{self, Borde, BotonBarra, Disposicion, Vista};
+use pixpin_ui::menu;
 
 use crate::caja_dibujo::hex;
 use crate::overlay::Recursos;
@@ -279,6 +280,9 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     let mut fila_sobre: Option<usize> = None;
     let mut elegida: Option<usize> = None;
     let mut abierto: Option<Abierto> = None;
+    // El menu del clip, cuando esta desplegado. Vive fuera de `abierto`
+    // porque cambiar de conversacion tiene que cerrarlo.
+    let mut menu_adjuntar = false;
     // Antes de maximizar, para poder volver.
     let mut antes_de_maximizar: Option<Rect> = None;
     let mut hay_que_pintar = true;
@@ -329,6 +333,50 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     } else if disposicion.asa.contiene(l) {
                         ventana.capturar_raton();
                         arrastre = Some(Arrastre::Asa(l.x - ancho_lista as i32));
+                    } else if menu_adjuntar {
+                        // Con el menu desplegado, el primer clic es suyo: o
+                        // elige una entrada o lo cierra. Que ademas hiciera
+                        // lo que hubiera debajo seria dispararle al usuario
+                        // por querer salir del menu.
+                        let elegido = abierto.as_ref().and_then(|a| {
+                            menu_del_clip(&disposicion, a, marco, escala).fila_en(l, escala)
+                        });
+                        menu_adjuntar = false;
+                        if let Some(n) = elegido.and_then(|n| menu::Entrada::TODAS.get(n).copied())
+                        {
+                            let rutas = match n {
+                                menu::Entrada::Imagen => {
+                                    pixpin_shell::elegir::pedir_imagenes(ventana.handle())
+                                }
+                                menu::Entrada::Archivo => {
+                                    pixpin_shell::elegir::pedir_ficheros(ventana.handle())
+                                }
+                                menu::Entrada::Lienzo => Vec::new(),
+                            };
+                            if let Some(a) = abierto.as_mut() {
+                                let hechos = match n {
+                                    menu::Entrada::Lienzo => {
+                                        match crear_lienzo(ubicacion, a, &identidad) {
+                                            Ok(()) => 1,
+                                            Err(e) => {
+                                                tracing::warn!(?e, "no se pudo crear el lienzo");
+                                                0
+                                            }
+                                        }
+                                    }
+                                    _ => meter_ficheros(ubicacion, a, &identidad, &rutas),
+                                };
+                                if hechos > 0 {
+                                    a.scroll = None;
+                                    if let Some(i) = elegida {
+                                        fichas[i].tocado = a.ficha.tocado;
+                                        fichas[i].resumen = a.ficha.resumen.clone();
+                                    }
+                                }
+                                a.colocado.borrow_mut().ancho = 0;
+                            }
+                        }
+                        hay_que_pintar = true;
                     } else if abierto.as_ref().is_some_and(|a| a.info.is_some()) {
                         // Con el panel abierto, la columna de la derecha es
                         // suya: no se pincha ni el historial ni la caja.
@@ -377,20 +425,9 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                             .boton_adjuntar(a.alto_caja.get(), escala)
                             .contiene(l)
                     }) {
-                        // Adjuntar: el dialogo del sistema, que es lo que en
-                        // Android hace el SAF.
-                        let rutas = pixpin_shell::elegir::pedir_ficheros(ventana.handle());
-                        if let Some(a) = abierto.as_mut() {
-                            let hechos = meter_ficheros(ubicacion, a, &identidad, &rutas);
-                            if hechos > 0 {
-                                a.scroll = None;
-                                if let Some(i) = elegida {
-                                    fichas[i].tocado = a.ficha.tocado;
-                                    fichas[i].resumen = a.ficha.resumen.clone();
-                                }
-                            }
-                            a.colocado.borrow_mut().ancho = 0;
-                        }
+                        // El clip despliega su menu; lo que se adjunta se
+                        // decide ahi, no aqui.
+                        menu_adjuntar = !menu_adjuntar;
                         buscando = false;
                         hay_que_pintar = true;
                     } else if abierto.as_ref().is_some_and(|a| {
@@ -531,6 +568,12 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     busqueda.pop();
                     orden = filtrar(&fichas, &busqueda);
                     scroll = 0;
+                    hay_que_pintar = true;
+                }
+                // Escapar cierra primero lo que este desplegado encima: el
+                // menu antes que el buscador, y los dos antes que la ventana.
+                EventoOverlay::Tecla { vk, .. } if menu_adjuntar && vk == VK_ESCAPE => {
+                    menu_adjuntar = false;
                     hay_que_pintar = true;
                 }
                 // Escapar del buscador lo limpia y suelta el foco, antes que
@@ -710,6 +753,11 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                             None => {
                                 pintar_historial(p, &disposicion, &c, a, alto_texto);
                                 pintar_redaccion(p, &disposicion, &c, a, alto_texto);
+                                // El ultimo, porque se despliega encima de
+                                // todo. Mide sus rotulos aunque este
+                                // cerrado: el raton los necesita para saber
+                                // donde cae el menu en cuanto se abra.
+                                pintar_menu(p, &disposicion, &c, a, marco, menu_adjuntar);
                             }
                         }
                     }
@@ -760,6 +808,9 @@ struct Abierto {
     /// que es quien tiene la fuente; el raton lo necesita para saber en cual
     /// se pulso.
     anchos_pestanas: std::cell::RefCell<Vec<f32>>,
+    /// Y lo mismo para los rotulos del menu del clip: el ancho del menu lo
+    /// manda el mas largo, y solo se sabe con la fuente delante.
+    anchos_menu: std::cell::RefCell<Vec<f32>>,
     /// Desde arriba. `None` es «pegado al final», que es como se abre y
     /// como se queda hasta que el usuario sube.
     scroll: Option<i32>,
@@ -1472,6 +1523,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         scroll_info: 0,
         alto_info: std::cell::Cell::new(0),
         anchos_pestanas: std::cell::RefCell::new(Vec::new()),
+        anchos_menu: std::cell::RefCell::new(Vec::new()),
         alto_caja: std::cell::Cell::new(0),
         scroll: None,
         alto: std::cell::Cell::new(0),
@@ -1753,6 +1805,122 @@ fn filtrar(fichas: &[pixpin_proyecto::almacen::Ficha], busqueda: &str) -> Vec<us
 
 /// Copia unos ficheros al proyecto y los deja como mensajes. Devuelve
 /// cuantos entraron: uno que falle no puede llevarse los demas.
+/// El menu del clip, encima de todo lo demas.
+///
+/// Mide sus rotulos SIEMPRE, este abierto o cerrado, y los apunta: el ancho
+/// del menu depende del mas largo, y el raton tiene que poder colocarlo
+/// igual que el pintado desde el primer clic, sin esperar a un fotograma.
+fn pintar_menu(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, marco: Rect, abierto: bool) {
+    let (tema, escala, textos) = (c.tema, c.escala, c.textos);
+    let e = escala as f32 / 100.0;
+    let rotulos: Vec<String> = menu::Entrada::TODAS
+        .iter()
+        .map(|n| textos.t(n.clave()))
+        .collect();
+    let anchos: Vec<f32> = rotulos
+        .iter()
+        .map(|r| p.medir_texto(r, menu::TEXTO_TAM * e).0)
+        .collect();
+    *a.anchos_menu.borrow_mut() = anchos;
+    if !abierto {
+        return;
+    }
+    let m = menu_del_clip(d, a, marco, escala);
+    p.rellenar_redondeado(rf(m.caja), menu::RADIO as f32 * e, tema.cabecera);
+    for (n, rotulo) in rotulos.iter().enumerate() {
+        let fila = m.fila(n, escala);
+        let icono = match menu::Entrada::TODAS[n] {
+            menu::Entrada::Imagen => &pixpin_render::iconos_excalidraw::IMAGE_ICON,
+            menu::Entrada::Archivo => &pixpin_render::iconos_excalidraw::FILE,
+            menu::Entrada::Lienzo => &pixpin_render::iconos_excalidraw::FREEDRAW_ICON,
+        };
+        p.icono(icono, rf(m.icono(fila, escala)), tema.apagado);
+        let (_, alto_texto) = p.medir_texto(rotulo, menu::TEXTO_TAM * e);
+        let x = m.texto(fila, escala) as f32;
+        p.texto_linea(
+            rotulo,
+            x,
+            fila.y as f32 + (fila.alto as f32 - alto_texto) / 2.0,
+            menu::TEXTO_TAM * e,
+            (m.caja.derecha() as f32 - x - menu::RELLENO_DERECHA as f32 * e).max(0.0),
+            tema.texto,
+        );
+    }
+}
+
+/// Donde cae el menu del clip, con los rotulos que midio el pintado.
+///
+/// Se calcula igual al pintar y al pulsar, en vez de guardarse: un menu
+/// guardado y una ventana que cambia de tamano dejarian de coincidir, y se
+/// pulsaria una entrada distinta de la que se ve.
+fn menu_del_clip(d: &Disposicion, a: &Abierto, marco: Rect, escala: u32) -> menu::Menu {
+    let anchos = a.anchos_menu.borrow();
+    menu::desplegar(
+        d.boton_adjuntar(a.alto_caja.get(), escala),
+        Rect {
+            x: 0,
+            y: 0,
+            ancho: marco.ancho,
+            alto: marco.alto,
+        },
+        &anchos,
+        // La letra del menu, no la de la caja de escribir: si fuera esa, las
+        // filas crecerian al escribir un mensaje largo.
+        (menu::TEXTO_TAM * escala as f32 / 100.0).ceil() as u32,
+        escala,
+    )
+}
+
+/// Crea un lienzo vacio en el proyecto y lo anuncia en el cuaderno.
+///
+/// El mensaje lleva `referencia` (el id, que es lo que lee el movil) Y
+/// `ruta` (relativa, para poder abrirlo desde aqui): Android usa la primera
+/// y este equipo la segunda, y ninguna de las dos sobra.
+fn crear_lienzo(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Result<()> {
+    use pixpin_proyecto::{almacen, cuaderno};
+    let raiz = ubicacion.raiz();
+    let id = pixpin_proyecto::codigos::nuevo();
+    let ruta = almacen::lienzo(raiz, &a.ficha.id, &id);
+    if let Some(padre) = ruta.parent() {
+        std::fs::create_dir_all(padre)?;
+    }
+    let json = pixpin_motor2d::excalidraw::escribir(&pixpin_motor2d::excalidraw::Lienzo::vacio());
+    std::fs::write(&ruta, &json)?;
+
+    let cuando = pixpin_shell::entorno::ahora_local_ms();
+    let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let nombre = format!("{id}.excalidraw");
+    let mut mensaje = cuaderno::Mensaje::adjunto(
+        cuaderno::Clase::Dibujo,
+        &nombre,
+        &format!("lienzos/{nombre}"),
+        json.len() as i64,
+        &cuaderno::Sello {
+            cuando,
+            numero,
+            aparato: aparato.to_string(),
+            proyecto: a.ficha.id.clone(),
+        },
+    );
+    mensaje.referencia = Some(id);
+    cuaderno::anadir(&almacen::carpeta(raiz, &a.ficha.id), &mensaje)?;
+
+    // Un lienzo recien creado esta vacio, y `leer_vista` devuelve `None` a
+    // proposito para los vacios: la burbuja ensena su nombre hasta que se
+    // dibuje algo.
+    a.vistas.push(leer_vista(ubicacion, &a.ficha.id, &mensaje));
+    a.mensajes.push(mensaje);
+    a.ficha.tocado = cuando;
+    a.ficha.resumen = nombre;
+    let mut indice = almacen::Indice::leer(raiz);
+    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == a.ficha.id) {
+        f.tocado = a.ficha.tocado;
+        f.resumen = a.ficha.resumen.clone();
+        indice.guardar(raiz)?;
+    }
+    Ok(())
+}
+
 fn meter_ficheros(
     ubicacion: &Ubicacion,
     a: &mut Abierto,

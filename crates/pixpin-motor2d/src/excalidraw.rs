@@ -82,6 +82,20 @@ pub struct Lienzo {
 }
 
 impl Lienzo {
+    /// Un lienzo recien creado, sin nada dentro.
+    ///
+    /// Hace falta porque `escala_no_entendida` es privado y desde fuera de
+    /// este modulo no se puede escribir un `Lienzo` entero a mano. Lo demas
+    /// —`type`, `version`, `appState`— lo pone `escribir`.
+    pub fn vacio() -> Lienzo {
+        Lienzo {
+            entradas: Vec::new(),
+            resto: Map::new(),
+            escala: None,
+            escala_no_entendida: None,
+        }
+    }
+
     /// Los elementos que sabemos dibujar, en orden.
     pub fn elementos(&self) -> Vec<Elemento> {
         self.entradas
@@ -685,6 +699,20 @@ mod pruebas {
             panic!("deberia seguir siendo lapiz");
         };
         assert_eq!(p2, puntos, "la ida y vuelta movio el trazo");
+    }
+
+    #[test]
+    fn un_lienzo_vacio_se_escribe_y_se_vuelve_a_leer() {
+        let json = escribir(&Lienzo::vacio());
+        let leido = leer(&json).expect("lo que escribimos tiene que poder leerse");
+        assert!(leido.entradas.is_empty());
+        assert_eq!(leido.cuantos_ajenos(), 0);
+        // Y se declara como lo que es, o el movil no lo abrira.
+        let mapa: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(mapa["type"], "excalidraw");
+        // Caso negativo: sin `elements` no hay lienzo que leer, por bien que
+        // este el resto del JSON.
+        assert!(leer(r#"{"type":"excalidraw"}"#).is_err());
     }
 
     #[test]

@@ -15,10 +15,12 @@ pub mod chat;
 pub mod historial;
 pub mod info;
 pub mod lupa;
+pub mod menu;
 pub mod overlay;
 pub mod panel;
 pub mod panel_lateral;
 pub mod propiedades;
+pub mod resaltado;
 
 pub use anotador::{
     Anotador, EfectoAnotador, EventoAnotador, Herramienta, TeclaAnotador, UMBRAL_ARRASTRE,

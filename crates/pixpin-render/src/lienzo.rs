@@ -444,6 +444,21 @@ impl Pintor<'_> {
         fuente: Option<RectF>,
         modo: Interpolacion,
     ) {
+        self.bitmap_translucido(b, destino, fuente, modo, 1.0);
+    }
+
+    /// Como `bitmap_con`, pero atenuado. Lo pide la imagen incrustada en el
+    /// lienzo: el panel de propiedades solo le deja tocar la opacidad, asi
+    /// que si el dibujo la ignorara, el unico control de una imagen no haria
+    /// nada.
+    pub fn bitmap_translucido(
+        &self,
+        b: &ID2D1Bitmap1,
+        destino: RectF,
+        fuente: Option<RectF>,
+        modo: Interpolacion,
+        opacidad: f32,
+    ) {
         let fuente_d2d = fuente.map(|f| f.a_d2d());
         // SAFETY: dentro del fotograma; bitmap del mismo dispositivo D2D
         // (obligacion del llamante: todos los bitmaps salen de este motor).
@@ -451,7 +466,7 @@ impl Pintor<'_> {
             self.motor.contexto().DrawBitmap(
                 b,
                 Some(&destino.a_d2d()),
-                1.0,
+                opacidad.clamp(0.0, 1.0),
                 modo.a_d2d(),
                 fuente_d2d.as_ref().map(|f| f as *const _),
                 None,

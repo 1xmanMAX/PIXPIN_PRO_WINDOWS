@@ -12,7 +12,11 @@ use std::path::{Path, PathBuf};
 fn capa(nombre: &str) -> Option<u8> {
     Some(match nombre {
         "pixpin-geom" | "pixpin-model" | "pixpin-nivel" => 0,
-        "pixpin-shell" | "pixpin-render" | "pixpin-gpu" | "pixpin-codec" | "pixpin-motor2d" => 1,
+        // `pixpin-sincro` es el cable de WiFi: solo criptografia y JSON, sin
+        // depender de ningun crate de PixPin, asi que vive abajo del todo
+        // con los demas cimientos.
+        "pixpin-shell" | "pixpin-render" | "pixpin-gpu" | "pixpin-codec" | "pixpin-motor2d"
+        | "pixpin-sincro" => 1,
         "pixpin-capture" | "pixpin-pin" | "pixpin-pdf" | "pixpin-ocr" | "pixpin-record"
         | "pixpin-store" | "pixpin-proyecto" => 2,
         "pixpin-ui" | "pixpin-flow" | "pixpin-plugin" => 3,
@@ -48,12 +52,12 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_diecinueve_paquetes() {
+fn estan_los_veinte_paquetes() {
     let encontrados = manifiestos();
     assert_eq!(
         encontrados.len(),
-        19,
-        "se esperan 18 crates de libreria mas el ejecutable, encontrados: {:?}",
+        20,
+        "se esperan 19 crates de libreria mas el ejecutable, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }
