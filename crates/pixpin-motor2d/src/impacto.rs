@@ -18,7 +18,11 @@ pub const TOLERANCIA: f32 = 6.0;
 
 /// Si el punto toca el elemento.
 pub fn toca(e: &Elemento, p: Punto2) -> bool {
-    if e.borrado {
+    // Un elemento bloqueado se ve pero no se toca: es lo que se pide al
+    // bloquear un plano de fondo para dibujar encima sin arrastrarlo. Va
+    // aqui, en el picado, y no en cada sitio que elige: asi lo respetan a la
+    // vez el clic, la marquesina y la goma, sin que nadie se acuerde.
+    if e.borrado || e.bloqueado {
         return false;
     }
     // El angulo se deshace sobre el punto, no sobre la figura: girar el punto
@@ -169,7 +173,7 @@ pub fn dentro_de(elementos: &[Elemento], caja: (f32, f32, f32, f32)) -> Vec<u64>
     let (my0, my1) = (my0.min(my1), my0.max(my1));
     elementos
         .iter()
-        .filter(|e| !e.borrado)
+        .filter(|e| !e.borrado && !e.bloqueado)
         .filter(|e| {
             esquinas_giradas(e)
                 .iter()
@@ -204,6 +208,7 @@ mod pruebas {
             version: 0,
             borrado: false,
             grupos: Vec::new(),
+            bloqueado: false,
         }
     }
 

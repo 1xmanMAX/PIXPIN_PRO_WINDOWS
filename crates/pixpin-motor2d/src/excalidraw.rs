@@ -393,6 +393,7 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
             .map(|s| s as u32)
             .unwrap_or(1),
         borrado: false,
+        bloqueado: v.get("locked").and_then(Value::as_bool).unwrap_or(false),
         grupos: v
             .get("groupIds")
             .and_then(Value::as_array)
@@ -463,6 +464,7 @@ fn elemento_hacia(e: &Elemento, original: &Value) -> Value {
     );
     mapa.insert("seed".into(), Value::from(e.semilla));
     mapa.insert("isDeleted".into(), Value::Bool(e.borrado));
+    mapa.insert("locked".into(), Value::Bool(e.bloqueado));
     // Se escribe siempre, tambien vacio: si solo se escribiera cuando hay
     // grupos, desagrupar en Windows dejaria los groupIds viejos del
     // original y el movil los volveria a ver agrupados.
@@ -1095,6 +1097,7 @@ mod pruebas {
                 version: 0,
                 borrado: false,
                 grupos: Vec::new(),
+                bloqueado: false,
             },
             original: Box::new(Value::Object(Map::new())),
         });

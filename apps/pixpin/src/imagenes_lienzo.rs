@@ -245,6 +245,7 @@ pub fn elemento_imagen(id_objeto: u64, x: f32, y: f32, ancho: f32, alto: f32) ->
         version: 0,
         borrado: false,
         grupos: Vec::new(),
+        bloqueado: false,
     }
 }
 

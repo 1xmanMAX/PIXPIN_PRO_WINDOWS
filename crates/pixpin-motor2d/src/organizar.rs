@@ -228,7 +228,7 @@ mod pruebas {
     use super::*;
     use crate::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
 
-    fn rect(x: f32, y: f32, ancho: f32, alto: f32) -> Elemento {
+    pub(super) fn rect(x: f32, y: f32, ancho: f32, alto: f32) -> Elemento {
         Elemento {
             id: 0,
             figura: Figura::Rectangulo,
@@ -248,6 +248,7 @@ mod pruebas {
             version: 0,
             borrado: false,
             grupos: Vec::new(),
+            bloqueado: false,
         }
     }
 
@@ -555,5 +556,112 @@ mod pruebas {
             orden_final, orden_despues_al_frente,
             "tras treinta ciclos de deshacer y rehacer, la lista es identica a despues de al_frente"
         );
+    }
+}
+
+/// Bloquea o desbloquea lo elegido (`locked` de Excalidraw). Devuelve si
+/// cambio algo.
+///
+/// Todo a la vez y al mismo estado: con una seleccion mixta manda bloquear,
+/// que es lo que pide quien pulsa la tecla mirando algo suelto. Al bloquear
+/// se suelta la seleccion, porque lo bloqueado ya no se puede elegir y unos
+/// tiradores sobre algo que no se mueve serian una mentira.
+pub fn bloquear(escena: &mut Escena, sel: &mut Seleccion) -> bool {
+    // Sin nada elegido, desbloquea TODO. Es la unica salida posible: lo
+    // bloqueado no se puede elegir, asi que sin esto quedaria bloqueado para
+    // siempre y la tecla seria una trampa.
+    if sel.cuantos() == 0 {
+        return desbloquear_todo(escena);
+    }
+    let ids: Vec<u64> = sel.ids().to_vec();
+    let hay_suelto = ids
+        .iter()
+        .filter_map(|id| escena.buscar(*id))
+        .any(|e| !e.bloqueado);
+    escena.abrir_paso();
+    for id in &ids {
+        escena.apuntar_edicion(*id);
+        if let Some(e) = escena.buscar_mut(*id) {
+            e.bloqueado = hay_suelto;
+            e.tocar();
+        }
+    }
+    escena.cerrar_paso();
+    if hay_suelto {
+        sel.limpiar();
+    }
+    true
+}
+
+/// Suelta todo lo bloqueado de la escena. Devuelve si habia algo.
+fn desbloquear_todo(escena: &mut Escena) -> bool {
+    let ids: Vec<u64> = escena
+        .elementos
+        .iter()
+        .filter(|e| e.bloqueado && !e.borrado)
+        .map(|e| e.id)
+        .collect();
+    if ids.is_empty() {
+        return false;
+    }
+    escena.abrir_paso();
+    for id in ids {
+        escena.apuntar_edicion(id);
+        if let Some(e) = escena.buscar_mut(id) {
+            e.bloqueado = false;
+            e.tocar();
+        }
+    }
+    escena.cerrar_paso();
+    true
+}
+
+#[cfg(test)]
+mod pruebas_bloqueo {
+    use super::pruebas::rect;
+    use super::*;
+    use crate::Punto2;
+    use crate::impacto;
+
+    fn escena_con_dos() -> (Escena, Vec<u64>) {
+        let mut escena = Escena::nueva();
+        let ids = (0..2)
+            .map(|n| escena.anadir(rect(100.0 * n as f32, 0.0, 50.0, 50.0)))
+            .collect();
+        (escena, ids)
+    }
+
+    #[test]
+    fn lo_bloqueado_se_ve_pero_no_se_toca() {
+        let (mut escena, ids) = escena_con_dos();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos(vec![ids[0]]);
+        assert!(bloquear(&mut escena, &mut sel));
+        assert_eq!(sel.cuantos(), 0, "bloquear suelta lo que tenia elegido");
+
+        let dentro = Punto2::nuevo(110.0, 10.0);
+        assert!(
+            !impacto::toca(escena.buscar(ids[0]).unwrap(), Punto2::nuevo(110.0, 10.0)),
+            "el clic lo atraviesa"
+        );
+        let _ = dentro;
+        assert!(
+            !impacto::dentro_de(&escena.elementos, (-10.0, -10.0, 500.0, 500.0)).contains(&ids[0]),
+            "y la marquesina tampoco se lo lleva"
+        );
+    }
+
+    #[test]
+    fn sin_nada_elegido_la_misma_tecla_desbloquea_todo() {
+        let (mut escena, ids) = escena_con_dos();
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos(ids.clone());
+        assert!(bloquear(&mut escena, &mut sel));
+
+        // Caso negativo: sin nada bloqueado no hay nada que hacer.
+        let mut vacia = Seleccion::nueva();
+        assert!(bloquear(&mut escena, &mut vacia), "los suelta");
+        assert!(escena.elementos.iter().all(|e| !e.bloqueado));
+        assert!(!bloquear(&mut escena, &mut vacia), "y ya no hay mas");
     }
 }

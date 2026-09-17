@@ -174,6 +174,11 @@ pub struct Elemento {
     /// verdad sobre lo mismo.
     #[serde(default)]
     pub grupos: Vec<String>,
+    /// Bloqueado: se ve pero no se puede elegir ni mover (`locked` de
+    /// Excalidraw). Es lo que se usa para dejar quieto un plano de fondo y
+    /// dibujar encima sin arrastrarlo sin querer.
+    #[serde(default)]
+    pub bloqueado: bool,
 }
 
 fn relleno_solido() -> EstiloRelleno {
@@ -325,6 +330,7 @@ mod pruebas {
             version: 0,
             borrado: false,
             grupos: Vec::new(),
+            bloqueado: false,
         }
     }
 

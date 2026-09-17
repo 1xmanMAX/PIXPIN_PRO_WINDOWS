@@ -2430,6 +2430,7 @@ mod pruebas {
             version: 1,
             borrado: false,
             grupos: Vec::new(),
+            bloqueado: false,
         }
     }
 

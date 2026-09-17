@@ -737,6 +737,7 @@ mod pruebas {
             version: 0,
             borrado: false,
             grupos: Vec::new(),
+            bloqueado: false,
         }
     }
 

@@ -635,6 +635,7 @@ impl Gesto {
             version: 0,
             borrado: false,
             grupos: Vec::new(),
+            bloqueado: false,
         }
     }
 
@@ -1355,6 +1356,7 @@ mod pruebas {
             version: 0,
             borrado: false,
             grupos: Vec::new(),
+            bloqueado: false,
         }
     }
 
@@ -2392,6 +2394,7 @@ mod pruebas {
             version: 0,
             borrado: false,
             grupos: Vec::new(),
+            bloqueado: false,
         }
     }
 

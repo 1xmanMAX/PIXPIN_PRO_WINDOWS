@@ -838,6 +838,13 @@ pub fn abrir(
                             &mut gesto,
                             &mut escena,
                         ),
+                        // Ctrl+Shift+L bloquea y desbloquea, como en
+                        // Excalidraw: lo bloqueado se ve pero no se elige
+                        // ni se mueve, que es como se deja quieto un plano
+                        // de fondo para dibujar encima.
+                        v if v == b'L' as u32 && shift => {
+                            pixpin_motor2d::organizar::bloquear(&mut escena, &mut gesto.seleccion)
+                        }
                         _ => {
                             // Ctrl+G agrupa; con mayusculas, desagrupa. La
                             // logica ya estaba hecha y probada: le faltaba
@@ -2032,6 +2039,7 @@ mod pruebas {
             version: 0,
             borrado: false,
             grupos: Vec::new(),
+            bloqueado: false,
         });
 
         let mut gesto = Gesto::nuevo();
@@ -2397,6 +2405,7 @@ mod pruebas {
             version: 0,
             borrado: false,
             grupos: Vec::new(),
+            bloqueado: false,
         };
         let mut cache = Cache::nueva();
 
