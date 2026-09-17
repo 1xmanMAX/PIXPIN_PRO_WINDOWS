@@ -38,6 +38,9 @@ const VK_ESCAPE: u32 = 0x1B;
 const VK_RETROCESO: u32 = 0x08;
 const VK_ENTRAR: u32 = 0x0D;
 const VK_V: u32 = 0x56;
+/// El lado mayor de la vista previa de una foto, guardada: el doble del ancho
+/// de la burbuja al 100 %, para que al 200 % no se vea pastosa.
+const PREVIA_LADO: u32 = 2 * pixpin_ui::historial::VISTA_ANCHO;
 
 /// Los colores de un tema.
 struct Tema {
@@ -226,7 +229,7 @@ static ABIERTA: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize:
 /// bombeando. Todo lo que la ventana necesita nace dentro del hilo: su
 /// dispositivo de dibujo, sus textos y su apartamento COM (los dialogos de
 /// abrir ficheros lo exigen en STA).
-pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion) {
+pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, lienzo: OpcionesLienzo) {
     use std::sync::atomic::Ordering;
     let ya = ABIERTA.load(Ordering::SeqCst);
     if ya > 0 {
@@ -245,7 +248,7 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion) {
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
-            let hecho = Recursos::nuevos().and_then(|r| abrir(&r, &textos, &ubicacion));
+            let hecho = Recursos::nuevos().and_then(|r| abrir(&r, &textos, &ubicacion, lienzo));
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir el chat de proyectos");
             }
@@ -257,7 +260,12 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion) {
     }
 }
 
-pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Result<()> {
+pub fn abrir(
+    recursos: &Recursos,
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+    lienzo: OpcionesLienzo,
+) -> Result<()> {
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
     let monitor = monitores
         .principal()
@@ -356,6 +364,8 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     // a cambiar de proyecto a proposito: van por ruta, y volver al anterior no
     // tiene por que releerlas del disco.
     let mut miniaturas = crate::miniaturas::Miniaturas::nuevo();
+    // Las de las burbujas, mas grandes: la vista previa mide 260 px.
+    let mut previas = crate::miniaturas::Miniaturas::con_lado(PREVIA_LADO);
     // Los ficheros que esperan un si o un no. Meter algo en el cuaderno no se
     // deshace, asi que se pregunta antes.
     let mut pendientes: Option<Pendientes> = None;
@@ -553,7 +563,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         pixpin_ui::historial::mensaje_en(area, &c.puestos, scroll, l)
                             .map(|i| (a, i))
                     }) {
-                        abrir_mensaje(ubicacion, a, indice);
+                        abrir_mensaje(ubicacion, a, indice, lienzo);
                         buscando = false;
                     } else if disposicion.boton_nuevo(escala).contiene(l) {
                         // Proyecto nuevo: se crea, se pone el primero y se
@@ -979,6 +989,13 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
 
         if hay_que_pintar {
             hay_que_pintar = false;
+            // Las fotos del historial que se ven, igual que las del panel.
+            if let Some(a) = abierto.as_ref().filter(|a| a.info.is_none()) {
+                let rutas = fotos_del_historial(a, &disposicion, escala);
+                if !rutas.is_empty() {
+                    previas.asegurar(&rutas, &motor);
+                }
+            }
             // Las fotos que se van a ver, leidas y subidas ANTES de empezar
             // el fotograma: crear recursos de dibujo a medias no se puede, y
             // leer del disco dentro del fotograma se notaria.
@@ -1041,6 +1058,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                             textos,
                             ahora,
                             miniaturas: &miniaturas,
+                            previas: &previas,
                         };
                         match a.info {
                             // Con la informacion abierta, la columna de la
@@ -1068,13 +1086,22 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     // del viejo y D2D los rechazaria. Los pixeles se quedan,
                     // asi que volver a subirlos no toca el disco.
                     miniaturas.soltar();
+                    previas.soltar();
                 }
                 let _ = superficie.presentar();
+            }
+            // La colocacion de las burbujas se hace al pintar, asi que las
+            // fotos que se ven solo se conocen DESPUES. Si falta alguna, otra
+            // vuelta: sin ella no saldrian hasta mover el raton.
+            if let Some(a) = abierto.as_ref().filter(|a| a.info.is_none()) {
+                hay_que_pintar = fotos_del_historial(a, &disposicion, escala)
+                    .iter()
+                    .any(|r| previas.pendiente(r));
             }
         }
         // Sin nada que hacer, el hilo duerme: la ventana abierta en reposo no
         // cuesta CPU.
-        pixpin_shell::overlay::esperar_eventos(None);
+        pixpin_shell::overlay::esperar_eventos(if hay_que_pintar { Some(0) } else { None });
     }
 
     // Donde quedo, para la proxima vez.
@@ -1592,10 +1619,14 @@ struct Pinta<'a> {
     /// Las fotos ya leidas. Solo se consultan: lo que falte por cargar se
     /// preparo antes de empezar el fotograma.
     miniaturas: &'a crate::miniaturas::Miniaturas,
+    /// Las mismas fotos, mas grandes, para la vista previa de las burbujas.
+    previas: &'a crate::miniaturas::Miniaturas,
 }
 
 fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_caja: u32) {
     let (tema, escala, textos, ahora) = (c.tema, c.escala, c.textos, c.ahora);
+    // Aparte, porque mas abajo `c` pasa a ser la colocacion.
+    let previas = c.previas;
     use pixpin_ui::historial as h;
     let e = escala as f32 / 100.0;
     if d.chat.ancho == 0 {
@@ -1854,6 +1885,17 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
             match vista {
                 Ojeada::Lienzo(l) => pintar_lienzo(p, l, hoja),
                 Ojeada::Tabla(t) => pintar_ojeada_tabla(p, tema, escala, t, hoja),
+                // La foto llena la hoja, recortada como en Telegram. Mientras
+                // no esta leida se queda el papel, que ya dice «aqui va algo».
+                Ojeada::Foto => {
+                    let foto = ruta_del_mensaje(&a.raiz, &a.ficha.id, m)
+                        .and_then(|ruta| previas.ya(&ruta));
+                    if let Some((b, w, alto)) = foto {
+                        p.empujar_recorte(hoja);
+                        crate::miniaturas::pintar_recortado(p, b, hoja, w, alto);
+                        p.soltar_recorte();
+                    }
+                }
             }
             texto_y += alto_vista + h::RELLENO_Y as f32 * e;
         }
@@ -1999,11 +2041,10 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
         alto: icono_lado,
     };
     let adjuntar = d.boton_adjuntar(alto_texto, escala);
-    p.icono(
-        &pixpin_render::iconos_excalidraw::FILE,
-        centrado(adjuntar),
-        tema.apagado,
-    );
+    // Un clip y en el color de enviar, como en Telegram. Antes era el
+    // icono de fichero en gris apagado: no se veia, y el usuario pulsaba el
+    // «+» azul de la lista creyendo que era este, y creaba proyectos.
+    p.icono(&CLIP, centrado(adjuntar), tema.enviar);
     // El de enviar solo se ensena si hay algo que enviar.
     if !a.borrador.trim().is_empty() {
         let enviar = d.boton_enviar(alto_texto, escala);
@@ -2406,6 +2447,24 @@ fn ruta_del_mensaje(
     Some(pixpin_proyecto::almacen::carpeta(raiz, proyecto).join(relativa))
 }
 
+/// Las fotos de las burbujas que se ven ahora mismo en el historial.
+///
+/// Usa la colocacion del ultimo fotograma: la de este se calcula al pintar.
+/// Antes del primero no hay ninguna, y la vuelta de despues las pide.
+fn fotos_del_historial(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::path::PathBuf> {
+    use pixpin_ui::historial as h;
+    let area = d.historial(a.alto_caja.get(), a.fijado.is_some(), escala);
+    let c = a.colocado.borrow();
+    let scroll = a
+        .scroll
+        .unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
+    let (primero, cuantos) = h::visibles(area, &c.puestos, scroll);
+    (primero..primero + cuantos)
+        .filter(|i| matches!(a.vistas.get(*i), Some(Some(Ojeada::Foto))))
+        .filter_map(|i| ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(i)?))
+        .collect()
+}
+
 /// Las fotos que se ven ahora mismo en el panel, en cuadricula o en lista.
 ///
 /// Solo las visibles, y en el orden en que se ven: con trescientas fotos, lo
@@ -2683,6 +2742,13 @@ fn leer_vista(
     m: &pixpin_proyecto::cuaderno::Mensaje,
 ) -> Option<Ojeada> {
     use pixpin_proyecto::cuaderno::Clase;
+    // Una foto ensena su vista previa si su fichero esta en este equipo;
+    // una que llego del movil sin el fichero se queda en texto.
+    if m.clase == Some(Clase::Imagen) {
+        return ruta_del_mensaje(ubicacion.raiz(), proyecto, m)
+            .filter(|r| r.is_file())
+            .map(|_| Ojeada::Foto);
+    }
     // Una tabla no tiene fichero: su documento es el propio texto del
     // mensaje, asi que se lee sin tocar el disco.
     if m.clase == Some(Clase::MiniApp)
@@ -2733,6 +2799,9 @@ enum Ojeada {
     /// En caja porque una `Tabla` es mucho mas grande que un `LienzoVisto`, y
     /// sin ella todas las entradas del vector pagarian ese tamano.
     Tabla(Box<pixpin_proyecto::tabla::Tabla>),
+    /// Una foto del proyecto. No guarda nada: su fichero sale del mensaje,
+    /// y sus pixeles, de las vistas previas, que se cargan poco a poco.
+    Foto,
 }
 
 /// Una ojeada a una tabla dentro de su burbuja: las primeras celdas y ya.
@@ -2859,10 +2928,18 @@ fn pintar_lienzo(p: &Pintor, vista: &LienzoVisto, destino: RectF) {
 /// que abrir algo que el usuario no pidio. Los dibujos todavia no abren el
 /// editor: escribir de vuelta el `.excalidraw` sin perder lo que el movil
 /// mete y aqui no se entiende es un trabajo aparte, y a medias seria peor.
-fn abrir_mensaje(ubicacion: &Ubicacion, a: &Abierto, indice: usize) {
+fn abrir_mensaje(ubicacion: &Ubicacion, a: &Abierto, indice: usize, lienzo: OpcionesLienzo) {
     let Some(m) = a.mensajes.get(indice) else {
         return;
     };
+    // Una foto se abre en el lienzo, centrada, para dibujar encima: es lo
+    // que el usuario pidio en vez del visor de Windows.
+    if matches!(a.vistas.get(indice), Some(Some(Ojeada::Foto))) {
+        if let Some(ruta) = ruta_del_mensaje(ubicacion.raiz(), &a.ficha.id, m) {
+            abrir_foto_en_lienzo(&ruta, lienzo);
+            return;
+        }
+    }
     let Some(relativa) = m.ruta.as_deref().filter(|r| !r.is_empty()) else {
         return;
     };
@@ -3077,7 +3154,14 @@ fn pintar_info(
                 p.soltar_recorte();
                 continue;
             }
-            match a.vistas.get(indice).and_then(|v| v.as_ref()) {
+            // Una foto que aun no esta leida sale como las demas cosas sin
+            // miniatura: con su nombre, no con un papel en blanco.
+            let vista = a
+                .vistas
+                .get(indice)
+                .and_then(|v| v.as_ref())
+                .filter(|v| !matches!(v, Ojeada::Foto));
+            match vista {
                 // Un dibujo se ensena dibujado. Sobre papel blanco y no
                 // sobre el gris de la celda: los trazos vienen de un lienzo
                 // claro y sobre gris se pierden, igual que en las burbujas.
@@ -3088,6 +3172,7 @@ fn pintar_info(
                     match vista {
                         Ojeada::Lienzo(l) => pintar_lienzo(p, l, dentro),
                         Ojeada::Tabla(t) => pintar_ojeada_tabla(p, tema, escala, t, dentro),
+                        Ojeada::Foto => {}
                     }
                     p.soltar_recorte();
                 }
@@ -3213,3 +3298,108 @@ mod pruebas {
         assert!(p.pie.is_empty());
     }
 }
+
+/// Lo que el editor necesita saber de los ajustes de la aplicacion. Viaja
+/// hasta el hilo del chat porque ahi no hay `Ajustes`: solo lo que el
+/// lienzo usa.
+#[derive(Debug, Clone, Copy)]
+pub struct OpcionesLienzo {
+    pub enganche: pixpin_motor2d::enganche::Ajustes,
+    pub nivel: pixpin_nivel::Nivel,
+    pub medir_fotogramas: bool,
+}
+
+/// Donde se guarda lo dibujado sobre una foto: a su lado, con el mismo
+/// nombre y `.pixpin2d` detras (`fachada.jpg.pixpin2d`). La foto no se toca
+/// nunca (D48), y el nombre entero evita que `a.jpg` y `a.png` compartan
+/// dibujo.
+fn dibujo_de_foto(foto: &std::path::Path) -> std::path::PathBuf {
+    let mut s = foto.as_os_str().to_owned();
+    s.push(".pixpin2d");
+    std::path::PathBuf::from(s)
+}
+
+/// Abre el editor con la foto de fondo, centrada, y guarda lo dibujado al
+/// cerrar. Bloquea el hilo del chat mientras dura, que es lo que se quiere:
+/// el editor tapa la pantalla y el chat no tiene nada que hacer.
+fn abrir_foto_en_lienzo(foto: &std::path::Path, opciones: OpcionesLienzo) {
+    let fondo = match pixpin_codec::cargar(foto) {
+        Ok(i) => i,
+        Err(e) => {
+            tracing::warn!(?e, ruta = %foto.display(), "foto que no se pudo leer para el lienzo");
+            return;
+        }
+    };
+    let dibujo = dibujo_de_foto(foto);
+    let (escena, habia) = match crate::pines::escena_para_lienzo(&dibujo) {
+        Ok(v) => v,
+        Err(e) => {
+            // Abrir en blanco y guardar al cerrar pisaria lo que hubiera.
+            tracing::error!(?e, ruta = %dibujo.display(), "dibujo corrupto; no se abre el lienzo");
+            return;
+        }
+    };
+    let resultado = crate::ventana_editor::abrir(
+        escena,
+        opciones.enganche,
+        opciones.nivel,
+        opciones.medir_fotogramas,
+        Some(fondo),
+    );
+    match resultado {
+        Ok(escena) => match crate::pines::guardar_lienzo(&dibujo, &escena, habia) {
+            Ok(guardado) => {
+                tracing::info!(guardado, ruta = %dibujo.display(), "lienzo de foto cerrado")
+            }
+            Err(e) => tracing::error!(?e, ruta = %dibujo.display(), "no se pudo guardar el lienzo"),
+        },
+        Err(e) => tracing::warn!(?e, "no se pudo abrir el lienzo de la foto"),
+    }
+}
+
+#[cfg(test)]
+mod pruebas_foto {
+    use super::dibujo_de_foto;
+    use std::path::Path;
+
+    #[test]
+    fn el_dibujo_de_una_foto_va_a_su_lado_con_el_nombre_entero() {
+        let d = dibujo_de_foto(Path::new(r"C:\p\imagenes\fachada.jpg"));
+        assert_eq!(d, Path::new(r"C:\p\imagenes\fachada.jpg.pixpin2d"));
+    }
+
+    #[test]
+    fn el_clip_es_un_trazado_que_se_entiende() {
+        // Un trazado que no se entiende no pinta nada, y el boton volveria a
+        // ser invisible sin que ninguna otra cosa lo avisara.
+        let tramos = pixpin_render::trayecto_svg::analizar(super::CLIP.trazos[0].d).unwrap();
+        assert!(tramos.len() > 4);
+    }
+
+    #[test]
+    fn dos_fotos_con_el_mismo_nombre_y_otra_extension_no_comparten_dibujo() {
+        assert_ne!(
+            dibujo_de_foto(Path::new("a.jpg")),
+            dibujo_de_foto(Path::new("a.png"))
+        );
+    }
+}
+
+/// El clip de adjuntar: «paperclip» de Tabler Icons (MIT, ver
+/// THIRD-PARTY-NOTICES.md). No esta entre los de Excalidraw, que se generan
+/// y no se editan a mano.
+const CLIP: pixpin_render::icono::Icono = pixpin_render::icono::Icono {
+    vista: (0.0, 0.0, 24.0, 24.0),
+    trazos: &[pixpin_render::icono::TrazoIcono {
+        d: "M15 7l-6.5 6.5a1.5 1.5 0 0 0 3 3l6.5 -6.5a3 3 0 0 0 -6 -6l-6.5 6.5a4.5 4.5 0 0 0 9 9l6.5 -6.5",
+        relleno: pixpin_render::icono::Pintura::Nada,
+        trazo: pixpin_render::icono::Pintura::Actual,
+        grosor: 1.75,
+        extremo_redondo: true,
+        union_redonda: true,
+        opacidad: 1.0,
+        par_impar: false,
+        matriz: None,
+        mascara: None,
+    }],
+};

@@ -2275,7 +2275,9 @@ fn tamano_de_reserva(guardado: Option<PinGuardado>) -> (u32, u32) {
 /// La escena con la que se abre el lienzo y si ya habia fichero. Un fichero
 /// corrupto es un error: abrir el lienzo con una escena vacia y guardarla al
 /// cerrar pisaria lo que el usuario tenia (tabla de errores).
-fn escena_para_lienzo(ruta: &Path) -> Result<(Escena, bool), pixpin_motor2d::ErrorFormato> {
+pub(crate) fn escena_para_lienzo(
+    ruta: &Path,
+) -> Result<(Escena, bool), pixpin_motor2d::ErrorFormato> {
     let habia = ruta.is_file();
     let escena = pixpin_motor2d::cargar(ruta)?;
     Ok((escena, habia))
@@ -2289,7 +2291,7 @@ fn hay_que_guardar_lienzo(escena: &Escena, habia_fichero: bool) -> bool {
 
 /// Guarda lo del lienzo si toca. Devuelve si escribio. `guardar` escribe a
 /// un temporal y renombra: si falla, el fichero anterior queda intacto.
-fn guardar_lienzo(
+pub(crate) fn guardar_lienzo(
     ruta: &Path,
     escena: &Escena,
     habia_fichero: bool,

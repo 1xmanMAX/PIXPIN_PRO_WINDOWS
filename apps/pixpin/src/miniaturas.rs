@@ -55,30 +55,47 @@ enum Estado {
 }
 
 /// Las miniaturas ya cargadas, por ruta.
-#[derive(Default)]
 pub struct Miniaturas {
     por_ruta: HashMap<PathBuf, Estado>,
+    /// El lado mayor con el que se guardan. El panel usa `LADO`; la vista
+    /// previa de las burbujas, que es mas grande, el suyo.
+    lado: u32,
 }
 
 impl Miniaturas {
     pub fn nuevo() -> Self {
-        Self::default()
+        Self::con_lado(LADO)
+    }
+
+    /// Con otro tamano de guardado: la vista previa de una foto en su
+    /// burbuja mide 260 px y con 164 se veria pastosa.
+    pub fn con_lado(lado: u32) -> Self {
+        Self {
+            por_ruta: HashMap::new(),
+            lado,
+        }
     }
 
     /// Carga y sube lo que haga falta de `rutas`, hasta el cupo del
     /// fotograma. Se llama ANTES de pintar, nunca dentro: crear recursos de
     /// dibujo a medio fotograma es justo lo que no se puede hacer.
-    pub fn asegurar(&mut self, rutas: &[PathBuf], motor: &MotorRender) {
+    ///
+    /// Devuelve si quedaron rutas sin leer por el cupo: quien llama tiene que
+    /// pedir otro fotograma, o las que faltan no saldrian hasta que el
+    /// usuario moviera el raton.
+    pub fn asegurar(&mut self, rutas: &[PathBuf], motor: &MotorRender) -> bool {
         let mut cupo = POR_FOTOGRAMA;
+        let mut faltan = false;
         for ruta in rutas {
             if !self.por_ruta.contains_key(ruta) {
                 if cupo == 0 {
                     // Las que faltan llegan en los fotogramas siguientes;
                     // mientras, su celda ensena el nombre.
+                    faltan = true;
                     break;
                 }
                 cupo -= 1;
-                let estado = match cargar_reducida(ruta) {
+                let estado = match cargar_reducida(ruta, self.lado) {
                     Some(m) => Estado::Hecha(m),
                     None => Estado::Imposible,
                 };
@@ -99,6 +116,7 @@ impl Miniaturas {
                 }
             }
         }
+        faltan
     }
 
     /// La miniatura ya lista de una ruta, con su tamano.
@@ -111,6 +129,13 @@ impl Miniaturas {
             Some(Estado::Hecha(m)) => Some((m.bitmap.as_ref()?, m.ancho, m.alto)),
             _ => None,
         }
+    }
+
+    /// Si una ruta todavia no se ha intentado leer. Lo que no se pudo leer
+    /// no cuenta: volver a pedirlo no lo va a arreglar, y pedir fotogramas
+    /// para nada mantendria la ventana despierta.
+    pub fn pendiente(&self, ruta: &Path) -> bool {
+        !self.por_ruta.contains_key(ruta)
     }
 
     /// Suelta los bitmaps conservando los pixeles: es lo que hay que hacer
@@ -180,7 +205,7 @@ fn recorte_central(ancho: u32, alto: u32, caja_ancho: f32, caja_alto: f32) -> Re
 }
 
 /// Lee una imagen del disco y la deja en tamano de miniatura.
-fn cargar_reducida(ruta: &Path) -> Option<Miniatura> {
+fn cargar_reducida(ruta: &Path, lado: u32) -> Option<Miniatura> {
     let imagen = pixpin_codec::imagen::cargar(ruta)
         .inspect_err(
             |e| tracing::info!(?e, ruta = %ruta.display(), "no es una imagen que sepamos leer"),
@@ -189,7 +214,7 @@ fn cargar_reducida(ruta: &Path) -> Option<Miniatura> {
     if imagen.ancho == 0 || imagen.alto == 0 {
         return None;
     }
-    let imagen = match encoger_a(imagen.ancho, imagen.alto, LADO) {
+    let imagen = match encoger_a(imagen.ancho, imagen.alto, lado) {
         None => imagen,
         Some((w, h)) => pixpin_codec::redimensionar(imagen, w, h)
             .inspect_err(|e| tracing::warn!(?e, "no se pudo reducir la miniatura"))
@@ -276,7 +301,7 @@ mod pruebas {
         let mut m = Miniaturas::nuevo();
         let ruta = Path::new("no-existe-de-verdad-0f3a.png");
         // Caso negativo: un fichero que no esta no da miniatura.
-        assert!(cargar_reducida(ruta).is_none());
+        assert!(cargar_reducida(ruta, LADO).is_none());
         m.por_ruta.insert(ruta.to_path_buf(), Estado::Imposible);
         assert_eq!(m.cuantas(), 1);
         assert!(

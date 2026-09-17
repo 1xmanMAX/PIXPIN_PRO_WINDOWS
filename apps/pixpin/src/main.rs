@@ -439,7 +439,12 @@ fn arrancar(
     // El chat de proyectos es la interfaz principal (D141): se abre al
     // arrancar, como la ventana de cualquier aplicacion. Cerrarlo deja
     // PixPin en la bandeja, con los gestos y el atajo vivos.
-    ventana_chat::lanzar(lengua, ubicacion.clone());
+    let opciones_lienzo = ventana_chat::OpcionesLienzo {
+        enganche: config.enganche,
+        nivel: decision.nivel,
+        medir_fotogramas: config.rendimiento.medir_fotogramas,
+    };
+    ventana_chat::lanzar(lengua, ubicacion.clone(), opciones_lienzo);
 
     ventana.ejecutar(|evento| {
         // Todo lo que abre el overlay de captura, en un sitio: los atajos,
@@ -663,7 +668,7 @@ fn arrancar(
             _ if comando == Some(comandos::Comando::AbrirChat) => {
                 // En su propio hilo (D141): el principal sigue atendiendo
                 // atajos y gestos mientras el chat esta abierto.
-                ventana_chat::lanzar(lengua, ubicacion.clone());
+                ventana_chat::lanzar(lengua, ubicacion.clone(), opciones_lienzo);
                 Continuar::Si
             }
             _ if comando == Some(comandos::Comando::AbrirAjustes) => {
