@@ -196,3 +196,11 @@ info-titulo = Info
 adjuntar-imagen = Photo or video
 adjuntar-archivo = File
 adjuntar-lienzo = New canvas
+confirmar-titulo = { $cuantos ->
+    [one] Add one file
+   *[other] Add { $cuantos } files
+}
+confirmar-resto = and { $cuantos } more
+confirmar-pie = Add a comment…
+confirmar-cancelar = Cancel
+confirmar-aceptar = Add

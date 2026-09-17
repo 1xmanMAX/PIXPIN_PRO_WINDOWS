@@ -197,3 +197,11 @@ info-titulo = Información
 adjuntar-imagen = Foto o vídeo
 adjuntar-archivo = Archivo
 adjuntar-lienzo = Lienzo nuevo
+confirmar-titulo = { $cuantos ->
+    [one] Añadir un archivo
+   *[other] Añadir { $cuantos } archivos
+}
+confirmar-resto = y { $cuantos } más
+confirmar-pie = Añade un comentario…
+confirmar-cancelar = Cancelar
+confirmar-aceptar = Añadir

@@ -299,6 +299,9 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     // a cambiar de proyecto a proposito: van por ruta, y volver al anterior no
     // tiene por que releerlas del disco.
     let mut miniaturas = crate::miniaturas::Miniaturas::nuevo();
+    // Los ficheros que esperan un si o un no. Meter algo en el cuaderno no se
+    // deshace, asi que se pregunta antes.
+    let mut pendientes: Option<Pendientes> = None;
     // Antes de maximizar, para poder volver.
     let mut antes_de_maximizar: Option<Rect> = None;
     let mut hay_que_pintar = true;
@@ -325,7 +328,45 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     let l = local(p);
                     // Los bordes primero: son unos pocos pixeles y si otra
                     // cosa se los quedara no se podria redimensionar.
-                    if let Some(b) = chat::borde_en(l, marco.ancho, marco.alto, escala) {
+                    // El cuadro de confirmar es modal: mientras esta, se lleva
+                    // el clic entero. Ni siquiera los bordes, porque
+                    // redimensionar la ventana lo movería debajo del raton.
+                    if let Some(p) = pendientes.as_ref() {
+                        let d = pixpin_ui::confirmar::colocar(
+                            Rect {
+                                x: 0,
+                                y: 0,
+                                ancho: marco.ancho,
+                                alto: marco.alto,
+                            },
+                            p.rutas.len(),
+                            escala,
+                        );
+                        match d.boton_en(l) {
+                            Some(pixpin_ui::confirmar::Boton::Aceptar) => {
+                                if let (Some(p), Some(a)) = (pendientes.take(), abierto.as_mut()) {
+                                    let hechos =
+                                        meter_ficheros(ubicacion, a, &identidad, &p.rutas, &p.pie);
+                                    if hechos > 0 {
+                                        a.scroll = None;
+                                        if let Some(i) = elegida {
+                                            fichas[i].tocado = a.ficha.tocado;
+                                            fichas[i].resumen = a.ficha.resumen.clone();
+                                        }
+                                    }
+                                    a.colocado.borrow_mut().ancho = 0;
+                                }
+                            }
+                            Some(pixpin_ui::confirmar::Boton::Cancelar) => {
+                                pendientes = None;
+                            }
+                            // Pulsar fuera del cuadro cancela, como el aspa de
+                            // cualquier dialogo; dentro, no hace nada.
+                            None if !d.caja.contiene(l) => pendientes = None,
+                            None => {}
+                        }
+                        hay_que_pintar = true;
+                    } else if let Some(b) = chat::borde_en(l, marco.ancho, marco.alto, escala) {
                         ventana.capturar_raton();
                         arrastre = Some(Arrastre::Borde(b));
                     } else if let Some(boton) = disposicion.boton_barra_en(l, escala) {
@@ -369,27 +410,28 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                                 }
                                 menu::Entrada::Lienzo => Vec::new(),
                             };
-                            if let Some(a) = abierto.as_mut() {
-                                let hechos = match n {
-                                    menu::Entrada::Lienzo => {
+                            match n {
+                                // Un lienzo nuevo esta vacio: no hay nada que
+                                // ensenar en un cuadro de confirmar, y
+                                // pedirlo dos veces seria un estorbo.
+                                menu::Entrada::Lienzo => {
+                                    if let Some(a) = abierto.as_mut() {
                                         match crear_lienzo(ubicacion, a, &identidad) {
-                                            Ok(()) => 1,
+                                            Ok(()) => {
+                                                a.scroll = None;
+                                                if let Some(i) = elegida {
+                                                    fichas[i].tocado = a.ficha.tocado;
+                                                    fichas[i].resumen = a.ficha.resumen.clone();
+                                                }
+                                            }
                                             Err(e) => {
-                                                tracing::warn!(?e, "no se pudo crear el lienzo");
-                                                0
+                                                tracing::warn!(?e, "no se pudo crear el lienzo")
                                             }
                                         }
-                                    }
-                                    _ => meter_ficheros(ubicacion, a, &identidad, &rutas),
-                                };
-                                if hechos > 0 {
-                                    a.scroll = None;
-                                    if let Some(i) = elegida {
-                                        fichas[i].tocado = a.ficha.tocado;
-                                        fichas[i].resumen = a.ficha.resumen.clone();
+                                        a.colocado.borrow_mut().ancho = 0;
                                     }
                                 }
-                                a.colocado.borrow_mut().ancho = 0;
+                                _ => pendientes = Pendientes::de(rutas),
                             }
                         }
                         hay_que_pintar = true;
@@ -583,6 +625,40 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                 // Escribir en la caja de abajo. Solo llega si hay un
                 // proyecto abierto: sin conversacion no hay donde guardarlo.
                 // Con el buscador enfocado, lo que se teclea va ahi.
+                // El cuadro de confirmar es modal tambien para el teclado: lo
+                // que se escribe es el pie, escapar cancela y entrar acepta.
+                EventoOverlay::Caracter(c) if pendientes.is_some() => {
+                    if c >= ' ' {
+                        if let Some(p) = pendientes.as_mut() {
+                            p.pie.push(c);
+                            hay_que_pintar = true;
+                        }
+                    }
+                }
+                EventoOverlay::Tecla { vk, .. } if pendientes.is_some() && vk == VK_RETROCESO => {
+                    if let Some(p) = pendientes.as_mut() {
+                        p.pie.pop();
+                        hay_que_pintar = true;
+                    }
+                }
+                EventoOverlay::Tecla { vk, .. } if pendientes.is_some() && vk == VK_ESCAPE => {
+                    pendientes = None;
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::Tecla { vk, .. } if pendientes.is_some() && vk == VK_ENTRAR => {
+                    if let (Some(p), Some(a)) = (pendientes.take(), abierto.as_mut()) {
+                        let hechos = meter_ficheros(ubicacion, a, &identidad, &p.rutas, &p.pie);
+                        if hechos > 0 {
+                            a.scroll = None;
+                            if let Some(i) = elegida {
+                                fichas[i].tocado = a.ficha.tocado;
+                                fichas[i].resumen = a.ficha.resumen.clone();
+                            }
+                        }
+                        a.colocado.borrow_mut().ancho = 0;
+                    }
+                    hay_que_pintar = true;
+                }
                 // La lupa del panel manda sobre todo lo demas: mientras esta
                 // encendida, lo que se teclea es lo que se busca ahi dentro,
                 // no una nota ni el buscador de la lista.
@@ -668,23 +744,15 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     // no: si no, se quedarian ahi y aparecerian en el
                     // siguiente que se abra, que seria peor que perderlas.
                     let rutas = pixpin_shell::overlay::ficheros_soltados();
-                    match abierto.as_mut() {
-                        Some(a) => {
-                            let hechos = meter_ficheros(ubicacion, a, &identidad, &rutas);
-                            if hechos > 0 {
-                                a.scroll = None;
-                                if let Some(i) = elegida {
-                                    fichas[i].tocado = a.ficha.tocado;
-                                    fichas[i].resumen = a.ficha.resumen.clone();
-                                }
-                            }
-                            a.colocado.borrow_mut().ancho = 0;
-                            hay_que_pintar = true;
-                        }
-                        None => tracing::info!(
+                    if abierto.is_some() {
+                        pendientes = Pendientes::de(rutas);
+                        menu_adjuntar = false;
+                        hay_que_pintar = true;
+                    } else {
+                        tracing::info!(
                             cuantos = rutas.len(),
                             "ficheros soltados sin proyecto abierto"
-                        ),
+                        );
                     }
                 }
                 EventoOverlay::Tecla { vk, ctrl, .. } if vk == VK_V && ctrl => {
@@ -795,6 +863,16 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     }
                 }
             }
+            // Y las del cuadro de confirmar, que son pocas y se ven todas.
+            if let Some(p) = pendientes.as_ref() {
+                let rutas: Vec<std::path::PathBuf> = p
+                    .rutas
+                    .iter()
+                    .take(pixpin_ui::confirmar::FILAS_MAXIMAS)
+                    .cloned()
+                    .collect();
+                miniaturas.asegurar(&rutas, &motor);
+            }
             if let Ok(destino) = superficie.empezar(&motor) {
                 let lista = Lista {
                     fichas: &fichas,
@@ -807,6 +885,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     busqueda: &busqueda,
                 };
                 let abierto_ref = abierto.as_ref();
+                let pendientes_ref = pendientes.as_ref();
                 let resultado = motor.dibujar(&destino, |p: &Pintor| {
                     pintar(p, &disposicion, tema, escala, textos, sobre, &lista);
                     if let Some(a) = abierto_ref {
@@ -845,6 +924,11 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                                 pintar_menu(p, &disposicion, &c, a, marco, menu_adjuntar);
                             }
                         }
+                        // Encima de todo, panel incluido: esta esperando una
+                        // respuesta y nada debe distraer de ella.
+                        if let Some(pend) = pendientes_ref {
+                            pintar_confirmar(p, &c, pend, marco);
+                        }
                     }
                 });
                 if resultado.is_err() {
@@ -868,6 +952,38 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     }
     ventana.ocultar();
     Ok(())
+}
+
+/// Los ficheros que esperan un si o un no en el cuadro de confirmar.
+struct Pendientes {
+    rutas: Vec<std::path::PathBuf>,
+    /// Lo que se escriba acompanara al primero, como el pie de una foto en
+    /// Android. Va al primero y no a todos porque repetir el mismo texto en
+    /// veinte mensajes no ayuda a nadie.
+    pie: String,
+    /// El tamano de cada uno, ya leido. Se mira una vez al abrir el cuadro y
+    /// no en cada fotograma: preguntarle al disco sesenta veces por segundo
+    /// por algo que no cambia es tirar el rato.
+    tamanos: Vec<u64>,
+}
+
+impl Pendientes {
+    /// `None` si no hay ninguna ruta: un cuadro que pregunta por nada no se
+    /// ensena, se descarta.
+    fn de(rutas: Vec<std::path::PathBuf>) -> Option<Pendientes> {
+        if rutas.is_empty() {
+            return None;
+        }
+        let tamanos = rutas
+            .iter()
+            .map(|r| std::fs::metadata(r).map(|m| m.len()).unwrap_or(0))
+            .collect();
+        Some(Pendientes {
+            rutas,
+            pie: String::new(),
+            tamanos,
+        })
+    }
 }
 
 /// El proyecto abierto en la columna de la derecha.
@@ -1913,6 +2029,163 @@ fn filtrar(fichas: &[pixpin_proyecto::almacen::Ficha], busqueda: &str) -> Vec<us
 
 /// Copia unos ficheros al proyecto y los deja como mensajes. Devuelve
 /// cuantos entraron: uno que falle no puede llevarse los demas.
+/// El cuadro que pregunta antes de meter ficheros en el proyecto.
+fn pintar_confirmar(p: &Pintor, c: &Pinta, pend: &Pendientes, marco: Rect) {
+    use pixpin_ui::confirmar as cf;
+    let (tema, escala, textos) = (c.tema, c.escala, c.textos);
+    let e = escala as f32 / 100.0;
+    let ventana = Rect {
+        x: 0,
+        y: 0,
+        ancho: marco.ancho,
+        alto: marco.alto,
+    };
+    // El velo dice que lo de debajo esta esperando una respuesta.
+    p.rellenar(rf(ventana), tema.velo);
+    let d = cf::colocar(ventana, pend.rutas.len(), escala);
+    p.rellenar_redondeado(rf(d.caja), cf::RADIO as f32 * e, tema.lista);
+    p.empujar_recorte(rf(d.caja));
+
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("cuantos", pend.rutas.len());
+    let (_, alto_titulo) = p.medir_texto("X", cf::TITULO_TAM * e);
+    p.texto_linea(
+        &textos.t_args("confirmar-titulo", &args),
+        d.cabecera.x as f32 + cf::TITULO_X as f32 * e,
+        d.cabecera.y as f32 + (d.cabecera.alto as f32 - alto_titulo) / 2.0,
+        cf::TITULO_TAM * e,
+        (d.cabecera.ancho as f32 - 2.0 * cf::TITULO_X as f32 * e).max(0.0),
+        tema.texto,
+    );
+
+    for (n, ruta) in pend.rutas.iter().enumerate().take(d.filas) {
+        let fila = d.fila(n, escala);
+        let (x, ancho) = d.texto(fila, escala);
+        let mini = d.miniatura(fila, escala);
+        // La foto de verdad si ya se leyo; si no, un recuadro. Aqui no se
+        // pide cargarla: las del cuadro se preparan antes del fotograma.
+        match c.miniaturas.ya(ruta) {
+            Some((b, w, h)) => {
+                p.empujar_recorte(rf(mini));
+                crate::miniaturas::pintar_recortado(p, b, rf(mini), w, h);
+                p.soltar_recorte();
+            }
+            None => p.rellenar_redondeado(rf(mini), cf::MINIATURA_RADIO as f32 * e, tema.chat),
+        }
+        let nombre = ruta
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        p.texto_linea(
+            &nombre,
+            x as f32,
+            fila.y as f32 + cf::NOMBRE_Y as f32 * e,
+            cf::NOMBRE_TAM * e,
+            ancho as f32,
+            tema.texto,
+        );
+        p.texto_linea(
+            &en_bytes(pend.tamanos.get(n).copied().unwrap_or(0)),
+            x as f32,
+            fila.y as f32 + cf::TAMANO_Y as f32 * e,
+            cf::TAMANO_TAM * e,
+            ancho as f32,
+            tema.apagado,
+        );
+    }
+    if let Some(linea) = d.linea_resto(escala) {
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("cuantos", d.resto);
+        let (_, alto) = p.medir_texto("X", cf::TAMANO_TAM * e);
+        p.texto_linea(
+            &textos.t_args("confirmar-resto", &args),
+            linea.x as f32 + cf::NOMBRE_X as f32 * e,
+            linea.y as f32 + (linea.alto as f32 - alto) / 2.0,
+            cf::TAMANO_TAM * e,
+            (linea.ancho as f32 - cf::NOMBRE_X as f32 * e).max(0.0),
+            tema.apagado,
+        );
+    }
+
+    // El pie, con su texto en gris mientras esta vacio.
+    let caja_pie = Rect {
+        x: d.pie.x + (cf::PIE_X as f32 * e) as i32,
+        y: d.pie.y,
+        ancho: d
+            .pie
+            .ancho
+            .saturating_sub((2.0 * cf::PIE_X as f32 * e) as u32),
+        alto: d.pie.alto,
+    };
+    let (texto_pie, color_pie) = if pend.pie.is_empty() {
+        (textos.t("confirmar-pie"), tema.apagado)
+    } else {
+        (pend.pie.clone(), tema.texto)
+    };
+    let (_, alto_pie) = p.medir_texto(&texto_pie, cf::PIE_TAM * e);
+    p.texto_linea(
+        &texto_pie,
+        caja_pie.x as f32,
+        caja_pie.y as f32 + (caja_pie.alto as f32 - alto_pie) / 2.0,
+        cf::PIE_TAM * e,
+        caja_pie.ancho as f32,
+        color_pie,
+    );
+    // Una raya debajo dice que ahi se escribe, sin gastar una caja entera.
+    p.rellenar(
+        RectF {
+            x: caja_pie.x as f32,
+            y: caja_pie.abajo() as f32 - (1.0 * e).max(1.0),
+            ancho: caja_pie.ancho as f32,
+            alto: (1.0 * e).max(1.0),
+        },
+        tema.separador,
+    );
+
+    for (boton, clave, fuerte) in [
+        (d.cancelar, "confirmar-cancelar", false),
+        (d.aceptar, "confirmar-aceptar", true),
+    ] {
+        if fuerte {
+            p.rellenar_redondeado(rf(boton), cf::BOTON_RADIO as f32 * e, tema.enviar);
+        }
+        let rotulo = textos.t(clave);
+        let (w, h) = p.medir_texto(&rotulo, cf::BOTON_TAM * e);
+        p.texto(
+            &rotulo,
+            boton.x as f32 + (boton.ancho as f32 - w) / 2.0,
+            boton.y as f32 + (boton.alto as f32 - h) / 2.0,
+            cf::BOTON_TAM * e,
+            if fuerte {
+                tema.texto_elegido
+            } else {
+                tema.texto
+            },
+        );
+    }
+    p.soltar_recorte();
+}
+
+/// Un tamano de fichero como se le ensena a una persona.
+///
+/// Se reparte de mil en mil, no de 1024 en 1024: es lo que dice el
+/// Explorador de Windows para el mismo fichero, y discrepar con el sistema
+/// operativo en el numero que el usuario acaba de ver es peor que ser exacto.
+fn en_bytes(bytes: u64) -> String {
+    const UNIDADES: [&str; 4] = ["B", "kB", "MB", "GB"];
+    let mut valor = bytes as f64;
+    let mut cual = 0;
+    while valor >= 1000.0 && cual + 1 < UNIDADES.len() {
+        valor /= 1000.0;
+        cual += 1;
+    }
+    if cual == 0 {
+        format!("{bytes} {}", UNIDADES[0])
+    } else {
+        format!("{valor:.1} {}", UNIDADES[cual])
+    }
+}
+
 /// Los tramos de `texto` que hay que poner en negrita por coincidir con lo
 /// que se busca. Vacio si no se busca nada, que es lo normal.
 ///
@@ -2117,6 +2390,7 @@ fn meter_ficheros(
     a: &mut Abierto,
     aparato: &str,
     rutas: &[std::path::PathBuf],
+    pie: &str,
 ) -> usize {
     let mut hechos = 0;
     for ruta in rutas {
@@ -2131,6 +2405,16 @@ fn meter_ficheros(
             },
             Err(e) => tracing::warn!(?e, ruta = %ruta.display(), "no se pudo leer"),
         }
+    }
+    // El pie va DESPUES y como nota aparte, no dentro del mensaje del
+    // fichero: asi PixPin Android lo ensena como lo que es, un comentario, y
+    // se puede fijar o buscar por su cuenta.
+    if hechos > 0 && !pie.trim().is_empty() {
+        let antes = std::mem::replace(&mut a.borrador, pie.trim().to_string());
+        if let Err(e) = guardar_nota(ubicacion, a, aparato) {
+            tracing::warn!(?e, "no se pudo guardar el pie");
+        }
+        a.borrador = antes;
     }
     hechos
 }
@@ -2557,4 +2841,45 @@ fn pintar_info(
         }
     }
     p.soltar_recorte();
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+
+    #[test]
+    fn un_tamano_se_ensena_como_lo_diria_el_explorador() {
+        // De mil en mil, no de 1024: el usuario acaba de ver este numero en
+        // el Explorador y discrepar con el es peor que ser exacto.
+        assert_eq!(en_bytes(0), "0 B");
+        assert_eq!(en_bytes(999), "999 B");
+        assert_eq!(en_bytes(1_000), "1.0 kB");
+        assert_eq!(en_bytes(2_500_000), "2.5 MB");
+        assert_eq!(en_bytes(3_000_000_000), "3.0 GB");
+    }
+
+    #[test]
+    fn un_tamano_enorme_no_se_queda_sin_unidad() {
+        // Caso negativo: pasado el ultimo escalon se sigue en gigas en vez
+        // de inventarse una unidad o dar la vuelta.
+        assert!(
+            en_bytes(u64::MAX).ends_with(" GB"),
+            "{}",
+            en_bytes(u64::MAX)
+        );
+    }
+
+    #[test]
+    fn sin_ficheros_no_se_pregunta_nada() {
+        // Caso negativo: un cuadro que pregunta por cero ficheros no se
+        // ensena, se descarta.
+        assert!(Pendientes::de(Vec::new()).is_none());
+        // Y con uno si, aunque no exista: su tamano sale cero y se dira al
+        // intentar leerlo, que es donde de verdad se sabe.
+        let p = Pendientes::de(vec![std::path::PathBuf::from("no-esta.png")])
+            .expect("una ruta es una ruta");
+        assert_eq!(p.rutas.len(), 1);
+        assert_eq!(p.tamanos, [0]);
+        assert!(p.pie.is_empty());
+    }
 }
