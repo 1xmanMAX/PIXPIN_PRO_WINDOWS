@@ -61,6 +61,12 @@ pub const CAPA_SUBTITULO_TAM: f32 = 13.0;
 /// descuido, es lo que mide cada uno en Telegram.
 pub const CAPA_BOTON_CERRAR: u32 = 48;
 pub const CAPA_BOTON_BUSCAR: u32 = 56;
+/// Lo alta que es la caja de buscar dentro de la cabecera, y la letra que
+/// lleva. La misma que el buscador de la lista de proyectos: es la misma
+/// clase de caja y desigualarlas solo se notaria para mal.
+pub const BUSCAR_ALTO: u32 = 32;
+pub const BUSCAR_TAM: f32 = 13.0;
+pub const BUSCAR_TEXTO_X: u32 = 12;
 
 /// La ficha de arriba: avatar grande, nombre y estado.
 pub const FICHA_ALTO: u32 = 108;
@@ -227,6 +233,25 @@ impl Disposicion {
             y: self.cabecera.y,
             ancho: e(CAPA_BOTON_BUSCAR),
             alto: self.cabecera.alto,
+        }
+    }
+
+    /// La caja de escribir lo que se busca, cuando la lupa esta encendida.
+    ///
+    /// Ocupa el sitio del titulo, entre el margen izquierdo y la lupa: es lo
+    /// que hace Telegram, y tiene sentido porque mientras se busca el titulo
+    /// no dice nada que no se sepa ya.
+    pub fn caja_buscar(&self, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let margen = e(CAPA_TITULO_X) as i32;
+        let x = self.cabecera.x + margen;
+        let derecha = self.buscar(escala_por_cien).x - margen;
+        let alto = e(BUSCAR_ALTO).min(self.cabecera.alto);
+        Rect {
+            x,
+            y: self.cabecera.y + (self.cabecera.alto as i32 - alto as i32) / 2,
+            ancho: (derecha - x).max(0) as u32,
+            alto,
         }
     }
 
@@ -655,5 +680,33 @@ mod pruebas {
         // Y el contenido empieza justo bajo la tira.
         assert_eq!(d.contenido.y, d.tira.abajo());
         assert_eq!(d.contenido.abajo(), caja.abajo());
+    }
+
+    #[test]
+    fn la_caja_de_buscar_ocupa_el_sitio_del_titulo_sin_pisar_la_lupa() {
+        let (caja, _) = capa_en(ventana(), 100);
+        let d = Disposicion::capa(caja, 100);
+        let b = d.caja_buscar(100);
+        assert_eq!(b.x, d.cabecera.x + CAPA_TITULO_X as i32, "el mismo margen");
+        assert!(b.derecha() <= d.buscar(100).x, "no se mete bajo la lupa");
+        assert!(b.ancho > 0);
+        // Centrada en la cabecera y mas baja que ella: es una caja dentro,
+        // no una franja que la sustituya.
+        assert!(b.alto < d.cabecera.alto);
+        assert_eq!(b.y - d.cabecera.y, d.cabecera.abajo() - b.abajo());
+    }
+
+    #[test]
+    fn en_una_cabecera_estrechisima_la_caja_de_buscar_se_queda_en_nada() {
+        // Caso negativo: si no cabe, ancho cero — nunca un rectangulo del
+        // reves, que al pintarlo se saldria por la izquierda.
+        let estrecha = Rect {
+            x: 0,
+            y: 0,
+            ancho: 60,
+            alto: 200,
+        };
+        let d = Disposicion::capa(estrecha, 100);
+        assert_eq!(d.caja_buscar(100).ancho, 0);
     }
 }

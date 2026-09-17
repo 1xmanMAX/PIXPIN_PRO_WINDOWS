@@ -38,6 +38,29 @@ impl Tramo {
     pub fn largo(&self) -> usize {
         self.hasta - self.desde
     }
+
+    /// El mismo tramo contado en unidades UTF-16: `(inicio, longitud)`.
+    ///
+    /// Hace falta porque quien pinta es DirectWrite, y DirectWrite cuenta en
+    /// UTF-16. Los dos numeros coinciden mientras todo sea ASCII, asi que un
+    /// error aqui no se ve hasta que aparece una tilde —o peor, un emoji,
+    /// que ocupa DOS unidades UTF-16 y cuatro bytes—: por eso se convierte
+    /// de verdad en vez de pasar los bytes y confiar.
+    ///
+    /// Si el tramo no cae dentro del texto devuelve longitud cero: resaltar
+    /// nada es preferible a resaltar un trozo que no es.
+    pub fn en_utf16(&self, texto: &str) -> (u32, u32) {
+        if self.hasta > texto.len()
+            || self.desde > self.hasta
+            || !texto.is_char_boundary(self.desde)
+            || !texto.is_char_boundary(self.hasta)
+        {
+            return (0, 0);
+        }
+        let inicio = texto[..self.desde].encode_utf16().count() as u32;
+        let largo = texto[self.desde..self.hasta].encode_utf16().count() as u32;
+        (inicio, largo)
+    }
 }
 
 /// Deja un caracter en su forma «para comparar»: minuscula y sin tilde.
@@ -280,5 +303,39 @@ mod pruebas {
         );
         // Pero los espacios cuentan: no se buscan las palabras por separado.
         assert!(!hay_coincidencia("aparejador al fin", "al aparejador"));
+    }
+
+    #[test]
+    fn los_tramos_se_cuentan_tambien_en_utf16_para_quien_pinta() {
+        // En ASCII los dos numeros coinciden, y ahi no se ve nada raro.
+        let texto = "muro norte";
+        let t = coincidencias(texto, "norte")[0];
+        assert_eq!(t.en_utf16(texto), (5, 5));
+
+        // Con tildes ya no: «Cimentación» ocupa doce bytes y once unidades
+        // UTF-16, asi que pasar bytes moveria el resaltado.
+        let texto = "Cimentación del muro";
+        let t = coincidencias(texto, "del")[0];
+        assert_eq!(t.desde, 13, "en bytes, despues de la o acentuada");
+        assert_eq!(t.en_utf16(texto), (12, 3));
+
+        // Y un emoji ocupa dos unidades UTF-16 aunque sea un solo caracter.
+        let texto = "🧱 ladrillo";
+        let t = coincidencias(texto, "ladrillo")[0];
+        assert_eq!(t.en_utf16(texto), (3, 8), "el emoji cuenta por dos");
+    }
+
+    #[test]
+    fn un_tramo_que_no_es_de_ese_texto_no_resalta_nada() {
+        // Caso negativo: lo que cae fuera devuelve largo cero en vez de
+        // resaltar un trozo cualquiera.
+        let fuera = Tramo {
+            desde: 3,
+            hasta: 99,
+        };
+        assert_eq!(fuera.en_utf16("corto"), (0, 0));
+        // Y uno que parte un caracter por la mitad, tampoco.
+        let partido = Tramo { desde: 1, hasta: 2 };
+        assert_eq!(partido.en_utf16("ñu"), (0, 0), "la ñ ocupa dos bytes");
     }
 }

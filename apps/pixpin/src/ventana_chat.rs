@@ -404,6 +404,17 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                             );
                             if d.volver.contiene(l) {
                                 a.info = None;
+                                a.buscando_info = false;
+                                a.busqueda_info.clear();
+                            } else if d.buscar(escala).contiene(l) {
+                                // La lupa enciende y apaga. Al apagarla se
+                                // limpia: dejar una busqueda escondida haria
+                                // que la seccion pareciera vacia sin motivo.
+                                a.buscando_info = !a.buscando_info;
+                                if !a.buscando_info {
+                                    a.busqueda_info.clear();
+                                }
+                                a.scroll_info = 0;
                             } else if let Some(i) = {
                                 let anchos = a.anchos_pestanas.borrow().clone();
                                 d.pestana_en(l, &d.pestanas(&anchos, escala))
@@ -572,6 +583,47 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                 // Escribir en la caja de abajo. Solo llega si hay un
                 // proyecto abierto: sin conversacion no hay donde guardarlo.
                 // Con el buscador enfocado, lo que se teclea va ahi.
+                // La lupa del panel manda sobre todo lo demas: mientras esta
+                // encendida, lo que se teclea es lo que se busca ahi dentro,
+                // no una nota ni el buscador de la lista.
+                EventoOverlay::Caracter(c) if abierto.as_ref().is_some_and(|a| a.buscando_info) => {
+                    if c >= ' ' {
+                        if let Some(a) = abierto.as_mut() {
+                            a.busqueda_info.push(c);
+                            a.scroll_info = 0;
+                            hay_que_pintar = true;
+                        }
+                    }
+                }
+                EventoOverlay::Tecla { vk, .. }
+                    if vk == VK_RETROCESO && abierto.as_ref().is_some_and(|a| a.buscando_info) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        a.busqueda_info.pop();
+                        a.scroll_info = 0;
+                        hay_que_pintar = true;
+                    }
+                }
+                // Escapar apaga la lupa antes que cerrar el panel, y el panel
+                // antes que la ventana.
+                EventoOverlay::Tecla { vk, .. }
+                    if vk == VK_ESCAPE && abierto.as_ref().is_some_and(|a| a.buscando_info) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        a.buscando_info = false;
+                        a.busqueda_info.clear();
+                        a.scroll_info = 0;
+                    }
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::Tecla { vk, .. }
+                    if vk == VK_ESCAPE && abierto.as_ref().is_some_and(|a| a.info.is_some()) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        a.info = None;
+                    }
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::Caracter(c) if buscando => {
                     if c >= ' ' {
                         busqueda.push(c);
@@ -845,6 +897,13 @@ struct Abierto {
     /// con su seccion y su desplazamiento propios.
     info: Option<pixpin_proyecto::cuaderno::Seccion>,
     scroll_info: i32,
+    /// Lo que se busca DENTRO del proyecto, desde la lupa del panel. Vacio
+    /// es «no se esta buscando»: no hace falta un booleano aparte, porque
+    /// una busqueda en blanco no filtra nada (ver `resaltado`).
+    busqueda_info: String,
+    /// La lupa esta encendida. Va aparte de `busqueda_info` porque al
+    /// pulsarla la caja aparece vacia, y sin esto no habria donde escribir.
+    buscando_info: bool,
     /// Lo que ocupa la seccion abierta, que solo se sabe al colocarla.
     alto_info: std::cell::Cell<u32>,
     /// Lo ancho que mide el rotulo de cada pestana. Lo apunta el pintado,
@@ -1568,6 +1627,8 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         borrador: String::new(),
         info: None,
         scroll_info: 0,
+        busqueda_info: String::new(),
+        buscando_info: false,
         alto_info: std::cell::Cell::new(0),
         anchos_pestanas: std::cell::RefCell::new(Vec::new()),
         anchos_menu: std::cell::RefCell::new(Vec::new()),
@@ -1852,6 +1913,32 @@ fn filtrar(fichas: &[pixpin_proyecto::almacen::Ficha], busqueda: &str) -> Vec<us
 
 /// Copia unos ficheros al proyecto y los deja como mensajes. Devuelve
 /// cuantos entraron: uno que falle no puede llevarse los demas.
+/// Los tramos de `texto` que hay que poner en negrita por coincidir con lo
+/// que se busca. Vacio si no se busca nada, que es lo normal.
+///
+/// Traduce de indices de byte —como los cuenta `resaltado`— a unidades
+/// UTF-16, que es como los cuenta DirectWrite. Confundirlos no se nota hasta
+/// la primera tilde.
+fn negritas(texto: &str, aguja: &str) -> Vec<pixpin_render::Tramo> {
+    if aguja.trim().is_empty() {
+        return Vec::new();
+    }
+    pixpin_ui::resaltado::coincidencias(texto, aguja)
+        .into_iter()
+        .filter_map(|t| {
+            let (inicio, longitud) = t.en_utf16(texto);
+            (longitud > 0).then_some(pixpin_render::Tramo {
+                inicio,
+                longitud,
+                estilo: pixpin_render::EstiloTexto {
+                    negrita: true,
+                    ..Default::default()
+                },
+            })
+        })
+        .collect()
+}
+
 /// La ruta del fichero de un mensaje dentro del proyecto, si lo tiene y si
 /// esta en este equipo.
 ///
@@ -2224,24 +2311,46 @@ fn pintar_info(
     // hay flecha de volver: en una capa se cierra con el aspa.
     let lupa = i.buscar(escala);
     let ancho_titulo = (lupa.x - i.cabecera.x) as f32 - info::CAPA_TITULO_X as f32 * e;
-    p.texto_linea(
-        &a.ficha.nombre,
-        i.cabecera.x as f32 + info::CAPA_TITULO_X as f32 * e,
-        i.cabecera.y as f32 + info::CAPA_TITULO_Y as f32 * e,
-        info::CAPA_TITULO_TAM * e,
-        ancho_titulo.max(0.0),
-        tema.texto,
-    );
-    let mut args = fluent_bundle::FluentArgs::new();
-    args.set("cuantas", a.ficha.hojas);
-    p.texto_linea(
-        &textos.t_args("chat-hojas", &args),
-        i.cabecera.x as f32 + info::CAPA_TITULO_X as f32 * e,
-        i.cabecera.y as f32 + info::CAPA_SUBTITULO_Y as f32 * e,
-        info::CAPA_SUBTITULO_TAM * e,
-        ancho_titulo.max(0.0),
-        tema.apagado,
-    );
+    if a.buscando_info {
+        // Con la lupa encendida, la caja de buscar ocupa el sitio del
+        // titulo: mientras se busca, el nombre del proyecto no dice nada que
+        // no se sepa ya.
+        let b = i.caja_buscar(escala);
+        p.rellenar_redondeado(rf(b), b.alto as f32 / 2.0, tema.buscador);
+        let (texto, color) = if a.busqueda_info.is_empty() {
+            (textos.t("chat-buscar"), tema.apagado)
+        } else {
+            (a.busqueda_info.clone(), tema.texto)
+        };
+        let (_, alto_texto) = p.medir_texto(&texto, info::BUSCAR_TAM * e);
+        p.texto_linea(
+            &texto,
+            b.x as f32 + info::BUSCAR_TEXTO_X as f32 * e,
+            b.y as f32 + (b.alto as f32 - alto_texto) / 2.0,
+            info::BUSCAR_TAM * e,
+            (b.ancho as f32 - 2.0 * info::BUSCAR_TEXTO_X as f32 * e).max(0.0),
+            color,
+        );
+    } else {
+        p.texto_linea(
+            &a.ficha.nombre,
+            i.cabecera.x as f32 + info::CAPA_TITULO_X as f32 * e,
+            i.cabecera.y as f32 + info::CAPA_TITULO_Y as f32 * e,
+            info::CAPA_TITULO_TAM * e,
+            ancho_titulo.max(0.0),
+            tema.texto,
+        );
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("cuantas", a.ficha.hojas);
+        p.texto_linea(
+            &textos.t_args("chat-hojas", &args),
+            i.cabecera.x as f32 + info::CAPA_TITULO_X as f32 * e,
+            i.cabecera.y as f32 + info::CAPA_SUBTITULO_Y as f32 * e,
+            info::CAPA_SUBTITULO_TAM * e,
+            ancho_titulo.max(0.0),
+            tema.apagado,
+        );
+    }
 
     // El aspa de cerrar, pegada al borde derecho, y la lupa a su izquierda.
     let grosor = (2.0 * e).max(1.0);
@@ -2313,7 +2422,14 @@ fn pintar_info(
     // Y el contenido de la seccion.
     // Por indice y no por referencia: con el numero se llega tambien a
     // `a.vistas`, que es donde esta el lienzo ya leido de cada dibujo.
-    let suyos = pixpin_proyecto::cuaderno::indices_de_seccion(&a.mensajes, seccion);
+    let mut suyos = pixpin_proyecto::cuaderno::indices_de_seccion(&a.mensajes, seccion);
+    if !a.busqueda_info.trim().is_empty() {
+        suyos.retain(|n| {
+            let m = &a.mensajes[*n];
+            pixpin_ui::resaltado::hay_coincidencia(&m.resumen(), &a.busqueda_info)
+                || pixpin_ui::resaltado::hay_coincidencia(&m.nombre, &a.busqueda_info)
+        });
+    }
     if suyos.is_empty() {
         let vacio = textos.t("chat-sin-mensajes");
         let (w, h) = p.medir_texto(&vacio, 13.0 * e);
@@ -2343,8 +2459,8 @@ fn pintar_info(
             let celda = r.celda(n, i.contenido, a.scroll_info, escala);
             let m = &a.mensajes[indice];
             // Una foto de verdad, si ya esta leida.
-            let foto = ruta_del_mensaje(&a.raiz, &a.ficha.id, m)
-                .and_then(|ruta| c.miniaturas.ya(&ruta));
+            let foto =
+                ruta_del_mensaje(&a.raiz, &a.ficha.id, m).and_then(|ruta| c.miniaturas.ya(&ruta));
             if let Some((b, w, h)) = foto {
                 p.empujar_recorte(rf(celda));
                 crate::miniaturas::pintar_recortado(p, b, rf(celda), w, h);
@@ -2406,12 +2522,18 @@ fn pintar_info(
                 // un texto parece algo que no cargo.
                 None => {}
             }
-            p.texto_linea(
-                &m.resumen(),
+            // Lo encontrado va en negrita. Un fondo de color seria mas
+            // parecido a Telegram, pero para eso hace falta preguntarle a
+            // DirectWrite donde cae cada trozo ya partido en lineas; la
+            // negrita dice lo mismo y se ve en una sola pasada.
+            let nombre = m.resumen();
+            p.parrafo(
+                &nombre,
                 f.nombre.x as f32,
                 f.nombre.y as f32,
                 info::ARCHIVO_NOMBRE_TAM * e,
                 f.ancho_texto as f32,
+                &negritas(&nombre, &a.busqueda_info),
                 tema.texto,
             );
             if let Some(etiqueta) = clase_de(m, textos) {
