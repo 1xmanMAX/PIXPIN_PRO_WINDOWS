@@ -376,7 +376,8 @@ impl Disposicion {
             .min((self.chat.alto / 2).max(1))
     }
 
-    /// El buscador, centrado en la cabecera de la lista.
+    /// El buscador, en la cabecera de la lista, con el boton de sincronizar a
+    /// su derecha.
     pub fn buscador(&self, escala_por_cien: u32) -> Rect {
         let e = |v: u32| v * escala_por_cien / 100;
         let c = self.cabecera_lista;
@@ -384,11 +385,41 @@ impl Disposicion {
             return vacio();
         }
         let alto = e(BUSCADOR_ALTO).min(c.alto);
+        // El sitio del boton se quita solo si el boton esta: en una lista
+        // estrecha no cabe, y el buscador se queda con todo el ancho.
+        let boton = self.boton_sincro(escala_por_cien);
+        let ocupado = if boton.ancho > 0 {
+            boton.ancho + e(BUSCADOR_MARGEN)
+        } else {
+            0
+        };
         Rect {
             x: c.x + e(BUSCADOR_MARGEN) as i32,
             y: c.y + (c.alto as i32 - alto as i32) / 2,
-            ancho: c.ancho.saturating_sub(2 * e(BUSCADOR_MARGEN)),
+            ancho: c.ancho.saturating_sub(2 * e(BUSCADOR_MARGEN) + ocupado),
             alto,
+        }
+    }
+
+    /// El boton redondo de sincronizar, a la derecha del buscador.
+    ///
+    /// Arriba y a la vista, como en el movil: recibir del otro aparato es lo
+    /// que se hace cada vez que se cambia de sitio de trabajo, y metido en el
+    /// menu de adjuntar de un proyecto no lo encontraba nadie.
+    pub fn boton_sincro(&self, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let c = self.cabecera_lista;
+        let lado = e(BUSCADOR_ALTO).min(c.alto);
+        // Plegada, la cabecera mide lo que un avatar. Y con menos de tres
+        // botones de ancho, el buscador se quedaria sin sitio para escribir.
+        if self.plegada || c.ancho < 3 * lado + 3 * e(BUSCADOR_MARGEN) {
+            return vacio();
+        }
+        Rect {
+            x: c.derecha() - (lado + e(BUSCADOR_MARGEN)) as i32,
+            y: c.y + (c.alto as i32 - lado as i32) / 2,
+            ancho: lado,
+            alto: lado,
         }
     }
 
@@ -750,6 +781,26 @@ mod pruebas_ventana {
             ancho: 1000,
             alto: 700,
         }
+    }
+
+    #[test]
+    fn el_boton_de_sincronizar_va_a_la_derecha_del_buscador_sin_pisarlo() {
+        let d = Disposicion::calcular(1000, 700, 100, 320, Vista::Ambas);
+        let (b, s) = (d.buscador(100), d.boton_sincro(100));
+        assert_eq!((s.ancho, s.alto), (BUSCADOR_ALTO, BUSCADOR_ALTO));
+        assert!(
+            b.derecha() < s.x,
+            "el buscador acaba antes de que empiece el boton"
+        );
+        assert!(s.derecha() <= d.cabecera_lista.derecha());
+    }
+
+    #[test]
+    fn con_la_lista_plegada_no_hay_boton_y_el_buscador_no_le_guarda_sitio() {
+        let d = Disposicion::calcular(1200, 800, 100, LISTA_PLEGADA, Vista::Ambas);
+        assert_eq!(d.boton_sincro(100).ancho, 0);
+        // Un punto cualquiera no cae en un boton que no esta.
+        assert!(!d.boton_sincro(100).contiene(Punto { x: 0, y: 0 }));
     }
 
     #[test]

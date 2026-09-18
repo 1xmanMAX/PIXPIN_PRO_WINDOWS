@@ -1105,6 +1105,18 @@ extern "system" fn procedimiento_overlay(
     }
 }
 
+/// Apunta en el registro las primeras veces que llega un desplazamiento de
+/// lado, y por que camino. Es para diagnosticar en el equipo del usuario: que
+/// mensaje manda su panel tactil no se puede saber desde aqui, y sin verlo se
+/// arregla a ciegas. Solo las primeras, para no llenar el registro.
+fn avisar_de_horizontal(camino: &'static str, delta: i32) {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static VECES: AtomicU32 = AtomicU32::new(0);
+    if VECES.fetch_add(1, Ordering::Relaxed) < 8 {
+        tracing::info!(camino, delta, "desplazamiento de lado recibido");
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -1299,17 +1311,5 @@ mod pruebas {
             }
         }
         assert!(a_por_encima, "la ventana traida encima sigue debajo");
-    }
-}
-
-/// Apunta en el registro las primeras veces que llega un desplazamiento de
-/// lado, y por que camino. Es para diagnosticar en el equipo del usuario: que
-/// mensaje manda su panel tactil no se puede saber desde aqui, y sin verlo se
-/// arregla a ciegas. Solo las primeras, para no llenar el registro.
-fn avisar_de_horizontal(camino: &'static str, delta: i32) {
-    use std::sync::atomic::{AtomicU32, Ordering};
-    static VECES: AtomicU32 = AtomicU32::new(0);
-    if VECES.fetch_add(1, Ordering::Relaxed) < 8 {
-        tracing::info!(camino, delta, "desplazamiento de lado recibido");
     }
 }

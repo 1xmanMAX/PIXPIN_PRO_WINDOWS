@@ -220,3 +220,6 @@ recibir-salir = Escape para cerrar
 comando-recibir-del-movil = Recibir del movil…
 adjuntar-del-movil = Traer del movil…
 menu-foto-aqui = Dibujar aqui mismo
+proyecto-borrar = Borrar proyecto
+proyecto-borrar-varios = Borrar los marcados
+proyecto-borrar-aviso = Se quitara de la lista y su carpeta ira a la papelera de PixPin. ¿Seguir?

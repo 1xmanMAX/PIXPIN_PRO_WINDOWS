@@ -219,3 +219,6 @@ recibir-salir = Escape to close
 comando-recibir-del-movil = Receive from phone…
 adjuntar-del-movil = Bring from phone…
 menu-foto-aqui = Draw right here
+proyecto-borrar = Delete project
+proyecto-borrar-varios = Delete selected
+proyecto-borrar-aviso = It will leave the list and its folder will go to the PixPin bin. Continue?

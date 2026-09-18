@@ -380,6 +380,9 @@ pub fn abrir(
     let mut scroll: i32 = 0;
     let mut fila_sobre: Option<usize> = None;
     let mut elegida: Option<usize> = None;
+    // Los proyectos marcados con Ctrl+clic, por `id`: por indice se
+    // descolocarian al filtrar o al releer la lista.
+    let mut marcados: std::collections::BTreeSet<String> = Default::default();
     let mut abierto: Option<Abierto> = None;
     // El menu del clip, cuando esta desplegado. Vive fuera de `abierto`
     // porque cambiar de conversacion tiene que cerrarlo.
@@ -671,7 +674,18 @@ pub fn abrir(
                         let es_foto = vista(|v| matches!(v, Some(Ojeada::Foto { .. })));
                         // Un dibujo del movil trae cientos de trazos: en la
                         // burbuja no se lee ninguno, asi que se abre grande.
-                        let es_dibujo = vista(|v| matches!(v, Some(Ojeada::Lienzo(_))));
+                        //
+                        // Se mira la CLASE del mensaje y no su ojeada: un
+                        // lienzo recien creado esta vacio, no tiene ojeada, y
+                        // por eso no se abria nunca -ni se podia empezar a
+                        // dibujar en el-.
+                        let es_dibujo = abierto
+                            .as_ref()
+                            .and_then(|a| a.mensajes.get(indice))
+                            .is_some_and(|m| {
+                                m.clase == Some(pixpin_proyecto::cuaderno::Clase::Dibujo)
+                                    && m.referencia.as_deref().is_some_and(|r| !r.is_empty())
+                            });
                         match abierto.as_mut() {
                             Some(a) if es_tabla => abrir_hoja(a, indice),
                             // Una foto se abre en el editor 2D, con la foto de fondo:
@@ -693,7 +707,14 @@ pub fn abrir(
                                     a.colocado.borrow_mut().ancho = 0;
                                 }
                             }
-                            Some(a) if es_dibujo => abrir_dibujo(ubicacion, a, indice, lienzo),
+                            Some(a) if es_dibujo => {
+                                for i in abrir_dibujo(ubicacion, a, indice, lienzo) {
+                                    if let Some(m) = a.mensajes.get(i).cloned() {
+                                        a.vistas[i] = leer_vista(ubicacion, &a.ficha.id, &m);
+                                    }
+                                }
+                                a.colocado.borrow_mut().ancho = 0;
+                            }
                             Some(a) => abrir_mensaje(ubicacion, a, indice),
                             None => {}
                         }
@@ -721,6 +742,12 @@ pub fn abrir(
                             Err(e) => tracing::warn!(?e, "no se pudo crear el proyecto"),
                         }
                         buscando = false;
+                    } else if disposicion.boton_sincro(escala).contiene(l) {
+                        // La misma ventana que abria «Del movil» en el menu
+                        // de adjuntar, ahora a la vista.
+                        crate::recibir::lanzar(idioma, ubicacion.clone());
+                        buscando = false;
+                        hay_que_pintar = true;
                     } else if disposicion.buscador(escala).contiene(l) {
                         buscando = true;
                         hay_que_pintar = true;
@@ -759,7 +786,15 @@ pub fn abrir(
                     } else if let Some(fila) = disposicion.fila_en(l, scroll, orden.len(), escala) {
                         let i = orden[fila];
                         buscando = false;
-                        if elegida != Some(i) {
+                        // Ctrl+clic marca y no abre: es como se eligen varios
+                        // para borrarlos de una vez.
+                        if pixpin_shell::entrada::modificadores_pulsados().ctrl {
+                            let id = fichas[i].id.clone();
+                            if !marcados.remove(&id) {
+                                marcados.insert(id);
+                            }
+                        } else if elegida != Some(i) {
+                            marcados.clear();
                             // Lo escrito y sin enviar se guarda antes de
                             // cambiar; volver a este proyecto lo devuelve.
                             // Y la hoja abierta se guarda: cambiar de proyecto no
@@ -851,6 +886,52 @@ pub fn abrir(
                 // mas: con el menu delante, el clic ya esta atendido.
                 EventoOverlay::BotonDerechoPulsado(p) => {
                     let l = local(p);
+                    // Sobre la lista, el menu es el del proyecto: borrarlo, o
+                    // borrar todos los marcados si este es uno de ellos.
+                    if let Some(fila) = disposicion.fila_en(l, scroll, orden.len(), escala) {
+                        let id = fichas[orden[fila]].id.clone();
+                        let ids: Vec<String> = if marcados.contains(&id) {
+                            marcados.iter().cloned().collect()
+                        } else {
+                            vec![id]
+                        };
+                        if menu_de_proyecto(&ventana, textos, ids.len()) {
+                            if let Some(a) = abierto.as_mut().filter(|a| ids.contains(&a.ficha.id))
+                            {
+                                // Lo que estuviera a medias se guarda antes:
+                                // va a la papelera, y de alli se puede volver.
+                                cerrar_hoja(ubicacion, a);
+                                apagar_lienzo(ubicacion, a);
+                            }
+                            if abierto.as_ref().is_some_and(|a| ids.contains(&a.ficha.id)) {
+                                abierto = None;
+                                elegida = None;
+                            }
+                            let cuando = pixpin_shell::entorno::ahora_local_ms();
+                            match pixpin_proyecto::almacen::borrar_proyectos(
+                                ubicacion.raiz(),
+                                &ids,
+                                cuando,
+                            ) {
+                                Ok((quitados, sin_mover)) => {
+                                    tracing::info!(quitados, "proyectos a la papelera");
+                                    for ruta in sin_mover {
+                                        tracing::warn!(ruta = %ruta.display(), "carpeta que no se pudo llevar a la papelera");
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!(?e, "no se pudieron borrar los proyectos")
+                                }
+                            }
+                            for id in &ids {
+                                borradores.remove(id);
+                            }
+                            marcados.clear();
+                            // La lista se relee sola: el indice cambio de fecha.
+                        }
+                        hay_que_pintar = true;
+                        continue;
+                    }
                     let foto = abierto
                         .as_ref()
                         .filter(|a| a.hoja.is_none() && a.info.is_none())
@@ -1405,6 +1486,7 @@ pub fn abrir(
                     ahora,
                     textos,
                     busqueda: &busqueda,
+                    marcados: &marcados,
                 };
                 let abierto_ref = abierto.as_ref();
                 let pendientes_ref = pendientes.as_ref();
@@ -1632,6 +1714,8 @@ struct Lista<'a> {
     textos: &'a Catalogo,
     /// Lo que hay escrito en el buscador.
     busqueda: &'a str,
+    /// Los proyectos marcados para borrar, por `id`.
+    marcados: &'a std::collections::BTreeSet<String>,
 }
 
 /// Los colores de los avatares, los mismos siete de Telegram. Cual toca sale
@@ -1840,6 +1924,38 @@ fn pintar(
         );
     }
 
+    // El boton de sincronizar: redondo, marron oscuro y con el icono crema,
+    // los colores de los botones redondos del chat del movil.
+    let sincro = d.boton_sincro(escala);
+    if sincro.ancho > 0 {
+        p.rellenar_redondeado(
+            rf(sincro),
+            sincro.alto as f32 / 2.0,
+            Color {
+                r: 0.290,
+                g: 0.227,
+                b: 0.071,
+                a: 1.0,
+            },
+        );
+        let lado = sincro.ancho as f32 * 0.56;
+        p.icono(
+            &SINCRO,
+            RectF {
+                x: sincro.x as f32 + (sincro.ancho as f32 - lado) / 2.0,
+                y: sincro.y as f32 + (sincro.alto as f32 - lado) / 2.0,
+                ancho: lado,
+                alto: lado,
+            },
+            Color {
+                r: 0.961,
+                g: 0.902,
+                b: 0.722,
+                a: 1.0,
+            },
+        );
+    }
+
     // El buscador, en el sitio del titulo: es lo que hay en Telegram y lo
     // que hace falta en cuanto pasas de diez proyectos.
     let caja = d.buscador(escala);
@@ -1905,7 +2021,20 @@ fn pintar_filas(p: &Pintor, d: &Disposicion, tema: &Tema, escala: u32, lista: &L
         // Se compara contra el indice del PROYECTO, no contra el numero de
         // fila: al filtrar, la fila 0 ya no es el primer proyecto.
         let elegida = lista.elegida == Some(lista.orden[i]);
-        if elegida {
+        let marcada = lista.marcados.contains(&ficha.id);
+        if marcada {
+            // El mismo rojo apagado del boton de borrar: marcar es el paso
+            // previo a borrar, y tiene que verse que no es «abierto».
+            p.rellenar(
+                rf(r),
+                Color {
+                    r: 0.75,
+                    g: 0.22,
+                    b: 0.20,
+                    a: 0.35,
+                },
+            );
+        } else if elegida {
             p.rellenar(rf(r), tema.fila_elegida);
         } else if lista.sobre == Some(i) {
             p.rellenar(rf(r), tema.fila_sobre);
@@ -4113,6 +4242,12 @@ mod pruebas_foto {
     }
 
     #[test]
+    fn las_flechas_de_sincronizar_son_un_trazado_que_se_entiende() {
+        let tramos = pixpin_render::trayecto_svg::analizar(super::SINCRO.trazos[0].d).unwrap();
+        assert!(tramos.len() > 6);
+    }
+
+    #[test]
     fn el_clip_es_un_trazado_que_se_entiende() {
         // Un trazado que no se entiende no pinta nada, y el boton volveria a
         // ser invisible sin que ninguna otra cosa lo avisara.
@@ -4128,6 +4263,24 @@ mod pruebas_foto {
         );
     }
 }
+
+/// Las dos flechas en redondo de sincronizar: «refresh» de Tabler Icons (MIT,
+/// ver THIRD-PARTY-NOTICES.md), como el clip.
+const SINCRO: pixpin_render::icono::Icono = pixpin_render::icono::Icono {
+    vista: (0.0, 0.0, 24.0, 24.0),
+    trazos: &[pixpin_render::icono::TrazoIcono {
+        d: "M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4",
+        relleno: pixpin_render::icono::Pintura::Nada,
+        trazo: pixpin_render::icono::Pintura::Actual,
+        grosor: 2.0,
+        extremo_redondo: true,
+        union_redonda: true,
+        opacidad: 1.0,
+        par_impar: false,
+        matriz: None,
+        mascara: None,
+    }],
+};
 
 /// El clip de adjuntar: «paperclip» de Tabler Icons (MIT, ver
 /// THIRD-PARTY-NOTICES.md). No esta entre los de Excalidraw, que se generan
@@ -4586,6 +4739,25 @@ mod pruebas_hoja {
 /// chat corre en otro hilo y no puede crearlos por su cuenta.
 /// Devuelve si se eligio dibujar en la burbuja: eso lo enciende quien
 /// tiene el proyecto abierto, que aqui no esta.
+/// El menu del clic derecho sobre un proyecto de la lista. `true` si hay que
+/// borrar: se eligio «Borrar» Y se dijo que si a la pregunta.
+fn menu_de_proyecto(ventana: &VentanaOverlay, textos: &Catalogo, cuantos: usize) -> bool {
+    const BORRAR: u32 = 1;
+    let rotulo = if cuantos > 1 {
+        format!("{} ({cuantos})", textos.t("proyecto-borrar-varios"))
+    } else {
+        textos.t("proyecto-borrar")
+    };
+    if pixpin_shell::menu_llano(ventana.handle(), &[(BORRAR, rotulo.clone())]) != Some(BORRAR) {
+        return false;
+    }
+    pixpin_shell::confirmar_destructivo(
+        ventana.handle(),
+        &rotulo,
+        &textos.t("proyecto-borrar-aviso"),
+    )
+}
+
 fn menu_de_foto(
     ventana: &VentanaOverlay,
     textos: &Catalogo,
@@ -4958,54 +5130,68 @@ mod pruebas_pdf {
 
 /// Abre un dibujo del proyecto en el lienzo grande, para verlo entero.
 ///
-/// **No guarda lo que se haga.** Escribir de vuelta un `.excalidraw` sin
-/// perder lo que el movil mete y aqui no se entiende es un trabajo aparte
-/// (el plan lo dice), y a medias seria peor: se veria bien y se perderia
-/// callando. Asi que por ahora es una vista, y se avisa en el registro.
-fn abrir_dibujo(ubicacion: &Ubicacion, a: &Abierto, indice: usize, opciones: OpcionesLienzo) {
+/// Guarda lo que se haga al cerrar, y tambien al saltar a otra hoja por un
+/// enlace. Devuelve las hojas que se guardaron, para que quien llama rehaga
+/// sus burbujas: sin eso el chat seguiria ensenando el dibujo de antes.
+fn abrir_dibujo(
+    ubicacion: &Ubicacion,
+    a: &Abierto,
+    indice: usize,
+    opciones: OpcionesLienzo,
+) -> Vec<usize> {
+    let mut guardadas = Vec::new();
     // Pulsar una «zona» de una pagina lleva a su hoja, y desde ella se puede
     // saltar a otra: por eso es un bucle y no una llamada. El tope es por si
     // dos hojas se enlazan entre si; sin el, el ir y venir no acabaria.
     let mut indice = indice;
     for _ in 0..SALTOS_MAXIMOS {
-        match abrir_una_hoja(ubicacion, a, indice, opciones) {
-            Some(siguiente) => indice = siguiente,
-            None => return,
+        let (guardada, siguiente) = abrir_una_hoja(ubicacion, a, indice, opciones);
+        if guardada {
+            guardadas.push(indice);
+        }
+        match siguiente {
+            Some(s) => indice = s,
+            None => break,
         }
     }
+    guardadas
 }
 
 /// Cuantas hojas encadenadas se abren antes de parar.
 const SALTOS_MAXIMOS: usize = 32;
 
-/// Abre una hoja y devuelve a cual hay que saltar, si se pulso un enlace.
+/// Abre una hoja. Devuelve si se guardo algo y a cual hay que saltar, si se
+/// pulso un enlace.
 fn abrir_una_hoja(
     ubicacion: &Ubicacion,
     a: &Abierto,
     indice: usize,
     opciones: OpcionesLienzo,
-) -> Option<usize> {
-    let m = a.mensajes.get(indice)?;
-    let id = m.referencia.as_deref().filter(|r| !r.is_empty())?;
+) -> (bool, Option<usize>) {
+    let Some(m) = a.mensajes.get(indice) else {
+        return (false, None);
+    };
+    let Some(id) = m.referencia.as_deref().filter(|r| !r.is_empty()) else {
+        return (false, None);
+    };
     let ruta = pixpin_proyecto::almacen::lienzo(ubicacion.raiz(), &a.ficha.id, id);
     let texto = match std::fs::read_to_string(&ruta) {
         Ok(t) => t,
         Err(e) => {
             tracing::warn!(?e, ruta = %ruta.display(), "no se pudo leer el dibujo");
-            return None;
+            return (false, None);
         }
     };
     let lienzo = match pixpin_motor2d::excalidraw::leer(&texto) {
         Ok(l) => l,
         Err(e) => {
             tracing::warn!(?e, "dibujo que no se entiende");
-            return None;
+            return (false, None);
         }
     };
-    let mut escena = pixpin_motor2d::Escena::nueva();
-    for e in lienzo.elementos() {
-        escena.anadir(e);
-    }
+    // `a_escena` y no un bucle a mano: es la que fija el orden con el que
+    // `con_escena` sabe luego que elemento es cual.
+    let escena = pixpin_motor2d::excalidraw::a_escena(&lienzo);
     // Las fotos de la hoja viven en `imagenes/<id>` del proyecto, no dentro
     // del JSON: el movil deja ahi una ruta en vez de un `dataURL` para que un
     // plano de quince megas no se convierta en veinte de base64.
@@ -5030,10 +5216,11 @@ fn abrir_una_hoja(
     });
     tracing::info!(
         elementos = escena.cuantos_visibles(),
+        ajenos = lienzo.cuantos_ajenos(),
         fotos = fotos.len(),
         pagina = ?m.pagina,
         ruta = %ruta.display(),
-        "dibujo abierto para verlo (no se guarda)"
+        "dibujo abierto"
     );
     let resultado = crate::ventana_editor::abrir(
         escena,
@@ -5043,23 +5230,59 @@ fn abrir_una_hoja(
         fondo,
         &fotos,
     );
-    match resultado {
-        // Se pulso un recuadro con enlace: la hoja a la que lleva es la que
-        // tiene ese dibujo como referencia.
-        Ok((_, Some(destino))) => {
-            let siguiente = a
-                .mensajes
-                .iter()
-                .position(|m| m.referencia.as_deref() == Some(destino.as_str()));
-            if siguiente.is_none() {
-                tracing::warn!(%destino, "el enlace no lleva a ninguna hoja de este proyecto");
-            }
-            siguiente
-        }
-        Ok((_, None)) => None,
+    let (escena, destino) = match resultado {
+        Ok(v) => v,
         Err(e) => {
             tracing::warn!(?e, "no se pudo abrir el lienzo");
-            None
+            return (false, None);
+        }
+    };
+    let guardada = guardar_hoja_dibujada(&ruta, &lienzo, &escena);
+    // Se pulso un recuadro con enlace: la hoja a la que lleva es la que tiene
+    // ese dibujo como referencia.
+    let siguiente = destino.and_then(|destino| {
+        let s = a
+            .mensajes
+            .iter()
+            .position(|m| m.referencia.as_deref() == Some(destino.as_str()));
+        if s.is_none() {
+            tracing::warn!(%destino, "el enlace no lleva a ninguna hoja de este proyecto");
+        }
+        s
+    });
+    (guardada, siguiente)
+}
+
+/// Escribe de vuelta el `.excalidraw` con lo que se hizo en el editor.
+/// `true` si habia algo que guardar y se guardo.
+///
+/// Lo que el movil mete y aqui no se entiende no se pierde: `con_escena`
+/// deja lo ajeno donde estaba y `escribir` devuelve tal cual lo que no se
+/// toco. Y si no se toco nada, no se escribe: abrir una hoja para mirarla no
+/// puede cambiarle la fecha al fichero, que es lo que mira la sincronizacion.
+fn guardar_hoja_dibujada(
+    ruta: &std::path::Path,
+    lienzo: &pixpin_motor2d::excalidraw::Lienzo,
+    escena: &pixpin_motor2d::Escena,
+) -> bool {
+    use pixpin_motor2d::excalidraw::{con_escena, escribir};
+    let antes = escribir(lienzo);
+    let despues = escribir(&con_escena(lienzo, escena));
+    if antes == despues {
+        return false;
+    }
+    // A un fichero de al lado y luego se cambia el nombre: si la luz se va a
+    // media escritura, queda el dibujo viejo entero y no medio nuevo.
+    let temporal = ruta.with_extension("excalidraw.tmp");
+    let hecho = std::fs::write(&temporal, despues).and_then(|()| std::fs::rename(&temporal, ruta));
+    match hecho {
+        Ok(()) => {
+            tracing::info!(ruta = %ruta.display(), "dibujo guardado");
+            true
+        }
+        Err(e) => {
+            tracing::error!(?e, ruta = %ruta.display(), "no se pudo guardar el dibujo");
+            false
         }
     }
 }

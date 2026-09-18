@@ -476,6 +476,56 @@ pub fn completar_hojas(raiz: &Path, id: &str, aparato: &str) -> std::io::Result<
     Ok(hechas)
 }
 
+/// Donde van a parar los proyectos borrados.
+pub fn papelera(raiz: &Path) -> PathBuf {
+    raiz.join("papelera")
+}
+
+/// Quita proyectos de la lista y se lleva sus carpetas a la papelera.
+/// Devuelve cuantos se quitaron y las carpetas que no se pudieron mover, para
+/// que quien llama lo cuente: este crate no escribe en el registro.
+///
+/// A la papelera y no borrados de verdad: un proyecto son horas de trabajo y
+/// el boton esta a un clic de «abrir». La carpeta se va con la hora en el
+/// nombre para que borrar dos veces un proyecto con el mismo `id` -se importa,
+/// se borra, se vuelve a importar, se vuelve a borrar- no choque.
+///
+/// Primero la lista y despues las carpetas: si mover una falla -la tiene
+/// abierta otro programa-, el proyecto ya no sale en la lista y su carpeta
+/// sigue entera donde estaba, que es el lado bueno del que caerse.
+pub fn borrar_proyectos(
+    raiz: &Path,
+    ids: &[String],
+    cuando: i64,
+) -> std::io::Result<(usize, Vec<PathBuf>)> {
+    // Un `id` es un nombre de carpeta. Uno con barras o puntos sacaria de
+    // `proyectos/` lo que se mueve; los de verdad son letras y cifras.
+    let validos: Vec<&String> = ids
+        .iter()
+        .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+        .collect();
+    let mut indice = Indice::leer(raiz);
+    let antes = indice.proyectos.len();
+    indice.proyectos.retain(|f| !validos.contains(&&f.id));
+    let quitados = antes - indice.proyectos.len();
+    if quitados > 0 {
+        indice.guardar(raiz)?;
+    }
+    let destino = papelera(raiz);
+    let mut sin_mover = Vec::new();
+    for id in validos {
+        let origen = carpeta(raiz, id);
+        if !origen.is_dir() {
+            continue;
+        }
+        std::fs::create_dir_all(&destino)?;
+        if std::fs::rename(&origen, destino.join(format!("{id}-{cuando}"))).is_err() {
+            sin_mover.push(origen);
+        }
+    }
+    Ok((quitados, sin_mover))
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -636,6 +686,50 @@ mod pruebas {
             guardar_adjunto(&raiz, "p", ".gitignore", b"3").unwrap(),
             "archivos/.gitignore"
         );
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn borrar_un_proyecto_lo_quita_de_la_lista_y_lo_deja_en_la_papelera() {
+        let raiz = carpeta_temporal("borrar");
+        let mut i = Indice::default();
+        i.proyectos.push(ficha("a", "Casa", 10));
+        i.proyectos.push(ficha("b", "Obra", 30));
+        i.guardar(&raiz).unwrap();
+        std::fs::create_dir_all(carpeta(&raiz, "a")).unwrap();
+        std::fs::write(carpeta(&raiz, "a").join("guardados.jsonl"), "{}").unwrap();
+
+        let (n, sin_mover) = borrar_proyectos(&raiz, &["a".to_string()], 99).unwrap();
+        assert!(sin_mover.is_empty());
+
+        assert_eq!(n, 1);
+        let queda = Indice::leer(&raiz);
+        assert_eq!(queda.proyectos.len(), 1);
+        assert_eq!(queda.proyectos[0].id, "b");
+        assert!(!carpeta(&raiz, "a").exists());
+        assert!(
+            papelera(&raiz)
+                .join("a-99")
+                .join("guardados.jsonl")
+                .is_file()
+        );
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn un_id_con_barras_no_saca_nada_de_la_carpeta_de_proyectos() {
+        let raiz = carpeta_temporal("borrar-malo");
+        let mut i = Indice::default();
+        i.proyectos.push(ficha("a", "Casa", 10));
+        i.guardar(&raiz).unwrap();
+        std::fs::create_dir_all(raiz.join("ajustes")).unwrap();
+
+        let (n, _) =
+            borrar_proyectos(&raiz, &["../ajustes".to_string(), String::new()], 1).unwrap();
+
+        assert_eq!(n, 0);
+        assert!(raiz.join("ajustes").is_dir());
+        assert_eq!(Indice::leer(&raiz).proyectos.len(), 1);
         let _ = std::fs::remove_dir_all(&raiz);
     }
 }

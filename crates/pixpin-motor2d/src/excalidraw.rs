@@ -157,11 +157,22 @@ pub fn leer(json: &str) -> Result<Lienzo, ErrorExcalidraw> {
 
 /// Escribe un lienzo, devolviendo lo ajeno intacto y en su sitio.
 pub fn escribir(lienzo: &Lienzo) -> String {
+    let objetos = puntos_como_objetos(lienzo);
     let elementos: Vec<Value> = lienzo
         .entradas
         .iter()
         .map(|e| match e {
-            Entrada::Nuestro { elemento, original } => elemento_hacia(elemento, original),
+            Entrada::Nuestro { elemento, original } => {
+                // Lo que nadie toco sale TAL CUAL entro. Pasarlo por
+                // `elemento_hacia` lo reescribia entero -los puntos en otra
+                // forma, los numeros con otros decimales- y un dibujo de mil
+                // trazos del movil volvia cambiado por haberlo mirado.
+                if elemento_desde(original).as_ref() == Some(elemento) {
+                    (**original).clone()
+                } else {
+                    elemento_hacia(elemento, original, objetos)
+                }
+            }
             Entrada::Ajeno(v) => (**v).clone(),
         })
         .collect();
@@ -183,6 +194,134 @@ pub fn escribir(lienzo: &Lienzo) -> String {
         (None, None) => mapa.insert("escala".into(), Value::Null),
     };
     serde_json::to_string_pretty(&Value::Object(mapa)).unwrap_or_default()
+}
+
+/// Si este lienzo es de los que llevan los puntos como objetos.
+///
+/// Decide la forma de los trazos que NACEN aqui; los que ya venian mandan
+/// ellos mismos. Un lienzo es «del movil» si algun trazo suyo lo dice o si
+/// trae la clave `hoja`, que solo escribe el: una hoja recien extraida de un
+/// PDF no tiene todavia ningun trazo del que copiar la forma.
+fn puntos_como_objetos(lienzo: &Lienzo) -> bool {
+    lienzo.resto.contains_key("hoja")
+        || lienzo.entradas.iter().any(|e| match e {
+            Entrada::Nuestro { original, .. } => puntos_son_objetos(original),
+            Entrada::Ajeno(v) => puntos_son_objetos(v),
+        })
+}
+
+/// Milisegundos desde 1970, que es como Excalidraw fecha sus elementos.
+fn ahora_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Lo que dice a los demas aparatos que este elemento cambio: `version` y
+/// `updated`. Y a uno recien nacido, lo que ningun original le trae: su `id`
+/// y su `type`, sin los que el movil rechaza el fichero entero.
+fn sellar(mapa: &mut Map<String, Value>, e: &Elemento, original: &Value) {
+    let ahora = ahora_ms();
+    let anterior = original.get("version").and_then(Value::as_u64).unwrap_or(0);
+    // La escena sube su version en cada paso de un arrastre; la del fichero
+    // solo tiene que crecer. La mayor de las dos sirve a ambos.
+    let version = (anterior + 1).max(e.version as u64).min(i32::MAX as u64);
+    mapa.insert("version".into(), Value::from(version));
+    mapa.insert("updated".into(), Value::from(ahora));
+    // El desempate de Excalidraw cuando dos aparatos suben a la misma
+    // version. No hace falta azar de verdad, solo que no se repita.
+    mapa.insert(
+        "versionNonce".into(),
+        Value::from((ahora as u64 ^ e.id.wrapping_mul(0x9e37_79b9)) & 0x7fff_ffff),
+    );
+    if !mapa.contains_key("id") {
+        mapa.insert(
+            "id".into(),
+            Value::String(format!("w{:x}{:x}", ahora, e.id)),
+        );
+    }
+    if !mapa.contains_key("type") {
+        let tipo = match &e.figura {
+            Figura::Rectangulo | Figura::Foco { .. } => "rectangle",
+            Figura::Elipse => "ellipse",
+            // El resaltador no existe alla: viaja como un trazo, con su
+            // opacidad, que es lo que lo hace resaltador a la vista.
+            Figura::Lapiz { .. } | Figura::Resaltador { .. } => "freedraw",
+            Figura::Linea { .. } => "line",
+            Figura::Flecha { .. } => "arrow",
+            Figura::Texto { .. } => "text",
+            Figura::Imagen { .. } => "image",
+            Figura::Cota { .. } => "pixpin-measure",
+            Figura::EscalaGrafica => "pixpin-scalebar",
+            Figura::Marco { .. } => "frame",
+        };
+        mapa.insert("type".into(), Value::String(tipo.into()));
+    }
+}
+
+/// La escena con la que se edita este lienzo.
+///
+/// Va de la mano de `con_escena`: la escena numera sus elementos del 1 en
+/// adelante segun entran, asi que el elemento `n` de la escena ES la entrada
+/// nuestra numero `n` del lienzo. Por eso se construye aqui y no a mano en
+/// cada sitio: quien la llenara en otro orden guardaria cada cambio en el
+/// elemento de al lado.
+pub fn a_escena(lienzo: &Lienzo) -> crate::Escena {
+    let mut escena = crate::Escena::nueva();
+    for e in lienzo.elementos() {
+        escena.anadir(e);
+    }
+    escena
+}
+
+/// El lienzo con lo que se hizo en la escena que salio de `a_escena`.
+///
+/// Lo ajeno se queda donde estaba y como estaba. Lo nuestro que se borro NO
+/// se quita: se marca `isDeleted`, como hace Excalidraw, porque es lo que le
+/// dice a otro aparato «esto se borro» en vez de «esto no lo he visto
+/// nunca». Lo nuevo va al final, que es encima de todo.
+pub fn con_escena(lienzo: &Lienzo, escena: &crate::Escena) -> Lienzo {
+    let mut salida = lienzo.clone();
+    let mut n: u64 = 0;
+    for entrada in &mut salida.entradas {
+        let Entrada::Nuestro { elemento, .. } = entrada else {
+            continue;
+        };
+        n += 1;
+        match escena.buscar(n) {
+            Some(editado) => {
+                // El id de la escena es de la sesion; el del lienzo sale del
+                // texto del fichero y es el que compara `escribir`. Y la
+                // version sola no es un cambio: la escena la sube al tocar.
+                let (id, version) = (elemento.id, elemento.version);
+                let mut editado = editado.clone();
+                editado.id = id;
+                let subida = editado.version;
+                editado.version = version;
+                if editado != *elemento {
+                    editado.version = subida;
+                    *elemento = editado;
+                }
+            }
+            // La escena lo tiro del todo al compactar: borrado igual.
+            None => elemento.borrado = true,
+        }
+    }
+    let mut nuevos: Vec<&Elemento> = escena.visibles().filter(|e| e.id > n).collect();
+    nuevos.sort_by_key(|e| e.id);
+    for e in nuevos {
+        // Una foto pegada aqui no tiene fichero en `imagenes/` ni entrada en
+        // `files`: escribirla dejaria en el movil un hueco que no abre.
+        if matches!(e.figura, Figura::Imagen { .. }) {
+            continue;
+        }
+        salida.entradas.push(Entrada::Nuestro {
+            elemento: e.clone(),
+            original: Box::new(Value::Null),
+        });
+    }
+    salida
 }
 
 /// La escala del JSON del movil, o `None` si no la hay o no vale.
@@ -259,18 +398,34 @@ fn puntos_desde(v: &Value, x: f32, y: f32) -> Vec<Punto2> {
 }
 
 /// Y al reves, de absolutos a relativos.
-fn puntos_hacia(puntos: &[Punto2], x: f32, y: f32) -> Value {
+fn puntos_hacia(puntos: &[Punto2], x: f32, y: f32, objetos: bool) -> Value {
     Value::Array(
         puntos
             .iter()
             .map(|p| {
-                Value::Array(vec![
-                    Value::from((p.x - x) as f64),
-                    Value::from((p.y - y) as f64),
-                ])
+                let (px, py) = ((p.x - x) as f64, (p.y - y) as f64);
+                if objetos {
+                    // La forma del movil: su `Pt(x, y)` es una clase, y una
+                    // lista `[x, y]` le hace rechazar el fichero ENTERO.
+                    let mut o = Map::new();
+                    o.insert("x".into(), Value::from(px));
+                    o.insert("y".into(), Value::from(py));
+                    Value::Object(o)
+                } else {
+                    Value::Array(vec![Value::from(px), Value::from(py)])
+                }
             })
             .collect(),
     )
+}
+
+/// Si los puntos de este JSON vienen como objetos, que es como los escribe
+/// el movil.
+fn puntos_son_objetos(v: &Value) -> bool {
+    v.get("points")
+        .and_then(Value::as_array)
+        .and_then(|l| l.first())
+        .is_some_and(Value::is_object)
 }
 
 /// El `fillStyle` de Excalidraw, con sus tres palabras exactas.
@@ -448,7 +603,14 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
 /// Encima y no de cero: el original trae campos que no usamos —`groupIds`,
 /// `boundElements`, `link`, `frameId`— y que atan unos elementos con otros.
 /// Escribir solo lo que entendemos desharia esas ataduras en silencio.
-fn elemento_hacia(e: &Elemento, original: &Value) -> Value {
+fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
+    // La forma de los puntos la manda el propio elemento si ya los traia; el
+    // aviso del lienzo solo decide para los que nacen aqui.
+    let objetos = if original.get("points").is_some() {
+        puntos_son_objetos(original)
+    } else {
+        objetos
+    };
     let mut mapa = match original {
         Value::Object(m) => m.clone(),
         _ => Map::new(),
@@ -494,12 +656,23 @@ fn elemento_hacia(e: &Elemento, original: &Value) -> Value {
             .into(),
         ),
     );
-    mapa.insert("roughness".into(), Value::from(e.rugosidad as f64));
+    // El movil lo lee como entero, y un `1.0` le hace rechazar el fichero.
+    // Solo se escribe con decimales si de verdad los tiene.
+    mapa.insert(
+        "roughness".into(),
+        if e.rugosidad.fract() == 0.0 {
+            Value::from(e.rugosidad as i64)
+        } else {
+            Value::from(e.rugosidad as f64)
+        },
+    );
     mapa.insert(
         "opacity".into(),
         Value::from((e.opacidad * 100.0).round() as i64),
     );
-    mapa.insert("seed".into(), Value::from(e.semilla));
+    // Un `Int` del movil: no le cabe el bit de arriba de nuestro u32.
+    mapa.insert("seed".into(), Value::from(e.semilla & 0x7fff_ffff));
+    sellar(&mut mapa, e, original);
     mapa.insert("isDeleted".into(), Value::Bool(e.borrado));
     mapa.insert("locked".into(), Value::Bool(e.bloqueado));
     if let Some(enlace) = &e.enlace {
@@ -518,7 +691,7 @@ fn elemento_hacia(e: &Elemento, original: &Value) -> Value {
             presiones,
             opciones,
         } => {
-            mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y));
+            mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y, objetos));
             mapa.insert(
                 "pressures".into(),
                 Value::Array(presiones.iter().map(|p| Value::from(*p as f64)).collect()),
@@ -539,10 +712,10 @@ fn elemento_hacia(e: &Elemento, original: &Value) -> Value {
             }
         }
         Figura::Resaltador { puntos } | Figura::Linea { puntos } => {
-            mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y));
+            mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y, objetos));
         }
         Figura::Flecha { puntos, .. } => {
-            mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y));
+            mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y, objetos));
         }
         Figura::Texto { texto, tam, .. } => {
             mapa.insert("text".into(), Value::String(texto.clone()));
@@ -550,7 +723,7 @@ fn elemento_hacia(e: &Elemento, original: &Value) -> Value {
         }
         Figura::Cota { puntos } => {
             mapa.insert("type".into(), Value::String("pixpin-measure".to_string()));
-            mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y));
+            mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y, objetos));
         }
         Figura::EscalaGrafica => {
             mapa.insert("type".into(), Value::String("pixpin-scalebar".to_string()));
@@ -1361,5 +1534,97 @@ mod pruebas {
         };
         assert!(presiones.is_empty());
         assert_eq!(*opciones, Some(crate::tinta::OpcionesTinta::default()));
+    }
+
+    // --- Editar y guardar de vuelta ---
+
+    const HOJA_DEL_MOVIL: &str = r##"{"type":"excalidraw","hoja":{"padre":"foto-1"},
+      "elements":[
+        {"id":"t1","type":"freedraw","x":10,"y":20,"width":5,"height":5,"seed":7,
+         "roughness":0,"version":3,"points":[{"x":0,"y":0},{"x":5,"y":5}],
+         "campoDelFuturo":"se queda"},
+        {"id":"g1","type":"pixpin-gantt","x":0,"y":0,"width":1,"height":1},
+        {"id":"r1","type":"rectangle","x":0,"y":0,"width":10,"height":10,"seed":9,
+         "roughness":0,"version":1}
+      ]}"##;
+
+    fn elementos_de(json: &str) -> Vec<Value> {
+        let v: Value = serde_json::from_str(json).unwrap();
+        v["elements"].as_array().unwrap().clone()
+    }
+
+    #[test]
+    fn abrir_y_cerrar_sin_tocar_nada_no_cambia_ni_un_elemento() {
+        let lienzo = leer(HOJA_DEL_MOVIL).unwrap();
+        let escena = a_escena(&lienzo);
+        let salida = escribir(&con_escena(&lienzo, &escena));
+        assert_eq!(elementos_de(&salida), elementos_de(HOJA_DEL_MOVIL));
+    }
+
+    #[test]
+    fn mover_un_trazo_del_movil_lo_guarda_con_los_puntos_como_objetos() {
+        let lienzo = leer(HOJA_DEL_MOVIL).unwrap();
+        let mut escena = a_escena(&lienzo);
+        assert!(escena.mover(1, 100.0, 0.0));
+        let salida = elementos_de(&escribir(&con_escena(&lienzo, &escena)));
+        let t = &salida[0];
+        assert_eq!(t["id"], "t1");
+        assert_eq!(t["x"].as_f64(), Some(110.0));
+        // Una lista `[0,0]` aqui y el movil no abre la hoja.
+        assert!(t["points"][0].is_object());
+        assert_eq!(t["campoDelFuturo"], "se queda");
+        assert!(t["version"].as_u64().unwrap() > 3);
+        // Y el vecino que no se toco, ni se entera.
+        assert_eq!(salida[2], elementos_de(HOJA_DEL_MOVIL)[2]);
+    }
+
+    #[test]
+    fn la_rugosidad_entera_se_escribe_sin_decimales() {
+        let lienzo = leer(HOJA_DEL_MOVIL).unwrap();
+        let mut escena = a_escena(&lienzo);
+        escena.mover(2, 1.0, 1.0);
+        let salida = elementos_de(&escribir(&con_escena(&lienzo, &escena)));
+        assert!(salida[2]["roughness"].is_i64() || salida[2]["roughness"].is_u64());
+    }
+
+    #[test]
+    fn lo_borrado_se_marca_y_no_se_quita_y_lo_ajeno_no_se_mueve() {
+        let lienzo = leer(HOJA_DEL_MOVIL).unwrap();
+        let mut escena = a_escena(&lienzo);
+        assert!(escena.borrar_apuntando(2));
+        let salida = elementos_de(&escribir(&con_escena(&lienzo, &escena)));
+        assert_eq!(salida.len(), 3);
+        assert_eq!(salida[1]["type"], "pixpin-gantt");
+        assert_eq!(salida[2]["id"], "r1");
+        assert_eq!(salida[2]["isDeleted"], true);
+    }
+
+    #[test]
+    fn un_trazo_nuevo_sale_con_id_tipo_y_la_forma_de_puntos_del_movil() {
+        let lienzo = leer(HOJA_DEL_MOVIL).unwrap();
+        let mut escena = a_escena(&lienzo);
+        let mut nuevo = lienzo.elementos()[0].clone();
+        nuevo.semilla = u32::MAX;
+        escena.anadir(nuevo);
+        let salida = elementos_de(&escribir(&con_escena(&lienzo, &escena)));
+        assert_eq!(salida.len(), 4);
+        let n = &salida[3];
+        assert_eq!(n["type"], "freedraw");
+        assert!(n["id"].as_str().is_some_and(|s| !s.is_empty()));
+        assert!(n["points"][0].is_object());
+        // Un `Int` de Kotlin: no le cabe mas.
+        assert!(n["seed"].as_u64().unwrap() <= i32::MAX as u64);
+    }
+
+    #[test]
+    fn en_un_lienzo_de_excalidraw_lo_nuevo_lleva_los_puntos_como_listas() {
+        let web = r#"{"type":"excalidraw","elements":[
+          {"id":"a","type":"freedraw","x":0,"y":0,"width":1,"height":1,
+           "points":[[0,0],[1,1]]}]}"#;
+        let lienzo = leer(web).unwrap();
+        let mut escena = a_escena(&lienzo);
+        escena.anadir(lienzo.elementos()[0].clone());
+        let salida = elementos_de(&escribir(&con_escena(&lienzo, &escena)));
+        assert!(salida[1]["points"][0].is_array());
     }
 }
