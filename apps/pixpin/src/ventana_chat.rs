@@ -2279,7 +2279,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
             // blanco, y su trazo oscuro sobre la burbuja azul no se leeria.
             p.rellenar_redondeado(hoja, 6.0 * e, tema.papel);
             match vista {
-                Ojeada::Lienzo(l) => pintar_lienzo(p, l, hoja),
+                Ojeada::Lienzo(l) => pintar_lienzo(p, l, hoja, Some(previas)),
                 Ojeada::Tabla(t) => pintar_ojeada_tabla(p, tema, escala, t, hoja),
                 // La foto llena la hoja, recortada como en Telegram. Mientras
                 // no esta leida se queda el papel, que ya dice «aqui va algo».
@@ -2311,8 +2311,11 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                                 &LienzoVisto {
                                     ordenes: pixpin_motor2d::ordenes_de_escena(&v.escena),
                                     caja: (0.0, 0.0, dw, dh),
+                                    // El fondo de una foto viva ya lo pinta quien llama.
+                                    fondo: None,
                                 },
                                 dest,
+                                None,
                             );
                             // Un borde que diga cual esta vivo: sin el, dos
                             // fotos seguidas se ven igual y no se sabe en cual
@@ -2358,8 +2361,11 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                                     &LienzoVisto {
                                         ordenes: dibujo.clone(),
                                         caja: (0.0, 0.0, dw, dh),
+                                        // El fondo de una foto viva ya lo pinta quien llama.
+                                        fondo: None,
                                     },
                                     dest,
+                                    None,
                                 );
                             }
                         }
@@ -2934,8 +2940,16 @@ fn fotos_del_historial(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::pa
         .unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
     let (primero, cuantos) = h::visibles(area, &c.puestos, scroll);
     (primero..primero + cuantos)
-        .filter(|i| matches!(a.vistas.get(*i), Some(Some(Ojeada::Foto { .. }))))
-        .filter_map(|i| ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(i)?))
+        .filter_map(|i| match a.vistas.get(i) {
+            Some(Some(Ojeada::Foto { .. })) => {
+                ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(i)?)
+            }
+            // Una hoja de un plano tambien tiene foto: su pagina del PDF o
+            // la imagen que trae dentro. Sin pedirla aqui, la burbuja se
+            // quedaria con los trazos flotando sobre el blanco.
+            Some(Some(Ojeada::Lienzo(l))) => l.fondo.as_ref().map(|(r, _)| r.clone()),
+            _ => None,
+        })
         .collect()
 }
 
@@ -3214,6 +3228,10 @@ struct LienzoVisto {
     ordenes: Vec<pixpin_motor2d::Orden>,
     /// La caja que ocupa el dibujo, en sus propias coordenadas.
     caja: (f32, f32, f32, f32),
+    /// Lo que va DEBAJO del dibujo y donde: la pagina del PDF sobre la que
+    /// se dibujo, o la foto de la hoja. Sin esto, una hoja de un plano se
+    /// ensena como cuatro rayas flotando en blanco.
+    fondo: Option<(std::path::PathBuf, (f32, f32, f32, f32))>,
 }
 
 /// Lee el lienzo de un mensaje de clase DIBUJO.
@@ -3280,12 +3298,41 @@ fn leer_vista(
     for e in lienzo.elementos() {
         escena.anadir(e);
     }
-    let caja = escena.caja()?;
+    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), proyecto);
+    // El fondo de la hoja: la pagina del PDF si se dibujo sobre una, y si no
+    // la foto que trae el propio dibujo (`imagenes/<id>` del paquete).
+    let fondo = match m.pagina {
+        Some(pagina) => pagina_del_pdf(&carpeta, pagina).map(|(r, w, h)| (r, (0.0, 0.0, w, h))),
+        None => {
+            let ficheros = pixpin_motor2d::excalidraw::ficheros(&lienzo);
+            escena
+                .elementos
+                .iter()
+                .find_map(|e| match e.figura {
+                    pixpin_motor2d::Figura::Imagen { id_objeto } => ficheros
+                        .iter()
+                        .find(|(id, _)| *id == id_objeto)
+                        .map(|(_, rel)| (carpeta.join(rel), e.caja())),
+                    _ => None,
+                })
+                .filter(|(r, _)| r.is_file())
+        }
+    };
+    let caja = match fondo {
+        // Con fondo manda su caja: un trazo que se salga de la hoja no puede
+        // encoger el plano entero para caber con el.
+        Some((_, c)) => c,
+        None => escena.caja()?,
+    };
     let ordenes = pixpin_motor2d::ordenes_de_escena(&escena);
-    if ordenes.is_empty() {
+    if ordenes.is_empty() && fondo.is_none() {
         return None;
     }
-    Some(Ojeada::Lienzo(LienzoVisto { ordenes, caja }))
+    Some(Ojeada::Lienzo(LienzoVisto {
+        ordenes,
+        caja,
+        fondo,
+    }))
 }
 
 /// Lo que se ensena dentro de una burbuja ademas del texto.
@@ -3363,7 +3410,12 @@ fn pintar_ojeada_tabla(
 }
 
 /// Pinta un lienzo dentro de `destino`, entero y sin deformarlo.
-fn pintar_lienzo(p: &Pintor, vista: &LienzoVisto, destino: RectF) {
+fn pintar_lienzo(
+    p: &Pintor,
+    vista: &LienzoVisto,
+    destino: RectF,
+    previas: Option<&crate::miniaturas::Miniaturas>,
+) {
     use pixpin_motor2d::Orden;
     let (x0, y0, x1, y1) = vista.caja;
     let (ancho, alto) = ((x1 - x0).max(1.0), (y1 - y0).max(1.0));
@@ -3381,6 +3433,20 @@ fn pintar_lienzo(p: &Pintor, vista: &LienzoVisto, destino: RectF) {
     };
 
     p.empujar_recorte(destino);
+    // Primero el fondo —la pagina del plano o la foto—, y encima el dibujo:
+    // es el orden en el que se hizo en el movil.
+    if let Some((ruta, (fx0, fy0, fx1, fy1))) = &vista.fondo
+        && let Some((b, w, alto)) = previas.and_then(|c| c.ya(ruta))
+    {
+        let caja = RectF {
+            x: (fx0 - x0) * escala + dx,
+            y: (fy0 - y0) * escala + dy,
+            ancho: (fx1 - fx0) * escala,
+            alto: (fy1 - fy0) * escala,
+        };
+        let _ = (w, alto);
+        p.bitmap_con(b, caja, None, pixpin_render::Interpolacion::Lineal);
+    }
     for orden in &vista.ordenes {
         match orden {
             Orden::Poligono { puntos, color: c } | Orden::Relleno { puntos, color: c } => {
@@ -3667,7 +3733,7 @@ fn pintar_info(
                     p.empujar_recorte(rf(celda));
                     let dentro = encoger(rf(celda), 4.0 * e);
                     match vista {
-                        Ojeada::Lienzo(l) => pintar_lienzo(p, l, dentro),
+                        Ojeada::Lienzo(l) => pintar_lienzo(p, l, dentro, Some(c.previas)),
                         Ojeada::Tabla(t) => pintar_ojeada_tabla(p, tema, escala, t, dentro),
                         Ojeada::Foto { .. } => {}
                     }
@@ -4782,4 +4848,36 @@ fn abrir_dibujo(ubicacion: &Ubicacion, a: &Abierto, indice: usize, opciones: Opc
     if let Err(e) = resultado {
         tracing::warn!(?e, "no se pudo abrir el lienzo");
     }
+}
+
+/// La pagina de un PDF del proyecto, dibujada a fichero la primera vez.
+///
+/// Se guarda en `archivos/pagina-NN.png` y se reutiliza: dibujar una pagina
+/// de un PDF de quince megas cuesta cientos de milisegundos, y la burbuja se
+/// repinta muchas veces. Devuelve la ruta y lo que mide.
+fn pagina_del_pdf(
+    carpeta: &std::path::Path,
+    pagina: u32,
+) -> Option<(std::path::PathBuf, f32, f32)> {
+    let destino = carpeta
+        .join("archivos")
+        .join(format!("pagina-{:02}.png", pagina + 1));
+    if destino.is_file() {
+        let (w, h) = pixpin_codec::imagen::medidas(&destino).ok()?;
+        return Some((destino, w as f32, h as f32));
+    }
+    let pdf = carpeta.join("documento.pdf");
+    if !pdf.is_file() {
+        return None;
+    }
+    let imagen = pixpin_pdf::Documento::abrir(&pdf)
+        .and_then(|d| d.renderizar(pagina, ANCHO_PAGINA))
+        .inspect_err(|e| tracing::warn!(?e, pagina, "no se pudo dibujar la pagina del PDF"))
+        .ok()?;
+    let png = pixpin_codec::codificar_png(&imagen).ok()?;
+    if let Some(padre) = destino.parent() {
+        std::fs::create_dir_all(padre).ok()?;
+    }
+    std::fs::write(&destino, png).ok()?;
+    Some((destino, imagen.ancho as f32, imagen.alto as f32))
 }
