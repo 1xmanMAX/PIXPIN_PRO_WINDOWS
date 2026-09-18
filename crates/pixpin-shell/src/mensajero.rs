@@ -89,6 +89,15 @@ pub fn enviar_ficheros(rutas: &[PathBuf]) -> bool {
             Some(LPARAM(&paquete as *const _ as isize)),
         )
     };
+    // Y un toque a la cola. `WM_COPYDATA` entra DIRECTO al procedimiento de
+    // ventana sin pasar por ella: el evento queda apuntado, pero el bucle de
+    // la otra copia esta dormido en `GetMessage` esperando algo que ya paso.
+    // Sin esto, lo que se le manda a una copia ya abierta no aparecia hasta
+    // que el usuario tocaba cualquier otra cosa —y un proyecto recibido del
+    // movil parecia perdido—.
+    if respuesta.0 != 0 {
+        crate::ventana::despertar(destino);
+    }
     respuesta.0 != 0
 }
 
