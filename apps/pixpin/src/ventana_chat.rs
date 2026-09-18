@@ -2197,8 +2197,25 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
             let mut entradas = Vec::with_capacity(a.mensajes.len());
             let mut lineas = Vec::with_capacity(a.mensajes.len());
             for (indice, m) in a.mensajes.iter().enumerate() {
-                let mut texto = m.resumen();
-                if let Some(etiqueta) = clase_de(m, textos) {
+                // Lo que ya se ve —una foto, un dibujo— no lleva texto: la
+                // imagen dice lo que es, y su nombre («pegado-1789…png») no
+                // anade nada. Lo pidio el usuario: «si envio solo una imagen,
+                // que solo se muestre la imagen». Un pie escrito si sale.
+                let se_ve = matches!(
+                    a.vistas.get(indice),
+                    Some(Some(Ojeada::Foto { .. } | Ojeada::Lienzo(_)))
+                );
+                // Y un archivo ensena su ficha —chapa de tipo, nombre y
+                // tamano— en vez de una linea con su nombre pelado.
+                let ficha = ficha_de_archivo(m, se_ve);
+                let mut texto = if se_ve || ficha.is_some() {
+                    m.texto.trim().to_string()
+                } else {
+                    m.resumen()
+                };
+                if ficha.is_none()
+                    && let Some(etiqueta) = clase_de(m, textos).filter(|_| !se_ve)
+                {
                     texto = if texto.is_empty() {
                         etiqueta
                     } else {
@@ -2212,7 +2229,12 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                 let (ancho, alto) = p.medir_texto_ajustado(&texto, tam, ancho_contenido as f32);
                 let hora = pixpin_ui::chat::etiqueta_hora(m.cuando, ahora);
                 let (ancho_hora, alto_hora) = p.medir_texto(&hora, h::HORA_TAM * e);
-                let reserva = ancho_hora + h::HORA_HUECO as f32 * e;
+                // La chapa del codigo va pegada a la hora, asi que su ancho se
+                // reserva con ella: si no, se montaria sobre la ultima linea.
+                let ancho_chapa = chapa_de_codigo(m)
+                    .map(|c| p.medir_texto(&c, CHAPA_TAM * e).0 + CHAPA_AIRE * e)
+                    .unwrap_or(0.0);
+                let reserva = ancho_hora + ancho_chapa + h::HORA_HUECO as f32 * e;
                 // Si el texto cabe igual en una caja mas estrecha, ninguna
                 // de sus lineas llega al borde y la hora tiene sitio.
                 let estrecho = (ancho_contenido as f32 - reserva).max(1.0);
@@ -2224,6 +2246,17 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                 };
                 // Un dibujo ensena su lienzo: la vista previa manda sobre
                 // el texto, que queda como pie.
+                if let Some((extension, nombre, detalle)) = &ficha {
+                    // La chapa, su aire y el texto de al lado; y el alto, lo
+                    // que mida la chapa, que es lo mas alto de la fila.
+                    let (w_nombre, _) = p.medir_texto(nombre, FICHA_NOMBRE_TAM * e);
+                    let (w_detalle, _) = p.medir_texto(detalle, FICHA_DETALLE_TAM * e);
+                    let _ = extension;
+                    let ancho_texto = w_nombre.max(w_detalle);
+                    let fila = (FICHA_LADO + FICHA_HUECO) * e + ancho_texto;
+                    ancho = ancho.max(fila.min(ancho_contenido as f32));
+                    alto += FICHA_LADO * e + h::RELLENO_Y as f32 * e;
+                }
                 if a.vistas.get(indice).is_some_and(|v| v.is_some()) {
                     // El que esta vivo se hace grande: en 260x180 no se puede
                     // dibujar. Los demas se quedan como estan, quietos.
@@ -2310,6 +2343,62 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
         };
         // Si es un dibujo, primero el lienzo y el texto debajo, como pie.
         let mut texto_y = dentro.y as f32;
+        // La ficha de un archivo: la chapa de color con su extension —el
+        // tipo se reconoce por el color antes de leer nada, como en el
+        // movil— y al lado el nombre y «1,2 MB PDF».
+        let se_ve = matches!(
+            a.vistas.get(i),
+            Some(Some(Ojeada::Foto { .. } | Ojeada::Lienzo(_)))
+        );
+        if let Some((extension, nombre, detalle)) = ficha_de_archivo(m, se_ve) {
+            let lado = FICHA_LADO * e;
+            let chapa = RectF {
+                x: dentro.x as f32,
+                y: texto_y,
+                ancho: lado,
+                alto: lado,
+            };
+            p.rellenar_redondeado(chapa, 8.0 * e, color_de_extension(&extension));
+            // Sin extension, tres puntos: una chapa vacia pareceria un fallo
+            // de pintado y no un archivo sin tipo.
+            let rotulo = if extension.is_empty() {
+                "···".to_string()
+            } else {
+                extension.clone()
+            };
+            let (w, alto_r) = p.medir_texto(&rotulo, FICHA_EXTENSION_TAM * e);
+            p.texto(
+                &rotulo,
+                chapa.x + (lado - w) / 2.0,
+                chapa.y + (lado - alto_r) / 2.0,
+                FICHA_EXTENSION_TAM * e,
+                Color {
+                    r: 1.0,
+                    g: 1.0,
+                    b: 1.0,
+                    a: 1.0,
+                },
+            );
+            let x = chapa.x + lado + FICHA_HUECO * e;
+            let ancho_texto = (dentro.x as f32 + dentro.ancho as f32 - x).max(0.0);
+            p.texto_linea(
+                &nombre,
+                x,
+                chapa.y + 3.0 * e,
+                FICHA_NOMBRE_TAM * e,
+                ancho_texto,
+                color_texto,
+            );
+            p.texto_linea(
+                &detalle,
+                x,
+                chapa.y + 24.0 * e,
+                FICHA_DETALLE_TAM * e,
+                ancho_texto,
+                color_hora,
+            );
+            texto_y += lado + h::RELLENO_Y as f32 * e;
+        }
         if let Some(Some(vista)) = a.vistas.get(i) {
             let alto_vista = h::VISTA_ALTO as f32 * e;
             let hoja = RectF {
@@ -2431,13 +2520,27 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
         let hora = pixpin_ui::chat::etiqueta_hora(m.cuando, ahora);
         if !hora.is_empty() {
             let (w, alto) = p.medir_texto(&hora, h::HORA_TAM * e);
-            p.texto(
-                &hora,
-                burbuja.derecha() as f32 - (h::RELLENO_X - h::HORA_INVADE_X) as f32 * e - w,
-                burbuja.abajo() as f32 - (h::RELLENO_Y - h::HORA_INVADE_Y) as f32 * e - alto,
-                h::HORA_TAM * e,
-                color_hora,
-            );
+            let x_hora =
+                burbuja.derecha() as f32 - (h::RELLENO_X - h::HORA_INVADE_X) as f32 * e - w;
+            let y_hora =
+                burbuja.abajo() as f32 - (h::RELLENO_Y - h::HORA_INVADE_Y) as f32 * e - alto;
+            p.texto(&hora, x_hora, y_hora, h::HORA_TAM * e, color_hora);
+            // La chapa con el codigo del mensaje, «#47·K7Q2», como en el
+            // movil (`ChapaDelNumero`): pequena y en gris, porque no es una
+            // alerta. Esta para poder nombrarlo —«el 47»— y para comprobar
+            // que lo de aqui y lo del movil son la misma cosa.
+            if let Some(codigo) = chapa_de_codigo(m) {
+                let tam = CHAPA_TAM * e;
+                let (wc, hc) = p.medir_texto(&codigo, tam);
+                let caja = RectF {
+                    x: x_hora - CHAPA_AIRE * e - wc - 4.0 * e,
+                    y: y_hora + (alto - hc) / 2.0 - 1.0 * e,
+                    ancho: wc + 8.0 * e,
+                    alto: hc + 2.0 * e,
+                };
+                p.rellenar_redondeado(caja, 6.0 * e, tema.separador);
+                p.texto(&codigo, caja.x + 4.0 * e, caja.y + 1.0 * e, tam, color_hora);
+            }
         }
     }
     p.soltar_recorte();
@@ -4975,4 +5078,141 @@ fn pagina_del_pdf(
     }
     std::fs::write(&destino, png).ok()?;
     Some((destino, imagen.ancho as f32, imagen.alto as f32))
+}
+
+// --- La ficha de un archivo dentro de su burbuja ----------------------
+
+/// Lo alto que mide la chapa de tipo, en pixeles logicos. El boton redondo
+/// del movil mide 44 (`BOTON_DEL_ARCHIVO`); aqui es un cuadrado redondeado
+/// del mismo tamano, que es lo que ensena la extension dentro.
+const FICHA_LADO: f32 = 44.0;
+/// El aire entre la chapa y el texto.
+const FICHA_HUECO: f32 = 10.0;
+const FICHA_NOMBRE_TAM: f32 = 15.0;
+const FICHA_DETALLE_TAM: f32 = 13.0;
+const FICHA_EXTENSION_TAM: f32 = 13.0;
+
+/// Lo que se ensena de un archivo: su extension, su nombre y el detalle.
+///
+/// `None` cuando el mensaje no es un archivo o cuando YA se ve —una foto o
+/// un dibujo se ensenan solos, y ponerles una ficha al lado seria decir dos
+/// veces lo mismo—.
+fn ficha_de_archivo(
+    m: &pixpin_proyecto::cuaderno::Mensaje,
+    se_ve: bool,
+) -> Option<(String, String, String)> {
+    use pixpin_proyecto::cuaderno::Clase;
+    if se_ve {
+        return None;
+    }
+    match m.clase.as_ref()? {
+        Clase::Archivo | Clase::Proyecto | Clase::Imagen | Clase::Dibujo | Clase::Pagina => {}
+        _ => return None,
+    }
+    let nombre = if m.nombre.trim().is_empty() {
+        m.resumen()
+    } else {
+        m.nombre.clone()
+    };
+    if nombre.trim().is_empty() {
+        return None;
+    }
+    let extension = extension_de(&nombre);
+    // Tamano y extension, como Telegram y como el movil: «1,2 MB PDF» dice
+    // de un golpe que es y cuanto pesa, que es lo que se pregunta antes de
+    // tocarlo.
+    let mut detalle = Vec::new();
+    if m.bytes > 0 {
+        detalle.push(tamano_legible(m.bytes));
+    }
+    if !extension.is_empty() {
+        detalle.push(extension.to_uppercase());
+    }
+    if let Some(p) = m.pagina {
+        detalle.push(format!("pág. {}", p + 1));
+    }
+    Some((extension, nombre, detalle.join(" ")))
+}
+
+/// La extension en minusculas, o vacio si el nombre no lleva ninguna.
+/// Se corta a cuatro signos: lo que pasa de ahi no es una extension, es un
+/// nombre con puntos.
+fn extension_de(nombre: &str) -> String {
+    nombre
+        .rsplit_once('.')
+        .map(|(_, e)| e.to_ascii_lowercase())
+        .filter(|e| !e.is_empty() && e.len() <= 4 && e.chars().all(|c| c.is_ascii_alphanumeric()))
+        .unwrap_or_default()
+}
+
+/// De cuantos bytes a «1,2 MB». Con coma, que es como se escribe aqui.
+fn tamano_legible(bytes: i64) -> String {
+    const UNIDADES: [&str; 4] = ["B", "KB", "MB", "GB"];
+    let mut valor = bytes.max(0) as f64;
+    let mut cual = 0;
+    while valor >= 1024.0 && cual + 1 < UNIDADES.len() {
+        valor /= 1024.0;
+        cual += 1;
+    }
+    if cual == 0 {
+        format!("{} {}", valor as i64, UNIDADES[cual])
+    } else {
+        format!("{:.1} {}", valor, UNIDADES[cual]).replace('.', ",")
+    }
+}
+
+/// El color de la chapa segun el tipo, como en el movil: el tipo se
+/// reconoce por el color antes de leer nada.
+fn color_de_extension(extension: &str) -> Color {
+    match extension {
+        "pdf" => hex(0xd93b3b),
+        "apk" => hex(0x3fa34d),
+        "zip" | "rar" | "7z" => hex(0xd2a022),
+        "doc" | "docx" | "rtf" | "txt" | "md" => hex(0x2f6feb),
+        "xls" | "xlsx" | "csv" => hex(0x1a7f37),
+        "ppt" | "pptx" => hex(0xd1481f),
+        "html" | "htm" => hex(0x4184c4),
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" => hex(0x8250df),
+        "mp4" | "mov" | "mkv" | "webm" => hex(0x6e40c9),
+        "mp3" | "wav" | "m4a" | "ogg" => hex(0xbf3989),
+        // Lo que no se reconoce va en gris: mejor sin color que con uno
+        // inventado que diga algo que no es.
+        _ => hex(0x57606a),
+    }
+}
+
+/// El tamano de la letra de la chapa del codigo: 10, como en el movil.
+const CHAPA_TAM: f32 = 10.0;
+/// El aire entre la chapa y la hora.
+const CHAPA_AIRE: f32 = 6.0;
+
+/// El codigo de chat de un mensaje, como lo ensena el movil: `#47·K7Q2`.
+/// `None` si el mensaje todavia no tiene numero.
+fn chapa_de_codigo(m: &pixpin_proyecto::cuaderno::Mensaje) -> Option<String> {
+    m.codigo_chat().map(|c| format!("#{c}"))
+}
+
+#[cfg(test)]
+mod pruebas_ficha {
+    use super::{extension_de, tamano_legible};
+
+    #[test]
+    fn la_extension_sale_en_minusculas_y_solo_si_lo_es() {
+        assert_eq!(extension_de("Plano General.PDF"), "pdf");
+        assert_eq!(extension_de("kyyj8l.apk"), "apk");
+        // Casos negativos: un nombre con puntos no es una extension, y uno
+        // sin punto tampoco. La chapa saldria con media frase dentro.
+        assert_eq!(extension_de("informe.v3.definitivo"), "");
+        assert_eq!(extension_de("sin-extension"), "");
+        assert_eq!(extension_de("raro.p d"), "");
+    }
+
+    #[test]
+    fn el_tamano_se_lee_de_un_golpe() {
+        assert_eq!(tamano_legible(512), "512 B");
+        assert_eq!(tamano_legible(1536), "1,5 KB");
+        assert_eq!(tamano_legible(103_922_690), "99,1 MB");
+        // Caso negativo: un tamano imposible no revienta ni sale en negativo.
+        assert_eq!(tamano_legible(-7), "0 B");
+    }
 }
