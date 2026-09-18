@@ -2406,6 +2406,15 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
 /// todavia no tiene ninguno. Se ensena vacio y ya esta.
 fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha) -> Abierto {
     let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &ficha.id);
+    // Un proyecto que entro con una version anterior puede haberse quedado
+    // sin las paginas del PDF que no llevaban dibujo: se completan aqui, que
+    // es cuando se abre, en vez de obligar a pedirselo otra vez al movil.
+    let aparato = ficha.aparato.clone().unwrap_or_default();
+    match pixpin_proyecto::almacen::completar_hojas(ubicacion.raiz(), &ficha.id, &aparato) {
+        Ok(0) => {}
+        Ok(hechas) => tracing::info!(hechas, proyecto = %ficha.nombre, "hojas que faltaban"),
+        Err(e) => tracing::warn!(?e, "no se pudieron completar las hojas"),
+    }
     let cuaderno = pixpin_proyecto::cuaderno::Cuaderno::leer_de(&carpeta).unwrap_or_default();
     if cuaderno.lineas_rotas > 0 {
         tracing::warn!(
@@ -3592,8 +3601,17 @@ fn pintar_info(
         );
         let mut args = fluent_bundle::FluentArgs::new();
         args.set("cuantas", a.ficha.hojas);
+        // Las hojas y, detras, el codigo unico del proyecto: es el que hay
+        // que mirar para saber si lo que hay aqui y lo que hay en el movil
+        // son la misma cosa, y sin verlo no se puede comprobar una
+        // sincronizacion. En el movil sale igual.
+        let subtitulo = format!(
+            "{}  ·  {}",
+            textos.t_args("chat-hojas", &args),
+            a.ficha.codigo_unico()
+        );
         p.texto_linea(
-            &textos.t_args("chat-hojas", &args),
+            &subtitulo,
             i.cabecera.x as f32 + info::CAPA_TITULO_X as f32 * e,
             i.cabecera.y as f32 + info::CAPA_SUBTITULO_Y as f32 * e,
             info::CAPA_SUBTITULO_TAM * e,

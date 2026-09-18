@@ -357,13 +357,26 @@ pub fn importar_paquete(
                     m
                 }
                 (None, Some(texto)) => cuaderno::Mensaje::nota(texto, &sello),
-                // Una hoja sin dibujo ni nota (un croquis, una pagina) se
-                // apunta por su nombre: mejor una linea que decir que esta
-                // que perderla porque aqui no se sabe pintarla.
+                // Una pagina del PDF sin dibujo encima ES una hoja: se
+                // apunta como pagina para que se vea el plano. Antes salia
+                // como una nota vacia, o sea, una burbuja en blanco.
+                (None, None) if hoja.pagina.is_some() => {
+                    cuaderno::Mensaje::adjunto(cuaderno::Clase::Pagina, &hoja.nombre, "", 0, &sello)
+                }
+                // Y una sin dibujo, nota ni pagina (un croquis) se apunta por
+                // su nombre: mejor una linea que decir que esta que perderla
+                // porque aqui no se sabe pintarla.
                 (None, None) => cuaderno::Mensaje::nota(&hoja.nombre, &sello),
             };
             mensaje.uid = hoja.uid.clone();
             mensaje.pagina = hoja.pagina;
+            // De quien cuelga: las «zonas» de una pagina son hojas hijas, y
+            // sin esto se pierde de que pagina es cada recorte.
+            mensaje.responde_a = hoja
+                .resto
+                .get("padre")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
             cuaderno::anadir(&destino, &mensaje)?;
         }
     }
@@ -372,6 +385,95 @@ pub fn importar_paquete(
     indice.proyectos.push(ficha.clone());
     indice.guardar(raiz)?;
     Ok(ficha)
+}
+
+/// Anade al cuaderno las hojas del `proyecto.json` que todavia no estan.
+///
+/// Un proyecto que entro con una version anterior se quedo sin las paginas
+/// del PDF que no llevaban dibujo y sin saber de que pagina cuelga cada
+/// «zona». Reimportarlo obligaria a volver a pedirselo al movil, asi que se
+/// completa en el sitio: se compara por el codigo unico de cada hoja, que es
+/// lo unico que no cambia, y lo que ya esta no se toca.
+///
+/// Devuelve cuantas se anadieron.
+pub fn completar_hojas(raiz: &Path, id: &str, aparato: &str) -> std::io::Result<usize> {
+    use crate::cuaderno;
+    let carpeta = carpeta(raiz, id);
+    let texto = match std::fs::read_to_string(carpeta.join("proyecto.json")) {
+        Ok(t) => t,
+        // Un proyecto nacido aqui no tiene `proyecto.json`: no hay nada que
+        // completar y no es un error.
+        Err(_) => return Ok(0),
+    };
+    let Ok(p) = serde_json::from_str::<crate::Proyecto>(&texto) else {
+        return Ok(0);
+    };
+    let previos = cuaderno::Cuaderno::leer_de(&carpeta).unwrap_or_default();
+    let ya: std::collections::BTreeSet<String> = previos
+        .mensajes
+        .iter()
+        .filter_map(|m| m.uid.clone())
+        .collect();
+    let mut numero = previos.mensajes.iter().map(|m| m.numero).max().unwrap_or(0);
+    let cuando = previos
+        .mensajes
+        .iter()
+        .map(|m| m.cuando)
+        .max()
+        .unwrap_or(p.tocado);
+    let mut hechas = 0;
+    for hoja in &p.hojas {
+        let Some(uid) = hoja.uid.clone() else {
+            continue;
+        };
+        if ya.contains(&uid) {
+            continue;
+        }
+        numero += 1;
+        let sello = cuaderno::Sello {
+            cuando: cuando + numero,
+            numero,
+            aparato: aparato.to_string(),
+            proyecto: id.to_string(),
+        };
+        let mut m = match (&hoja.dibujo, &hoja.nota) {
+            (Some(dibujo), _) => {
+                let nombre = format!("{dibujo}.excalidraw");
+                let ruta = format!("lienzos/{nombre}");
+                let bytes = std::fs::metadata(carpeta.join(&ruta))
+                    .map(|m| m.len() as i64)
+                    .unwrap_or(0);
+                let mut m = cuaderno::Mensaje::adjunto(
+                    cuaderno::Clase::Dibujo,
+                    if hoja.nombre.is_empty() {
+                        &nombre
+                    } else {
+                        &hoja.nombre
+                    },
+                    &ruta,
+                    bytes,
+                    &sello,
+                );
+                m.referencia = Some(dibujo.clone());
+                m
+            }
+            (None, Some(texto)) => cuaderno::Mensaje::nota(texto, &sello),
+            (None, None) if hoja.pagina.is_some() => {
+                cuaderno::Mensaje::adjunto(cuaderno::Clase::Pagina, &hoja.nombre, "", 0, &sello)
+            }
+            (None, None) => cuaderno::Mensaje::nota(&hoja.nombre, &sello),
+        };
+        m.uid = Some(uid);
+        m.pagina = hoja.pagina;
+        m.responde_a = hoja
+            .resto
+            .get("padre")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        cuaderno::anadir(&carpeta, &m)?;
+        hechas += 1;
+    }
+    Ok(hechas)
 }
 
 #[cfg(test)]
