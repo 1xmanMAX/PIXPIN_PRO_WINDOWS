@@ -133,6 +133,28 @@ impl CapaEstatica {
     /// quien llama pinta todo como siempre. Nunca repinta la capa aqui —eso
     /// solo lo hace `preparar`, al principio del gesto.
     pub fn volcar(&self, motor: &mut MotorRender, destino: &ID2D1Bitmap1, ahora: &Estampa) -> bool {
+        self.volcar_zona(motor, destino, ahora, None)
+    }
+
+    /// Lo mismo, pero copiando SOLO un trozo.
+    ///
+    /// Copiar la pantalla entera sesenta veces por segundo es lo que hacia
+    /// lenta la tinta: en el equipo del usuario eran 6-8 ms por fotograma
+    /// —medidos— antes de dibujar nada, y en una grafica integrada eso es
+    /// medio fotograma tirado en mover pixeles que no cambian.
+    ///
+    /// Quien llama tiene que pasar la union de la zona sucia de ESTE
+    /// fotograma y la del anterior: la cadena de intercambio tiene dos
+    /// mapas, asi que el que se pinta ahora lleva dentro lo de hace DOS
+    /// fotogramas. Con solo la zona de este quedaria pegada la punta del
+    /// trazo de hace dos, que es el fantasma clasico de esta tecnica.
+    pub fn volcar_zona(
+        &self,
+        motor: &mut MotorRender,
+        destino: &ID2D1Bitmap1,
+        ahora: &Estampa,
+        zona: Option<(i32, i32, i32, i32)>,
+    ) -> bool {
         let (Some(bitmap), Some(preparada)) = (&self.bitmap, &self.estampa) else {
             return false;
         };
@@ -140,19 +162,38 @@ impl CapaEstatica {
             return false;
         }
         let (ancho, alto) = ahora.tamano;
+        let entera = RectF {
+            x: 0.0,
+            y: 0.0,
+            ancho: ancho as f32,
+            alto: alto as f32,
+        };
+        let caja = match zona {
+            None => entera,
+            Some((x0, y0, x1, y1)) => {
+                let x0 = x0.clamp(0, ancho as i32) as f32;
+                let y0 = y0.clamp(0, alto as i32) as f32;
+                let x1 = x1.clamp(0, ancho as i32) as f32;
+                let y1 = y1.clamp(0, alto as i32) as f32;
+                // Una zona vacia tras recortar no es «no cambio nada», es
+                // «no se sabe»: se copia entera, como antes.
+                if x1 <= x0 || y1 <= y0 {
+                    entera
+                } else {
+                    RectF {
+                        x: x0,
+                        y: y0,
+                        ancho: x1 - x0,
+                        alto: y1 - y0,
+                    }
+                }
+            }
+        };
         motor
             .dibujar(destino, |p| {
-                p.bitmap(
-                    bitmap,
-                    RectF {
-                        x: 0.0,
-                        y: 0.0,
-                        ancho: ancho as f32,
-                        alto: alto as f32,
-                    },
-                    None,
-                    true,
-                );
+                // Mismo rectangulo en origen y en destino: es una copia, no
+                // un escalado, asi que no hay interpolacion que valorar.
+                p.bitmap(bitmap, caja, Some(caja), true);
             })
             .is_ok()
     }

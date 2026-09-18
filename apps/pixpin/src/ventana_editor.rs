@@ -504,6 +504,9 @@ pub fn abrir(
     let mut esperando_senal: Option<std::time::Instant> = None;
     let mut sucio: Option<(f32, f32, f32, f32)> = None;
     let mut todo_sucio = false;
+    // La zona sucia del fotograma anterior (D148): hace falta para la union
+    // de dos, porque la cadena de intercambio tiene dos mapas.
+    let mut zona_anterior: Option<(i32, i32, i32, i32)> = None;
     let mut medidor = crate::medir_fotogramas::MedidorFotogramas::nuevo(medir_fotogramas);
 
     'bucle: loop {
@@ -1130,6 +1133,16 @@ pub fn abrir(
                     )
                 })
             };
+            // D148: al mapa que se pinta ahora le toca su turno cada DOS
+            // fotogramas (la cadena tiene dos), asi que hay que rehacer
+            // tambien lo que cambio en el anterior. Sin esta union quedaria
+            // pegada la punta del trazo de hace dos fotogramas.
+            let zona_pintada = match (zona, zona_anterior) {
+                (Some(a), Some(b)) => {
+                    Some((a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
+                }
+                _ => None,
+            };
             habia_prediccion = prediccion.is_some();
             let pintado = pintar(
                 &mut motor,
@@ -1148,7 +1161,7 @@ pub fn abrir(
                 escala_por_cien,
                 ancho_px,
                 alto_px,
-                zona,
+                zona_pintada,
                 prediccion,
                 panel.as_ref(),
                 |_| {},
@@ -1161,6 +1174,7 @@ pub fn abrir(
                     });
                     hay_que_pintar = false;
                     ultimo_panel = panel;
+                    zona_anterior = zona;
                     fotograma_listo = superficie.senal_fotograma().is_none();
                     sucio = None;
                     todo_sucio = false;
@@ -1364,7 +1378,10 @@ fn pintar(
         tamano: (ancho_px as u32, alto_px as u32),
         excluidos: ahora_excluidos.clone(),
     };
-    let capa_vale = capa.volcar(motor, &destino, &ahora);
+    // Solo el trozo que cambia (D148): copiar la pantalla entera cada
+    // fotograma costaba 6-8 ms medidos en el equipo del usuario, y eso era
+    // la mitad del presupuesto de 60 Hz gastada antes de dibujar la tinta.
+    let capa_vale = capa.volcar_zona(motor, &destino, &ahora, zona);
     // Lo que de verdad importa para presentar solo un trozo es si la capa
     // congelada SE USO en este fotograma (`capa_vale`), no si `capa.lista()`
     // dice que hay una capa horneada: si no vale, `destino` se limpia y se
@@ -1383,6 +1400,19 @@ fn pintar(
             // lo unico que cambia al encuadrar o acercar (camara.rs lo explica:
             // "la geometria se calcula UNA VEZ en coordenadas del mundo").
             let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
+            // D148: con la capa copiada a trozos, fuera de la zona el mapa
+            // lleva lo de hace dos fotogramas, que ahi es lo correcto. Pintar
+            // encima volveria a mezclar la tinta consigo misma y el trazo se
+            // iria oscureciendo por los bordes. El recorte va ANTES de poner
+            // la vista: se toma en pixeles de pantalla.
+            if let Some((x0, y0, x1, y1)) = zona {
+                p.empujar_recorte(RectF {
+                    x: x0 as f32,
+                    y: y0 as f32,
+                    ancho: (x1 - x0).max(0) as f32,
+                    alto: (y1 - y0).max(0) as f32,
+                });
+            }
             if !capa_vale {
                 p.limpiar(Color::BLANCO);
             }
@@ -1492,6 +1522,9 @@ fn pintar(
                 crate::panel_dibujo::pintar(p, panel, escala_por_cien);
             }
             encima(p);
+            if zona.is_some() {
+                p.soltar_recorte();
+            }
         })
     };
     if error.is_err() {
