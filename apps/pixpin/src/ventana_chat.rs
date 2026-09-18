@@ -67,6 +67,9 @@ struct Tema {
     buscador: Color,
     /// El azul del boton de enviar (`historySendIconFg`).
     enviar: Color,
+    /// Los dos extremos del papel del chat, de arriba abajo.
+    papel_a: Color,
+    papel_b: Color,
     /// El fondo sobre el que se ensena un lienzo: una hoja de papel.
     papel: Color,
     /// Lo que se escribe ENCIMA del papel. No vale `texto`: en el tema
@@ -97,7 +100,12 @@ const CLARO: Tema = Tema {
     boton_sobre: hex(0xe5e5e5),
     cerrar_sobre: hex(0xe81123),
     lista: hex(0xffffff),
-    chat: hex(0xf1f1f1),
+    chat: hex(0x86bfb2),
+    // El papel del chat es un degradado, como en el movil: es lo que hace
+    // que la burbuja se lea como un objeto suelto y no como una mancha del
+    // mismo papel. «Mar», el de fabrica (`FondosDelChat`).
+    papel_a: hex(0x86bfb2),
+    papel_b: hex(0x8ab8d2),
     cabecera: hex(0xffffff),
     separador: hex(0xe0e0e0),
     // dialogsNameFg, dialogsTextFg, dialogsBgActive y dialogsUnreadBg.
@@ -121,12 +129,16 @@ const CLARO: Tema = Tema {
         a: 0.498,
     },
     // msgOutBg, msgInBg y sus colores de texto y hora.
-    burbuja_mia: hex(0xeffdde),
+    // Los del chat de PixPin Android (`guardados/ColoresDelChat.kt`), que a
+    // su vez saca de Telegram y ajusta el contraste: la burbuja `#EFFFDE`,
+    // su tinta `#101B24` y su hora `#3F7A30` —un verde mas hondo que el de
+    // Telegram, que en letra pequena se quedaba en 2,46:1—.
+    burbuja_mia: hex(0xefffde),
     burbuja_otra: hex(0xffffff),
-    texto_mio: hex(0x000000),
-    texto_otro: hex(0x000000),
-    hora_mia: hex(0x6db566),
-    hora_otra: hex(0xa0acb6),
+    texto_mio: hex(0x101b24),
+    texto_otro: hex(0x101b24),
+    hora_mia: hex(0x3f7a30),
+    hora_otra: hex(0x7c8c98),
     separador_dia: hex(0x6b8f5c),
     texto_separador: hex(0xffffff),
 };
@@ -138,7 +150,9 @@ const OSCURO: Tema = Tema {
     boton_sobre: hex(0x2c3847),
     cerrar_sobre: hex(0xe92539),
     lista: hex(0x17212b),
-    chat: hex(0x0e1621),
+    chat: hex(0x151e27),
+    papel_a: hex(0x151e27),
+    papel_b: hex(0x10161d),
     cabecera: hex(0x17212b),
     separador: hex(0x101921),
     // dialogsNameFg, dialogsTextFg y dialogsUnreadBg.
@@ -164,12 +178,14 @@ const OSCURO: Tema = Tema {
         a: 0.498,
     },
     // msgOutBg, msgInBg y sus colores de texto y hora.
-    burbuja_mia: hex(0x2b5278),
-    burbuja_otra: hex(0x182533),
-    texto_mio: hex(0xe4ecf2),
-    texto_otro: hex(0xf5f5f5),
-    hora_mia: hex(0x7da8d3),
-    hora_otra: hex(0x6d7f8f),
+    // Los mismos, de noche: burbuja `#3E618A`, tinta `#FAFAFA` y hora
+    // `#A8CCE8`.
+    burbuja_mia: hex(0x3e618a),
+    burbuja_otra: hex(0x243447),
+    texto_mio: hex(0xfafafa),
+    texto_otro: hex(0xfafafa),
+    hora_mia: hex(0xa8cce8),
+    hora_otra: hex(0x8fa4b8),
     // msgServiceBg del tema oscuro, ya mezclado sobre el fondo del chat:
     // el original es semitransparente y se recalcula con el fondo de
     // pantalla, que aqui no existe.
@@ -1651,6 +1667,33 @@ fn pintar(
 ) {
     let e = escala as f32 / 100.0;
     p.limpiar(tema.chat);
+    // El papel del chat, en degradado como en el movil. Por bandas y no con
+    // un pincel de degradado porque el pintor no tiene uno: a cien bandas no
+    // se distingue una de otra y cuesta lo que cien rellenos.
+    if d.chat.ancho > 0 && d.chat.alto > 0 {
+        const BANDAS: u32 = 100;
+        let alto = (d.chat.alto as f32 / BANDAS as f32).max(1.0);
+        for n in 0..BANDAS {
+            let t = n as f32 / (BANDAS - 1) as f32;
+            let mezcla = |a: f32, b: f32| a + (b - a) * t;
+            p.rellenar(
+                RectF {
+                    x: d.chat.x as f32,
+                    y: d.chat.y as f32 + n as f32 * alto,
+                    ancho: d.chat.ancho as f32,
+                    // Un pelo mas para que el redondeo no deje rayas entre
+                    // banda y banda.
+                    alto: alto + 1.0,
+                },
+                Color {
+                    r: mezcla(tema.papel_a.r, tema.papel_b.r),
+                    g: mezcla(tema.papel_a.g, tema.papel_b.g),
+                    b: mezcla(tema.papel_a.b, tema.papel_b.b),
+                    a: 1.0,
+                },
+            );
+        }
+    }
     p.rellenar(rf(d.barra), tema.barra);
     p.rellenar(rf(d.lista), tema.lista);
     p.rellenar(rf(d.cabecera_lista), tema.cabecera);

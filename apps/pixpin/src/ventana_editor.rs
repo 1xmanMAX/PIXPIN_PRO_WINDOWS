@@ -659,8 +659,10 @@ pub fn abrir(
             // una pagina del movil): pulsarlo cierra este lienzo y quien
             // llama abre el de al lado. Va antes que nada, porque si no el
             // gesto se lo lleva como una seleccion cualquiera.
+            // Con CUALQUIER herramienta: una zona enlazada es un boton, no una
+            // figura. Pedir la mano lo hacia inalcanzable, porque el editor
+            // abre con el lapiz.
             if let EventoOverlay::BotonPulsado(p) = ev
-                && gesto.herramienta == Herramienta::Mano
                 && let Some(q) = a_evento(
                     &ev,
                     &efectiva,
