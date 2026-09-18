@@ -2262,10 +2262,12 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                     // dibujar. Los demas se quedan como estan, quietos.
                     let vivo = a.vivo.as_ref().is_some_and(|v| v.indice == indice);
                     let factor = if vivo { VIVO_FACTOR } else { 1.0 };
-                    let vista_ancho =
-                        (h::VISTA_ANCHO as f32 * e * factor).min(ancho_contenido as f32);
+                    let (vista_ancho, vista_alto) = a.vistas[indice]
+                        .as_ref()
+                        .map(|v| tamano_de_vista(v, ancho_contenido as f32, e, factor))
+                        .unwrap_or((0.0, 0.0));
                     ancho = ancho.max(vista_ancho);
-                    alto += h::VISTA_ALTO as f32 * e * factor + h::RELLENO_Y as f32 * e;
+                    alto += vista_alto + h::RELLENO_Y as f32 * e;
                 }
                 entradas.push(h::Entrada {
                     alto: alto.ceil() as u32,
@@ -2400,16 +2402,22 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
             texto_y += lado + h::RELLENO_Y as f32 * e;
         }
         if let Some(Some(vista)) = a.vistas.get(i) {
-            let alto_vista = h::VISTA_ALTO as f32 * e;
+            let vivo = a.vivo.as_ref().is_some_and(|v| v.indice == i);
+            let factor = if vivo { VIVO_FACTOR } else { 1.0 };
+            let (ancho_vista, alto_vista) = tamano_de_vista(vista, dentro.ancho as f32, e, factor);
             let hoja = RectF {
                 x: dentro.x as f32,
                 y: texto_y,
-                ancho: dentro.ancho as f32,
+                ancho: ancho_vista,
                 alto: alto_vista,
             };
-            // Fondo de papel: tanto un dibujo como una tabla se hacen sobre
-            // blanco, y su trazo oscuro sobre la burbuja azul no se leeria.
-            p.rellenar_redondeado(hoja, 6.0 * e, tema.papel);
+            // Fondo de papel: un dibujo y una tabla se hacen sobre blanco, y
+            // su trazo oscuro sobre la burbuja azul no se leeria. Una FOTO no
+            // lo lleva: su hueco mide justo lo que ella, y un papel blanco
+            // asomando por los lados era el marco que el usuario pidio quitar.
+            if !matches!(vista, Ojeada::Foto { .. }) {
+                p.rellenar_redondeado(hoja, 6.0 * e, tema.papel);
+            }
             match vista {
                 Ojeada::Lienzo(l) => pintar_lienzo(p, l, hoja, Some(previas)),
                 Ojeada::Tabla(t) => pintar_ojeada_tabla(p, tema, escala, t, hoja),
@@ -5273,5 +5281,56 @@ mod pruebas_chapa {
     #[test]
     fn sin_numero_no_hay_chapa() {
         assert_eq!(chapa_de_codigo(&mensaje(0, Some("6ARJ"))), None);
+    }
+}
+
+/// Lo que mide la vista de un mensaje dentro de su burbuja.
+///
+/// Una foto toma SU proporcion: encajarla en una caja fija dejaba bandas a
+/// los lados —el «marco blanco» que el usuario pidio quitar—. Cabe en el
+/// ancho de siempre y, como mucho, en vez y media del alto, que es lo que
+/// deja ver entera una captura vertical del movil sin comerse el historial.
+/// Lo demas (un dibujo, una tabla) conserva su caja fija de papel.
+fn tamano_de_vista(vista: &Ojeada, ancho_max: f32, e: f32, factor: f32) -> (f32, f32) {
+    use pixpin_ui::historial as h;
+    let ancho = (h::VISTA_ANCHO as f32 * e * factor).min(ancho_max);
+    let alto = h::VISTA_ALTO as f32 * e * factor;
+    let Ojeada::Foto { doc, .. } = vista else {
+        return (ancho, alto);
+    };
+    let (dw, dh) = (doc.0.max(1.0), doc.1.max(1.0));
+    let escala = (ancho / dw).min(alto * 1.5 / dh);
+    ((dw * escala).max(1.0), (dh * escala).max(1.0))
+}
+
+#[cfg(test)]
+mod pruebas_vista {
+    use super::{Ojeada, tamano_de_vista};
+
+    fn foto(w: f32, h: f32) -> Ojeada {
+        Ojeada::Foto {
+            doc: (w, h),
+            dibujo: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn la_vista_de_una_foto_tiene_su_misma_proporcion() {
+        // Sin bandas: si la caja no tuviera la proporcion de la foto, por los
+        // lados asomaria el fondo, que es el marco blanco que se quito.
+        for (w, h) in [(1920.0, 1080.0), (1080.0, 2340.0), (500.0, 500.0)] {
+            let (vw, vh) = tamano_de_vista(&foto(w, h), 400.0, 1.0, 1.0);
+            assert!(
+                ((vw / vh) - (w / h)).abs() < 0.01,
+                "{w}x{h} salio {vw}x{vh}"
+            );
+            assert!(vw <= 260.5, "no pasa del ancho de la vista: {vw}");
+        }
+    }
+
+    #[test]
+    fn una_foto_sin_tamano_no_divide_por_cero() {
+        let (vw, vh) = tamano_de_vista(&foto(0.0, 0.0), 400.0, 1.0, 1.0);
+        assert!(vw.is_finite() && vh.is_finite() && vw >= 1.0 && vh >= 1.0);
     }
 }
