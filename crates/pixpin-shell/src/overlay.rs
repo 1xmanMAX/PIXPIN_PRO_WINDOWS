@@ -840,7 +840,26 @@ extern "system" fn procedimiento_overlay(
         }
         WM_MOUSEHWHEEL => {
             let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            avisar_de_horizontal("WM_MOUSEHWHEEL", delta);
             encolar(EventoOverlay::RuedaHorizontal(delta));
+            LRESULT(0)
+        }
+        // El camino VIEJO del desplazamiento de lado: muchos controladores de
+        // panel tactil (Synaptics, ELAN) no mandan `WM_MOUSEHWHEEL` sino una
+        // barra de desplazamiento fingida. Sin atenderlo, en esos equipos el
+        // lienzo solo sube y baja, que es lo que reporto el usuario.
+        WM_HSCROLL => {
+            let delta = match (wparam.0 & 0xFFFF) as u32 {
+                0 => -40,  // SB_LINELEFT
+                1 => 40,   // SB_LINERIGHT
+                2 => -120, // SB_PAGELEFT
+                3 => 120,  // SB_PAGERIGHT
+                _ => 0,
+            };
+            avisar_de_horizontal("WM_HSCROLL", delta);
+            if delta != 0 {
+                encolar(EventoOverlay::RuedaHorizontal(delta));
+            }
             LRESULT(0)
         }
         WM_MOUSEWHEEL => {
