@@ -191,12 +191,21 @@ fn arrancar(
     // los tres codigos de todo lo que nazca aqui. Sin ella la app funciona;
     // solo se registra el fallo.
     let nombre_equipo = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PixPin Max".into());
-    match pixpin_proyecto::identidad::Identidad::leer_o_crear(ubicacion.raiz(), &nombre_equipo) {
+    // El codigo de este equipo: lo lleva cada cosa que nace aqui, y con el
+    // se reconoce lo que vuelve del movil.
+    let identidad_equipo = match pixpin_proyecto::identidad::Identidad::leer_o_crear(
+        ubicacion.raiz(),
+        &nombre_equipo,
+    ) {
         Ok(i) => {
-            tracing::info!(aparato = %i.yo.codigo(), nombre = %i.yo.nombre, "identidad del equipo")
+            tracing::info!(aparato = %i.yo.codigo(), nombre = %i.yo.nombre, "identidad del equipo");
+            i.yo.codigo()
         }
-        Err(e) => tracing::warn!(?e, "no se pudo leer ni crear la identidad del equipo"),
-    }
+        Err(e) => {
+            tracing::warn!(?e, "no se pudo leer ni crear la identidad del equipo");
+            String::new()
+        }
+    };
 
     // 4. Que nos han configurado.
     let mut config = ajustes::cargar(&ubicacion).context("no se pudieron leer los ajustes")?;
@@ -726,6 +735,25 @@ fn arrancar(
                     r.extension()
                         .is_some_and(|e| e.eq_ignore_ascii_case("pixpin"))
                 });
+                // Y ademas entra en la LISTA de proyectos, que es donde el
+                // usuario lo busca: un `.pixpin` es una conversacion entera.
+                // Los pines de sus hojas siguen saliendo, que es lo de antes.
+                for ruta in &proyectos {
+                    let hecho = pixpin_proyecto::Paquete::abrir(ruta)
+                        .map_err(|e| e.to_string())
+                        .and_then(|p| {
+                            pixpin_proyecto::almacen::importar_paquete(
+                                ubicacion.raiz(),
+                                &p,
+                                &identidad_equipo,
+                            )
+                            .map_err(|e| e.to_string())
+                        });
+                    match hecho {
+                        Ok(f) => tracing::info!(id = %f.id, nombre = %f.nombre, "proyecto en la lista"),
+                        Err(e) => tracing::warn!(%e, ruta = %ruta.display(), "no se pudo importar"),
+                    }
+                }
                 let hecho = preparar_pines(
                     &mut recursos_overlay,
                     &mut pines,
