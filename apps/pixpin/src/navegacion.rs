@@ -351,6 +351,21 @@ impl Navegador {
                     accion: Some(accion),
                 }
             }
+            // Dos dedos de lado en el panel tactil. Con el vertical da el
+            // movimiento libre: Windows manda una diagonal como los dos
+            // mensajes seguidos. El registro lo confirmo: `WM_MOUSEHWHEEL`
+            // llegaba a la ventana y aqui no habia quien lo atendiera.
+            EventoOverlay::RuedaHorizontal(delta) => Respuesta {
+                consumido: true,
+                accion: Some(Accion::Desplazar {
+                    // Windows cuenta positivo hacia la DERECHA, que ya es el
+                    // signo del `deltaX` del navegador: justo al reves que el
+                    // vertical. Por eso aqui no se niega `delta_y_css`, que
+                    // trae su propia negacion: scrollX - deltaX.
+                    dx: delta_y_css(delta),
+                    dy: 0.0,
+                }),
+            },
             _ => Respuesta::default(),
         }
     }
@@ -463,6 +478,47 @@ mod pruebas {
                 dy: 0.0
             })
         );
+    }
+
+    #[test]
+    fn dos_dedos_a_la_derecha_llevan_la_vista_a_la_derecha() {
+        let mut n = Navegador::nuevo();
+        // Positivo es a la derecha en `WM_MOUSEHWHEEL`: el contenido se va a
+        // la izquierda, igual que con Shift y la rueda hacia abajo.
+        let r = n.evento(
+            &EventoOverlay::RuedaHorizontal(MUESCA),
+            ORIGEN,
+            100,
+            Modificadores::default(),
+            true,
+            SIEMPRE,
+        );
+        assert!(r.consumido);
+        assert_eq!(
+            r.accion,
+            Some(Accion::Desplazar {
+                dx: -100.0,
+                dy: 0.0
+            })
+        );
+    }
+
+    #[test]
+    fn dos_dedos_de_lado_no_hacen_zoom_ni_con_control() {
+        let mut n = Navegador::nuevo();
+        let ctrl = Modificadores {
+            ctrl: true,
+            shift: false,
+        };
+        let r = n.evento(
+            &EventoOverlay::RuedaHorizontal(-MUESCA),
+            ORIGEN,
+            100,
+            ctrl,
+            true,
+            SIEMPRE,
+        );
+        assert_eq!(r.accion, Some(Accion::Desplazar { dx: 100.0, dy: 0.0 }));
     }
 
     #[test]
