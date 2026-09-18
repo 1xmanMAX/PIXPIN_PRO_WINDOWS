@@ -3842,6 +3842,7 @@ fn abrir_foto_en_lienzo(foto: &std::path::Path, opciones: OpcionesLienzo) {
         opciones.nivel,
         opciones.medir_fotogramas,
         Some(fondo),
+        &[],
     );
     match resultado {
         Ok(escena) => match crate::pines::guardar_lienzo(&dibujo, &escena, habia) {
@@ -4741,8 +4742,32 @@ fn abrir_dibujo(ubicacion: &Ubicacion, a: &Abierto, indice: usize, opciones: Opc
     for e in lienzo.elementos() {
         escena.anadir(e);
     }
+    // Las fotos de la hoja viven en `imagenes/<id>` del proyecto, no dentro
+    // del JSON: el movil deja ahi una ruta en vez de un `dataURL` para que un
+    // plano de quince megas no se convierta en veinte de base64.
+    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
+    let fotos: Vec<(u64, std::path::PathBuf)> = pixpin_motor2d::excalidraw::ficheros(&lienzo)
+        .into_iter()
+        .map(|(id, rel)| (id, carpeta.join(rel)))
+        .collect();
+    // Y si la hoja se dibujo sobre una pagina del PDF, esa pagina ES el
+    // fondo: sin ella se ven los trazos flotando sobre el blanco.
+    let fondo = m.pagina.and_then(|pagina| {
+        let pdf = carpeta.join("documento.pdf");
+        let hecho =
+            pixpin_pdf::Documento::abrir(&pdf).and_then(|d| d.renderizar(pagina, ANCHO_PAGINA));
+        match hecho {
+            Ok(img) => Some(img),
+            Err(e) => {
+                tracing::warn!(?e, pagina, ruta = %pdf.display(), "no se pudo dibujar la pagina");
+                None
+            }
+        }
+    });
     tracing::info!(
         elementos = escena.cuantos_visibles(),
+        fotos = fotos.len(),
+        pagina = ?m.pagina,
         ruta = %ruta.display(),
         "dibujo abierto para verlo (no se guarda)"
     );
@@ -4751,7 +4776,8 @@ fn abrir_dibujo(ubicacion: &Ubicacion, a: &Abierto, indice: usize, opciones: Opc
         opciones.enganche,
         opciones.nivel,
         opciones.medir_fotogramas,
-        None,
+        fondo,
+        &fotos,
     );
     if let Err(e) = resultado {
         tracing::warn!(?e, "no se pudo abrir el lienzo");

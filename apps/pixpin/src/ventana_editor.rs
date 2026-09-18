@@ -389,12 +389,16 @@ fn decidir_zoom(
 ///
 /// `fondo` es la imagen del pin, fija en el mundo en (0,0)-(ancho, alto)
 /// (D132); la bandeja pasa `None` (D137).
+/// `fotos` son las imagenes que el dibujo ya trae —las del `.pixpin` del
+/// movil—, cada una con el `id_objeto` que lleva su figura. Sin ellas, una
+/// hoja que es una foto con trazos encima sale en blanco.
 pub fn abrir(
     escena: Escena,
     ajustes_iman: pixpin_motor2d::enganche::Ajustes,
     nivel: pixpin_nivel::Nivel,
     medir_fotogramas: bool,
     fondo: Option<pixpin_codec::ImagenRgba>,
+    fotos: &[(u64, std::path::PathBuf)],
 ) -> Result<Escena> {
     let dispositivo =
         pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para el editor")?;
@@ -405,6 +409,16 @@ pub fn abrir(
     // trae la escena de disco no puede traer pixeles todavia (ver el aviso
     // de alcance en `imagenes_lienzo`).
     let mut imagenes = ImagenesLienzo::nuevo(motor.lado_maximo_bitmap());
+    // Las que ya trae el dibujo, con SU identificador: si se les diera uno
+    // nuevo, las figuras seguirian apuntando al viejo y no se veria ninguna.
+    for (id, ruta) in fotos {
+        match pixpin_codec::cargar(ruta) {
+            Ok(img) => {
+                imagenes.guardar_con_id(*id, img);
+            }
+            Err(e) => tracing::warn!(?e, ruta = %ruta.display(), "imagen del proyecto ilegible"),
+        }
+    }
 
     let disposicion =
         pixpin_capture::enumerar_monitores().context("sin monitores para el editor")?;
@@ -2362,6 +2376,7 @@ mod pruebas {
             pixpin_nivel::Nivel::Completo,
             false,
             None,
+            &[],
         );
     }
 

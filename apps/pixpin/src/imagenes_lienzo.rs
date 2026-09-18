@@ -102,6 +102,39 @@ impl ImagenesLienzo {
         Some(id)
     }
 
+    /// Mete una imagen con un `id_objeto` que YA existe: el que lleva la
+    /// figura de un dibujo que viene del movil.
+    ///
+    /// Ahi el identificador no lo elegimos nosotros —sale del `fileId` del
+    /// fichero— y tiene que coincidir con el de la figura, o la imagen no se
+    /// encuentra al pintar y la hoja sale en blanco con sus trazos flotando.
+    /// Si ese id ya estaba, no se vuelve a leer: la misma foto puede salir en
+    /// varias hojas del mismo proyecto.
+    pub fn guardar_con_id(&mut self, id: u64, imagen: ImagenRgba) -> bool {
+        if id == 0 || imagen.ancho == 0 || imagen.alto == 0 || self.imagenes.contains_key(&id) {
+            return false;
+        }
+        let imagen = match lado_de_subida(imagen.ancho, imagen.alto, self.lado_maximo) {
+            None => imagen,
+            Some((w, h)) => match pixpin_codec::redimensionar(imagen, w, h) {
+                Ok(i) => i,
+                Err(e) => {
+                    tracing::warn!(?e, "no se pudo reducir la imagen del proyecto");
+                    return false;
+                }
+            },
+        };
+        self.imagenes.insert(
+            id,
+            ImagenDelLienzo {
+                imagen,
+                bitmap: None,
+                fallo: false,
+            },
+        );
+        true
+    }
+
     /// El tamano en pixeles de la imagen `id`, tal como se guardo.
     pub fn tamano(&self, id: u64) -> Option<(u32, u32)> {
         self.imagenes

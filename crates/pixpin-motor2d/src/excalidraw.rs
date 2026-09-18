@@ -354,6 +354,12 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
                 ),
             }
         }
+        // Una imagen del paquete: sus pixeles NO estan aqui, sino en
+        // `imagenes/<id>` (ver `ficheros`). El elemento solo lleva a que
+        // fichero apunta, y quien pinta lo resuelve.
+        "image" => Figura::Imagen {
+            id_objeto: id_estable(v.get("fileId").and_then(Value::as_str).unwrap_or_default()),
+        },
         "text" => Figura::Texto {
             texto: v.get("text").and_then(|t| t.as_str()).unwrap_or("").into(),
             tam: num_o(v, "fontSize", 20.0),
@@ -610,6 +616,27 @@ pub fn color_hacia(c: ColorRgba) -> String {
             byte(c.a)
         )
     }
+}
+
+/// Los ficheros que usa un lienzo: de `id_objeto` a su ruta dentro del
+/// proyecto (`imagenes/<id>`).
+///
+/// Excalidraw guarda las imagenes incrustadas en `files` como `dataURL`;
+/// PixPin Android, en cambio, deja ahi una RUTA al fichero de dentro del
+/// `.pixpin`, que es lo que hace que un plano de quince megas no se
+/// convierta en veinte de base64. Quien pinta las lee con esto y las mete en
+/// su almacen con el mismo `id_objeto` que lleva la figura.
+pub fn ficheros(lienzo: &Lienzo) -> Vec<(u64, String)> {
+    let Some(Value::Object(files)) = lienzo.resto.get("files") else {
+        return Vec::new();
+    };
+    files
+        .iter()
+        .filter_map(|(id, v)| {
+            let ruta = v.get("path")?.as_str()?;
+            Some((id_estable(id), ruta.to_string()))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -917,6 +944,31 @@ mod pruebas {
                 Entrada::Ajeno(_) => None,
             })
             .expect("el lienzo trae al menos un elemento nuestro")
+    }
+
+    #[test]
+    fn una_imagen_del_movil_apunta_a_su_fichero_del_paquete() {
+        // El movil no incrusta la imagen en el JSON: deja una ruta dentro
+        // del `.pixpin`. Sin leerla, una hoja que es una foto con trazos
+        // encima salia en blanco con los trazos flotando.
+        let texto = r##"{"type":"excalidraw","elements":[
+            {"id":"i1","type":"image","x":0,"y":0,"width":1600,"height":1108,
+             "fileId":"7xJoKC","strokeColor":"#1e1e1e"}
+          ],
+          "files":{"7xJoKC":{"id":"7xJoKC","mimeType":"image/png","path":"imagenes/7xJoKC"}}}"##;
+        let lienzo = leer(texto).unwrap();
+        let elementos = lienzo.elementos();
+        assert_eq!(elementos.len(), 1, "la imagen no se leyo");
+        let Figura::Imagen { id_objeto } = elementos[0].figura else {
+            panic!("no es una imagen: {:?}", elementos[0].figura)
+        };
+        let ficheros = ficheros(&lienzo);
+        assert_eq!(ficheros.len(), 1);
+        assert_eq!(
+            ficheros[0].0, id_objeto,
+            "el id del fichero y el de la figura tienen que ser el mismo"
+        );
+        assert_eq!(ficheros[0].1, "imagenes/7xJoKC");
     }
 
     #[test]

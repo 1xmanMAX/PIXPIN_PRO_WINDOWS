@@ -796,6 +796,7 @@ fn arrancar(
                     config.rendimiento.medir_fotogramas,
                     // D137: la bandeja abre el editor en blanco, sin pin.
                     None,
+                    &[],
                 ) {
                     Ok(escena) => {
                         tracing::info!(elementos = escena.cuantos_visibles(), "editor cerrado")
@@ -1256,6 +1257,7 @@ fn arrancar(
                     decision.nivel,
                     config.rendimiento.medir_fotogramas,
                     Some(fondo),
+                    &[],
                 );
                 p.terminar_lienzo(id, &ruta, habia_fichero, resultado);
                 p.purgar();
