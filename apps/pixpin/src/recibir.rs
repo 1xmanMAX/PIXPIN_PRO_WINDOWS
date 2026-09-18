@@ -271,8 +271,12 @@ fn atender(
                 let hecho = pixpin_proyecto::Paquete::abrir(ruta)
                     .map_err(|e| e.to_string())
                     .and_then(|p| {
-                        pixpin_proyecto::almacen::importar_paquete(raiz, &p, id)
-                            .map_err(|e| e.to_string())
+                        pixpin_proyecto::almacen::importar_paquete(
+                            raiz,
+                            &p,
+                            &pixpin_proyecto::codigos::de_aparato(id),
+                        )
+                        .map_err(|e| e.to_string())
                     });
                 match hecho {
                     Ok(ficha) => {
@@ -286,7 +290,10 @@ fn atender(
             }
             let _ = proyectos;
             // Y lo suelto, al cuaderno, para que se vea en el chat.
-            match al_cuaderno(raiz, id, &cosas) {
+            // El codigo CORTO del equipo (`6ARJ`), no su identificador entero:
+            // es lo que va en el codigo de chat de cada mensaje, y con el
+            // largo la chapa salia mas ancha que el propio mensaje.
+            match al_cuaderno(raiz, &pixpin_proyecto::codigos::de_aparato(id), &cosas) {
                 Ok(0) => {}
                 Ok(cuantos) => tracing::info!(cuantos, "guardados en el cuaderno del movil"),
                 Err(e) => tracing::error!(?e, "no se pudo guardar lo recibido en el cuaderno"),

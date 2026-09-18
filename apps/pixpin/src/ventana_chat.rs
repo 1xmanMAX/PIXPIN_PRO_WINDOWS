@@ -5117,7 +5117,13 @@ fn ficha_de_archivo(
     if nombre.trim().is_empty() {
         return None;
     }
-    let extension = extension_de(&nombre);
+    // Un dibujo es un `.excalidraw`, que no cabe en la chapa: se rotula
+    // «dib» y no con tres puntos, que parecian un fallo de pintado.
+    let extension = if m.clase == Some(Clase::Dibujo) {
+        "dib".to_string()
+    } else {
+        extension_de(&nombre)
+    };
     // Tamano y extension, como Telegram y como el movil: «1,2 MB PDF» dice
     // de un golpe que es y cuanto pesa, que es lo que se pregunta antes de
     // tocarlo.
@@ -5175,6 +5181,8 @@ fn color_de_extension(extension: &str) -> Color {
         "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" => hex(0x8250df),
         "mp4" | "mov" | "mkv" | "webm" => hex(0x6e40c9),
         "mp3" | "wav" | "m4a" | "ogg" => hex(0xbf3989),
+        // Un lienzo, en el verde azulado del papel del chat.
+        "dib" => hex(0x2a9d8f),
         // Lo que no se reconoce va en gris: mejor sin color que con uno
         // inventado que diga algo que no es.
         _ => hex(0x57606a),
@@ -5189,7 +5197,23 @@ const CHAPA_AIRE: f32 = 6.0;
 /// El codigo de chat de un mensaje, como lo ensena el movil: `#47·K7Q2`.
 /// `None` si el mensaje todavia no tiene numero.
 fn chapa_de_codigo(m: &pixpin_proyecto::cuaderno::Mensaje) -> Option<String> {
-    m.codigo_chat().map(|c| format!("#{c}"))
+    if m.numero <= 0 {
+        return None;
+    }
+    // El codigo del aparato son CUATRO signos (`K7Q2`). Unos mensajes se
+    // guardaron con el identificador entero del equipo en su sitio —un
+    // UUID de treinta y seis—, y la chapa salia mas larga que el mensaje.
+    // De ese identificador sale el codigo corto por el mismo camino que en
+    // el movil, asi que se ensena el corto sin tocar lo guardado.
+    let sufijo = match (m.aparato.as_deref(), m.letra.as_deref()) {
+        (Some(a), _) if a.chars().count() > 6 => {
+            format!("·{}", pixpin_proyecto::codigos::de_aparato(a))
+        }
+        (Some(a), _) => format!("·{a}"),
+        (None, Some(l)) => l.to_string(),
+        (None, None) => String::new(),
+    };
+    Some(format!("#{}{sufijo}", m.numero))
 }
 
 #[cfg(test)]
@@ -5214,5 +5238,40 @@ mod pruebas_ficha {
         assert_eq!(tamano_legible(103_922_690), "99,1 MB");
         // Caso negativo: un tamano imposible no revienta ni sale en negativo.
         assert_eq!(tamano_legible(-7), "0 B");
+    }
+}
+
+#[cfg(test)]
+mod pruebas_chapa {
+    use super::chapa_de_codigo;
+    use pixpin_proyecto::cuaderno::Mensaje;
+
+    fn mensaje(numero: i64, aparato: Option<&str>) -> Mensaje {
+        Mensaje {
+            numero,
+            aparato: aparato.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn la_chapa_es_corta_aunque_lo_guardado_sea_largo() {
+        // El fallo que vio el usuario: mensajes guardados con el UUID del
+        // equipo en vez de su codigo daban una chapa de cuarenta signos,
+        // mas ancha que el propio mensaje.
+        let larga = chapa_de_codigo(&mensaje(2, Some("78134539-e22b-42f6-8dab-6d35318e7c35")))
+            .expect("con numero hay chapa");
+        assert!(larga.starts_with("#2·"), "{larga}");
+        assert_eq!(larga.chars().count(), "#2·".chars().count() + 4, "{larga}");
+        // La que ya es corta se queda como esta.
+        assert_eq!(
+            chapa_de_codigo(&mensaje(5, Some("6ARJ"))).as_deref(),
+            Some("#5·6ARJ")
+        );
+    }
+
+    #[test]
+    fn sin_numero_no_hay_chapa() {
+        assert_eq!(chapa_de_codigo(&mensaje(0, Some("6ARJ"))), None);
     }
 }
