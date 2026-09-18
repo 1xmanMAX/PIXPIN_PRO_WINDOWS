@@ -49,6 +49,7 @@ pub enum ErrorExcalidraw {
 /// Separar lo conocido de lo ajeno en dos listas perderia ese entrelazado y
 /// un mosaico dejaria de tapar lo que tapaba.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum Entrada {
     /// Un elemento que sabemos representar. Se guarda tambien su JSON
     /// original para devolver intactos los campos que no usamos.
@@ -419,6 +420,17 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
             .unwrap_or(1),
         borrado: false,
         bloqueado: v.get("locked").and_then(Value::as_bool).unwrap_or(false),
+        // El `enlace` del movil: el id del dibujo de la hoja a la que lleva.
+        // En Excalidraw no existe, asi que viaja tal cual en `resto` y vuelve
+        // intacto al guardar.
+        enlace: v
+            .get("enlace")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
+        // `roundness` es un objeto con su tipo; aqui solo importa si las
+        // esquinas van redondeadas o en punta.
+        redondo: v.get("roundness").is_some_and(|r| !r.is_null()),
         grupos: v
             .get("groupIds")
             .and_then(Value::as_array)
@@ -490,6 +502,9 @@ fn elemento_hacia(e: &Elemento, original: &Value) -> Value {
     mapa.insert("seed".into(), Value::from(e.semilla));
     mapa.insert("isDeleted".into(), Value::Bool(e.borrado));
     mapa.insert("locked".into(), Value::Bool(e.bloqueado));
+    if let Some(enlace) = &e.enlace {
+        mapa.insert("enlace".into(), Value::String(enlace.clone()));
+    }
     // Se escribe siempre, tambien vacio: si solo se escribiera cuando hay
     // grupos, desagrupar en Windows dejaria los groupIds viejos del
     // original y el movil los volveria a ver agrupados.
@@ -1219,6 +1234,8 @@ mod pruebas {
                 borrado: false,
                 grupos: Vec::new(),
                 bloqueado: false,
+                enlace: None,
+                redondo: false,
             },
             original: Box::new(Value::Object(Map::new())),
         });

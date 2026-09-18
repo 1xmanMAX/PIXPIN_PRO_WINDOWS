@@ -399,7 +399,7 @@ pub fn abrir(
     medir_fotogramas: bool,
     fondo: Option<pixpin_codec::ImagenRgba>,
     fotos: &[(u64, std::path::PathBuf)],
-) -> Result<Escena> {
+) -> Result<(Escena, Option<String>)> {
     let dispositivo =
         pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para el editor")?;
     let mut motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
@@ -516,6 +516,8 @@ pub fn abrir(
     let mut esperando_senal: Option<std::time::Instant> = None;
     let mut sucio: Option<(f32, f32, f32, f32)> = None;
     let mut todo_sucio = false;
+    // La hoja a la que lleva el recuadro que se pulso, si se pulso alguno.
+    let mut enlace_pedido: Option<String> = None;
     // La zona sucia del fotograma anterior (D148): hace falta para la union
     // de dos, porque la cadena de intercambio tiene dos mapas.
     let mut zona_anterior: Option<(i32, i32, i32, i32)> = None;
@@ -653,6 +655,34 @@ pub fn abrir(
             // destino`, pura: aqui solo queda el `match` sobre su resultado,
             // asi que la decision en si esta bajo prueba sin ventana.
             // El panel lateral, igual que la barra: un clic ahi es suyo.
+            // Un recuadro con enlace es la puerta a otra hoja (las «zonas» de
+            // una pagina del movil): pulsarlo cierra este lienzo y quien
+            // llama abre el de al lado. Va antes que nada, porque si no el
+            // gesto se lo lleva como una seleccion cualquiera.
+            if let EventoOverlay::BotonPulsado(p) = ev
+                && gesto.herramienta == Herramienta::Mano
+                && let Some(q) = a_evento(
+                    &ev,
+                    &efectiva,
+                    Punto {
+                        x: area.x,
+                        y: area.y,
+                    },
+                )
+                .and_then(|g| match g {
+                    pixpin_motor2d::gesto::EventoGesto::Pulsar { p, .. } => Some(p),
+                    _ => None,
+                })
+            {
+                let _ = p;
+                if let Some(id) = pixpin_motor2d::impacto::elemento_en(&escena.elementos, q)
+                    && let Some(destino) = escena.buscar(id).and_then(|e| e.enlace.clone())
+                {
+                    tracing::info!(%destino, "enlace a otra hoja");
+                    enlace_pedido = Some(destino);
+                    break 'bucle;
+                }
+            }
             if let EventoOverlay::BotonPulsado(p) | EventoOverlay::BotonSoltado(p) = ev {
                 if let Some(panel) =
                     crate::panel_dibujo::panel_para(&gesto, &escena, area, escala_por_cien)
@@ -1274,7 +1304,9 @@ pub fn abrir(
     drop(fondo);
     ventana.ocultar();
     escena.compactar();
-    Ok(escena)
+    // Y a que hoja queria ir, si pulso un recuadro con enlace: quien llama
+    // es el unico que sabe donde estan las hojas.
+    Ok((escena, enlace_pedido))
 }
 
 /// Todas las ordenes de un elemento para un fotograma: las cacheadas (forma,
@@ -2099,6 +2131,8 @@ mod pruebas {
             borrado: false,
             grupos: Vec::new(),
             bloqueado: false,
+            enlace: None,
+            redondo: false,
         });
 
         let mut gesto = Gesto::nuevo();
@@ -2368,7 +2402,7 @@ mod pruebas {
         // interactiva real (crear la ventana, el dispositivo D3D11, la
         // superficie de composicion). No se puede probar en CI sin
         // escritorio; se deja marcada para ejecutarla a mano.
-        let _ = abrir(
+        let _: Result<(Escena, Option<String>)> = abrir(
             Escena::nueva(),
             pixpin_motor2d::enganche::Ajustes::default(),
             pixpin_nivel::Nivel::Completo,
@@ -2466,6 +2500,8 @@ mod pruebas {
             borrado: false,
             grupos: Vec::new(),
             bloqueado: false,
+            enlace: None,
+            redondo: false,
         };
         let mut cache = Cache::nueva();
 

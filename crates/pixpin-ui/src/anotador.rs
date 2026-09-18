@@ -526,6 +526,8 @@ impl Anotador {
             borrado: false,
             grupos: Vec::new(),
             bloqueado: false,
+            enlace: None,
+            redondo: false,
         }
     }
 
@@ -651,6 +653,8 @@ impl Anotador {
             borrado: false,
             grupos: Vec::new(),
             bloqueado: false,
+            enlace: None,
+            redondo: false,
         })
     }
 }

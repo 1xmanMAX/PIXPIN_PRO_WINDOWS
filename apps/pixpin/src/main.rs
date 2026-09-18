@@ -798,7 +798,7 @@ fn arrancar(
                     None,
                     &[],
                 ) {
-                    Ok(escena) => {
+                    Ok((escena, _)) => {
                         tracing::info!(elementos = escena.cuantos_visibles(), "editor cerrado")
                     }
                     Err(e) => tracing::warn!(?e, "no se pudo abrir el editor"),
@@ -1259,7 +1259,7 @@ fn arrancar(
                     Some(fondo),
                     &[],
                 );
-                p.terminar_lienzo(id, &ruta, habia_fichero, resultado);
+                p.terminar_lienzo(id, &ruta, habia_fichero, resultado.map(|(e, _)| e));
                 p.purgar();
             }
             // Extraer paginas puede haber dejado algunas fuera por el

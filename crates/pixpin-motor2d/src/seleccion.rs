@@ -140,6 +140,8 @@ mod pruebas {
             borrado: false,
             grupos: Vec::new(),
             bloqueado: false,
+            enlace: None,
+            redondo: false,
         }
     }
 

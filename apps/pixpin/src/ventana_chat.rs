@@ -3929,7 +3929,7 @@ fn abrir_foto_en_lienzo(foto: &std::path::Path, opciones: OpcionesLienzo) {
         &[],
     );
     match resultado {
-        Ok(escena) => match crate::pines::guardar_lienzo(&dibujo, &escena, habia) {
+        Ok((escena, _)) => match crate::pines::guardar_lienzo(&dibujo, &escena, habia) {
             Ok(guardado) => {
                 tracing::info!(guardado, ruta = %dibujo.display(), "lienzo de foto cerrado")
             }
@@ -4801,25 +4801,43 @@ mod pruebas_pdf {
 /// (el plan lo dice), y a medias seria peor: se veria bien y se perderia
 /// callando. Asi que por ahora es una vista, y se avisa en el registro.
 fn abrir_dibujo(ubicacion: &Ubicacion, a: &Abierto, indice: usize, opciones: OpcionesLienzo) {
-    let Some(m) = a.mensajes.get(indice) else {
-        return;
-    };
-    let Some(id) = m.referencia.as_deref().filter(|r| !r.is_empty()) else {
-        return;
-    };
+    // Pulsar una «zona» de una pagina lleva a su hoja, y desde ella se puede
+    // saltar a otra: por eso es un bucle y no una llamada. El tope es por si
+    // dos hojas se enlazan entre si; sin el, el ir y venir no acabaria.
+    let mut indice = indice;
+    for _ in 0..SALTOS_MAXIMOS {
+        match abrir_una_hoja(ubicacion, a, indice, opciones) {
+            Some(siguiente) => indice = siguiente,
+            None => return,
+        }
+    }
+}
+
+/// Cuantas hojas encadenadas se abren antes de parar.
+const SALTOS_MAXIMOS: usize = 32;
+
+/// Abre una hoja y devuelve a cual hay que saltar, si se pulso un enlace.
+fn abrir_una_hoja(
+    ubicacion: &Ubicacion,
+    a: &Abierto,
+    indice: usize,
+    opciones: OpcionesLienzo,
+) -> Option<usize> {
+    let m = a.mensajes.get(indice)?;
+    let id = m.referencia.as_deref().filter(|r| !r.is_empty())?;
     let ruta = pixpin_proyecto::almacen::lienzo(ubicacion.raiz(), &a.ficha.id, id);
     let texto = match std::fs::read_to_string(&ruta) {
         Ok(t) => t,
         Err(e) => {
             tracing::warn!(?e, ruta = %ruta.display(), "no se pudo leer el dibujo");
-            return;
+            return None;
         }
     };
     let lienzo = match pixpin_motor2d::excalidraw::leer(&texto) {
         Ok(l) => l,
         Err(e) => {
             tracing::warn!(?e, "dibujo que no se entiende");
-            return;
+            return None;
         }
     };
     let mut escena = pixpin_motor2d::Escena::nueva();
@@ -4863,8 +4881,24 @@ fn abrir_dibujo(ubicacion: &Ubicacion, a: &Abierto, indice: usize, opciones: Opc
         fondo,
         &fotos,
     );
-    if let Err(e) = resultado {
-        tracing::warn!(?e, "no se pudo abrir el lienzo");
+    match resultado {
+        // Se pulso un recuadro con enlace: la hoja a la que lleva es la que
+        // tiene ese dibujo como referencia.
+        Ok((_, Some(destino))) => {
+            let siguiente = a
+                .mensajes
+                .iter()
+                .position(|m| m.referencia.as_deref() == Some(destino.as_str()));
+            if siguiente.is_none() {
+                tracing::warn!(%destino, "el enlace no lleva a ninguna hoja de este proyecto");
+            }
+            siguiente
+        }
+        Ok((_, None)) => None,
+        Err(e) => {
+            tracing::warn!(?e, "no se pudo abrir el lienzo");
+            None
+        }
     }
 }
 

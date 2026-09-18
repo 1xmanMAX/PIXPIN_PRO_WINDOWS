@@ -190,6 +190,16 @@ pub struct Elemento {
     /// dibujar encima sin arrastrarlo sin querer.
     #[serde(default)]
     pub bloqueado: bool,
+    /// A donde lleva este elemento: el `enlace` de PixPin Android, que es el
+    /// id del dibujo de otra hoja. Es lo que convierte un recuadro en la
+    /// puerta a un sublienzo —la «zona» de una pagina—.
+    #[serde(default)]
+    pub enlace: Option<String>,
+    /// Esquinas redondeadas (`roundness` de Excalidraw). Sin esto, un
+    /// recuadro que el movil dibuja redondeado sale aqui en punta, y encima
+    /// del suyo parece otro recuadro distinto.
+    #[serde(default)]
+    pub redondo: bool,
 }
 
 fn relleno_solido() -> EstiloRelleno {
@@ -342,6 +352,8 @@ mod pruebas {
             borrado: false,
             grupos: Vec::new(),
             bloqueado: false,
+            enlace: None,
+            redondo: false,
         }
     }
 

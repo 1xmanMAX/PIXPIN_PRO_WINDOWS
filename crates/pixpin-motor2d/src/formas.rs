@@ -173,6 +173,49 @@ pub fn punta_flecha(
     salida
 }
 
+/// Un rectangulo de esquinas redondeadas, en una sola pasada.
+///
+/// El `roundness` de Excalidraw con radio proporcional, como el movil: un
+/// cuarto del lado menor, con tope. Va aparte de `rectangulo` porque este no
+/// tiembla: los recuadros redondeados que manda el movil son las «zonas» que
+/// enlazan con otra hoja, y ahi la forma tiene que coincidir exactamente o
+/// parece otro recuadro dibujado encima del suyo.
+pub fn rectangulo_redondo(x: f32, y: f32, ancho: f32, alto: f32) -> Vec<Punto2> {
+    let radio = (ancho.abs().min(alto.abs()) * 0.25).clamp(0.0, 32.0);
+    if radio <= 0.5 {
+        return vec![
+            Punto2::nuevo(x, y),
+            Punto2::nuevo(x + ancho, y),
+            Punto2::nuevo(x + ancho, y + alto),
+            Punto2::nuevo(x, y + alto),
+            Punto2::nuevo(x, y),
+        ];
+    }
+    // Cuatro esquinas, cada una un cuarto de vuelta. Ocho tramos por esquina
+    // bastan: a los zooms de trabajo no se distingue de una curva de verdad.
+    const TRAMOS_ESQUINA: usize = 8;
+    let (x1, y1) = (x + ancho, y + alto);
+    let cuarto = std::f32::consts::FRAC_PI_2;
+    let esquinas = [
+        (x1 - radio, y + radio, -cuarto, 0.0),
+        (x1 - radio, y1 - radio, 0.0, cuarto),
+        (x + radio, y1 - radio, cuarto, cuarto * 2.0),
+        (x + radio, y + radio, cuarto * 2.0, cuarto * 3.0),
+    ];
+    let mut salida = Vec::with_capacity(4 * (TRAMOS_ESQUINA + 1) + 1);
+    for (cx, cy, desde, hasta) in esquinas {
+        for i in 0..=TRAMOS_ESQUINA {
+            let t = i as f32 / TRAMOS_ESQUINA as f32;
+            let a = desde + (hasta - desde) * t;
+            salida.push(Punto2::nuevo(cx + radio * a.cos(), cy + radio * a.sin()));
+        }
+    }
+    if let Some(primero) = salida.first().copied() {
+        salida.push(primero);
+    }
+    salida
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;

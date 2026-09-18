@@ -44,6 +44,8 @@ fn elemento(i: u64) -> Elemento {
         borrado: false,
         grupos: Vec::new(),
         bloqueado: false,
+        enlace: None,
+        redondo: false,
     }
 }
 

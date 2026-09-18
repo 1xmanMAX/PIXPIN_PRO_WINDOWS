@@ -273,6 +273,18 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
         Figura::Rectangulo => {
             // El relleno va PRIMERO: si fuera despues taparia el trazo.
             salida.extend(ordenes_de_relleno(e, false));
+            // Redondeado y sin temblor es el recuadro de una «zona» del movil:
+            // una sola pasada y las esquinas curvas, o no coincide con el
+            // suyo y se lee como otro recuadro encima.
+            if e.redondo && e.rugosidad <= 0.0 {
+                salida.push(Orden::Polilinea {
+                    puntos: formas::rectangulo_redondo(e.x, e.y, e.ancho, e.alto),
+                    color,
+                    grosor: e.grosor,
+                    estilo: e.estilo,
+                });
+                return salida;
+            }
             for pasada in formas::rectangulo(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar) {
                 salida.push(Orden::Polilinea {
                     puntos: pasada,
@@ -777,6 +789,8 @@ mod pruebas {
             borrado: false,
             grupos: Vec::new(),
             bloqueado: false,
+            enlace: None,
+            redondo: false,
         }
     }
 
