@@ -233,6 +233,9 @@ static ABIERTA: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize:
 /// dispositivo de dibujo, sus textos y su apartamento COM (los dialogos de
 /// abrir ficheros lo exigen en STA).
 pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, lienzo: OpcionesLienzo) {
+    // El idioma viaja hasta dentro: el chat lo necesita para abrir otras
+    // ventanas suyas (traer del movil) en sus propios hilos.
+
     use std::sync::atomic::Ordering;
     let ya = ABIERTA.load(Ordering::SeqCst);
     if ya > 0 {
@@ -251,7 +254,8 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, lienzo: Opcion
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
-            let hecho = Recursos::nuevos().and_then(|r| abrir(&r, &textos, &ubicacion, lienzo));
+            let hecho =
+                Recursos::nuevos().and_then(|r| abrir(&r, &textos, &ubicacion, lienzo, idioma));
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir el chat de proyectos");
             }
@@ -268,6 +272,7 @@ pub fn abrir(
     textos: &Catalogo,
     ubicacion: &Ubicacion,
     lienzo: OpcionesLienzo,
+    idioma: pixpin_store::Idioma,
 ) -> Result<()> {
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
     let monitor = monitores
@@ -510,12 +515,20 @@ pub fn abrir(
                                 menu::Entrada::Archivo => {
                                     pixpin_shell::elegir::pedir_ficheros(ventana.handle())
                                 }
-                                menu::Entrada::Lienzo | menu::Entrada::Tabla => Vec::new(),
+                                menu::Entrada::Lienzo
+                                | menu::Entrada::Tabla
+                                | menu::Entrada::DelMovil => Vec::new(),
                             };
                             match n {
                                 // Un lienzo o una tabla nacen vacios: no hay
                                 // nada que ensenar en un cuadro de confirmar,
                                 // y pedirlo dos veces seria un estorbo.
+                                // Traer del movil abre su propio cartel, en otro
+                                // hilo: mientras se espera al movil, el chat
+                                // sigue usandose.
+                                menu::Entrada::DelMovil => {
+                                    crate::recibir::lanzar(idioma, ubicacion.clone());
+                                }
                                 menu::Entrada::Lienzo | menu::Entrada::Tabla => {
                                     if let Some(a) = abierto.as_mut() {
                                         let hecho = if n == menu::Entrada::Tabla {
@@ -2910,6 +2923,9 @@ fn pintar_menu(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, marco: Rect,
             menu::Entrada::Archivo => &pixpin_render::iconos_excalidraw::FILE,
             menu::Entrada::Lienzo => &pixpin_render::iconos_excalidraw::FREEDRAW_ICON,
             menu::Entrada::Tabla => &pixpin_render::iconos_excalidraw::GRID_ICON,
+            // El del escritorio, que es el de «otro aparato» que hay: un
+            // movil propio pediria otro icono a mano y este ya se entiende.
+            menu::Entrada::DelMovil => &pixpin_render::iconos_excalidraw::DEVICE_DESKTOP_ICON,
         };
         p.icono(icono, rf(m.icono(fila, escala)), tema.apagado);
         let (_, alto_texto) = p.medir_texto(rotulo, menu::TEXTO_TAM * e);

@@ -34,14 +34,19 @@ pub enum Entrada {
     Archivo,
     Lienzo,
     Tabla,
+    /// Traer algo del movil por la wifi: se ensena un codigo y el movil lo
+    /// escanea. Va en este menu porque es otra forma de meter cosas en el
+    /// proyecto, que es lo que hace el clip.
+    DelMovil,
 }
 
 impl Entrada {
-    pub const TODAS: [Entrada; 4] = [
+    pub const TODAS: [Entrada; 5] = [
         Entrada::Imagen,
         Entrada::Archivo,
         Entrada::Lienzo,
         Entrada::Tabla,
+        Entrada::DelMovil,
     ];
 
     /// La clave de su rotulo traducido.
@@ -51,6 +56,7 @@ impl Entrada {
             Entrada::Archivo => "adjuntar-archivo",
             Entrada::Lienzo => "adjuntar-lienzo",
             Entrada::Tabla => "adjuntar-tabla",
+            Entrada::DelMovil => "adjuntar-del-movil",
         }
     }
 }
