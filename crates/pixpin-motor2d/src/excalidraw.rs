@@ -237,10 +237,19 @@ fn puntos_desde(v: &Value, x: f32, y: f32) -> Vec<Punto2> {
             lista
                 .iter()
                 .filter_map(|p| {
-                    let par = p.as_array()?;
+                    // Dos formas, y las dos son de verdad: Excalidraw escribe
+                    // `[x, y]` y PixPin Android escribe `{"x":…,"y":…}`. Leer
+                    // solo la primera dejaba los trazos del movil SIN PUNTOS:
+                    // el dibujo se abria con sus mil elementos y no se veia
+                    // ninguno, solo las figuras, que no llevan puntos.
+                    let (px, py) = match p {
+                        Value::Array(par) => (par.first()?.as_f64()?, par.get(1)?.as_f64()?),
+                        Value::Object(o) => (o.get("x")?.as_f64()?, o.get("y")?.as_f64()?),
+                        _ => return None,
+                    };
                     Some(Punto2 {
-                        x: x + par.first()?.as_f64()? as f32,
-                        y: y + par.get(1)?.as_f64()? as f32,
+                        x: x + px as f32,
+                        y: y + py as f32,
                     })
                 })
                 .collect()
@@ -908,6 +917,32 @@ mod pruebas {
                 Entrada::Ajeno(_) => None,
             })
             .expect("el lienzo trae al menos un elemento nuestro")
+    }
+
+    #[test]
+    fn los_puntos_del_movil_se_leen_aunque_vengan_como_objetos() {
+        // El fallo que dejo un dibujo del movil con mil trazos invisibles:
+        // Excalidraw escribe los puntos como `[x, y]` y PixPin Android como
+        // `{"x":…,"y":…}`. Leyendo solo la primera forma, los trazos llegaban
+        // sin un solo punto y no se pintaba ninguno; se veian las figuras,
+        // que no llevan puntos, y parecia que faltaba el 95 % del dibujo.
+        let texto = r##"{"type":"excalidraw","elements":[
+            {"id":"a","type":"freedraw","x":10,"y":20,"width":5,"height":5,
+             "strokeColor":"#000000","strokeWidth":1.25,
+             "points":[{"x":0,"y":0},{"x":3,"y":4}]},
+            {"id":"b","type":"line","x":0,"y":0,"width":9,"height":0,
+             "strokeColor":"#000000","points":[[0,0],[9,0]]}
+        ]}"##;
+        let elementos = leer(texto).unwrap().elementos();
+        let puntos_de = |e: &Elemento| match &e.figura {
+            Figura::Lapiz { puntos, .. } | Figura::Linea { puntos } => puntos.clone(),
+            otra => panic!("no es un trazo: {otra:?}"),
+        };
+        let a = puntos_de(&elementos[0]);
+        assert_eq!(a.len(), 2, "el trazo del movil llego sin puntos");
+        // Y siguen siendo relativos al origen del elemento.
+        assert_eq!((a[1].x, a[1].y), (13.0, 24.0));
+        assert_eq!(puntos_de(&elementos[1]).len(), 2, "y la forma de siempre");
     }
 
     #[test]
