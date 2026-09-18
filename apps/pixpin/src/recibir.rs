@@ -161,7 +161,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                 Ok((flujo, de)) => {
                     tracing::info!(%de, "llamada del movil");
                     let _ = flujo.set_nonblocking(false);
-                    estado = atender(flujo, &codigo, &nombre, &id, &carpeta);
+                    estado = atender(flujo, &codigo, &nombre, &id, &carpeta, ubicacion.raiz());
                     hay_que_pintar = true;
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
@@ -208,6 +208,7 @@ fn atender(
     nombre: &str,
     id: &str,
     carpeta: &std::path::Path,
+    raiz: &std::path::Path,
 ) -> Estado {
     let mut nonce = [0u8; pixpin_sincro::canal::NONCE];
     if !pixpin_shell::azar(&mut nonce) {
@@ -229,7 +230,25 @@ fn atender(
     };
     match receptor.aceptar(carpeta, |_, _| {}) {
         Ok(cosas) => {
-            let rutas: Vec<std::path::PathBuf> = cosas.iter().map(|(_, r)| r.clone()).collect();
+            // Un proyecto entero lo abre la ventana de mensajes; lo suelto va
+            // al cuaderno de «Del movil», que es donde el usuario lo busca:
+            // «recibi un archivo pero no lo veo, tendria que estar en
+            // mensajes guardados».
+            let rutas: Vec<std::path::PathBuf> = cosas
+                .iter()
+                .filter(|(e, _)| e.tipo == "proyecto")
+                .map(|(e, r)| {
+                    // El movil manda el nombre tal cual, a veces sin
+                    // extension: sin `.pixpin` detras, abrirlo no sabria que
+                    // es un proyecto y acabaria como un fichero cualquiera.
+                    let con_extension = r.with_file_name(nombre_con_extension(e));
+                    if con_extension != *r && std::fs::rename(r, &con_extension).is_ok() {
+                        con_extension
+                    } else {
+                        r.clone()
+                    }
+                })
+                .collect();
             for (elemento, ruta) in &cosas {
                 // Los tres codigos se registran a proposito: son con lo que
                 // se comprueba despues si algo que vuelve del movil es la
@@ -244,10 +263,15 @@ fn atender(
                     "recibido del movil"
                 );
             }
-            // Quien sabe que hacer con cada cosa es la ventana de mensajes:
-            // un `.pixpin` se abre como proyecto y lo demas como pin.
+            // Los proyectos, a la ventana de mensajes, que sabe abrirlos.
             if !rutas.is_empty() && !pixpin_shell::mensajero::enviar_ficheros(&rutas) {
                 tracing::warn!("no contesto la ventana principal: quedan en recibidos/");
+            }
+            // Y lo suelto, al cuaderno, para que se vea en el chat.
+            match al_cuaderno(raiz, id, &cosas) {
+                Ok(0) => {}
+                Ok(cuantos) => tracing::info!(cuantos, "guardados en el cuaderno del movil"),
+                Err(e) => tracing::error!(?e, "no se pudo guardar lo recibido en el cuaderno"),
             }
             Estado::Hecho {
                 cuantos: cosas.len(),
@@ -347,3 +371,97 @@ fn pintar(
     centrado(&linea, 430.0 * e, 13.0 * e, color);
     centrado(&textos.t("recibir-salir"), 470.0 * e, 11.0 * e, APAGADO);
 }
+
+/// El nombre con el que se guarda algo que llega, ya con su extension.
+///
+/// El movil manda el nombre tal cual lo tiene, y a veces viene sin
+/// extension: el primer envio de prueba llego como `123` siendo un proyecto
+/// entero, y sin `.pixpin` detras la aplicacion no podia saber que lo era.
+/// El tipo del elemento SI lo dice, asi que manda el tipo.
+fn nombre_con_extension(elemento: &pixpin_sincro::envio::Elemento) -> String {
+    let nombre = pixpin_sincro::envio::nombre_sano(&elemento.nombre);
+    let ext = match elemento.tipo.as_str() {
+        "proyecto" => ".pixpin",
+        "lienzo" => ".excalidraw",
+        _ => return nombre,
+    };
+    if nombre.to_ascii_lowercase().ends_with(ext) {
+        nombre
+    } else {
+        format!("{nombre}{ext}")
+    }
+}
+
+/// Mete en el cuaderno de un proyecto lo que llego y no es un proyecto.
+///
+/// El usuario, tras el primer envio: «recibí un archivo pero no lo veo,
+/// tendría que estar en mensajes guardados». Un fichero suelto no es un
+/// proyecto entero, asi que va a uno propio —«Del movil»— que se crea la
+/// primera vez y se reutiliza despues: asi se ve en el chat como cualquier
+/// otra cosa guardada, en vez de quedarse en una carpeta.
+fn al_cuaderno(
+    raiz: &std::path::Path,
+    aparato: &str,
+    cosas: &[(pixpin_sincro::envio::Elemento, std::path::PathBuf)],
+) -> std::io::Result<usize> {
+    use pixpin_proyecto::{almacen, cuaderno};
+    let sueltos: Vec<_> = cosas.iter().filter(|(e, _)| e.tipo != "proyecto").collect();
+    if sueltos.is_empty() {
+        return Ok(0);
+    }
+    let mut indice = almacen::Indice::leer(raiz);
+    let ficha = match indice.proyectos.iter().find(|f| f.nombre == NOMBRE_BUZON) {
+        Some(f) => f.clone(),
+        None => {
+            let cuando = pixpin_shell::entorno::ahora_local_ms();
+            let f = almacen::Ficha::nueva(NOMBRE_BUZON, cuando, aparato);
+            indice.proyectos.push(f.clone());
+            indice.guardar(raiz)?;
+            f
+        }
+    };
+    let carpeta = almacen::carpeta(raiz, &ficha.id);
+    let previos = cuaderno::Cuaderno::leer_de(&carpeta).unwrap_or_default();
+    // El numero sigue al ultimo del cuaderno: es el que ordena la
+    // conversacion y el que entra en el codigo de chat.
+    let primero = previos.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let mut hechos = 0;
+    for (numero, (elemento, ruta)) in (primero..).zip(sueltos) {
+        let bytes = std::fs::read(ruta)?;
+        let nombre = nombre_con_extension(elemento);
+        let relativa = almacen::guardar_adjunto(raiz, &ficha.id, &nombre, &bytes)?;
+        let cuando = if elemento.creado > 0 {
+            elemento.creado
+        } else {
+            pixpin_shell::entorno::ahora_local_ms()
+        };
+        let mut m = cuaderno::Mensaje::adjunto(
+            cuaderno::clase_de_nombre(&nombre),
+            &nombre,
+            &relativa,
+            bytes.len() as i64,
+            &cuaderno::Sello {
+                cuando,
+                numero,
+                aparato: aparato.to_string(),
+                proyecto: ficha.id.clone(),
+            },
+        );
+        // Los tres codigos que traia se conservan: son con lo que se sabra
+        // despues si esto que llego es lo mismo que ya habia o algo nuevo.
+        m.uid = elemento.uid.clone();
+        m.aparato = elemento.aparato.clone().or(Some(aparato.to_string()));
+        cuaderno::anadir(&carpeta, &m)?;
+        hechos += 1;
+    }
+    // La ficha sube en la lista, como con cualquier mensaje nuevo.
+    let mut indice = almacen::Indice::leer(raiz);
+    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == ficha.id) {
+        f.tocado = pixpin_shell::entorno::ahora_local_ms();
+        let _ = indice.guardar(raiz);
+    }
+    Ok(hechos)
+}
+
+/// El proyecto donde se guarda lo que llega suelto del movil.
+const NOMBRE_BUZON: &str = "Del movil";

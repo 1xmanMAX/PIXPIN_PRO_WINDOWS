@@ -380,6 +380,9 @@ pub fn abrir(
     // Antes de maximizar, para poder volver.
     let mut antes_de_maximizar: Option<Rect> = None;
     let mut hay_que_pintar = true;
+    // Los PDF que hayan entrado en esta vuelta: cada uno abre un proyecto
+    // propio, y eso lo decide el bucle, que es quien lleva la lista.
+    let mut pdfs_pendientes: Vec<std::path::PathBuf> = Vec::new();
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -452,8 +455,9 @@ pub fn abrir(
                         match d.boton_en(l) {
                             Some(pixpin_ui::confirmar::Boton::Aceptar) => {
                                 if let (Some(p), Some(a)) = (pendientes.take(), abierto.as_mut()) {
-                                    let hechos =
+                                    let (hechos, suyos) =
                                         meter_ficheros(ubicacion, a, &identidad, &p.rutas, &p.pie);
+                                    pdfs_pendientes = suyos;
                                     if hechos > 0 {
                                         a.scroll = None;
                                         if let Some(i) = elegida {
@@ -986,7 +990,9 @@ pub fn abrir(
                 }
                 EventoOverlay::Tecla { vk, .. } if pendientes.is_some() && vk == VK_ENTRAR => {
                     if let (Some(p), Some(a)) = (pendientes.take(), abierto.as_mut()) {
-                        let hechos = meter_ficheros(ubicacion, a, &identidad, &p.rutas, &p.pie);
+                        let (hechos, suyos) =
+                            meter_ficheros(ubicacion, a, &identidad, &p.rutas, &p.pie);
+                        pdfs_pendientes = suyos;
                         if hechos > 0 {
                             a.scroll = None;
                             if let Some(i) = elegida {
@@ -1228,6 +1234,32 @@ pub fn abrir(
                 _ => {}
             }
         }
+        // Un PDF que haya entrado abre su propio proyecto, con una hoja por
+        // pagina: cada chat ES un proyecto, y un documento entero no es un
+        // adjunto suelto de otra conversacion.
+        for ruta in std::mem::take(&mut pdfs_pendientes) {
+            match proyecto_de_pdf(ubicacion, &identidad, &ruta) {
+                Ok((ficha, hechas, total)) => {
+                    if hechas < total {
+                        tracing::info!(hechas, total, "el PDF tiene mas paginas que el tope");
+                    }
+                    if let Some(a) = abierto.as_mut() {
+                        cerrar_hoja(ubicacion, a);
+                        apagar_lienzo(ubicacion, a);
+                    }
+                    fichas.push(ficha.clone());
+                    orden = filtrar(&fichas, &busqueda);
+                    elegida = Some(fichas.len() - 1);
+                    abierto = Some(abrir_proyecto(ubicacion, &ficha));
+                    scroll = 0;
+                    hay_que_pintar = true;
+                }
+                Err(e) => {
+                    tracing::warn!(?e, ruta = %ruta.display(), "no se pudo abrir el PDF")
+                }
+            }
+        }
+
         if cerrar {
             // Cerrar la ventana con una hoja o un lienzo abiertos los guarda:
             // es lo mismo que cerrarlos con Escape, y perderlos aqui seria una
@@ -3089,9 +3121,17 @@ fn meter_ficheros(
     aparato: &str,
     rutas: &[std::path::PathBuf],
     pie: &str,
-) -> usize {
+) -> (usize, Vec<std::path::PathBuf>) {
     let mut hechos = 0;
+    // Los PDF no se adjuntan a esta conversacion: cada uno es un proyecto
+    // propio con una hoja por pagina. Se devuelven para que los abra quien
+    // lleva la lista de proyectos, que aqui no se ve.
+    let mut pdfs = Vec::new();
     for ruta in rutas {
+        if es_pdf(ruta) {
+            pdfs.push(ruta.clone());
+            continue;
+        }
         let nombre = ruta
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
@@ -3114,7 +3154,7 @@ fn meter_ficheros(
         }
         a.borrador = antes;
     }
-    hechos
+    (hechos, pdfs)
 }
 
 /// Un lienzo ya leido y listo para pintar en su burbuja.
@@ -4475,5 +4515,138 @@ mod pruebas_lienzo_vivo {
         );
         assert_eq!(v.escala(), 0.0);
         assert!(v.punto(Punto { x: 10, y: 10 }).is_none());
+    }
+}
+
+/// Cuantas paginas se extraen como mucho de un PDF.
+///
+/// El mismo tope que los pines: un PDF de doscientas paginas dejaria el
+/// proyecto con doscientas imagenes de 1600 px y varios cientos de megas.
+/// Se hacen las primeras y se dice cuantas quedaron fuera.
+const TOPE_PAGINAS_PDF: u32 = 20;
+/// A que ancho se dibuja cada pagina. Generoso: una pagina extraida es un
+/// documento para leer, no una miniatura.
+const ANCHO_PAGINA: u32 = 1600;
+
+/// Un PDF entra como PROYECTO propio, con una hoja por pagina.
+///
+/// Es lo que pidio el usuario y lo que hace el movil: cada chat ES un
+/// proyecto, y un PDF es un documento entero, no un adjunto suelto de otra
+/// conversacion. Devuelve la ficha del proyecto nuevo y cuantas paginas se
+/// extrajeron de cuantas.
+///
+/// El PDF original se guarda tambien, como primer mensaje: las paginas son
+/// imagenes y no se puede volver de ellas al documento.
+fn proyecto_de_pdf(
+    ubicacion: &Ubicacion,
+    aparato: &str,
+    pdf: &std::path::Path,
+) -> anyhow::Result<(pixpin_proyecto::almacen::Ficha, u32, u32)> {
+    use pixpin_proyecto::{almacen, cuaderno};
+    let raiz = ubicacion.raiz();
+    let nombre_fichero = pdf
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "documento.pdf".into());
+    // El proyecto se llama como el PDF sin su extension: es el nombre que el
+    // usuario reconoce en la lista.
+    let titulo = pdf
+        .file_stem()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| nombre_fichero.clone());
+
+    let cuando = pixpin_shell::entorno::ahora_local_ms();
+    let identidad = pixpin_proyecto::identidad::Identidad::leer_o_crear(raiz, "PC")
+        .map(|i| i.yo.codigo())
+        .unwrap_or_else(|_| aparato.to_string());
+    let ficha = almacen::Ficha::nueva(&titulo, cuando, &identidad);
+    let mut indice = almacen::Indice::leer(raiz);
+    indice.proyectos.push(ficha.clone());
+    indice.guardar(raiz)?;
+
+    let carpeta = almacen::carpeta(raiz, &ficha.id);
+    let mut numero = 1;
+    // El documento entero primero: sin el, de las paginas no se vuelve.
+    let bytes = std::fs::read(pdf)?;
+    let relativa = almacen::guardar_adjunto(raiz, &ficha.id, &nombre_fichero, &bytes)?;
+    let mensaje = cuaderno::Mensaje::adjunto(
+        cuaderno::Clase::Archivo,
+        &nombre_fichero,
+        &relativa,
+        bytes.len() as i64,
+        &cuaderno::Sello {
+            cuando,
+            numero,
+            aparato: identidad.clone(),
+            proyecto: ficha.id.clone(),
+        },
+    );
+    cuaderno::anadir(&carpeta, &mensaje)?;
+
+    let documento = pixpin_pdf::Documento::abrir(pdf)?;
+    let total = documento.paginas();
+    let cuantas = total.min(TOPE_PAGINAS_PDF);
+    let mut hechas = 0;
+    for pagina in 0..cuantas {
+        // Una pagina que falle no puede llevarse las demas: se anota y se
+        // sigue, como en los pines.
+        let hecho = (|| -> anyhow::Result<()> {
+            let imagen = documento.renderizar(pagina, ANCHO_PAGINA)?;
+            let png = pixpin_codec::codificar_png(&imagen)?;
+            let nombre = format!("{titulo} - pagina {:02}.png", pagina + 1);
+            let relativa = almacen::guardar_adjunto(raiz, &ficha.id, &nombre, &png)?;
+            numero += 1;
+            let mut m = cuaderno::Mensaje::adjunto(
+                cuaderno::Clase::Pagina,
+                &nombre,
+                &relativa,
+                png.len() as i64,
+                &cuaderno::Sello {
+                    cuando: cuando + numero,
+                    numero,
+                    aparato: identidad.clone(),
+                    proyecto: ficha.id.clone(),
+                },
+            );
+            // Que pagina es, como en Android: de la imagen sola no se sabe.
+            m.pagina = Some(pagina);
+            cuaderno::anadir(&carpeta, &m)?;
+            Ok(())
+        })();
+        match hecho {
+            Ok(()) => hechas += 1,
+            Err(e) => tracing::warn!(?e, pagina, "no se pudo extraer la pagina"),
+        }
+    }
+    tracing::info!(
+        proyecto = %ficha.id,
+        %titulo,
+        hechas,
+        total,
+        "PDF abierto como proyecto"
+    );
+    Ok((ficha, hechas, total))
+}
+
+/// Si una ruta es un PDF. Por la extension y sin distinguir mayusculas, que
+/// es como lo escribe cada programa a su manera.
+fn es_pdf(ruta: &std::path::Path) -> bool {
+    ruta.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+}
+
+#[cfg(test)]
+mod pruebas_pdf {
+    use super::es_pdf;
+    use std::path::Path;
+
+    #[test]
+    fn se_reconoce_un_pdf_se_escriba_como_se_escriba() {
+        assert!(es_pdf(Path::new("plano.pdf")));
+        assert!(es_pdf(Path::new("PLANO.PDF")));
+        assert!(es_pdf(Path::new(r"C:\obra\Plano General.Pdf")));
+        // Caso negativo: lo que solo lo lleva en el nombre no lo es.
+        assert!(!es_pdf(Path::new("plano.pdf.png")));
+        assert!(!es_pdf(Path::new("pdf")));
     }
 }
