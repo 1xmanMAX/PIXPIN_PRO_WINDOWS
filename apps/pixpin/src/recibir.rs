@@ -263,10 +263,28 @@ fn atender(
                     "recibido del movil"
                 );
             }
-            // Los proyectos, a la ventana de mensajes, que sabe abrirlos.
-            if !rutas.is_empty() && !pixpin_shell::mensajero::enviar_ficheros(&rutas) {
-                tracing::warn!("no contesto la ventana principal: quedan en recibidos/");
+            // Un proyecto entra en la LISTA de proyectos, no como pines
+            // sueltos: un `.pixpin` es una conversacion entera, y cada chat
+            // es un proyecto.
+            let mut proyectos = 0;
+            for ruta in &rutas {
+                let hecho = pixpin_proyecto::Paquete::abrir(ruta)
+                    .map_err(|e| e.to_string())
+                    .and_then(|p| {
+                        pixpin_proyecto::almacen::importar_paquete(raiz, &p, id)
+                            .map_err(|e| e.to_string())
+                    });
+                match hecho {
+                    Ok(ficha) => {
+                        proyectos += 1;
+                        tracing::info!(proyecto = %ficha.id, nombre = %ficha.nombre, "proyecto del movil");
+                    }
+                    Err(e) => {
+                        tracing::warn!(%e, ruta = %ruta.display(), "no se pudo abrir el paquete")
+                    }
+                }
             }
+            let _ = proyectos;
             // Y lo suelto, al cuaderno, para que se vea en el chat.
             match al_cuaderno(raiz, id, &cosas) {
                 Ok(0) => {}

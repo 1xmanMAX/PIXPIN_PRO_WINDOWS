@@ -272,6 +272,108 @@ impl Indice {
     }
 }
 
+/// Mete un `.pixpin` en el almacen como un proyecto mas de la lista.
+///
+/// Hasta ahora un paquete solo se abria como pines sueltos en la pantalla
+/// (`Pines::abrir_paquete`), y lo que llegaba del movil no aparecia en
+/// ninguna conversacion. Pero **cada chat ES un proyecto**: un `.pixpin` es
+/// una conversacion entera, no un monton de hojas.
+///
+/// Se copia TODO lo que trae el paquete, tambien lo que aqui no se entiende
+/// (croquis, imagenes de una version futura): abrir y volver a guardar no
+/// puede perder nada.
+///
+/// Los tres codigos del proyecto se conservan (uid, creado y aparato): son
+/// los que hacen que, cuando vuelva del movil, se reconozca como el mismo y
+/// no se duplique. Si el paquete no los trae, se le ponen los de aqui.
+pub fn importar_paquete(
+    raiz: &Path,
+    paquete: &crate::Paquete,
+    aparato: &str,
+) -> std::io::Result<Ficha> {
+    use crate::cuaderno;
+    let p = &paquete.proyecto;
+    let cuando = if p.creado > 0 { p.creado } else { p.tocado };
+    let mut ficha = Ficha::nueva(&p.nombre, cuando.max(1), aparato);
+    // Los codigos del paquete mandan sobre los recien inventados.
+    if let Some(uid) = p.uid.clone() {
+        ficha.uid = Some(uid);
+    }
+    if let Some(a) = p.aparato.clone() {
+        ficha.aparato = Some(a);
+    }
+    ficha.tocado = p.tocado.max(cuando);
+    ficha.hojas = p.hojas.len() as u32;
+
+    let destino = carpeta(raiz, &ficha.id);
+    std::fs::create_dir_all(&destino)?;
+    for nombre in paquete.nombres() {
+        let Some(bytes) = paquete.entrada(nombre) else {
+            continue;
+        };
+        // Un nombre con `..` dentro no puede escribir fuera de la carpeta
+        // del proyecto: es un fichero que viene de otro aparato.
+        if nombre.split(['/', '\\']).any(|t| t == "..") {
+            continue;
+        }
+        let ruta = destino.join(nombre.replace('\\', "/"));
+        if let Some(padre) = ruta.parent() {
+            std::fs::create_dir_all(padre)?;
+        }
+        std::fs::write(&ruta, bytes)?;
+    }
+
+    // Una hoja por mensaje, para que la conversacion se vea. Si el paquete
+    // ya trae su cuaderno, ese manda: es el del movil, con sus fechas y sus
+    // codigos, y rehacerlo aqui seria inventar otra verdad.
+    if paquete.entrada("guardados.jsonl").is_none() {
+        for (n, hoja) in p.hojas.iter().enumerate() {
+            let numero = n as i64 + 1;
+            let sello = cuaderno::Sello {
+                cuando: ficha.creado + numero,
+                numero,
+                aparato: ficha.aparato.clone().unwrap_or_else(|| aparato.to_string()),
+                proyecto: ficha.id.clone(),
+            };
+            let mut mensaje = match (&hoja.dibujo, &hoja.nota) {
+                (Some(dibujo), _) => {
+                    let nombre = format!("{dibujo}.excalidraw");
+                    let bytes = paquete
+                        .entrada(&format!("lienzos/{nombre}"))
+                        .map(|b| b.len())
+                        .unwrap_or(0);
+                    let mut m = cuaderno::Mensaje::adjunto(
+                        cuaderno::Clase::Dibujo,
+                        if hoja.nombre.is_empty() {
+                            &nombre
+                        } else {
+                            &hoja.nombre
+                        },
+                        &format!("lienzos/{nombre}"),
+                        bytes as i64,
+                        &sello,
+                    );
+                    m.referencia = Some(dibujo.clone());
+                    m
+                }
+                (None, Some(texto)) => cuaderno::Mensaje::nota(texto, &sello),
+                // Una hoja sin dibujo ni nota (un croquis, una pagina) se
+                // apunta por su nombre: mejor una linea que decir que esta
+                // que perderla porque aqui no se sabe pintarla.
+                (None, None) => cuaderno::Mensaje::nota(&hoja.nombre, &sello),
+            };
+            mensaje.uid = hoja.uid.clone();
+            mensaje.pagina = hoja.pagina;
+            cuaderno::anadir(&destino, &mensaje)?;
+        }
+    }
+
+    let mut indice = Indice::leer(raiz);
+    indice.proyectos.push(ficha.clone());
+    indice.guardar(raiz)?;
+    Ok(ficha)
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;

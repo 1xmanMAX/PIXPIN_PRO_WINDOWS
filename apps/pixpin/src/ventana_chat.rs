@@ -383,6 +383,9 @@ pub fn abrir(
     // Los PDF que hayan entrado en esta vuelta: cada uno abre un proyecto
     // propio, y eso lo decide el bucle, que es quien lleva la lista.
     let mut pdfs_pendientes: Vec<std::path::PathBuf> = Vec::new();
+    // La fecha del indice la ultima vez que se leyo, para enterarse de lo
+    // que llegue por fuera (del movil, de otra ventana).
+    let mut sello_indice: Option<std::time::SystemTime> = None;
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -1234,6 +1237,29 @@ pub fn abrir(
                 _ => {}
             }
         }
+        // Si la lista de proyectos cambio por fuera —algo que llego del
+        // movil, por ejemplo— se relee. Se mira la fecha del indice, que es
+        // una consulta al sistema de ficheros y solo al despertar.
+        if let Ok(ahora_sello) = std::fs::metadata(ubicacion.raiz().join("proyectos/indice.json"))
+            .and_then(|m| m.modified())
+            && sello_indice != Some(ahora_sello)
+        {
+            if sello_indice.is_some() {
+                let elegida_id = elegida.and_then(|i| fichas.get(i)).map(|f| f.id.clone());
+                fichas = pixpin_proyecto::almacen::Indice::leer(ubicacion.raiz())
+                    .ordenadas()
+                    .into_iter()
+                    .cloned()
+                    .collect();
+                orden = filtrar(&fichas, &busqueda);
+                // El proyecto abierto sigue siendo el mismo aunque haya
+                // cambiado de sitio en la lista.
+                elegida = elegida_id.and_then(|id| fichas.iter().position(|f| f.id == id));
+                hay_que_pintar = true;
+            }
+            sello_indice = Some(ahora_sello);
+        }
+
         // Un PDF que haya entrado abre su propio proyecto, con una hoja por
         // pagina: cada chat ES un proyecto, y un documento entero no es un
         // adjunto suelto de otra conversacion.
