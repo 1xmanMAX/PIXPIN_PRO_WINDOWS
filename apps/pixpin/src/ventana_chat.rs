@@ -672,6 +672,29 @@ pub fn abrir(
                         // la burbuja y no en una ventana aparte. Los demas
                         // siguen quietos, que es lo que pidio el usuario.
                         let es_foto = vista(|v| matches!(v, Some(Ojeada::Foto { .. })));
+                        // El boton de pin de la esquina de la foto: va antes
+                        // que abrirla, o pulsarlo abriria el editor.
+                        let en_pin = es_foto
+                            && abierto.as_ref().is_some_and(|a| {
+                                let area = disposicion.historial(
+                                    a.alto_caja.get(),
+                                    a.fijado.is_some(),
+                                    escala,
+                                );
+                                let scroll = a.scroll.unwrap_or_else(|| {
+                                    pixpin_ui::historial::scroll_maximo(area, a.alto.get())
+                                });
+                                a.colocado.borrow().puestos.get(indice).is_some_and(|p| {
+                                    // La burbuja se guarda en alturas del
+                                    // documento; el raton viene en las de la
+                                    // ventana.
+                                    let burbuja = Rect {
+                                        y: p.burbuja.y - scroll + area.y,
+                                        ..p.burbuja
+                                    };
+                                    boton_pin(burbuja, escala).contiene(l)
+                                })
+                            });
                         // Un dibujo del movil trae cientos de trazos: en la
                         // burbuja no se lee ninguno, asi que se abre grande.
                         //
@@ -686,6 +709,20 @@ pub fn abrir(
                                 m.clase == Some(pixpin_proyecto::cuaderno::Clase::Dibujo)
                                     && m.referencia.as_deref().is_some_and(|r| !r.is_empty())
                             });
+                        if en_pin {
+                            let ruta = abierto.as_ref().and_then(|a| {
+                                ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(indice)?)
+                            });
+                            if let Some(ruta) = ruta
+                                && !pixpin_shell::mensajero::enviar_ficheros(&[ruta])
+                            {
+                                tracing::warn!(
+                                    "no se pudo pedir el pin: no contesta la ventana principal"
+                                );
+                            }
+                            hay_que_pintar = true;
+                            continue;
+                        }
                         match abierto.as_mut() {
                             Some(a) if es_tabla => abrir_hoja(a, indice),
                             // Una foto se abre en el editor 2D, con la foto de fondo:
@@ -2617,12 +2654,12 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                         // dejaria corridos respecto a lo que se ve.
                         None => {
                             let (dw, dh) = *doc;
-                            let escala = (hoja.ancho / dw.max(1.0)).min(hoja.alto / dh.max(1.0));
+                            let encaje = (hoja.ancho / dw.max(1.0)).min(hoja.alto / dh.max(1.0));
                             let dest = RectF {
-                                x: hoja.x + (hoja.ancho - dw * escala) / 2.0,
-                                y: hoja.y + (hoja.alto - dh * escala) / 2.0,
-                                ancho: dw * escala,
-                                alto: dh * escala,
+                                x: hoja.x + (hoja.ancho - dw * encaje) / 2.0,
+                                y: hoja.y + (hoja.alto - dh * encaje) / 2.0,
+                                ancho: dw * encaje,
+                                alto: dh * encaje,
                             };
                             if let Some((b, w, alto)) = foto {
                                 let _ = (w, alto);
@@ -2641,6 +2678,32 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                                     None,
                                 );
                             }
+                            // El boton de volverla pin, a la vista y a un clic,
+                            // como el de «abrir fuera» del movil. Oscuro y
+                            // medio transparente para que se lea sobre
+                            // cualquier foto sin taparla.
+                            let pin = rf(boton_pin(burbuja, escala));
+                            p.rellenar_redondeado(
+                                pin,
+                                pin.alto / 2.0,
+                                Color {
+                                    r: 0.0,
+                                    g: 0.0,
+                                    b: 0.0,
+                                    a: 0.55,
+                                },
+                            );
+                            let lado = pin.ancho * 0.58;
+                            p.icono(
+                                &pixpin_render::iconos_excalidraw::PIN_ICON,
+                                RectF {
+                                    x: pin.x + (pin.ancho - lado) / 2.0,
+                                    y: pin.y + (pin.alto - lado) / 2.0,
+                                    ancho: lado,
+                                    alto: lado,
+                                },
+                                Color::BLANCO,
+                            );
                         }
                     }
                 }
@@ -4739,6 +4802,20 @@ mod pruebas_hoja {
 /// chat corre en otro hilo y no puede crearlos por su cuenta.
 /// Devuelve si se eligio dibujar en la burbuja: eso lo enciende quien
 /// tiene el proyecto abierto, que aqui no esta.
+/// El boton redondo de «volver pin», en la esquina de arriba a la derecha de
+/// la burbuja de una foto. Lo usan el pintado y el clic: si cada uno
+/// calculara el suyo, acabarian sin coincidir.
+fn boton_pin(burbuja: Rect, escala: u32) -> Rect {
+    let e = |v: u32| v * escala / 100;
+    let (lado, margen) = (e(30), e(8));
+    Rect {
+        x: burbuja.derecha() - (lado + margen) as i32,
+        y: burbuja.y + margen as i32,
+        ancho: lado,
+        alto: lado,
+    }
+}
+
 /// El menu del clic derecho sobre un proyecto de la lista. `true` si hay que
 /// borrar: se eligio «Borrar» Y se dijo que si a la pregunta.
 fn menu_de_proyecto(ventana: &VentanaOverlay, textos: &Catalogo, cuantos: usize) -> bool {
