@@ -653,6 +653,9 @@ pub fn abrir(
                         // la burbuja y no en una ventana aparte. Los demas
                         // siguen quietos, que es lo que pidio el usuario.
                         let es_foto = vista(|v| matches!(v, Some(Ojeada::Foto { .. })));
+                        // Un dibujo del movil trae cientos de trazos: en la
+                        // burbuja no se lee ninguno, asi que se abre grande.
+                        let es_dibujo = vista(|v| matches!(v, Some(Ojeada::Lienzo(_))));
                         match abierto.as_mut() {
                             Some(a) if es_tabla => abrir_hoja(a, indice),
                             Some(a) if es_foto => {
@@ -660,6 +663,7 @@ pub fn abrir(
                                     a.colocado.borrow_mut().ancho = 0;
                                 }
                             }
+                            Some(a) if es_dibujo => abrir_dibujo(ubicacion, a, indice, lienzo),
                             Some(a) => abrir_mensaje(ubicacion, a, indice),
                             None => {}
                         }
@@ -4674,5 +4678,54 @@ mod pruebas_pdf {
         // Caso negativo: lo que solo lo lleva en el nombre no lo es.
         assert!(!es_pdf(Path::new("plano.pdf.png")));
         assert!(!es_pdf(Path::new("pdf")));
+    }
+}
+
+/// Abre un dibujo del proyecto en el lienzo grande, para verlo entero.
+///
+/// **No guarda lo que se haga.** Escribir de vuelta un `.excalidraw` sin
+/// perder lo que el movil mete y aqui no se entiende es un trabajo aparte
+/// (el plan lo dice), y a medias seria peor: se veria bien y se perderia
+/// callando. Asi que por ahora es una vista, y se avisa en el registro.
+fn abrir_dibujo(ubicacion: &Ubicacion, a: &Abierto, indice: usize, opciones: OpcionesLienzo) {
+    let Some(m) = a.mensajes.get(indice) else {
+        return;
+    };
+    let Some(id) = m.referencia.as_deref().filter(|r| !r.is_empty()) else {
+        return;
+    };
+    let ruta = pixpin_proyecto::almacen::lienzo(ubicacion.raiz(), &a.ficha.id, id);
+    let texto = match std::fs::read_to_string(&ruta) {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!(?e, ruta = %ruta.display(), "no se pudo leer el dibujo");
+            return;
+        }
+    };
+    let lienzo = match pixpin_motor2d::excalidraw::leer(&texto) {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::warn!(?e, "dibujo que no se entiende");
+            return;
+        }
+    };
+    let mut escena = pixpin_motor2d::Escena::nueva();
+    for e in lienzo.elementos() {
+        escena.anadir(e);
+    }
+    tracing::info!(
+        elementos = escena.cuantos_visibles(),
+        ruta = %ruta.display(),
+        "dibujo abierto para verlo (no se guarda)"
+    );
+    let resultado = crate::ventana_editor::abrir(
+        escena,
+        opciones.enganche,
+        opciones.nivel,
+        opciones.medir_fotogramas,
+        None,
+    );
+    if let Err(e) = resultado {
+        tracing::warn!(?e, "no se pudo abrir el lienzo");
     }
 }

@@ -32,6 +32,7 @@ pub mod codigos;
 pub mod cuaderno;
 pub mod formula;
 pub mod identidad;
+pub mod mini;
 pub mod tabla;
 
 use std::collections::BTreeMap;
