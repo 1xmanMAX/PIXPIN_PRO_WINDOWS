@@ -24,8 +24,10 @@ pixpin-pin = { version = "0.1.0", path = "../../crates/pixpin-pin" }
 pixpin-record = { version = "0.1.0", path = "../../crates/pixpin-record" }
 pixpin-render = { version = "0.1.0", path = "../../crates/pixpin-render" }
 pixpin-shell = { version = "0.1.0", path = "../../crates/pixpin-shell" }
+pixpin-sincro = { version = "0.1.0", path = "../../crates/pixpin-sincro" }
 pixpin-store = { version = "0.1.0", path = "../../crates/pixpin-store" }
 pixpin-ui = { version = "0.1.0", path = "../../crates/pixpin-ui" }
+qrcodegen = "1.8.0"
 tracing = "0.1.44"
 tracing-appender = "0.2.5"
 tracing-subscriber = "0.3.23"

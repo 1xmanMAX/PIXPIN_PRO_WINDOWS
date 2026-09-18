@@ -64,6 +64,7 @@ mod overlay;
 mod panel_dibujo;
 mod pin_vivo;
 mod pines;
+mod recibir;
 mod reproductor;
 mod scroll;
 mod ventana_ajustes;
@@ -663,6 +664,12 @@ fn arrancar(
                         tracing::info!("bajo el cursor no hay ventana que fijar")
                     }
                 }
+                Continuar::Si
+            }
+            _ if comando == Some(comandos::Comando::RecibirDelMovil) => {
+                // En su propio hilo, como el chat: esperar al movil no puede
+                // dejar sordos los atajos ni los gestos.
+                recibir::lanzar(lengua, ubicacion.clone());
                 Continuar::Si
             }
             _ if comando == Some(comandos::Comando::AbrirChat) => {

@@ -104,3 +104,18 @@ pub fn menu_llano(
         }
     }
 }
+
+/// Azar del sistema, el bueno: `BCryptGenRandom`.
+///
+/// Hace falta para el codigo de seis cifras de un envio y para el nonce del
+/// canal cifrado. Un azar sacado del reloj seria adivinable, y de esos dos
+/// numeros depende que nadie mas pueda conectarse al envio.
+pub fn azar(destino: &mut [u8]) -> bool {
+    use windows::Win32::Security::Cryptography::{
+        BCRYPT_USE_SYSTEM_PREFERRED_RNG, BCryptGenRandom,
+    };
+    // SAFETY: el buffer es valido durante la llamada y su largo es el suyo;
+    // con la bandera del RNG preferido no hace falta abrir un algoritmo.
+    let estado = unsafe { BCryptGenRandom(None, destino, BCRYPT_USE_SYSTEM_PREFERRED_RNG) };
+    estado.is_ok()
+}

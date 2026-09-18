@@ -20,6 +20,7 @@
 
 pub mod canal;
 pub mod codigo;
+pub mod envio;
 pub mod mensajes;
 
 /// La version del protocolo que se habla. Viaja en el saludo `hola`.

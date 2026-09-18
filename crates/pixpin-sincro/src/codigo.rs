@@ -42,6 +42,18 @@ pub fn clave_de_grupo(codigo: &str) -> [u8; 32] {
     clave
 }
 
+/// La clave de 32 bytes de un texto TAL CUAL, sin limpiarlo.
+///
+/// Android deriva asi (`Grupo.clave`): limpiar el codigo es cosa de quien lo
+/// teclea, no de la derivacion. Hace falta cruda para el envio puntual, cuyo
+/// texto es `envio-482913` —con guion, ceros y unos, que el alfabeto del
+/// grupo no admite y `limpiar` tiraria—.
+pub fn clave_cruda(texto: &str) -> [u8; 32] {
+    let mut clave = [0u8; 32];
+    pbkdf2::pbkdf2_hmac::<Sha256>(texto.as_bytes(), SAL, VUELTAS, &mut clave);
+    clave
+}
+
 /// La etiqueta publica del grupo: los ocho primeros bytes de
 /// `HMAC(clave, "etiqueta")`, en hex minuscula (16 caracteres).
 ///

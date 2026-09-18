@@ -78,6 +78,8 @@ pub enum Comando {
     AbrirChat,
     /// Abrir la ventana de ajustes.
     AbrirAjustes,
+    /// Esperar a que el movil mande algo por la wifi (D147).
+    RecibirDelMovil,
     /// Cerrar el programa.
     Salir,
 }
@@ -276,6 +278,16 @@ pub const CATALOGO: &[Descriptor] = &[
         atajo_por_defecto: None,
         en_bandeja: true,
     },
+    // Va al final del catalogo a proposito: la posicion manda sobre el
+    // identificador, y meterlo en medio correria los de todos los demas —y
+    // con ellos los atajos que la gente tenga escritos en su TOML—.
+    Descriptor {
+        comando: Comando::RecibirDelMovil,
+        nombre: "recibir-del-movil",
+        clave_titulo: "comando-recibir-del-movil",
+        atajo_por_defecto: None,
+        en_bandeja: true,
+    },
     Descriptor {
         comando: Comando::Salir,
         nombre: "salir",
@@ -467,6 +479,7 @@ mod pruebas {
         Comando::VentanaEncima,
         Comando::AbrirChat,
         Comando::AbrirAjustes,
+        Comando::RecibirDelMovil,
         Comando::Salir,
     ];
 
