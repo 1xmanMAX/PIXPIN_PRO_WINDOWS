@@ -2239,11 +2239,11 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                 // de sus lineas llega al borde y la hora tiene sitio.
                 let estrecho = (ancho_contenido as f32 - reserva).max(1.0);
                 let cabe_al_lado = p.medir_texto_ajustado(&texto, tam, estrecho).1 <= alto + 0.5;
-                let (mut ancho, mut alto) = if cabe_al_lado {
-                    ((ancho + reserva).min(ancho_contenido as f32), alto)
-                } else {
-                    (ancho, alto + alto_hora)
-                };
+                // La chapa y la hora van en SU renglon, abajo a la izquierda,
+                // como en el movil: compartir la ultima linea con el texto es
+                // lo que alli las monta encima de un «hola».
+                let _ = cabe_al_lado;
+                let (mut ancho, mut alto) = (ancho.max(reserva), alto + alto_hora + 4.0 * e);
                 // Un dibujo ensena su lienzo: la vista previa manda sobre
                 // el texto, que queda como pie.
                 if let Some((extension, nombre, detalle)) = &ficha {
@@ -2273,7 +2273,10 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                     alto: alto.ceil() as u32,
                     ancho: ancho.ceil() as u32,
                     // Lo que nacio en otro aparato se ensena a la izquierda.
-                    mio: m.origen.is_none(),
+                    // Todas a la izquierda, como en el movil: es un cuaderno
+                    // propio, no una conversacion entre dos, y alternar lados
+                    // no decia nada.
+                    mio: false,
                     cuando: m.cuando,
                     dia: m.cuando.div_euclid(86_400_000),
                 });
@@ -2332,7 +2335,8 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
         }
 
         let burbuja = mover(puesto.burbuja);
-        let mio = m.origen.is_none();
+        // Y todas del mismo azul, que es el de la burbuja del movil.
+        let mio = true;
         let (color, color_texto, color_hora) = if mio {
             (tema.burbuja_mia, tema.texto_mio, tema.hora_mia)
         } else {
@@ -2528,8 +2532,12 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
         let hora = pixpin_ui::chat::etiqueta_hora(m.cuando, ahora);
         if !hora.is_empty() {
             let (w, alto) = p.medir_texto(&hora, h::HORA_TAM * e);
-            let x_hora =
-                burbuja.derecha() as f32 - (h::RELLENO_X - h::HORA_INVADE_X) as f32 * e - w;
+            // Abajo a la IZQUIERDA: primero la chapa y detras la hora.
+            let ancho_chapa = chapa_de_codigo(m)
+                .map(|c| p.medir_texto(&c, CHAPA_TAM * e).0 + 8.0 * e + CHAPA_AIRE * e)
+                .unwrap_or(0.0);
+            let _ = w;
+            let x_hora = burbuja.x as f32 + h::RELLENO_X as f32 * e + ancho_chapa;
             let y_hora =
                 burbuja.abajo() as f32 - (h::RELLENO_Y - h::HORA_INVADE_Y) as f32 * e - alto;
             p.texto(&hora, x_hora, y_hora, h::HORA_TAM * e, color_hora);
@@ -2541,7 +2549,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                 let tam = CHAPA_TAM * e;
                 let (wc, hc) = p.medir_texto(&codigo, tam);
                 let caja = RectF {
-                    x: x_hora - CHAPA_AIRE * e - wc - 4.0 * e,
+                    x: burbuja.x as f32 + h::RELLENO_X as f32 * e,
                     y: y_hora + (alto - hc) / 2.0 - 1.0 * e,
                     ancho: wc + 8.0 * e,
                     alto: hc + 2.0 * e,
