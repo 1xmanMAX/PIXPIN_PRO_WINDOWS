@@ -400,6 +400,44 @@ pub fn abrir(
     fondo: Option<pixpin_codec::ImagenRgba>,
     fotos: &[(u64, std::path::PathBuf)],
 ) -> Result<(Escena, Option<String>)> {
+    // F11 alterna entre pantalla completa y ventana. La ventana del editor
+    // nace con su tamano y todo lo de dentro se mide contra el, asi que
+    // cambiar de modo es cerrarla y abrirla otra vez con la MISMA escena: se
+    // pierde el encuadre, no el dibujo.
+    let mut escena = escena;
+    loop {
+        let (vuelta, enlace, cambiar) = abrir_en_modo(
+            escena,
+            ajustes_iman,
+            nivel,
+            medir_fotogramas,
+            fondo.clone(),
+            fotos,
+        )?;
+        if !cambiar {
+            return Ok((vuelta, enlace));
+        }
+        escena = vuelta;
+        let ahora = !PANTALLA_COMPLETA.load(std::sync::atomic::Ordering::SeqCst);
+        PANTALLA_COMPLETA.store(ahora, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// Si el lienzo ocupa la pantalla entera o una ventana sin marco. Se
+/// recuerda mientras viva la aplicacion: quien lo puso en ventana lo quiere
+/// en ventana tambien en el siguiente lienzo.
+static PANTALLA_COMPLETA: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+const VK_F11: u32 = 0x7A;
+
+fn abrir_en_modo(
+    escena: Escena,
+    ajustes_iman: pixpin_motor2d::enganche::Ajustes,
+    nivel: pixpin_nivel::Nivel,
+    medir_fotogramas: bool,
+    fondo: Option<pixpin_codec::ImagenRgba>,
+    fotos: &[(u64, std::path::PathBuf)],
+) -> Result<(Escena, Option<String>, bool)> {
     let dispositivo =
         pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para el editor")?;
     let mut motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
@@ -425,7 +463,22 @@ pub fn abrir(
     let monitor = disposicion
         .principal()
         .context("sin monitor principal para el editor")?;
-    let area = monitor.area_trabajo;
+    // Pantalla completa de verdad (tapa tambien la barra de tareas), o una
+    // ventana sin marco centrada con aire alrededor. Sin el encabezado de
+    // Windows en ninguno de los dos: el lienzo ocupa toda su ventana y se
+    // cierra con Escape.
+    let area = if PANTALLA_COMPLETA.load(std::sync::atomic::Ordering::SeqCst) {
+        monitor.area
+    } else {
+        let t = monitor.area_trabajo;
+        let (w, h) = (t.ancho * 4 / 5, t.alto * 4 / 5);
+        pixpin_geom::Rect {
+            x: t.x + ((t.ancho - w) / 2) as i32,
+            y: t.y + ((t.alto - h) / 2) as i32,
+            ancho: w,
+            alto: h,
+        }
+    };
 
     let ventana = VentanaOverlay::nueva(area).context("no se pudo abrir el editor")?;
     // PIXPIN_TINTA_CLASICA vuelve a la presentacion de antes, para medir la
@@ -518,6 +571,10 @@ pub fn abrir(
     let mut todo_sucio = false;
     // La hoja a la que lleva el recuadro que se pulso, si se pulso alguno.
     let mut enlace_pedido: Option<String> = None;
+    // Se pulso F11: hay que volver a abrir en el otro modo.
+    let mut cambiar_modo = false;
+    // La goma esta pulsada: borra lo que vaya tocando hasta soltar.
+    let mut borrando = false;
     // La zona sucia del fotograma anterior (D148): hace falta para la union
     // de dos, porque la cadena de intercambio tiene dos mapas.
     let mut zona_anterior: Option<(i32, i32, i32, i32)> = None;
@@ -574,7 +631,10 @@ pub fn abrir(
             // consume no puede empezar un trazo. Los modificadores solo se
             // leen para la rueda: sondearlos con cada muestra del lapiz seria
             // pagar cinco llamadas al sistema mil veces por segundo.
-            let mods = if matches!(ev, EventoOverlay::Rueda(_)) {
+            let mods = if matches!(
+                ev,
+                EventoOverlay::Rueda(_) | EventoOverlay::RuedaHorizontal(_)
+            ) {
                 let m = pixpin_shell::entrada::modificadores_pulsados();
                 navegacion::Modificadores {
                     ctrl: m.ctrl,
@@ -775,6 +835,10 @@ pub fn abrir(
                 }
             }
 
+            if let EventoOverlay::Tecla { vk: VK_F11, .. } = ev {
+                cambiar_modo = true;
+                break 'bucle;
+            }
             if let EventoOverlay::Caracter(c) = ev {
                 if let Some(h) = tecla_a_herramienta(c) {
                     elegir_herramienta(&mut gesto, h);
@@ -919,6 +983,45 @@ pub fn abrir(
             }
 
             // 1. Traducir y, si le toca al motor, pasarselo.
+            // La goma. El motor la tiene en su lista de herramientas pero no
+            // hace nada con ella —ahi solo valia para la capa de anotar—, asi
+            // que en el editor elegirla y arrastrar no borraba nada. Borra lo
+            // que toca al pulsar y mientras se arrastra, que es como se usa
+            // una goma; cada toque es un paso que se puede deshacer.
+            if gesto.herramienta == Herramienta::Borrador {
+                match ev {
+                    EventoOverlay::BotonPulsado(_) => borrando = true,
+                    EventoOverlay::BotonSoltado(_) => borrando = false,
+                    _ => {}
+                }
+                let punto = match ev {
+                    EventoOverlay::BotonPulsado(p) | EventoOverlay::RatonMovido(p) if borrando => {
+                        Some(p)
+                    }
+                    _ => None,
+                };
+                if let Some(p) = punto {
+                    let q = efectiva
+                        .a_mundo(Punto2::nuevo((p.x - area.x) as f32, (p.y - area.y) as f32));
+                    if let Some(id) = pixpin_motor2d::impacto::elemento_en(&escena.elementos, q) {
+                        escena.abrir_paso();
+                        let hecho = escena.borrar_apuntando(id);
+                        escena.cerrar_paso();
+                        if hecho {
+                            todo_sucio = true;
+                            ventana.invalidar();
+                        }
+                    }
+                }
+                if matches!(
+                    ev,
+                    EventoOverlay::BotonPulsado(_)
+                        | EventoOverlay::BotonSoltado(_)
+                        | EventoOverlay::RatonMovido(_)
+                ) {
+                    continue;
+                }
+            }
             if let Some(g) = a_evento(
                 &ev,
                 &efectiva,
@@ -1308,7 +1411,7 @@ pub fn abrir(
     escena.compactar();
     // Y a que hoja queria ir, si pulso un recuadro con enlace: quien llama
     // es el unico que sabe donde estan las hojas.
-    Ok((escena, enlace_pedido))
+    Ok((escena, enlace_pedido, cambiar_modo))
 }
 
 /// Todas las ordenes de un elemento para un fotograma: las cacheadas (forma,

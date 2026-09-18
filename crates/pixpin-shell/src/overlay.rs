@@ -92,6 +92,11 @@ pub enum EventoOverlay {
     /// Rueda del raton, positivo hacia arriba. La capa viva la usa para el
     /// grosor del trazo y el aumento de la lupa (D55).
     Rueda(i32),
+    /// El giro HORIZONTAL (`WM_MOUSEHWHEEL`), positivo hacia la derecha. Es
+    /// lo que manda un panel tactil al mover dos dedos de lado: Windows
+    /// parte ese gesto en dos mensajes, uno por eje, y sin este el lienzo
+    /// solo se dejaba llevar arriba y abajo.
+    RuedaHorizontal(i32),
     /// Un caracter escrito, ya compuesto (WM_CHAR, IME incluido) (D57).
     Caracter(char),
     /// Se han soltado ficheros encima (WM_DROPFILES). Las rutas se recogen
@@ -831,6 +836,11 @@ extern "system" fn procedimiento_overlay(
                 }
             }
             encolar(EventoOverlay::RatonMovido(p));
+            LRESULT(0)
+        }
+        WM_MOUSEHWHEEL => {
+            let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            encolar(EventoOverlay::RuedaHorizontal(delta));
             LRESULT(0)
         }
         WM_MOUSEWHEEL => {

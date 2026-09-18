@@ -751,6 +751,7 @@ fn procesar_evento(
         // Esta ventana no pidio entrada fina (D106): no deberia llegar
         // Muestra, pero si llegara no hay nada que hacer con ella aqui.
         EventoOverlay::Rueda(_)
+        | EventoOverlay::RuedaHorizontal(_)
         | EventoOverlay::Caracter(_)
         | EventoOverlay::TeclaSoltada(_)
         | EventoOverlay::Atajo(_)
