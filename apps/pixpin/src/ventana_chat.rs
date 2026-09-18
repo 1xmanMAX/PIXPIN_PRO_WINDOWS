@@ -658,8 +658,22 @@ pub fn abrir(
                         let es_dibujo = vista(|v| matches!(v, Some(Ojeada::Lienzo(_))));
                         match abierto.as_mut() {
                             Some(a) if es_tabla => abrir_hoja(a, indice),
+                            // Una foto se abre en el editor 2D, con la foto de fondo:
+                            // es donde estan las herramientas. Dibujar en la
+                            // propia burbuja sigue estando, en el menu del
+                            // boton derecho.
                             Some(a) if es_foto => {
-                                if encender_lienzo(a, indice) {
+                                if let Some(ruta) = a
+                                    .mensajes
+                                    .get(indice)
+                                    .and_then(|m| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
+                                {
+                                    abrir_foto_en_lienzo(&ruta, lienzo);
+                                    // Al volver, la burbuja tiene que ensenar lo
+                                    // que se dibujo.
+                                    if let Some(m) = a.mensajes.get(indice).cloned() {
+                                        a.vistas[indice] = leer_vista(ubicacion, &a.ficha.id, &m);
+                                    }
                                     a.colocado.borrow_mut().ancho = 0;
                                 }
                             }
@@ -838,10 +852,18 @@ pub fn abrir(
                             if !matches!(a.vistas.get(i), Some(Some(Ojeada::Foto { .. }))) {
                                 return None;
                             }
-                            ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(i)?)
+                            Some((
+                                i,
+                                ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(i)?)?,
+                            ))
                         });
-                    if let Some(ruta) = foto {
-                        menu_de_foto(&ventana, textos, &ruta, lienzo);
+                    if let Some((indice, ruta)) = foto {
+                        if menu_de_foto(&ventana, textos, &ruta, lienzo)
+                            && let Some(a) = abierto.as_mut()
+                            && encender_lienzo(a, indice)
+                        {
+                            a.colocado.borrow_mut().ancho = 0;
+                        }
                         hay_que_pintar = true;
                     }
                 }
@@ -4315,21 +4337,26 @@ mod pruebas_hoja {
 /// pueden querer hacer con ellas. Volver a fijarla como pin se hace por la
 /// ventana de mensajes (`enviar_ficheros`), que es quien tiene los pines: el
 /// chat corre en otro hilo y no puede crearlos por su cuenta.
+/// Devuelve si se eligio dibujar en la burbuja: eso lo enciende quien
+/// tiene el proyecto abierto, que aqui no esta.
 fn menu_de_foto(
     ventana: &VentanaOverlay,
     textos: &Catalogo,
     ruta: &std::path::Path,
     lienzo: OpcionesLienzo,
-) {
+) -> bool {
     const LIENZO: u32 = 1;
     const PIN: u32 = 2;
     const ABRIR: u32 = 3;
+    const AQUI: u32 = 4;
     let entradas = [
         (LIENZO, textos.t("menu-foto-lienzo")),
+        (AQUI, textos.t("menu-foto-aqui")),
         (PIN, textos.t("menu-foto-pin")),
         (ABRIR, textos.t("menu-foto-abrir")),
     ];
     match pixpin_shell::menu_llano(ventana.handle(), &entradas) {
+        Some(AQUI) => return true,
         Some(LIENZO) => abrir_foto_en_lienzo(ruta, lienzo),
         Some(PIN) => {
             if !pixpin_shell::mensajero::enviar_ficheros(std::slice::from_ref(&ruta.to_path_buf()))
@@ -4344,6 +4371,7 @@ fn menu_de_foto(
         }
         _ => {}
     }
+    false
 }
 
 // --- El lienzo vivo dentro de la burbuja ------------------------------
