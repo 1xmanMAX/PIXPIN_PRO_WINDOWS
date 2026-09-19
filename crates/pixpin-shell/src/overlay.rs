@@ -28,6 +28,21 @@ use windows::core::w;
 /// WM_APP+1: otros hilos lo PostMessage-an para despertar el bucle modal.
 pub const MSG_DESPIERTA: u32 = WM_APP + 1;
 
+/// Despierta a la ventana de otro hilo: le llega `EventoOverlay::Despierta`.
+/// Recibe el HWND como entero para poder cruzar hilos (`HWND` no es `Send`).
+pub fn despertar(hwnd: isize) {
+    // SAFETY: PostMessageW no toca memoria nuestra; si la ventana ya no
+    // existe, falla y se ignora, que es lo correcto para un aviso.
+    unsafe {
+        let _ = PostMessageW(
+            Some(HWND(hwnd as *mut _)),
+            MSG_DESPIERTA,
+            WPARAM(0),
+            LPARAM(0),
+        );
+    }
+}
+
 /// Espera a que el compositor haya presentado lo ultimo que se dibujo.
 /// Dos vueltas: la primera cierra el fotograma en curso, la segunda
 /// garantiza que el nuestro ya esta en pantalla y, por tanto, en la

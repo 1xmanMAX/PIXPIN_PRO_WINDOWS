@@ -543,6 +543,7 @@ dependencies = [
  "pixpin-sincro",
  "pixpin-store",
  "pixpin-ui",
+ "pixpin-universo",
  "qrcodegen",
  "serde",
  "serde_json",
