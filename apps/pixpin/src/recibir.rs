@@ -35,12 +35,55 @@ const ROJO: Color = hex(0xe06c75);
 ///
 /// Si el azar del sistema falla no se inventa uno peor: sin codigo no hay
 /// envio, y uno adivinable es justo lo que no puede ser.
-fn codigo_nuevo() -> Option<String> {
-    let mut bytes = [0u8; pixpin_sincro::envio::CIFRAS];
-    if !pixpin_shell::azar(&mut bytes) {
-        return None;
+///
+/// Los bytes de 250 en adelante se tiran: 256 no es multiplo de 10, y con
+/// ellos las cifras del 0 al 5 saldrian algo mas que las demas.
+pub(crate) fn codigo_nuevo() -> Option<String> {
+    let mut salida = String::new();
+    while salida.len() < pixpin_sincro::envio::CIFRAS {
+        let mut bytes = [0u8; 16];
+        if !pixpin_shell::azar(&mut bytes) {
+            return None;
+        }
+        for b in bytes {
+            if b < 250 && salida.len() < pixpin_sincro::envio::CIFRAS {
+                salida.push(char::from(b'0' + b % 10));
+            }
+        }
     }
-    Some(bytes.iter().map(|b| (b % 10).to_string()).collect())
+    Some(salida)
+}
+
+/// El QR de un texto, o nada si no cabe (no pasa con los de PixPin).
+pub(crate) fn qr_de(texto: &str) -> Option<qrcodegen::QrCode> {
+    qrcodegen::QrCode::encode_text(texto, qrcodegen::QrCodeEcc::Medium).ok()
+}
+
+/// El QR sobre papel blanco y con su margen: sin borde claro alrededor
+/// muchos lectores no lo cogen.
+pub(crate) fn pintar_qr(p: &Pintor, caja: RectF, qr: &qrcodegen::QrCode) {
+    p.rellenar(caja, PAPEL);
+    let modulos = qr.size().max(1) as f32;
+    let margen = 4.0;
+    let paso = caja.ancho / (modulos + margen * 2.0);
+    for y in 0..qr.size() {
+        for x in 0..qr.size() {
+            if !qr.get_module(x, y) {
+                continue;
+            }
+            p.rellenar(
+                RectF {
+                    x: caja.x + (x as f32 + margen) * paso,
+                    y: caja.y + (y as f32 + margen) * paso,
+                    // Un pelo mas de lado para que no queden rayas de
+                    // fondo entre modulo y modulo al redondear.
+                    ancho: paso + 0.5,
+                    alto: paso + 0.5,
+                },
+                TINTA,
+            );
+        }
+    }
 }
 
 /// La IP de este equipo en la red local.
@@ -49,7 +92,7 @@ fn codigo_nuevo() -> Option<String> {
 /// manda ni un byte —UDP no conecta de verdad—, pero obliga al sistema a
 /// elegir la tarjeta por la que saldria, que es justo la que el movil tiene
 /// que ver. Enumerar tarjetas daria varias y habria que adivinar cual.
-fn ip_local() -> Option<String> {
+pub(crate) fn ip_local() -> Option<String> {
     let s = std::net::UdpSocket::bind(("0.0.0.0", 0)).ok()?;
     s.connect(("8.8.8.8", 53)).ok()?;
     Some(s.local_addr().ok()?.ip().to_string())
@@ -94,11 +137,9 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
         .context("la escucha tiene que poder mirarse sin bloquear")?;
     let puerto = escucha.local_addr().map(|d| d.port()).unwrap_or_default();
     let ip = ip_local().unwrap_or_default();
-    let qr = qrcodegen::QrCode::encode_text(
-        &pixpin_sincro::envio::texto_del_qr_de_recepcion(&codigo, &ip, puerto),
-        qrcodegen::QrCodeEcc::Medium,
-    )
-    .ok();
+    let qr = qr_de(&pixpin_sincro::envio::texto_del_qr_de_recepcion(
+        &codigo, &ip, puerto,
+    ));
     tracing::info!(%ip, puerto, "esperando un envio del movil");
 
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
@@ -230,74 +271,7 @@ fn atender(
     };
     match receptor.aceptar(carpeta, |_, _| {}) {
         Ok(cosas) => {
-            // Un proyecto entero lo abre la ventana de mensajes; lo suelto va
-            // al cuaderno de «Del movil», que es donde el usuario lo busca:
-            // «recibi un archivo pero no lo veo, tendria que estar en
-            // mensajes guardados».
-            let rutas: Vec<std::path::PathBuf> = cosas
-                .iter()
-                .filter(|(e, _)| e.tipo == "proyecto")
-                .map(|(e, r)| {
-                    // El movil manda el nombre tal cual, a veces sin
-                    // extension: sin `.pixpin` detras, abrirlo no sabria que
-                    // es un proyecto y acabaria como un fichero cualquiera.
-                    let con_extension = r.with_file_name(nombre_con_extension(e));
-                    if con_extension != *r && std::fs::rename(r, &con_extension).is_ok() {
-                        con_extension
-                    } else {
-                        r.clone()
-                    }
-                })
-                .collect();
-            for (elemento, ruta) in &cosas {
-                // Los tres codigos se registran a proposito: son con lo que
-                // se comprueba despues si algo que vuelve del movil es la
-                // misma cosa o una nueva.
-                tracing::info!(
-                    tipo = %elemento.tipo,
-                    nombre = %elemento.nombre,
-                    uid = ?elemento.uid,
-                    codigo_de_chat = ?elemento.codigo_de_chat,
-                    creado = elemento.creado,
-                    ruta = %ruta.display(),
-                    "recibido del movil"
-                );
-            }
-            // Un proyecto entra en la LISTA de proyectos, no como pines
-            // sueltos: un `.pixpin` es una conversacion entera, y cada chat
-            // es un proyecto.
-            let mut proyectos = 0;
-            for ruta in &rutas {
-                let hecho = pixpin_proyecto::Paquete::abrir(ruta)
-                    .map_err(|e| e.to_string())
-                    .and_then(|p| {
-                        pixpin_proyecto::almacen::importar_paquete(
-                            raiz,
-                            &p,
-                            &pixpin_proyecto::codigos::de_aparato(id),
-                        )
-                        .map_err(|e| e.to_string())
-                    });
-                match hecho {
-                    Ok(ficha) => {
-                        proyectos += 1;
-                        tracing::info!(proyecto = %ficha.id, nombre = %ficha.nombre, "proyecto del movil");
-                    }
-                    Err(e) => {
-                        tracing::warn!(%e, ruta = %ruta.display(), "no se pudo abrir el paquete")
-                    }
-                }
-            }
-            let _ = proyectos;
-            // Y lo suelto, al cuaderno, para que se vea en el chat.
-            // El codigo CORTO del equipo (`6ARJ`), no su identificador entero:
-            // es lo que va en el codigo de chat de cada mensaje, y con el
-            // largo la chapa salia mas ancha que el propio mensaje.
-            match al_cuaderno(raiz, &pixpin_proyecto::codigos::de_aparato(id), &cosas) {
-                Ok(0) => {}
-                Ok(cuantos) => tracing::info!(cuantos, "guardados en el cuaderno del movil"),
-                Err(e) => tracing::error!(?e, "no se pudo guardar lo recibido en el cuaderno"),
-            }
+            guardar_lo_recibido(raiz, id, &cosas);
             Estado::Hecho {
                 cuantos: cosas.len(),
             }
@@ -306,6 +280,104 @@ fn atender(
             porque: e.to_string(),
         },
     }
+}
+
+/// Donde quedo una cosa recibida, para decirlo en «Recibido de X».
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Donde {
+    /// Entro en la lista de proyectos.
+    Proyecto,
+    /// Un archivo suelto, en «Mensajes guardados».
+    Guardados,
+    /// Llego, pero solo quedo en la carpeta `recibidos/`.
+    Carpeta,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Guardado {
+    pub nombre: String,
+    pub donde: Donde,
+}
+
+/// Lo que llego, a su sitio: los proyectos a la lista, lo suelto a
+/// «Mensajes guardados». Es lo mismo para quien espera con su QR y para quien
+/// llama con un codigo, y por eso esta aqui una sola vez.
+pub(crate) fn guardar_lo_recibido(
+    raiz: &std::path::Path,
+    id: &str,
+    cosas: &[(pixpin_sincro::envio::Elemento, std::path::PathBuf)],
+) -> Vec<Guardado> {
+    for (elemento, ruta) in cosas {
+        // Los tres codigos se registran a proposito: son con lo que se
+        // comprueba despues si algo que vuelve del movil es la misma cosa o
+        // una nueva.
+        tracing::info!(
+            tipo = %elemento.tipo,
+            nombre = %elemento.nombre,
+            uid = ?elemento.uid,
+            codigo_de_chat = ?elemento.codigo_de_chat,
+            creado = elemento.creado,
+            ruta = %ruta.display(),
+            "recibido"
+        );
+    }
+    // El codigo CORTO del equipo (`6ARJ`), no su identificador entero: es lo
+    // que va en el codigo de chat de cada mensaje, y con el largo la chapa
+    // salia mas ancha que el propio mensaje.
+    let aparato = pixpin_proyecto::codigos::de_aparato(id);
+    let mut guardados = Vec::new();
+    // Un proyecto entra en la LISTA de proyectos, no como pines sueltos: un
+    // `.pixpin` es una conversacion entera, y cada chat es un proyecto.
+    for (e, r) in cosas.iter().filter(|(e, _)| e.tipo == "proyecto") {
+        // El movil manda el nombre tal cual, a veces sin extension: sin
+        // `.pixpin` detras, abrirlo no sabria que es un proyecto.
+        let con_extension = r.with_file_name(nombre_con_extension(e));
+        let ruta = if con_extension != *r && std::fs::rename(r, &con_extension).is_ok() {
+            con_extension
+        } else {
+            r.clone()
+        };
+        let hecho = pixpin_proyecto::Paquete::abrir(&ruta)
+            .map_err(|e| e.to_string())
+            .and_then(|p| {
+                pixpin_proyecto::almacen::importar_paquete(raiz, &p, &aparato)
+                    .map_err(|e| e.to_string())
+            });
+        let donde = match hecho {
+            Ok(ficha) => {
+                tracing::info!(proyecto = %ficha.id, nombre = %ficha.nombre, "proyecto recibido");
+                Donde::Proyecto
+            }
+            Err(e) => {
+                tracing::warn!(%e, ruta = %ruta.display(), "no se pudo abrir el paquete");
+                Donde::Carpeta
+            }
+        };
+        guardados.push(Guardado {
+            nombre: e.nombre.clone(),
+            donde,
+        });
+    }
+    // Y lo suelto, al cuaderno, para que se vea en el chat.
+    let donde = match al_cuaderno(raiz, &aparato, cosas) {
+        Ok(cuantos) => {
+            if cuantos > 0 {
+                tracing::info!(cuantos, "guardados en Mensajes guardados");
+            }
+            Donde::Guardados
+        }
+        Err(e) => {
+            tracing::error!(?e, "no se pudo guardar lo recibido en el cuaderno");
+            Donde::Carpeta
+        }
+    };
+    for (e, _) in cosas.iter().filter(|(e, _)| e.tipo != "proyecto") {
+        guardados.push(Guardado {
+            nombre: e.nombre.clone(),
+            donde: donde.clone(),
+        });
+    }
+    guardados
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -348,8 +420,6 @@ fn pintar(
         TEXTO,
     );
 
-    // El QR sobre papel blanco y con su margen: sin borde claro alrededor
-    // muchos lectores no lo cogen.
     if let Some(qr) = qr {
         let lado = 240.0 * e;
         let caja = RectF {
@@ -358,28 +428,7 @@ fn pintar(
             ancho: lado,
             alto: lado,
         };
-        p.rellenar(caja, PAPEL);
-        let modulos = qr.size().max(1) as f32;
-        let margen = 4.0;
-        let paso = lado / (modulos + margen * 2.0);
-        for y in 0..qr.size() {
-            for x in 0..qr.size() {
-                if !qr.get_module(x, y) {
-                    continue;
-                }
-                p.rellenar(
-                    RectF {
-                        x: caja.x + (x as f32 + margen) * paso,
-                        y: caja.y + (y as f32 + margen) * paso,
-                        // Un pelo mas de lado para que no queden rayas de
-                        // fondo entre modulo y modulo al redondear.
-                        ancho: paso + 0.5,
-                        alto: paso + 0.5,
-                    },
-                    TINTA,
-                );
-            }
-        }
+        pintar_qr(p, caja, qr);
     }
 
     centrado(&format!("{ip}:{puerto}"), 390.0 * e, 12.0 * e, APAGADO);
