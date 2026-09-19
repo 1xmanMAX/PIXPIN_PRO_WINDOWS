@@ -12,6 +12,7 @@
 pub mod astro;
 pub mod herramienta;
 mod historia;
+pub mod jerarquia;
 pub mod universo;
 
 pub use astro::{
@@ -19,4 +20,5 @@ pub use astro::{
     RADIO_PLANETA_S, TipoConexion,
 };
 pub use herramienta::HerramientaUniverso;
+pub use jerarquia::{Aterriza, Rechazo};
 pub use universo::{Encuadre, Universo, VERSION};
