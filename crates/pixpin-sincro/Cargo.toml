@@ -17,3 +17,12 @@ sha2 = "0.10.9"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
+# gzip: los lienzos y croquis del movil (`.excalidraw.gz`, `.croquis.gz`) y
+# lo acordado (`sincro/objetos/<resumen>.gz`). Ya estaba en el arbol por
+# `zip`; aqui solo el lector y el escritor, sin mas.
+flate2 = "1.1"
+
+[features]
+# Un `Disco` con la carpeta `files` de Android, puerto directo de `Disco.kt`:
+# es el «movil» de las pruebas de sincronizar de verdad. No va en la app.
+simulador = []

@@ -24,22 +24,37 @@
 //! - `grupo`: el codigo del grupo, sus miembros, el codigo fijo de un
 //!   aparato y la sena `47a`.
 //!
-//! Lo que falta, dicho en vez de disimulado: el descubrimiento por mDNS, el
-//! `Disco` (leer y escribir el almacen de aqui como lo hace el de Android),
-//! el `Protocolo` que hila todo lo anterior por el canal, y `Codigos`, que
-//! necesita la estructura `Mensaje` de una capa mas arriba.
+//! - `base`: lo acordado con otro aparato, con el sello exacto del movil.
+//! - `kotlin`: los `Mensaje` y `Proyecto` de Android como los escribe
+//!   kotlinx, y el resumen de un mensaje.
+//! - `disco`: lo que la sincronizacion lee y escribe de un aparato (un
+//!   trait: cada aparato pone como guarda sus chats) y lo que es igual en
+//!   todos; `copias`, la copia de antes de tocar nada.
+//! - `protocolo`: el `Respondedor` y la `Sesion`, peticion a peticion;
+//!   `vuelta`, una vuelta entera como la lleva la pantalla del movil.
+//!
+//! El descubrimiento por mDNS vive en `pixpin-shell`, y el `Disco` del PC
+//! (la vista Android sobre su almacen) en `pixpin-proyecto::vista`.
 
 #![forbid(unsafe_code)]
 
+pub mod base;
 pub mod canal;
 pub mod canonico;
 pub mod codigo;
+pub mod copias;
 pub mod diferencia;
+pub mod disco;
+#[cfg(any(test, feature = "simulador"))]
+pub mod disco_android;
 pub mod envio;
 pub mod fusion;
 pub mod grupo;
+pub mod kotlin;
 pub mod mensajes;
 pub mod mezcla;
+pub mod protocolo;
+pub mod vuelta;
 
 /// La version del protocolo que se habla. Viaja en el saludo `hola`.
 ///
@@ -72,3 +87,6 @@ pub const SONDA_RESPUESTA: &[u8; 4] = b"PONG";
 pub const MENSAJES_POR_TANDA: usize = 200;
 /// Cuantos aparatos caben en un grupo: una letra cada uno, de la A a la Z.
 pub const APARATOS_POR_GRUPO: usize = 26;
+
+#[cfg(test)]
+mod de_verdad;

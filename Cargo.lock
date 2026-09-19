@@ -691,6 +691,7 @@ name = "pixpin-sincro"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "flate2",
  "hmac",
  "pbkdf2",
  "serde",

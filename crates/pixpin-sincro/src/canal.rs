@@ -125,6 +125,10 @@ pub struct Canal<F> {
     claves: Claves,
     contador_salida: u64,
     contador_entrada: u64,
+    /// Bytes de datos mandados y recibidos (`Canal.enviados`/`recibidos`):
+    /// es lo que la pantalla cuenta al final y la velocidad de la barra.
+    enviados: u64,
+    recibidos: u64,
 }
 
 impl<F: Read + Write> Canal<F> {
@@ -162,11 +166,21 @@ impl<F: Read + Write> Canal<F> {
             claves: claves_de_sesion(clave_grupo, &ni, &nr, inicia),
             contador_salida: 0,
             contador_entrada: 0,
+            enviados: 0,
+            recibidos: 0,
         })
     }
 
     pub fn claves(&self) -> Claves {
         self.claves
+    }
+
+    pub fn enviados(&self) -> u64 {
+        self.enviados
+    }
+
+    pub fn recibidos(&self) -> u64 {
+        self.recibidos
     }
 
     /// Manda un tramo.
@@ -186,6 +200,7 @@ impl<F: Read + Write> Canal<F> {
             )
             .map_err(|_| ErrorCanal::CodigoDistinto)?;
         self.contador_salida += 1;
+        self.enviados += carga.len() as u64;
 
         // El largo es el del criptograma, en cuatro bytes big-endian CON
         // signo: es lo que escribe `DataOutputStream.writeInt` de Java.
@@ -231,6 +246,7 @@ impl<F: Read + Write> Canal<F> {
             // deriva otra clave, o sea que tiene otro codigo.
             .map_err(|_| ErrorCanal::CodigoDistinto)?;
         self.contador_entrada += 1;
+        self.recibidos += claro.len().saturating_sub(1) as u64;
 
         let (tipo, carga) = claro.split_first().ok_or(ErrorCanal::TramoRaro(largo))?;
         let tipo = Tipo::de_byte(*tipo).ok_or(ErrorCanal::TipoDesconocido(*tipo))?;

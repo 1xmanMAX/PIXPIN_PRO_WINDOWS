@@ -34,11 +34,24 @@ pub fn limpiar(codigo: &str) -> String {
 
 /// La clave de 32 bytes de un grupo.
 pub fn clave_de_grupo(codigo: &str) -> [u8; 32] {
+    // Se recuerda por codigo: son 60 000 vueltas de PBKDF2 y cada conexion
+    // las pagaba dos veces (una por lado), segundos enteros sin optimizar.
+    static HECHAS: std::sync::Mutex<Vec<(String, [u8; 32])>> = std::sync::Mutex::new(Vec::new());
     let limpio = limpiar(codigo);
+    if let Some(c) = HECHAS
+        .lock()
+        .ok()
+        .and_then(|h| h.iter().find(|(k, _)| *k == limpio).map(|(_, c)| *c))
+    {
+        return c;
+    }
     let mut clave = [0u8; 32];
     // Android pasa el codigo como `char[]` a PBEKeySpec y Java lo codifica en
     // UTF-8; todos los signos son ASCII, asi que son los mismos bytes.
     pbkdf2::pbkdf2_hmac::<Sha256>(limpio.as_bytes(), SAL, VUELTAS, &mut clave);
+    if let Ok(mut h) = HECHAS.lock() {
+        h.push((limpio, clave));
+    }
     clave
 }
 

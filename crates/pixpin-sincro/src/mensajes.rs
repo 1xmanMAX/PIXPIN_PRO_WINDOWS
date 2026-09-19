@@ -89,9 +89,9 @@ pub struct Chat {
 pub struct Apunte {
     /// La sena: el codigo unico del mensaje, o la ruta si es un archivo.
     pub sena: String,
-    #[serde(skip_serializing_if = "es_cero_i64")]
+    // Sin `skip`: en Kotlin `creado` y `tocado` no tienen valor por
+    // omision, se escriben siempre y faltar uno tumba la respuesta entera.
     pub creado: i64,
-    #[serde(skip_serializing_if = "es_cero_i64")]
     pub tocado: i64,
     /// SHA-256 de su forma canonica. Sin esto no se sabe si de verdad cambio,
     /// y se acabaria mandando todo cada vez.
@@ -110,9 +110,9 @@ pub struct ArchivoInfo {
     pub ruta: String,
     /// Resumen de su forma canonica (los de texto) o de sus bytes.
     pub resumen: String,
-    #[serde(skip_serializing_if = "es_cero_i64")]
+    // Sin `skip`, como en el apunte: `bytes` y `tocado` no tienen valor por
+    // omision en Kotlin y un archivo vacio los tiene a cero.
     pub bytes: i64,
-    #[serde(skip_serializing_if = "es_cero_i64")]
     pub tocado: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub etiqueta: String,
@@ -126,15 +126,9 @@ pub struct ArchivoInfo {
 /// quedaron iguales.
 ///
 /// Es lo que permite saber quien cambio que. Si los dos no recuerdan lo
-/// mismo, se hace como la primera vez: juntar todo y no pisar nada.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Base {
-    pub mensajes: std::collections::BTreeMap<String, String>,
-    pub archivos: std::collections::BTreeMap<String, String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub proyecto: Option<String>,
-}
+/// mismo, se hace como la primera vez: juntar todo y no pisar nada. Vive en
+/// `base` porque su sello depende del orden de sus mapas.
+pub use crate::base::Base;
 
 /// Que un proyecto se borro, y cuando.
 ///

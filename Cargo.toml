@@ -37,3 +37,24 @@ codegen-units = 1
 panic = "abort"
 strip = true
 opt-level = 3
+
+# La criptografia y el gzip de sincronizar, optimizados tambien sin
+# `--release`: sin optimizar, cifrar un chat de un par de megas tarda decenas
+# de segundos y las pruebas de sincronizar de verdad se eternizan. Solo estos
+# paquetes: el resto se sigue compilando como siempre.
+[profile.dev.package.aes]
+opt-level = 3
+[profile.dev.package.aes-gcm]
+opt-level = 3
+[profile.dev.package.ghash]
+opt-level = 3
+[profile.dev.package.polyval]
+opt-level = 3
+[profile.dev.package.sha2]
+opt-level = 3
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+# Y el propio cable: sincronizar un chat de cientos de mensajes recorre su
+# JSON decenas de veces (resumenes, copias, inventarios en los dos lados).
+[profile.dev.package.pixpin-sincro]
+opt-level = 2
