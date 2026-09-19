@@ -10,11 +10,10 @@
 //! Lo que ya habla con el movil, por el protocolo de verdad (`pixpin-sincro`):
 //! crear un grupo, unirse con un codigo, aceptar a quien se une, el saludo con
 //! los miembros, la sonda `PING`/`PONG` que dice quien esta disponible, y el
-//! catalogo de proyectos del otro. Lo que todavia no: juntar los chats
-//! (necesita el `Disco` del movil portado sobre el almacen de aqui) y el
-//! anuncio por mDNS; mientras, los aparatos se encuentran por la direccion
-//! recordada o tecleada, que es el camino que el movil ofrece para cuando el
-//! anuncio no llega.
+//! catalogo de proyectos del otro, y encontrarse por la red con el mismo
+//! anuncio mDNS que el movil (`_pixpin._tcp` con `g`, `id`, `l`, `n`). Lo
+//! que todavia no: juntar los chats, que necesita el `Disco` del movil
+//! portado sobre el almacen de aqui.
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
@@ -225,6 +224,9 @@ pub fn abrir(
     let vivo = Arc::new(AtomicBool::new(true));
     let puerto = escuchar(raiz.clone(), tx.clone(), vivo.clone());
     sondear(raiz.clone(), tx.clone(), vivo.clone());
+    if let Some(p) = puerto {
+        anunciarse(raiz.clone(), p, vivo.clone());
+    }
 
     let mut pantalla = Pantalla {
         raiz: raiz.clone(),
@@ -485,16 +487,17 @@ fn aceptar_campo(s: &mut Pantalla, tx: &mpsc::Sender<Aviso>, puerto: Option<u16>
                 });
                 return;
             }
-            // Sin anuncio por la red todavia, la direccion hace falta: es el
-            // camino que el movil ofrece para cuando no encuentra al otro.
-            let Some((host, p)) = partir_direccion(&c.extra) else {
+            // La direccion es solo para cuando no lo encuentra: vacia, se
+            // busca por la red; escrita y mal, se vuelve a ella.
+            let direccion = partir_direccion(&c.extra);
+            if direccion.is_none() && !c.extra.trim().is_empty() {
                 s.campo = Some(Campo {
                     en_extra: true,
                     ..c
                 });
                 return;
-            };
-            lanzar_union(&s.raiz, tx, codigo, host, p, puerto);
+            }
+            lanzar_union(&s.raiz, tx, codigo, direccion, puerto);
         }
         QueCampo::Direccion => {
             let Some((host, p)) = partir_direccion(&c.texto) else {
@@ -644,27 +647,8 @@ fn miembros_o_yo(id: &Identidad) -> Vec<Aparato> {
     }
 }
 
-/// `Sena.libre`: la primera letra que no tenga nadie.
-fn letra_libre(ocupadas: &[char]) -> Option<char> {
-    ('a'..='z').find(|c| !ocupadas.contains(c))
-}
-
-fn codigo_valido(codigo: &str) -> bool {
-    codigo.chars().count() == pixpin_sincro::codigo::LARGO
-        && codigo
-            .chars()
-            .all(|c| pixpin_sincro::codigo::SIGNOS.contains(c))
-}
-
-/// `Grupo.legible`: `K7Q2M-9XMPA`, en dos mitades.
-fn legible(codigo: &str) -> String {
-    if codigo.chars().count() <= 5 {
-        return codigo.to_string();
-    }
-    let a: String = codigo.chars().take(5).collect();
-    let b: String = codigo.chars().skip(5).collect();
-    format!("{a}-{b}")
-}
+use pixpin_sincro::grupo::sena::libre as letra_libre;
+use pixpin_sincro::grupo::{legible, valido as codigo_valido};
 
 /// `partirDireccion` del movil: `192.168.1.20:47474`, o sin puerto y va el
 /// de siempre.
@@ -836,10 +820,32 @@ fn sondear(raiz: PathBuf, tx: mpsc::Sender<Aviso>, vivo: Arc<AtomicBool>) {
     let _ = std::thread::Builder::new()
         .name("sincro-sonda".into())
         .spawn(move || {
+            let mut etiqueta = (String::new(), String::new());
             while vivo.load(Ordering::SeqCst) {
                 if let Ok(id) = leer_identidad(&raiz)
-                    && id.codigo.is_some()
+                    && let Some(codigo) = id.codigo.clone()
                 {
+                    // Primero la red: lo que anuncia la etiqueta del grupo
+                    // se apunta con su direccion, que es lo que hace que
+                    // aparezca sin haberla tecleado nunca.
+                    if etiqueta.0 != codigo {
+                        etiqueta = (codigo.clone(), etiqueta_de(&codigo));
+                    }
+                    if let Ok(vistos) =
+                        pixpin_shell::mdns::buscar(TIPO_MDNS, Duration::from_secs(3))
+                    {
+                        for v in vistos
+                            .iter()
+                            .filter(|v| es_del_grupo(v, &etiqueta.1, &id.yo.id))
+                        {
+                            if let Some(otro) = v.datos.get("id") {
+                                apuntar_direccion(&raiz, otro, &v.host.to_string(), v.puerto);
+                            }
+                        }
+                        if tx.send(Aviso::Identidad).is_err() {
+                            return;
+                        }
+                    }
                     let dirs = leer_direcciones(&raiz);
                     for miembro in id.miembros.iter().filter(|x| x.id != id.yo.id) {
                         if let Some((_, h, p)) = dirs.iter().find(|(i, _, _)| *i == miembro.id) {
@@ -1127,22 +1133,123 @@ fn explicar(e: &anyhow::Error, nombre: &str) -> String {
     e.to_string()
 }
 
+/// Busca por la red, hasta `tope`, un aparato que anuncie la etiqueta del
+/// grupo y no sea este. Es `red.buscar(...) { it["g"] == etiqueta }` del
+/// movil, que espera 25 s antes de rendirse.
+fn buscar_del_grupo(
+    etiqueta: &str,
+    yo: &str,
+    tope: Duration,
+) -> Option<pixpin_shell::mdns::Vecino> {
+    let empezo = std::time::Instant::now();
+    while empezo.elapsed() < tope {
+        let vistos = pixpin_shell::mdns::buscar(TIPO_MDNS, Duration::from_secs(3)).ok()?;
+        if let Some(v) = vistos.into_iter().find(|v| es_del_grupo(v, etiqueta, yo)) {
+            return Some(v);
+        }
+    }
+    None
+}
+
+fn es_del_grupo(v: &pixpin_shell::mdns::Vecino, etiqueta: &str, yo: &str) -> bool {
+    v.datos.get("g").map(String::as_str) == Some(etiqueta)
+        && v.datos.get("id").map(String::as_str) != Some(yo)
+}
+
+/// El tipo que anuncia y busca el movil (`Red.TIPO`).
+const TIPO_MDNS: &str = "_pixpin._tcp";
+
+fn etiqueta_de(codigo: &str) -> String {
+    pixpin_sincro::codigo::etiqueta(&pixpin_sincro::codigo::clave_de_grupo(codigo))
+}
+
+/// Mientras la ventana viva, este equipo se anuncia como lo hace el movil en
+/// `Presencia`: `PixPin <nombre>` con `g`, `id`, `l` y `n`. Se rehace cuando
+/// cambia algo de eso (crear grupo, salir, renombrar, recibir letra). En un
+/// hilo aparte porque anunciar bloquea casi un segundo esperando a Windows.
+fn anunciarse(raiz: PathBuf, puerto: u16, vivo: Arc<AtomicBool>) {
+    let _ = std::thread::Builder::new()
+        .name("sincro-anuncio".into())
+        .spawn(move || {
+            let mut anuncio: Option<pixpin_shell::mdns::Anuncio> = None;
+            let mut con: Option<(String, String, String)> = None;
+            let mut etiqueta = (String::new(), String::new());
+            while vivo.load(Ordering::SeqCst) {
+                if let Ok(id) = leer_identidad(&raiz) {
+                    let clave = id.codigo.clone().map(|c| {
+                        (
+                            c,
+                            id.yo.letra.clone().unwrap_or_default(),
+                            id.yo.nombre.clone(),
+                        )
+                    });
+                    if clave != con {
+                        anuncio = None;
+                        if let Some((codigo, letra, nombre)) = &clave {
+                            // La etiqueta cuesta 60 000 vueltas de PBKDF2:
+                            // se calcula una vez por codigo.
+                            if etiqueta.0 != *codigo {
+                                etiqueta = (codigo.clone(), etiqueta_de(codigo));
+                            }
+                            let corto: String = nombre.chars().take(40).collect();
+                            match pixpin_shell::mdns::anunciar(
+                                TIPO_MDNS,
+                                &format!("PixPin {nombre}"),
+                                puerto,
+                                &[
+                                    ("g", &etiqueta.1),
+                                    ("id", &id.yo.id),
+                                    ("l", letra),
+                                    ("n", &corto),
+                                ],
+                            ) {
+                                Ok(a) => anuncio = Some(a),
+                                Err(e) => tracing::warn!(?e, "no se pudo anunciar en la red"),
+                            }
+                        }
+                        con = clave;
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(500));
+            }
+            drop(anuncio);
+        });
+}
+
 fn lanzar_union(
     raiz: &Path,
     tx: &mpsc::Sender<Aviso>,
     codigo: String,
-    host: String,
-    puerto: u16,
+    direccion: Option<(String, u16)>,
     mi_puerto: Option<u16>,
 ) {
     let raiz = raiz.to_path_buf();
     let tx = tx.clone();
-    let _ = tx.send(Aviso::Fase(Fase::Trabajando(format!(
-        "Uniéndome al grupo con {host}…"
-    ))));
+    let _ = tx.send(Aviso::Fase(Fase::Trabajando(
+        "Buscando un aparato del grupo en esta Wi-Fi…\nEn el otro aparato, ten PixPin abierto."
+            .into(),
+    )));
     let _ = std::thread::Builder::new()
         .name("sincro-unirse".into())
         .spawn(move || {
+            let yo = leer_identidad(&raiz).map(|i| i.yo.id).unwrap_or_default();
+            let hallado = match direccion {
+                Some(d) => Some(d),
+                None => buscar_del_grupo(&etiqueta_de(&codigo), &yo, Duration::from_secs(25))
+                    .map(|v| (v.host.to_string(), v.puerto)),
+            };
+            let Some((host, puerto)) = hallado else {
+                let _ = tx.send(Aviso::Fase(Fase::Fallo(
+                    "No apareció ningún aparato con ese código. Comprueba el código, que los dos \
+                     estáis en la misma Wi-Fi y que el otro tiene PixPin abierto. También puedes \
+                     escribir su dirección."
+                        .into(),
+                )));
+                return;
+            };
+            let _ = tx.send(Aviso::Fase(Fase::Trabajando(format!(
+                "Uniéndome al grupo con {host}…"
+            ))));
             let fase = match saludar_como_cliente(&raiz, &host, puerto, &codigo, true, mi_puerto) {
                 Ok(mut s) => {
                     despedirse(&mut s.canal);
