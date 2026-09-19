@@ -88,6 +88,18 @@ impl Cargador {
         }
     }
 
+    /// La ventana a despertar cuando llegue un cuaderno. Se pone al abrirla:
+    /// el cargador nace antes que la ventana.
+    pub fn poner_aviso(&mut self, hwnd: isize) {
+        self.aviso = Some(hwnd);
+    }
+
+    /// Si hay lecturas en marcha: mientras las haya, el universo espera a
+    /// que lo despierten, no hace falta sondear.
+    pub fn leyendo(&self) -> bool {
+        !self.pedidos.is_empty()
+    }
+
     pub fn pedir(&mut self, proyecto: &str, incluir_notas: bool) {
         if !self.pedidos.insert(proyecto.to_string()) {
             return;

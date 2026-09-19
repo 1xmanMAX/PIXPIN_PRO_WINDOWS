@@ -298,7 +298,8 @@ pub fn astros(p: &Pintor, c: &Contexto, camara: &Camara) {
     for v in c.vistos {
         let Some(a) = c.u.astro(v.id) else { continue };
         let centro = a_pantalla(camara, a.x, a.y);
-        let r = v.radio_px;
+        // El nivel se decide en pixeles logicos (D218); se pinta en fisicos.
+        let r = v.radio_px * c.escala;
         let foco = if c.en_foco(a.id) { 1.0 } else { FUERA_DE_FOCO };
         match &a.clase {
             Clase::Galaxia { proyecto } => {
@@ -431,7 +432,7 @@ fn icono_de_luna(p: &Pintor, f: &FichaLuna, caja: RectF, alfa: f32, e: f32) {
 
 fn luna(p: &Pintor, c: &Contexto, a: &Astro, v: &Visto, centro: (f32, f32), foco: f32) {
     let e = c.escala;
-    let r = v.radio_px;
+    let r = v.radio_px * c.escala;
     let Some(f) = c.ficha_de(a) else {
         // Su cuaderno aun no ha llegado: un punto, que ya dice que ahi hay
         // algo sin inventarse lo que es.
@@ -653,7 +654,7 @@ pub fn nebulosas<'f>(
                 alto: (b1 - b0 - 8.0 * e).max(1.0),
             };
             let alfa = opacidad_de_luna(f.en_equipo) * 0.85;
-            if lado < 48.0 {
+            if lado < 48.0 * e {
                 icono_de_luna(p, f, caja, alfa, e);
             } else {
                 p.rellenar_redondeado(caja, 8.0 * e, con_alfa(PALETA.panel, alfa));
