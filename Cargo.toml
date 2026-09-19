@@ -29,6 +29,7 @@ pixpin-store = { path = "crates/pixpin-store" }
 pixpin-ui = { path = "crates/pixpin-ui" }
 pixpin-flow = { path = "crates/pixpin-flow" }
 pixpin-plugin = { path = "crates/pixpin-plugin" }
+pixpin-universo = { path = "crates/pixpin-universo" }
 
 [profile.release]
 lto = "fat"
