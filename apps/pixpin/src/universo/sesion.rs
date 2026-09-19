@@ -12,14 +12,19 @@ use std::time::{Duration, Instant};
 
 use pixpin_geom::{Punto, Rect};
 use pixpin_motor2d::{Camara, ColorRgba, Elemento, Escena, EstiloTrazo, Figura, Punto2};
-use pixpin_render::{MotorRender, Pintor};
+use pixpin_render::{MotorRender, Pintor, RectF};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::Catalogo;
+use pixpin_ui::universo::{
+    AccionInspector, BarraUniverso, COLORES_PLANETA, FichaInspector, Fila, HERRAMIENTAS_UNIVERSO,
+    Inspector, Paneles, SelectorEmojis, minimapa_a_mundo, mundo_a_minimapa, tramos_de_ruta,
+};
 use pixpin_universo::buscar::{Hallazgo, IndiceBusqueda, TOPE_RESULTADOS};
 use pixpin_universo::ficha::FichaLuna;
 use pixpin_universo::{
-    Arrastre, Clase, Encuadre, HerramientaUniverso, IdAstro, Nivel, RADIO_PLANETA_M, RejillaAstros,
-    TipoConexion, Universo, Visto, ZOOM_MINIMO_UNIVERSO, nebulosa,
+    Arrastre, Clase, Encuadre, HerramientaUniverso, IdAstro, Nivel, RADIO_PLANETA_L,
+    RADIO_PLANETA_M, RADIO_PLANETA_S, RejillaAstros, TipoConexion, Universo, Visto,
+    ZOOM_MINIMO_UNIVERSO, nebulosa,
 };
 
 use super::Pedido;
@@ -138,7 +143,14 @@ pub struct Sesion {
     escala_por_cien: u32,
     revisado: Instant,
     pub minimapa: bool,
+    selector: SelectorEmojis,
+    /// Los resultados de la busqueda en curso, rehechos antes de pintar:
+    /// pintar y pulsar tienen que ver la misma lista.
+    encontrados: Vec<Hallazgo>,
 }
+
+/// La clave de `Universo::resto` donde se guardan los emojis recientes.
+const CLAVE_RECIENTES: &str = "emojis_recientes";
 
 /// El elemento de un emoji suelto, con su esquina en `(x, y)` del mundo.
 fn elemento_emoji(caracter: &str, x: f32, y: f32, lado: f32) -> Elemento {
@@ -166,6 +178,15 @@ fn elemento_emoji(caracter: &str, x: f32, y: f32, lado: f32) -> Elemento {
         bloqueado: false,
         enlace: None,
         redondo: false,
+    }
+}
+
+fn rectf(r: Rect) -> RectF {
+    RectF {
+        x: r.x as f32,
+        y: r.y as f32,
+        ancho: r.ancho as f32,
+        alto: r.alto as f32,
     }
 }
 
@@ -208,6 +229,12 @@ impl Sesion {
         pedido: Option<Pedido>,
     ) -> Sesion {
         let ligero = nivel == pixpin_nivel::Nivel::Ligero;
+        let mut selector = SelectorEmojis::default();
+        selector.recientes = u
+            .resto
+            .get(CLAVE_RECIENTES)
+            .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
+            .unwrap_or_default();
         Sesion {
             ruta: pixpin_universo::formato::ruta(&raiz),
             cargador: Cargador::nuevo(raiz.clone(), None),
@@ -251,6 +278,8 @@ impl Sesion {
             escala_por_cien: 100,
             revisado: Instant::now(),
             minimapa: true,
+            selector,
+            encontrados: Vec::new(),
         }
     }
 
@@ -553,6 +582,12 @@ impl Sesion {
         } else {
             return Respuesta::Consumido { repintar: false };
         };
+        self.resolver_apertura(apertura)
+    }
+
+    /// Hace lo que dice la tabla D224 con lo que se pulso: `origen` es el
+    /// astro que destella si no se puede.
+    fn resolver_apertura(&mut self, apertura: (Option<IdAstro>, Apertura)) -> Respuesta {
         match apertura {
             (
                 _,
@@ -658,7 +693,18 @@ impl Sesion {
                 vk, ctrl, shift, ..
             } => self.tecla(vk, ctrl, shift, camara, escena),
             EventoOverlay::Caracter(c) => self.caracter(c, camara),
-            EventoOverlay::BotonPulsado(p) => self.pulsar(p, camara, escena, ed),
+            EventoOverlay::BotonPulsado(p) => {
+                // 1. Los paneles van antes que el cielo: son dialogos
+                // encima de el.
+                let local = Punto {
+                    x: p.x - ed.area.x,
+                    y: p.y - ed.area.y,
+                };
+                if let Some(r) = self.pulsar_panel(local, camara, escena) {
+                    return r;
+                }
+                self.pulsar(p, camara, escena, ed)
+            }
             EventoOverlay::RatonMovido(p) => {
                 if let Some((mut a, inicio)) = self.arrastre.take() {
                     let q = self.a_mundo(p, camara, ed);
@@ -711,6 +757,10 @@ impl Sesion {
                 _ if !ctrl => return Respuesta::Consumido { repintar: false },
                 _ => {}
             }
+        }
+        if self.selector_abierto && vk == VK_RETROCESO {
+            self.selector.filtro.pop();
+            return hecho;
         }
         match vk {
             v if ctrl && (v == b'Z' as u32 || v == b'Y' as u32) => {
@@ -793,6 +843,11 @@ impl Sesion {
         }
         if let Some(b) = &mut self.busqueda {
             b.push(c);
+            return Respuesta::Consumido { repintar: true };
+        }
+        // Con el selector abierto, lo que se teclea filtra los emojis.
+        if self.selector_abierto {
+            self.selector.filtro.push(c);
             return Respuesta::Consumido { repintar: true };
         }
         let hecho = Respuesta::Consumido { repintar: true };
@@ -1181,6 +1236,7 @@ impl Sesion {
             .filter_map(|f| pintar::ruta_de_foto(&self.raiz, f))
             .collect();
         self.miniaturas.asegurar(&fotos, motor);
+        self.encontrados = self.hallazgos();
     }
 
     /// El dispositivo de dibujo se perdio: los bitmaps eran del viejo.
@@ -1255,8 +1311,20 @@ impl Sesion {
 
     /// Encima de las anotaciones: los avisos. Los paneles llegan en la
     /// Tarea 15.
-    pub fn pintar_delante(&self, p: &Pintor, _efectiva: &Camara, ancho: f32, alto: f32) {
+    pub fn pintar_delante(&self, p: &Pintor, efectiva: &Camara, ancho: f32, alto: f32) {
         let e = self.escala();
+        let pan = self.paneles();
+        self.pintar_ruta(p, &pan);
+        self.pintar_barra(p, &pan);
+        if pan.minimapa.ancho > 0 {
+            self.pintar_minimapa(p, &pan, efectiva, ancho, alto);
+        }
+        if let Some(i) = self.inspector() {
+            self.pintar_inspector(p, &pan, &i);
+        }
+        if self.selector_abierto && self.herramienta == Some(HerramientaUniverso::Emoji) {
+            self.pintar_selector(p, &pan);
+        }
         if let Some((t, _, _)) = &self.aviso {
             let tam = 14.0 * e;
             let (w, _) = p.medir_texto(t, tam);
@@ -1267,6 +1335,753 @@ impl Sesion {
                 tam,
                 PALETA.texto,
                 PALETA.panel,
+            );
+        }
+    }
+
+    // --- Paneles (Tarea 15) ------------------------------------------------
+    //
+    // Todo en pixeles fisicos de la ventana, con el origen en su esquina:
+    // la geometria la decide `pixpin_ui::universo`, aqui se pinta y se
+    // reacciona.
+
+    fn paneles(&self) -> Paneles {
+        Paneles::calcular(
+            Rect {
+                x: 0,
+                y: 0,
+                ancho: self.tamano.0 as u32,
+                alto: self.tamano.1 as u32,
+            },
+            self.escala_por_cien,
+            !self.seleccion.is_empty(),
+            self.minimapa,
+        )
+    }
+
+    /// El alto de la barra de ruta: el editor pone su caja debajo.
+    pub fn alto_ruta(escala_por_cien: u32) -> u32 {
+        Paneles::calcular(
+            Rect {
+                x: 0,
+                y: 0,
+                ancho: 100,
+                alto: 1000,
+            },
+            escala_por_cien,
+            false,
+            false,
+        )
+        .ruta
+        .alto
+    }
+
+    fn nombre_de(&self, a: &pixpin_universo::Astro) -> String {
+        match &a.clase {
+            Clase::Galaxia { proyecto } => self
+                .nombres
+                .get(proyecto)
+                .cloned()
+                .unwrap_or_else(|| proyecto.clone()),
+            Clase::Planeta if !a.nombre.is_empty() => a.nombre.clone(),
+            Clase::Planeta if a.padre.is_none() => self.textos.t("universo-exoplaneta"),
+            Clase::Planeta => self.textos.t("universo-planeta"),
+            Clase::Luna { codigo, .. } => self
+                .fichas
+                .get(codigo)
+                .map(|f| f.nombre.clone())
+                .unwrap_or_else(|| self.textos.t("universo-luna")),
+        }
+    }
+
+    /// «Cosmos > Galaxia > Planeta > Luna» del enfocado, o del elegido.
+    fn cadena(&self) -> Vec<(Option<IdAstro>, String)> {
+        let mut v = Vec::new();
+        let mut actual = self.enfoque.or(self.seleccion.first().copied());
+        while let Some(id) = actual {
+            let Some(a) = self.u.astro(id) else { break };
+            v.push((Some(id), self.nombre_de(a)));
+            actual = a.padre;
+        }
+        v.push((None, self.textos.t("universo-cosmos")));
+        v.reverse();
+        v
+    }
+
+    fn tam_ruta(&self) -> f32 {
+        13.0 * self.escala()
+    }
+
+    /// Un ancho de texto aproximado: el mismo al pintar y al pulsar, que es
+    /// lo que importa, sin necesitar el pintor para medir.
+    fn ancho_texto(texto: &str, tam: f32) -> f32 {
+        texto.chars().count() as f32 * tam * 0.55
+    }
+
+    fn tramos(&self, pan: &Paneles) -> Vec<(Option<IdAstro>, String, Rect)> {
+        let e = self.escala();
+        let cadena = self.cadena();
+        let tam = self.tam_ruta();
+        let medidos: Vec<(String, f32)> = cadena
+            .iter()
+            .map(|(_, t)| (t.clone(), Self::ancho_texto(t, tam)))
+            .collect();
+        let hueco = (16.0 * e) as u32;
+        let disponible = pan
+            .ruta
+            .ancho
+            .saturating_sub(pan.buscador.ancho + 3 * hueco);
+        tramos_de_ruta(disponible, &medidos)
+            .into_iter()
+            .map(|(i, r)| {
+                let rect = Rect {
+                    x: pan.ruta.x + hueco as i32 + r.x,
+                    y: pan.ruta.y,
+                    ancho: r.ancho,
+                    alto: pan.ruta.alto,
+                };
+                match cadena.get(i) {
+                    Some((id, t)) => (*id, t.clone(), rect),
+                    None => (None, "…".to_string(), rect),
+                }
+            })
+            .collect()
+    }
+
+    fn filas_encontrados(&self, pan: &Paneles) -> Vec<(Hallazgo, Rect)> {
+        if self.busqueda.is_none() {
+            return Vec::new();
+        }
+        let alto = (28.0 * self.escala()) as u32;
+        self.encontrados
+            .iter()
+            .enumerate()
+            .map(|(i, h)| {
+                (
+                    h.clone(),
+                    Rect {
+                        x: pan.buscador.x,
+                        y: pan.ruta.y + pan.ruta.alto as i32 + (i as u32 * alto) as i32,
+                        ancho: pan.buscador.ancho,
+                        alto,
+                    },
+                )
+            })
+            .collect()
+    }
+
+    fn barra(&self, pan: &Paneles) -> BarraUniverso {
+        BarraUniverso::colocar(pan.lienzo, self.escala_por_cien)
+    }
+
+    fn conexiones_de(&self, id: IdAstro) -> Vec<pixpin_universo::Conexion> {
+        self.u
+            .conexiones
+            .iter()
+            .filter(|c| c.toca(id))
+            .cloned()
+            .collect()
+    }
+
+    fn clase_inspector(&self) -> Option<FichaInspector> {
+        match self.seleccion.as_slice() {
+            [] => None,
+            [id] => self.u.astro(*id).map(|a| match a.clase {
+                Clase::Galaxia { .. } => FichaInspector::Galaxia,
+                Clase::Planeta => FichaInspector::Planeta,
+                Clase::Luna { .. } => FichaInspector::Luna,
+            }),
+            v => Some(FichaInspector::Varios(v.len())),
+        }
+    }
+
+    fn inspector(&self) -> Option<Inspector> {
+        let clase = self.clase_inspector()?;
+        let conexiones = self
+            .seleccion
+            .first()
+            .map(|id| self.conexiones_de(*id).len())
+            .unwrap_or(0);
+        Some(Inspector::colocar(
+            self.paneles().inspector,
+            self.escala_por_cien,
+            clase,
+            conexiones,
+        ))
+    }
+
+    /// La caja de todas las galaxias, con aire: lo que ensena el minimapa.
+    fn cosmos(&self) -> (f32, f32, f32, f32) {
+        union(
+            self.u
+                .astros
+                .iter()
+                .filter(|a| matches!(a.clase, Clase::Galaxia { .. }))
+                .map(|a| a.caja()),
+        )
+        .map(|c| agrandar(c, 1.2))
+        .unwrap_or((-10_000.0, -10_000.0, 10_000.0, 10_000.0))
+    }
+
+    fn nombre_tipo(&self, t: TipoConexion) -> String {
+        self.textos.t(match t {
+            TipoConexion::Relacion => "universo-tipo-relacion",
+            TipoConexion::Depende => "universo-tipo-depende",
+            TipoConexion::Referencia => "universo-tipo-referencia",
+            TipoConexion::Secuencia(_) => "universo-tipo-secuencia",
+        })
+    }
+
+    /// Un clic sobre algun panel. `None` si cae en el cielo.
+    fn pulsar_panel(
+        &mut self,
+        p: Punto,
+        camara: &mut Camara,
+        escena: &mut Escena,
+    ) -> Option<Respuesta> {
+        let hecho = Some(Respuesta::Consumido { repintar: true });
+        let pan = self.paneles();
+        if self.selector_abierto && self.herramienta == Some(HerramientaUniverso::Emoji) {
+            let marco = self.selector.colocar(pan.lienzo, self.escala_por_cien);
+            if marco.contiene(p) {
+                if let Some(t) = self.selector.pestana_en(p) {
+                    self.selector.pestana = t;
+                } else if let Some(e) = self.selector.emoji_en(p) {
+                    self.selector.usar(e);
+                    self.u.resto.insert(
+                        CLAVE_RECIENTES.into(),
+                        serde_json::json!(self.selector.recientes),
+                    );
+                    self.u.marcar_cambio();
+                    self.elegir_emoji(e);
+                }
+                return hecho;
+            }
+        }
+        if let Some(h) = self.barra(&pan).boton_en(p) {
+            if self.herramienta == Some(h) {
+                self.herramienta = None;
+                self.selector_abierto = false;
+            } else {
+                self.herramienta = Some(h);
+                self.selector_abierto =
+                    h == HerramientaUniverso::Emoji && self.emoji_elegido.is_none();
+            }
+            return hecho;
+        }
+        if pan.ruta.contiene(p) {
+            if pan.buscador.contiene(p) {
+                self.busqueda.get_or_insert_with(String::new);
+            } else if let Some((id, _, _)) = self
+                .tramos(&pan)
+                .into_iter()
+                .find(|(_, t, r)| r.contiene(p) && t != "…")
+            {
+                match id {
+                    Some(id) => self.enfocar(id, camara),
+                    None => self.encajar_cosmos(camara),
+                }
+            }
+            return hecho;
+        }
+        if let Some((h, _)) = self
+            .filas_encontrados(&pan)
+            .into_iter()
+            .find(|(_, r)| r.contiene(p))
+        {
+            self.busqueda = None;
+            self.ir_a_hallazgo(h, camara);
+            return hecho;
+        }
+        if pan.inspector.ancho > 0 && pan.inspector.contiene(p) {
+            if let Some(a) = self.inspector().and_then(|i| i.accion_en(p)) {
+                return Some(self.accion_inspector(a, camara, escena));
+            }
+            return Some(Respuesta::Consumido { repintar: false });
+        }
+        if pan.minimapa.ancho > 0 && pan.minimapa.contiene(p) {
+            let (x, y) = minimapa_a_mundo(pan.minimapa, self.cosmos(), p);
+            let (w, h) = self.tamano_logico();
+            let destino = Camara {
+                x: x - w / (2.0 * camara.zoom),
+                y: y - h / (2.0 * camara.zoom),
+                zoom: camara.zoom,
+            };
+            self.volar_a(destino, camara);
+            return hecho;
+        }
+        None
+    }
+
+    fn accion_inspector(
+        &mut self,
+        a: AccionInspector,
+        camara: &mut Camara,
+        escena: &mut Escena,
+    ) -> Respuesta {
+        let hecho = Respuesta::Consumido { repintar: true };
+        let Some(id) = self.seleccion.first().copied() else {
+            return hecho;
+        };
+        let proyecto = self
+            .u
+            .astro(id)
+            .and_then(|x| x.proyecto().map(str::to_string));
+        match a {
+            AccionInspector::Abrir => {
+                let apertura = abrir::que_abre(&self.u, id, &self.fichas, &self.raiz, false);
+                return self.resolver_apertura((Some(id), apertura));
+            }
+            AccionInspector::IrAlChat => {
+                if let Some(p) = proyecto {
+                    let codigo = self
+                        .u
+                        .astro(id)
+                        .and_then(|x| x.codigo().map(str::to_string));
+                    abrir::ejecutar(&Apertura::Chat {
+                        proyecto: p,
+                        codigo,
+                    });
+                }
+            }
+            AccionInspector::MostrarEnCarpeta => {
+                let ficha = self
+                    .u
+                    .astro(id)
+                    .and_then(|x| x.codigo())
+                    .and_then(|c| self.fichas.get(c));
+                match ficha.map(|f| abrir::que_abre_ficha(f, &self.raiz)) {
+                    Some(Apertura::Fichero(r)) => {
+                        if let Err(e) = pixpin_shell::abrir_ubicacion(&r) {
+                            tracing::warn!(?e, "no se pudo ensenar en la carpeta");
+                        }
+                    }
+                    _ => self.destellar(Some(id)),
+                }
+            }
+            AccionInspector::Devolver => {
+                self.u.borrar(&[id], escena);
+                self.seleccion.clear();
+            }
+            AccionInspector::Color(i) => {
+                let color = COLORES_PLANETA.get(i).copied();
+                self.u.editar(id, |x| x.color = color);
+            }
+            AccionInspector::Tamano(t) => {
+                let radio = [RADIO_PLANETA_S, RADIO_PLANETA_M, RADIO_PLANETA_L][t.min(2) as usize];
+                self.u.editar(id, |x| x.radio = radio);
+            }
+            AccionInspector::NotasDelChat => {
+                self.u.editar(id, |x| x.notas_del_chat = !x.notas_del_chat);
+                // Las notas cambian que fichas hay: se vuelve a leer.
+                if let Some(p) = proyecto {
+                    let notas = self.u.astro(id).is_some_and(|x| x.notas_del_chat);
+                    self.cargador.soltar(&p);
+                    self.rehacer_fichas();
+                    self.cargador.pedir(&p, notas);
+                }
+            }
+            AccionInspector::Ordenar => self.u.ordenar_galaxia(id),
+            AccionInspector::LimpiarHuerfanas => {
+                self.u.limpiar_conexiones();
+            }
+            AccionInspector::Conexion(i) => {
+                if let Some(c) = self.conexiones_de(id).get(i) {
+                    let siguiente = match c.tipo {
+                        TipoConexion::Relacion => TipoConexion::Depende,
+                        TipoConexion::Depende => TipoConexion::Referencia,
+                        TipoConexion::Referencia => TipoConexion::Secuencia(1),
+                        TipoConexion::Secuencia(_) => TipoConexion::Relacion,
+                    };
+                    self.ultimo_tipo = siguiente;
+                    self.u.editar_conexion(c.id, |k| k.tipo = siguiente);
+                }
+            }
+            AccionInspector::AgruparNuevo => {
+                let lunas: Vec<IdAstro> = self
+                    .seleccion
+                    .iter()
+                    .copied()
+                    .filter(|l| self.u.astro(*l).is_some_and(|x| !x.es_contenedor()))
+                    .collect();
+                match self.u.agrupar_en_planeta(&lunas) {
+                    Ok(p) => self.seleccion = vec![p],
+                    Err(e) => {
+                        tracing::debug!(?e, "no se pudo agrupar");
+                        for l in lunas {
+                            self.destellar(Some(l));
+                        }
+                    }
+                }
+            }
+            AccionInspector::ConectarEntreSi => {
+                let ids = self.seleccion.clone();
+                for par in ids.windows(2) {
+                    self.u.conectar(par[0], par[1], self.ultimo_tipo);
+                }
+            }
+        }
+        let _ = camara;
+        hecho
+    }
+
+    fn pintar_ruta(&self, p: &Pintor, pan: &Paneles) {
+        let e = self.escala();
+        p.rellenar(rectf(pan.ruta), PALETA.panel);
+        p.rellenar(
+            RectF {
+                x: pan.ruta.x as f32,
+                y: (pan.ruta.y + pan.ruta.alto as i32) as f32 - e,
+                ancho: pan.ruta.ancho as f32,
+                alto: e,
+            },
+            PALETA.borde_panel,
+        );
+        let tam = self.tam_ruta();
+        let tramos = self.tramos(pan);
+        let n = tramos.len();
+        for (i, (_, t, r)) in tramos.into_iter().enumerate() {
+            let y = r.y as f32 + (r.alto as f32 - tam * 1.3) / 2.0;
+            let ultimo = i + 1 == n;
+            let color = if ultimo {
+                PALETA.texto
+            } else {
+                PALETA.texto_suave
+            };
+            p.texto(&t, r.x as f32, y, tam, color);
+            if !ultimo {
+                p.texto(
+                    "›",
+                    r.x as f32 + r.ancho as f32 + 5.0 * e,
+                    y,
+                    tam,
+                    PALETA.texto_suave,
+                );
+            }
+        }
+        // El buscador.
+        let b = rectf(pan.buscador);
+        p.rellenar_redondeado(b, 6.0 * e, PALETA.borde_panel);
+        let (texto, color) = match &self.busqueda {
+            Some(q) => (format!("{q}|"), PALETA.texto),
+            None => (self.textos.t("universo-buscar"), PALETA.texto_suave),
+        };
+        p.texto_linea(
+            &texto,
+            b.x + 8.0 * e,
+            b.y + (b.alto - tam * 1.3) / 2.0,
+            tam,
+            b.ancho - 16.0 * e,
+            color,
+        );
+        for (h, r) in self.filas_encontrados(pan) {
+            let r = rectf(r);
+            p.rellenar(r, PALETA.panel);
+            let texto = match &h {
+                Hallazgo::Astro(id) => self
+                    .u
+                    .astro(*id)
+                    .map(|a| self.nombre_de(a))
+                    .unwrap_or_default(),
+                Hallazgo::Suelta { codigo, .. } => self
+                    .fichas
+                    .get(codigo)
+                    .map(|f| format!("{} · {}", f.nombre, self.textos.t("universo-nebulosa")))
+                    .unwrap_or_default(),
+            };
+            p.texto_linea(
+                &texto,
+                r.x + 8.0 * e,
+                r.y + (r.alto - tam * 1.3) / 2.0,
+                tam,
+                r.ancho - 16.0 * e,
+                PALETA.texto,
+            );
+        }
+    }
+
+    fn pintar_barra(&self, p: &Pintor, pan: &Paneles) {
+        let e = self.escala();
+        let barra = self.barra(pan);
+        p.rellenar_redondeado(rectf(barra.marco), 8.0 * e, PALETA.panel);
+        for (i, h) in HERRAMIENTAS_UNIVERSO.iter().enumerate() {
+            let r = rectf(barra.rect_de(i));
+            let elegida = self.herramienta == Some(*h);
+            if elegida {
+                p.rellenar_redondeado(r, 8.0 * e, PALETA.acento);
+            }
+            let icono = match h {
+                HerramientaUniverso::Planeta => &pintar::PLANETA,
+                HerramientaUniverso::Emoji => &pintar::CARITA,
+                HerramientaUniverso::Conectar => &pintar::LINEA,
+            };
+            let lado = 18.0 * e;
+            p.icono(
+                icono,
+                RectF {
+                    x: r.x + (r.ancho - lado) / 2.0,
+                    y: r.y + (r.alto - lado) / 2.0,
+                    ancho: lado,
+                    alto: lado,
+                },
+                PALETA.texto,
+            );
+        }
+    }
+
+    fn pintar_minimapa(&self, p: &Pintor, pan: &Paneles, efectiva: &Camara, ancho: f32, alto: f32) {
+        let e = self.escala();
+        let m = pan.minimapa;
+        p.rellenar_redondeado(rectf(m), 6.0 * e, PALETA.panel);
+        let cosmos = self.cosmos();
+        for a in &self.u.astros {
+            let Clase::Galaxia { proyecto } = &a.clase else {
+                continue;
+            };
+            let (x, y) = mundo_a_minimapa(m, cosmos, (a.x, a.y));
+            p.circulo((x, y), 3.0 * e, pintar::color_avatar(proyecto));
+        }
+        // La vista actual, recortada al minimapa.
+        let (x0, y0, x1, y1) = efectiva.ventana(ancho, alto);
+        let (a0, b0) = mundo_a_minimapa(m, cosmos, (x0, y0));
+        let (a1, b1) = mundo_a_minimapa(m, cosmos, (x1, y1));
+        let (mx0, my0) = (m.x as f32, m.y as f32);
+        let (mx1, my1) = (mx0 + m.ancho as f32, my0 + m.alto as f32);
+        let (a0, b0) = (a0.clamp(mx0, mx1), b0.clamp(my0, my1));
+        let (a1, b1) = (a1.clamp(mx0, mx1), b1.clamp(my0, my1));
+        p.trazar(
+            RectF {
+                x: a0,
+                y: b0,
+                ancho: (a1 - a0).max(2.0),
+                alto: (b1 - b0).max(2.0),
+            },
+            1.5 * e,
+            PALETA.acento,
+        );
+    }
+
+    fn pintar_inspector(&self, p: &Pintor, pan: &Paneles, i: &Inspector) {
+        let e = self.escala();
+        p.rellenar(rectf(pan.inspector), PALETA.panel);
+        let unico = match self.seleccion.as_slice() {
+            [id] => self.u.astro(*id),
+            _ => None,
+        };
+        let ficha = unico
+            .and_then(|a| a.codigo())
+            .and_then(|c| self.fichas.get(c));
+        let conexiones = unico.map(|a| self.conexiones_de(a.id)).unwrap_or_default();
+        for (fila, r) in &i.filas {
+            let r = rectf(*r);
+            match fila {
+                Fila::Cabecera => {
+                    let (titulo, tipo) = match unico {
+                        Some(a) => (
+                            self.nombre_de(a),
+                            self.textos.t(match a.clase {
+                                Clase::Galaxia { .. } => "universo-galaxia",
+                                Clase::Planeta if a.padre.is_none() => "universo-exoplaneta",
+                                Clase::Planeta => "universo-planeta",
+                                Clase::Luna { .. } => "universo-luna",
+                            }),
+                        ),
+                        None => {
+                            let mut args = fluent_bundle::FluentArgs::new();
+                            args.set("n", self.seleccion.len());
+                            (self.textos.t_args("universo-varios", &args), String::new())
+                        }
+                    };
+                    p.texto_linea(&titulo, r.x, r.y, 16.0 * e, r.ancho, PALETA.texto);
+                    p.texto_linea(
+                        &tipo,
+                        r.x,
+                        r.y + 24.0 * e,
+                        12.0 * e,
+                        r.ancho,
+                        PALETA.texto_suave,
+                    );
+                }
+                Fila::VistaPrevia => {
+                    if let Some(f) = ficha {
+                        let hecha = pintar::ruta_de_foto(&self.raiz, f).and_then(|ruta| {
+                            self.miniaturas.ya(&ruta).map(|m| (m.0.clone(), m.1, m.2))
+                        });
+                        match hecha {
+                            Some((b, w, h)) => crate::miniaturas::pintar_recortado(p, &b, r, w, h),
+                            None => {
+                                let lado = r.alto.min(r.ancho) * 0.6;
+                                pintar::icono_de_luna(
+                                    p,
+                                    f,
+                                    RectF {
+                                        x: r.x + (r.ancho - lado) / 2.0,
+                                        y: r.y + (r.alto - lado) / 2.0,
+                                        ancho: lado,
+                                        alto: lado,
+                                    },
+                                    pintar::opacidad_de_luna(f.en_equipo),
+                                    e,
+                                );
+                            }
+                        }
+                    }
+                }
+                Fila::Dato(n) => {
+                    let texto = match (unico, ficha, n) {
+                        (_, Some(f), 0) => pintar::tamano_legible(f.bytes),
+                        (_, Some(f), 1) => pintar::extension_de(&f.nombre).to_uppercase(),
+                        (_, Some(f), 2) => f.codigo_chat.clone().unwrap_or_default(),
+                        (_, Some(f), 3) => {
+                            self.nombres.get(&f.proyecto).cloned().unwrap_or_default()
+                        }
+                        (Some(a), None, 0) => {
+                            let mut args = fluent_bundle::FluentArgs::new();
+                            args.set("n", self.u.hijos(a.id).count());
+                            self.textos.t_args("universo-varios", &args)
+                        }
+                        (Some(a), None, 1) if matches!(a.clase, Clase::Galaxia { .. }) => {
+                            if a.notas_del_chat {
+                                format!("✓ {}", self.textos.t("universo-notas-chat"))
+                            } else {
+                                String::new()
+                            }
+                        }
+                        _ => String::new(),
+                    };
+                    p.texto_linea(&texto, r.x, r.y, 12.0 * e, r.ancho, PALETA.texto_suave);
+                }
+                Fila::Nota => {
+                    p.rellenar_redondeado(r, 6.0 * e, PALETA.borde_panel);
+                    let nota = unico.map(|a| a.nota.clone()).unwrap_or_default();
+                    let (t, color) = if nota.is_empty() {
+                        (self.textos.t("universo-nota"), PALETA.texto_suave)
+                    } else {
+                        (nota, PALETA.texto)
+                    };
+                    p.texto_ajustado(
+                        &t,
+                        r.x + 6.0 * e,
+                        r.y + 6.0 * e,
+                        12.0 * e,
+                        r.ancho - 12.0 * e,
+                        color,
+                    );
+                }
+                Fila::Conexion(n) => {
+                    let Some(c) = conexiones.get(*n) else {
+                        continue;
+                    };
+                    let otro = unico
+                        .map(|a| if c.desde == a.id { c.hasta } else { c.desde })
+                        .and_then(|o| self.u.astro(o))
+                        .map(|o| self.nombre_de(o))
+                        .unwrap_or_default();
+                    p.texto_linea(
+                        &format!("{} → {}", self.nombre_tipo(c.tipo), otro),
+                        r.x,
+                        r.y + 4.0 * e,
+                        12.0 * e,
+                        r.ancho,
+                        PALETA.texto,
+                    );
+                }
+                Fila::Accion(AccionInspector::Color(n)) => {
+                    let color = crate::caja_dibujo::hex(COLORES_PLANETA[*n]);
+                    p.rellenar_redondeado(r, 6.0 * e, color);
+                    if unico.and_then(|a| a.color) == Some(COLORES_PLANETA[*n]) {
+                        p.trazar(r, 2.0 * e, PALETA.texto);
+                    }
+                }
+                Fila::Accion(AccionInspector::Tamano(t)) => {
+                    p.rellenar_redondeado(r, 6.0 * e, PALETA.borde_panel);
+                    let letra = ["S", "M", "L"][(*t).min(2) as usize];
+                    let (w, h) = p.medir_texto(letra, 13.0 * e);
+                    p.texto(
+                        letra,
+                        r.x + (r.ancho - w) / 2.0,
+                        r.y + (r.alto - h) / 2.0,
+                        13.0 * e,
+                        PALETA.texto,
+                    );
+                }
+                Fila::Accion(a) => {
+                    p.rellenar_redondeado(r, 6.0 * e, PALETA.borde_panel);
+                    let clave = match a {
+                        AccionInspector::Abrir => "universo-abrir",
+                        AccionInspector::IrAlChat => "universo-ir-chat",
+                        AccionInspector::MostrarEnCarpeta => "universo-carpeta",
+                        AccionInspector::Devolver => "universo-devolver",
+                        AccionInspector::NotasDelChat => "universo-notas-chat",
+                        AccionInspector::Ordenar => "universo-ordenar",
+                        AccionInspector::LimpiarHuerfanas => "universo-limpiar",
+                        AccionInspector::AgruparNuevo => "universo-agrupar",
+                        AccionInspector::ConectarEntreSi => "universo-conectar",
+                        _ => "",
+                    };
+                    let t = self.textos.t(clave);
+                    let tam = 13.0 * e;
+                    p.texto_linea(
+                        &t,
+                        r.x + 10.0 * e,
+                        r.y + (r.alto - tam * 1.3) / 2.0,
+                        tam,
+                        r.ancho - 20.0 * e,
+                        PALETA.texto,
+                    );
+                }
+            }
+        }
+    }
+
+    fn pintar_selector(&self, p: &Pintor, pan: &Paneles) {
+        let e = self.escala();
+        let mut s = self.selector.clone();
+        let marco = s.colocar(pan.lienzo, self.escala_por_cien);
+        p.rellenar_redondeado(rectf(marco), 10.0 * e, PALETA.panel);
+        for (t, r) in s.pestanas() {
+            let r = rectf(r);
+            if t == s.pestana && s.filtro.is_empty() {
+                p.rellenar_redondeado(r, 6.0 * e, PALETA.borde_panel);
+            }
+            let icono = match t {
+                pixpin_ui::universo::Pestana::Espacio => "🪐",
+                pixpin_ui::universo::Pestana::Caras => "😀",
+                pixpin_ui::universo::Pestana::Objetos => "📁",
+                pixpin_ui::universo::Pestana::Naturaleza => "🌳",
+                pixpin_ui::universo::Pestana::Simbolos => "❤️",
+                pixpin_ui::universo::Pestana::Recientes => "🕘",
+            };
+            let tam = 16.0 * e;
+            let (w, h) = p.medir_texto(icono, tam);
+            p.texto_color(
+                icono,
+                r.x + (r.ancho - w) / 2.0,
+                r.y + (r.alto - h) / 2.0,
+                tam,
+                PALETA.texto,
+            );
+        }
+        if let Some(f) = s.caja_filtro() {
+            let f = rectf(f);
+            p.rellenar_redondeado(f, 6.0 * e, PALETA.borde_panel);
+            let (t, color) = if s.filtro.is_empty() {
+                (self.textos.t("universo-buscar"), PALETA.texto_suave)
+            } else {
+                (format!("{}|", s.filtro), PALETA.texto)
+            };
+            p.texto_linea(&t, f.x + 8.0 * e, f.y + 6.0 * e, 13.0 * e, f.ancho, color);
+        }
+        for (emoji, r) in s.celdas() {
+            let r = rectf(r);
+            let tam = r.alto * 0.6;
+            let (w, h) = p.medir_texto(emoji, tam);
+            p.texto_color(
+                emoji,
+                r.x + (r.ancho - w) / 2.0,
+                r.y + (r.alto - h) / 2.0,
+                tam,
+                PALETA.texto,
             );
         }
     }
@@ -1360,6 +2175,72 @@ mod pruebas {
         };
         let c = s.camara_inicial();
         assert_eq!((c.x, c.y, c.zoom), (1.0, 2.0, 0.5));
+    }
+
+    fn centro(r: Rect) -> Punto {
+        Punto {
+            x: r.x + r.ancho as i32 / 2,
+            y: r.y + r.alto as i32 / 2,
+        }
+    }
+
+    #[test]
+    fn la_barra_elige_la_herramienta_y_pulsarla_otra_vez_la_deja() {
+        let mut s = sesion(Universo::nuevo());
+        let (mut c, mut e) = (Camara::nueva(), Escena::nueva());
+        let boton = s.barra(&s.paneles()).rect_de(0);
+        assert!(s.pulsar_panel(centro(boton), &mut c, &mut e).is_some());
+        assert_eq!(s.herramienta, Some(HerramientaUniverso::Planeta));
+        s.pulsar_panel(centro(boton), &mut c, &mut e);
+        assert_eq!(s.herramienta, None);
+        // Caso negativo: un clic en el cielo no es de ningun panel.
+        assert!(
+            s.pulsar_panel(Punto { x: 900, y: 600 }, &mut c, &mut e)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn elegir_un_emoji_lo_deja_puesto_y_lo_recuerda_en_el_universo() {
+        let mut s = sesion(Universo::nuevo());
+        let (mut c, mut e) = (Camara::nueva(), Escena::nueva());
+        let boton = s.barra(&s.paneles()).rect_de(1);
+        s.pulsar_panel(centro(boton), &mut c, &mut e);
+        assert!(s.selector_abierto, "sin emoji elegido se abre el selector");
+        let lienzo = s.paneles().lienzo;
+        let mut sel = s.selector.clone();
+        sel.colocar(lienzo, s.escala_por_cien);
+        let (emoji, celda) = sel.celdas()[0];
+        s.pulsar_panel(centro(celda), &mut c, &mut e);
+        assert_eq!(s.emoji_elegido.as_deref(), Some(emoji));
+        assert!(!s.selector_abierto);
+        assert_eq!(
+            s.u.resto.get(CLAVE_RECIENTES),
+            Some(&serde_json::json!([emoji]))
+        );
+    }
+
+    #[test]
+    fn con_algo_elegido_sale_el_inspector_y_su_boton_devuelve_la_luna() {
+        let mut u = Universo::nuevo();
+        u.astros
+            .push(pixpin_universo::Astro::galaxia(IdAstro(1), "p1", 0.0, 0.0));
+        u.siguiente_id = 2;
+        let l = u.colocar_luna("m:a", "p1", 0.0, 0.0).unwrap();
+        let mut s = sesion(u);
+        let (mut c, mut e) = (Camara::nueva(), Escena::nueva());
+        assert!(s.inspector().is_none(), "sin nada elegido no hay inspector");
+        s.seleccion = vec![l];
+        let i = s.inspector().expect("hay inspector");
+        let devolver = i
+            .filas
+            .iter()
+            .find(|(f, _)| *f == Fila::Accion(AccionInspector::Devolver))
+            .unwrap()
+            .1;
+        s.pulsar_panel(centro(devolver), &mut c, &mut e);
+        assert!(s.u.astro(l).is_none(), "vuelve a la nebulosa");
+        assert!(s.seleccion.is_empty());
     }
 
     #[test]

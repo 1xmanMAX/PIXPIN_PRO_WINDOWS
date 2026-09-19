@@ -23,6 +23,7 @@ pub mod panel_lateral;
 pub mod propiedades;
 pub mod resaltado;
 pub mod tabla;
+pub mod universo;
 
 pub use anotador::{
     Anotador, EfectoAnotador, EventoAnotador, Herramienta, TeclaAnotador, UMBRAL_ARRASTRE,

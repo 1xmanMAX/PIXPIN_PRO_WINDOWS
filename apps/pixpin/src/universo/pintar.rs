@@ -405,7 +405,7 @@ fn caja_de(centro: (f32, f32), r: f32) -> RectF {
 
 /// El icono de una luna dentro de `caja`: el de su clase, o la chapa de su
 /// extension para un archivo.
-fn icono_de_luna(p: &Pintor, f: &FichaLuna, caja: RectF, alfa: f32, e: f32) {
+pub fn icono_de_luna(p: &Pintor, f: &FichaLuna, caja: RectF, alfa: f32, e: f32) {
     match icono_de_clase(f.clase) {
         Some(i) => p.icono(i, caja, con_alfa(PALETA.texto, alfa)),
         None => {

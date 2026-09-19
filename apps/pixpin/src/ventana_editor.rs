@@ -585,7 +585,23 @@ fn abrir_en_modo(
     // "Contenido" y area de trabajo son el mismo rectangulo, como en
     // `CapaViva::nueva` (`capa.rs`): aqui el contenido ES la pantalla
     // entera, no hay un pin ni una ventana mas pequena de referencia.
-    let mut caja = CajaHerramientas::barra_superior(area, escala_por_cien, &BOTONES_EDITOR);
+    // Con el universo, la caja va bajo su barra de ruta, no encima de ella.
+    let area_caja = |escala: u32, con_universo: bool| {
+        if !con_universo {
+            return area;
+        }
+        let ruta = crate::universo::sesion::Sesion::alto_ruta(escala);
+        pixpin_geom::Rect {
+            y: area.y + ruta as i32,
+            alto: area.alto.saturating_sub(ruta),
+            ..area
+        }
+    };
+    let mut caja = CajaHerramientas::barra_superior(
+        area_caja(escala_por_cien, universo.is_some()),
+        escala_por_cien,
+        &BOTONES_EDITOR,
+    );
     // Donde estaba el raton la ultima vez, para resaltar el boton de debajo.
     let mut raton_barra: Option<Punto> = None;
     // La punta predicha del trazo en curso (ver `tinta::prediccion`): se
@@ -653,7 +669,11 @@ fn abrir_en_modo(
                 {
                     escala_por_cien = m.escala_por_cien;
                     efectiva = vista_efectiva(&camara, escala_por_cien);
-                    caja = CajaHerramientas::barra_superior(area, escala_por_cien, &BOTONES_EDITOR);
+                    caja = CajaHerramientas::barra_superior(
+                        area_caja(escala_por_cien, universo.is_some()),
+                        escala_por_cien,
+                        &BOTONES_EDITOR,
+                    );
                     // La capa congelada se horneo a la escala vieja.
                     capa.soltar();
                     todo_sucio = true;
@@ -1795,7 +1815,13 @@ fn pintar(
             crate::caja_dibujo::pintar_barra(
                 p,
                 caja_herramientas,
-                gesto.herramienta,
+                // Con una herramienta del universo puesta, ninguna del editor
+                // sale elegida: `Emoji` del motor no tiene boton en esta caja.
+                if uni.is_some_and(|s| s.herramienta.is_some()) {
+                    Herramienta::Emoji
+                } else {
+                    gesto.herramienta
+                },
                 escala_por_cien,
                 raton_barra,
                 |b| match b {
