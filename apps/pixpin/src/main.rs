@@ -125,18 +125,24 @@ const _: () = assert!(
 ///
 /// Sale del catalogo de comandos, no de una lista escrita a mano: anadir
 /// una funcion es anadir su fila. El universo va justo debajo del chat
-/// (D213) porque es la otra forma de ver lo mismo.
+/// (D213) porque es la otra forma de ver lo mismo, y Sincronizar detras:
+/// es donde van los chats a otros aparatos, y en el catalogo esta al final
+/// solo para no correr los numeros de los demas.
 fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
+    use comandos::Comando;
     let mut v = Vec::new();
     // «Salir» sale aparte, al final y tras una raya: no debe pulsarse por
     // inercia al buscar otra cosa.
-    for d in comandos::CATALOGO
-        .iter()
-        .filter(|d| d.en_bandeja && d.comando != comandos::Comando::Salir)
-    {
+    for d in comandos::CATALOGO.iter().filter(|d| {
+        d.en_bandeja && d.comando != Comando::Salir && d.comando != Comando::Sincronizar
+    }) {
         v.push((d.comando.id(), t(d.clave_titulo)));
-        if d.comando == comandos::Comando::AbrirChat {
+        if d.comando == Comando::AbrirChat {
             v.push((ID_VENTANA_UNIVERSO, t("bandeja-universo")));
+            let s = Comando::Sincronizar.descriptor();
+            if s.en_bandeja {
+                v.push((s.comando.id(), t(s.clave_titulo)));
+            }
         }
     }
     // El editor avanzado (tarea 11): sin catalogo ni traduccion todavia, es
@@ -704,6 +710,12 @@ fn arrancar(
                 // En su propio hilo, como el chat: esperar al movil no puede
                 // dejar sordos los atajos ni los gestos.
                 recibir::lanzar(lengua, ubicacion.clone());
+                Continuar::Si
+            }
+            _ if comando == Some(comandos::Comando::Sincronizar) => {
+                // Su propio hilo, como el chat; si ya esta abierta no abre
+                // otra (lo vigila `sincronizar::lanzar`).
+                sincronizar::lanzar(lengua, ubicacion.clone());
                 Continuar::Si
             }
             _ if comando == Some(comandos::Comando::AbrirChat) => {
@@ -1595,6 +1607,35 @@ mod pruebas_bandeja {
         assert_eq!(
             v.get(chat + 1),
             Some(&(ID_VENTANA_UNIVERSO, "bandeja-universo".to_string()))
+        );
+    }
+
+    #[test]
+    fn sincronizar_sale_bajo_el_chat_y_recibir_suelto_no() {
+        let v = acciones_de_bandeja(|clave| clave.to_string());
+        let chat = v
+            .iter()
+            .position(|(id, _)| *id == comandos::Comando::AbrirChat.id())
+            .expect("el chat esta en la bandeja");
+        // Chat, universo (D213) y en seguida Sincronizar.
+        assert_eq!(
+            v.get(chat + 2),
+            Some(&(
+                comandos::Comando::Sincronizar.id(),
+                "comando-sincronizar".to_string()
+            ))
+        );
+        assert_eq!(
+            v.iter()
+                .filter(|(id, _)| *id == comandos::Comando::Sincronizar.id())
+                .count(),
+            1,
+            "una sola vez, aunque en el catalogo este al final"
+        );
+        assert!(
+            !v.iter()
+                .any(|(id, _)| *id == comandos::Comando::RecibirDelMovil.id()),
+            "recibir cuelga ahora de Sincronizar, como en el movil"
         );
     }
 

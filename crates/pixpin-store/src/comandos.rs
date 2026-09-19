@@ -78,10 +78,14 @@ pub enum Comando {
     AbrirChat,
     /// Abrir la ventana de ajustes.
     AbrirAjustes,
-    /// Esperar a que el movil mande algo por la wifi (D147).
+    /// Esperar a que el movil mande algo por la wifi (D147). Ya no sale en
+    /// la bandeja —recibir cuelga de Sincronizar, como en el movil—, pero el
+    /// comando sigue para quien lo tenga atado a un atajo en su TOML.
     RecibirDelMovil,
     /// Cerrar el programa.
     Salir,
+    /// Abrir Sincronizar: tus aparatos, y recibir y enviar por Wi-Fi.
+    Sincronizar,
 }
 
 /// La ficha de un comando en el catalogo.
@@ -286,12 +290,22 @@ pub const CATALOGO: &[Descriptor] = &[
         nombre: "recibir-del-movil",
         clave_titulo: "comando-recibir-del-movil",
         atajo_por_defecto: None,
-        en_bandeja: true,
+        en_bandeja: false,
     },
     Descriptor {
         comando: Comando::Salir,
         nombre: "salir",
         clave_titulo: "comando-salir",
+        atajo_por_defecto: None,
+        en_bandeja: true,
+    },
+    // Al final por lo mismo que «Recibir del movil»: meterlo en medio
+    // correria el numero de todos los que vienen detras. En el menu no sale
+    // aqui sino bajo el chat: lo coloca `acciones_de_bandeja`.
+    Descriptor {
+        comando: Comando::Sincronizar,
+        nombre: "sincronizar",
+        clave_titulo: "comando-sincronizar",
         atajo_por_defecto: None,
         en_bandeja: true,
     },
@@ -481,7 +495,25 @@ mod pruebas {
         Comando::AbrirAjustes,
         Comando::RecibirDelMovil,
         Comando::Salir,
+        Comando::Sincronizar,
     ];
+
+    #[test]
+    fn sincronizar_sale_en_la_bandeja_y_recibir_suelto_ya_no() {
+        // Como en el movil: recibir y enviar cuelgan de Sincronizar.
+        assert!(Comando::Sincronizar.descriptor().en_bandeja);
+        assert!(!Comando::RecibirDelMovil.descriptor().en_bandeja);
+        // Caso negativo: quitarlo de la bandeja no lo borra del catalogo, y
+        // un TOML que lo nombre sigue valiendo.
+        assert_eq!(
+            Comando::desde_nombre("recibir-del-movil"),
+            Some(Comando::RecibirDelMovil)
+        );
+        assert_eq!(
+            Comando::desde_nombre("sincronizar"),
+            Some(Comando::Sincronizar)
+        );
+    }
 
     #[test]
     fn el_catalogo_cubre_todos_los_comandos_una_sola_vez() {
