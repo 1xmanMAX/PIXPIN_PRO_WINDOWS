@@ -18,9 +18,20 @@ use pixpin_render::{ErrorRender, MotorRender, Pintor};
 /// Lado de la baldosa: el periodo con el que se repite el cielo.
 pub const LADO: u32 = 512;
 
-/// Estrellas por capa y cuanto se mueve cada capa con la camara: la lejana
-/// casi nada, la cercana lo mismo que el mundo.
-const CAPAS: [(usize, f32); 3] = [(120, 0.2), (60, 0.5), (30, 1.0)];
+/// Las tres capas de estrellas, copiadas del movil (`Galaxia.kt:903-910`):
+/// **muchas y tenues, pocas y brillantes**, y las tres con el MISMO paralaje
+/// (0,35 alli), que es lo que hace que el cielo se sienta lejos sin que las
+/// capas se descorrelacionen.
+///
+/// `(cuantas por baldosa, paralaje, lado en px logicos, color, alfa)`. Las
+/// cuentas son las del movil (70 / 22 / 7 por baldosa de 360 dp) llevadas a
+/// nuestra baldosa de 512: sale un cielo algo mas escaso que el de antes
+/// (eran 120 / 60 / 30 todas blancas) y con los colores de alli.
+const CAPAS: [(usize, f32, f32, u32, f32); 3] = [
+    (70, 0.35, 1.1, 0xFFFFFF, 0.40),
+    (22, 0.35, 2.2, 0xDCE6FF, 0.60),
+    (7, 0.35, 3.3, 0xFFF4D6, 0.87),
+];
 
 /// Los puntos de una baldosa: `(x, y, brillo)` con el brillo entre 0,2 y
 /// 0,7 (D217). Con la misma semilla salen siempre los mismos, asi el cielo
@@ -37,6 +48,15 @@ pub fn puntos(semilla: u64, lado: u32, cuantas: usize) -> Vec<(f32, f32, f32)> {
         .collect()
 }
 
+/// `0xRRGGBB` a `(r, g, b)` de 0 a 1.
+fn rgb_de(hex: u32) -> (f32, f32, f32) {
+    (
+        ((hex >> 16) & 0xFF) as f32 / 255.0,
+        ((hex >> 8) & 0xFF) as f32 / 255.0,
+        (hex & 0xFF) as f32 / 255.0,
+    )
+}
+
 /// Cuanto se corre una capa: lo que se movio la camara (en pixeles) por su
 /// factor de paralaje, vuelto a la baldosa. `rem_euclid` y no `%`: con la
 /// camara en negativo `%` da negativo y la baldosa dejaria un hueco.
@@ -50,25 +70,32 @@ pub fn baldosas_para(px: f32) -> u32 {
     (px.max(0.0) / LADO as f32).ceil() as u32 + 1
 }
 
-/// Los puntos de `baldosas` repetida `nx` x `ny` veces. Un punto de 1 px, y
-/// de 2 x 2 los mas brillantes, algo mas tenue: si no, a 100 % de escala
-/// todas parecen la misma.
-pub fn puntos_de_capa(baldosa: &[(f32, f32, f32)], nx: u32, ny: u32) -> Vec<Punto> {
+/// Los puntos de `baldosa` repetida `nx` x `ny` veces, todos del tamano y
+/// del color de su capa (como en el movil: el tamano lo da la capa, no el
+/// brillo de cada estrella). El brillo sorteado solo modula la opacidad, asi
+/// que dentro de una capa unas se ven mas que otras y el cielo no es una
+/// rejilla de puntos identicos.
+pub fn puntos_de_capa(
+    baldosa: &[(f32, f32, f32)],
+    nx: u32,
+    ny: u32,
+    lado_px: f32,
+    rgb: (f32, f32, f32),
+    alfa_capa: f32,
+) -> Vec<Punto> {
     let lado = LADO as f32;
     let mut v = Vec::with_capacity(baldosa.len() * (nx * ny) as usize);
     for by in 0..ny {
         for bx in 0..nx {
             for &(x, y, brillo) in baldosa {
-                let (lado_px, alfa) = if brillo > 0.55 {
-                    (2.0, brillo * 0.7)
-                } else {
-                    (1.0, brillo)
-                };
                 v.push(Punto {
                     x: bx as f32 * lado + x.floor(),
                     y: by as f32 * lado + y.floor(),
-                    lado: lado_px,
-                    alfa,
+                    lado: lado_px.max(1.0).round(),
+                    // El brillo va de 0,2 a 0,7: se estira a 0,55..1 para
+                    // que ninguna estrella de la capa desaparezca.
+                    alfa: alfa_capa * (0.55 + (brillo - 0.2) * 0.9),
+                    rgb,
                 });
             }
         }
@@ -79,8 +106,11 @@ pub fn puntos_de_capa(baldosa: &[(f32, f32, f32)], nx: u32, ny: u32) -> Vec<Punt
 struct Capa {
     baldosa: Vec<(f32, f32, f32)>,
     factor: f32,
+    lado_px: f32,
+    rgb: (f32, f32, f32),
+    alfa: f32,
     /// Teselada para `(nx, ny)` baldosas.
-    realizada: Option<((u32, u32), Puntos)>,
+    realizada: Option<((u32, u32, u32), Puntos)>,
 }
 
 pub struct Estrellas {
@@ -97,29 +127,47 @@ impl Estrellas {
                 .iter()
                 .take(capas.min(CAPAS.len()))
                 .enumerate()
-                .map(|(i, &(cuantas, factor))| Capa {
+                .map(|(i, &(cuantas, factor, lado_px, hex, alfa))| Capa {
                     baldosa: puntos(semilla + i as u64, LADO, cuantas),
                     factor: if capas == 1 { 0.0 } else { factor },
+                    lado_px,
+                    rgb: rgb_de(hex),
+                    alfa,
                     realizada: None,
                 })
                 .collect(),
         }
     }
 
-    /// Tesela las capas que falten para una pantalla de `ancho` x `alto`.
-    /// Fuera del fotograma, como todo lo que crea recursos.
+    /// Tesela las capas que falten para una pantalla de `ancho` x `alto` a
+    /// `escala` pixeles fisicos por logico. Fuera del fotograma, como todo lo
+    /// que crea recursos.
     pub fn preparar(
         &mut self,
         motor: &MotorRender,
         ancho: f32,
         alto: f32,
+        escala: f32,
     ) -> Result<(), ErrorRender> {
-        let tam = (baldosas_para(ancho), baldosas_para(alto));
+        // La escala entra en la clave: al cambiar de monitor las estrellas
+        // tienen que volver a teselarse con su nuevo tamano en pixeles.
+        let tam = (
+            baldosas_para(ancho),
+            baldosas_para(alto),
+            (escala * 100.0).round() as u32,
+        );
         for c in &mut self.capas {
             if c.realizada.as_ref().is_some_and(|(t, _)| *t == tam) {
                 continue;
             }
-            let p = motor.realizar_puntos(&puntos_de_capa(&c.baldosa, tam.0, tam.1))?;
+            let p = motor.realizar_puntos(&puntos_de_capa(
+                &c.baldosa,
+                tam.0,
+                tam.1,
+                c.lado_px * escala,
+                c.rgb,
+                c.alfa,
+            ))?;
             c.realizada = Some((tam, p));
         }
         Ok(())
@@ -182,20 +230,29 @@ mod pruebas {
     }
 
     #[test]
-    fn cada_estrella_sale_en_cada_baldosa_y_las_brillantes_son_de_dos_pixeles() {
-        let baldosa = [(10.4, 20.9, 0.3), (100.0, 5.0, 0.6)];
-        let v = puntos_de_capa(&baldosa, 2, 3);
+    fn cada_estrella_sale_en_cada_baldosa_con_el_lado_y_el_color_de_su_capa() {
+        let baldosa = [(10.4, 20.9, 0.2), (100.0, 5.0, 0.7)];
+        let crema = (1.0, 0.956_862_75, 0.839_215_7);
+        let v = puntos_de_capa(&baldosa, 2, 3, 3.3, crema, 0.87);
         assert_eq!(v.len(), 2 * 6);
         assert!(
             v.iter()
                 .any(|p| p.x == 512.0 + 10.0 && p.y == 1024.0 + 20.0)
         );
-        assert!(
-            v.iter()
-                .filter(|p| p.lado == 2.0)
-                .all(|p| (p.alfa - 0.42).abs() < 1e-6)
-        );
+        // El lado y el color son de la capa, no de cada estrella.
+        assert!(v.iter().all(|p| p.lado == 3.0 && p.rgb == crema));
+        // El brillo sorteado solo modula la opacidad, y ninguna se apaga.
+        assert!(v.iter().all(|p| p.alfa > 0.0 && p.alfa <= 0.87));
+        assert!(v.iter().any(|p| p.alfa < 0.87), "la tenue se ve menos");
         // Caso negativo: una baldosa vacia no da ningun punto.
-        assert!(puntos_de_capa(&[], 4, 4).is_empty());
+        assert!(puntos_de_capa(&[], 4, 4, 1.0, crema, 1.0).is_empty());
+    }
+
+    #[test]
+    fn las_tres_capas_van_al_mismo_paso_y_de_mas_finas_a_mas_gruesas() {
+        let factores: Vec<f32> = CAPAS.iter().map(|c| c.1).collect();
+        assert!(factores.windows(2).all(|p| p[0] == p[1]), "{factores:?}");
+        assert!(CAPAS.windows(2).all(|p| p[0].0 > p[1].0), "menos cuantas");
+        assert!(CAPAS.windows(2).all(|p| p[0].2 < p[1].2), "mas gordas");
     }
 }

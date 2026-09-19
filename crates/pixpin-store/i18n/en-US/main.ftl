@@ -364,6 +364,20 @@ sinc-sincronizando = Syncing
 universo-titulo = Universe
 universo-cosmos = Cosmos
 universo-buscar = Search…
+universo-archivos = { $n ->
+    [one] { $n } file
+   *[other] { $n } files
+  }
+universo-recuento = { $p ->
+    [one] { $p } project
+   *[other] { $p } projects
+  } · { $a ->
+    [one] { $a } file
+   *[other] { $a } files
+  } · { $c ->
+    [one] { $c } connection
+   *[other] { $c } connections
+  }
 universo-nebulosa = Nebula
 universo-mas = +{ $n } more
 universo-nuevas = { $n } new

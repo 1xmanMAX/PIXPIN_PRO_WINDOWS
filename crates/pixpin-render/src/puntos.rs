@@ -26,13 +26,20 @@ use windows_numerics::Matrix3x2;
 use crate::lienzo::Pintor;
 use crate::motor::{ErrorRender, MotorRender};
 
-/// Un punto: su esquina, su lado y su opacidad (0..1).
+/// Un punto: su esquina, su lado, su color y su opacidad (0..1).
+///
+/// El color va por punto y no por lote porque las estrellas del movil son de
+/// tres colores (blanco, azul palido y crema calido) y los tres van mezclados
+/// en la misma capa: un lote por color seria una llamada mas por fotograma
+/// para nada, porque el sprite ya lleva su color.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Punto {
     pub x: f32,
     pub y: f32,
     pub lado: f32,
     pub alfa: f32,
+    /// `(r, g, b)` de 0 a 1, sin premultiplicar.
+    pub rgb: (f32, f32, f32),
 }
 
 /// Los puntos ya subidos a la GPU. Son del dispositivo: tras perderlo hay
@@ -61,9 +68,9 @@ pub fn sprites_de(puntos: &[Punto]) -> (Vec<D2D_RECT_F>, Vec<D2D1_COLOR_F>) {
                     bottom: p.y + p.lado,
                 },
                 D2D1_COLOR_F {
-                    r: a,
-                    g: a,
-                    b: a,
+                    r: p.rgb.0.clamp(0.0, 1.0) * a,
+                    g: p.rgb.1.clamp(0.0, 1.0) * a,
+                    b: p.rgb.2.clamp(0.0, 1.0) * a,
                     a,
                 },
             )
@@ -164,12 +171,13 @@ mod pruebas {
     use super::*;
 
     #[test]
-    fn cada_punto_visible_es_un_sprite_blanco_premultiplicado_por_su_opacidad() {
+    fn cada_punto_visible_es_un_sprite_de_su_color_premultiplicado_por_su_opacidad() {
         let p = |alfa, lado| Punto {
             x: 10.0,
             y: 20.0,
             lado,
             alfa,
+            rgb: (1.0, 1.0, 1.0),
         };
         let (rects, colores) = sprites_de(&[p(0.4, 2.0), p(0.0, 1.0), p(0.5, 0.0)]);
         assert_eq!(rects.len(), 1, "los invisibles se quedan fuera");
@@ -180,5 +188,20 @@ mod pruebas {
         assert_eq!((colores[0].r, colores[0].a), (0.4, 0.4), "premultiplicado");
         // Caso negativo: sin puntos, nada.
         assert!(sprites_de(&[]).0.is_empty());
+    }
+
+    #[test]
+    fn un_punto_de_color_sale_tenido_y_premultiplicado_y_no_blanco() {
+        let (_, colores) = sprites_de(&[Punto {
+            x: 0.0,
+            y: 0.0,
+            lado: 1.0,
+            alfa: 0.5,
+            rgb: (1.0, 0.8, 0.0),
+        }]);
+        assert_eq!(
+            (colores[0].r, colores[0].g, colores[0].b, colores[0].a),
+            (0.5, 0.4, 0.0, 0.5)
+        );
     }
 }

@@ -298,10 +298,10 @@ fn desglose(b: &Banco, s: &mut Sesion, camara: &Camara, que: &str) {
     let capas: [(&str, Capa); 5] = [
         ("limpiar", |p, _, _, _, _| p.limpiar(PALETA.espacio)),
         ("+ estrellas", |p, s, c, _w, _h| {
-            pintar::fondo(p, s.estrellas.as_ref(), c, false)
+            pintar::fondo(p, Some(&s.cielo), s.estrellas.as_ref(), c, false, _w, _h)
         }),
         ("+ astros", |p, s, c, _w, _h| {
-            pintar::fondo(p, s.estrellas.as_ref(), c, false);
+            pintar::fondo(p, Some(&s.cielo), s.estrellas.as_ref(), c, false, _w, _h);
             s.con_contexto(|ctx| pintar::astros(p, ctx, c));
         }),
         ("+ lineas y nebulosas", |p, s, c, _w, _h| {
@@ -371,10 +371,14 @@ fn retratar_el_universo() {
     let cosmos = camara_cosmos(&mut s);
     let galaxia = camara_galaxia(&mut s);
     let intermedio = acercar_al_centro(&cosmos, 3.0);
+    // Dentro de una galaxia, tan cerca que las lunas son fichas con su
+    // nombre: es donde se ve el vidrio de las tarjetas y las chapas.
+    let lunas = acercar_al_centro(&galaxia, 4.0);
     for (nombre, c) in [
         ("cosmos", cosmos),
         ("intermedio", intermedio),
         ("galaxia", galaxia),
+        ("lunas", lunas),
     ] {
         b.fotograma(&mut s, &c);
         s.movida = None;

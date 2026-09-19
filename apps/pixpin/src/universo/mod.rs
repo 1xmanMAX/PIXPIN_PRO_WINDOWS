@@ -7,6 +7,7 @@
 
 pub mod abrir;
 pub mod cargador;
+pub mod cielo;
 pub mod estrellas;
 pub mod fichas;
 pub mod mapa;

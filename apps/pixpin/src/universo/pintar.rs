@@ -14,12 +14,15 @@ use pixpin_render::{Color, Pintor, RectF};
 use pixpin_universo::ficha::{ClaseLuna, FichaLuna};
 use pixpin_universo::{Astro, Clase, IdAstro, Nivel, TipoConexion, Visto, nebulosa};
 
+use super::cielo::Cielo;
 use super::estrellas::Estrellas;
 use crate::caja_dibujo::hex;
 use crate::miniaturas::Miniaturas;
 
-/// Los colores del universo (D217). Es oscuro siempre, sea cual sea el tema
-/// de Windows: es la metafora, y en una pantalla OLED ahorra bateria.
+/// Los colores del universo: el **tema Cosmos del movil**, medido en
+/// `ui/theme/Cosmos.kt` (ver `docs/investigacion/2026-09-19-universo-android.md`).
+/// Es oscuro siempre, sea cual sea el tema de Windows: es la metafora, y en
+/// una pantalla OLED ahorra bateria.
 pub struct Paleta {
     pub espacio: Color,
     pub texto: Color,
@@ -31,24 +34,66 @@ pub struct Paleta {
 }
 
 pub const PALETA: Paleta = Paleta {
-    espacio: hex(0x0B1020),
-    texto: hex(0xE8ECF5),
-    texto_suave: hex(0x8A93A8),
-    acento: hex(0x40A7E3),
-    peligro: hex(0xE5484D),
+    // `CosmosBase`.
+    espacio: hex(0x0B0F24),
+    // `CosmosTexto` y `CosmosTextoSuave`: el suave de antes (#8A93A8) era
+    // mucho mas apagado que el del movil y hacia ilegibles los segundos
+    // rotulos.
+    texto: hex(0xE8EAF6),
+    texto_suave: hex(0xB4B9D6),
+    // `CosmosDorado`: el acento del movil es dorado, no azul.
+    acento: hex(0xFFD27A),
+    peligro: hex(0xFFB4AB),
+    // `surfaceContainerHighest` con cielo detras: vidrio azul translucido.
     panel: Color {
-        r: 0x14 as f32 / 255.0,
-        g: 0x1A as f32 / 255.0,
-        b: 0x2E as f32 / 255.0,
-        a: 0.92,
+        r: 0x1C as f32 / 255.0,
+        g: 0x23 as f32 / 255.0,
+        b: 0x50 as f32 / 255.0,
+        a: 0.76,
     },
-    borde_panel: Color {
-        r: 1.0,
-        g: 1.0,
-        b: 1.0,
-        a: 0.08,
-    },
+    // `outlineVariant`.
+    borde_panel: hex(0x343C6A),
 };
+
+/// Los ocho colores de sol del movil (`Galaxia.kt:928-931`).
+const COLORES_DE_SOL: [u32; 8] = [
+    0xFFB84D, 0xFF7A6B, 0x7C9CFF, 0x5FE0C2, 0xB48CFF, 0x6FD3FF, 0xFF8FB1, 0xFFE066,
+];
+
+/// El `hashCode` de `String` de Java, que es con el que el movil elige el
+/// color de un sol. Se copia tal cual —con su desbordamiento— para que **el
+/// mismo proyecto salga del mismo color en los dos aparatos**; cualquier otra
+/// funcion daria colores distintos y el usuario dejaria de reconocerlos.
+fn hash_java(s: &str) -> i32 {
+    s.chars()
+        .flat_map(|c| {
+            let mut u = [0u16; 2];
+            c.encode_utf16(&mut u).to_vec()
+        })
+        .fold(0i32, |h, u| h.wrapping_mul(31).wrapping_add(u as i32))
+}
+
+/// El color de un sol (nuestra galaxia), como en el movil: fijo por proyecto.
+///
+/// No es `color_avatar` a proposito: en el movil el sol tampoco lleva el
+/// color del avatar del chat (`colorDelSol` es solo del universo), asi que
+/// copiar el del chat nos alejaria de el en vez de acercarnos.
+pub fn color_de_sol(proyecto: &str) -> Color {
+    let i = hash_java(proyecto).rem_euclid(COLORES_DE_SOL.len() as i32) as usize;
+    hex(COLORES_DE_SOL[i])
+}
+
+/// `lerp` entre dos colores, como el `lerp` de Compose: mezcla lineal de los
+/// canales.
+pub fn mezcla(a: Color, b: Color, t: f32) -> Color {
+    let m = |x: f32, y: f32| x + (y - x) * t;
+    Color {
+        r: m(a.r, b.r),
+        g: m(a.g, b.g),
+        b: m(a.b, b.b),
+        a: m(a.a, b.a),
+    }
+}
 
 /// Lo que se atenua lo que no esta enfocado (D225).
 const FUERA_DE_FOCO: f32 = 0.35;
@@ -59,28 +104,20 @@ pub fn opacidad_de_luna(en_equipo: bool) -> f32 {
     if en_equipo { 1.0 } else { 0.4 }
 }
 
-/// «Casa nueva · 12». Sin lunas no se pone el cero: un «· 0» parece un
-/// fallo y no dice nada que no diga ya el disco vacio.
-pub fn rotulo_de_galaxia(nombre: &str, lunas: usize) -> String {
-    if lunas == 0 {
-        nombre.to_string()
-    } else {
-        format!("{nombre} · {lunas}")
-    }
-}
-
 pub fn con_alfa(c: Color, a: f32) -> Color {
     Color { a: c.a * a, ..c }
 }
 
 // --- Lo que se comparte con el chat -----------------------------------------
 //
-// El color de cada galaxia, la extension y el tamano son los MISMOS que en el
-// chat, y se toman de alli: el usuario reconoce un proyecto por su color y un
-// archivo por su chapa, y si las dos pantallas discreparan en eso dejaria de
-// fiarse de las dos.
+// La extension y el tamano son los MISMOS que en el chat, y se toman de
+// alli: el usuario reconoce un archivo por su chapa y por su peso, y si las
+// dos pantallas discreparan en eso dejaria de fiarse de las dos.
+//
+// El COLOR de una galaxia ya no: es el del sol del movil (`color_de_sol`),
+// porque alli tampoco es el del avatar del chat.
 
-pub(crate) use crate::ventana_chat::{color_avatar, extension_de};
+pub(crate) use crate::ventana_chat::extension_de;
 
 /// El tamano como lo escribe el chat en su cabecera (y el movil).
 pub fn tamano_legible(bytes: i64) -> String {
@@ -195,6 +232,14 @@ pub struct Contexto<'a> {
     pub miniaturas: &'a Miniaturas,
     /// La raiz de los proyectos, para encontrar el fichero de una foto.
     pub raiz: &'a Path,
+    /// «N archivos», ya en el idioma del usuario: el segundo rotulo de un
+    /// sol, como en el movil.
+    pub etiqueta_archivos: &'a dyn Fn(usize) -> String,
+    /// La isla de herramientas, en pixeles de pantalla: un rotulo no se
+    /// pinta debajo de ella.
+    pub estorbo: RectF,
+    /// Lo mas arriba que puede llegar un rotulo: el pie de la barra de ruta.
+    pub techo: f32,
 }
 
 impl Contexto<'_> {
@@ -251,10 +296,66 @@ fn texto_centrado(p: &Pintor, texto: &str, x: f32, y: f32, tam: f32, color: Colo
     p.texto(texto, x - w / 2.0, y, tam, color);
 }
 
-/// El cielo: el color del espacio y las estrellas. `rapido`: la camara se
-/// esta moviendo, solo la capa lejana (ver `Sesion::en_movimiento`).
-pub fn fondo(p: &Pintor, estrellas: Option<&Estrellas>, camara: &Camara, rapido: bool) {
-    p.limpiar(PALETA.espacio);
+/// Si dos cajas se tocan.
+fn chocan(a: RectF, b: RectF) -> bool {
+    a.x < b.x + b.ancho && b.x < a.x + a.ancho && a.y < b.y + b.alto && b.y < a.y + a.alto
+}
+
+/// **Donde cae el rotulo de un astro sin que lo tape un panel** (la falla que
+/// vio el usuario: el nombre de la galaxia detras de la isla de
+/// herramientas).
+///
+/// Los paneles se pintan DESPUES que los astros —van encima de las
+/// anotaciones—, asi que un rotulo que caiga bajo uno desaparece. En vez de
+/// cambiar el orden (las anotaciones tienen que quedarse entre medias), el
+/// rotulo se aparta: si donde preferiria ir toca la isla o se sale por
+/// encima del techo, se va al otro lado del astro; si alli tampoco cabe, se
+/// queda pegado al techo.
+pub fn y_de_rotulo(
+    x: f32,
+    ancho: f32,
+    alto: f32,
+    preferida: f32,
+    alternativa: f32,
+    estorbo: RectF,
+    techo: f32,
+) -> f32 {
+    let caja = |y: f32| RectF {
+        x: x - ancho / 2.0,
+        y,
+        ancho,
+        alto,
+    };
+    let libre = |y: f32| y >= techo && !chocan(caja(y), estorbo);
+    if libre(preferida) {
+        preferida
+    } else if libre(alternativa) {
+        alternativa
+    } else {
+        preferida.max(techo)
+    }
+}
+
+/// El cielo del movil: el degradado y las dos nebulosas, ya horneados en un
+/// bitmap opaco (ver `super::cielo`), y encima las estrellas.
+///
+/// `rapido`: la camara se esta moviendo, solo la capa lejana de estrellas
+/// (ver `Sesion::en_movimiento`). El cielo se pinta siempre: es lo que da el
+/// ambiente, y quitarlo al mover haria parpadear el fondo entero.
+pub fn fondo(
+    p: &Pintor,
+    cielo: Option<&Cielo>,
+    estrellas: Option<&Estrellas>,
+    camara: &Camara,
+    rapido: bool,
+    ancho: f32,
+    alto: f32,
+) {
+    if !cielo.is_some_and(|c| c.pintar(p, ancho, alto)) {
+        // Sin bitmap (dispositivo recien perdido): un cielo liso, que es
+        // feo pero no deja la pantalla con basura.
+        p.limpiar(PALETA.espacio);
+    }
     if let Some(e) = estrellas {
         e.pintar(p, (camara.x * camara.zoom, camara.y * camara.zoom), rapido);
     }
@@ -271,40 +372,23 @@ pub fn astros(p: &Pintor, c: &Contexto, camara: &Camara) {
         let foco = if c.en_foco(a.id) { 1.0 } else { FUERA_DE_FOCO };
         match &a.clase {
             Clase::Galaxia { proyecto } => {
-                let color = color_avatar(proyecto);
+                let color = color_de_sol(proyecto);
                 let nombre = c.nombre_de(a);
+                let lunas = c.cuentas.get(proyecto).copied().unwrap_or(0);
                 match v.nivel {
+                    // Abierta: se le ven las lunas dentro, asi que el cuerpo
+                    // se queda en un aro tenue para no taparlas, y el nombre
+                    // va arriba, fuera del disco.
                     Nivel::Vista => {
                         p.anillo(centro, r, 1.5 * e, con_alfa(color, 0.15 * foco));
-                        texto_centrado(
-                            p,
-                            &nombre,
-                            centro.0,
-                            centro.1 - r - 24.0 * e,
-                            16.0 * e,
-                            con_alfa(PALETA.texto, foco),
-                        );
+                        rotulo_de_sol(p, c, &nombre, lunas, centro, r, foco, color, false);
                     }
                     Nivel::Disco => {
-                        // En Ligero, un disco liso y tenue. En Completo el
-                        // brillo es un bitmap pre-pintado por color: el
-                        // degradado radial creaba un pincel por galaxia y
-                        // fotograma (0,5 ms cada uno, medido).
-                        if c.ligero {
-                            p.circulo(centro, r, con_alfa(color, 0.3 * foco));
-                        } else {
-                            p.brillo(centro, r, color, 0.9 * foco);
+                        sol(p, centro, r, color, foco, c.ligero, e);
+                        if !c.ligero && r >= 14.0 * e {
+                            inicial_del_sol(p, &nombre, centro, r, foco);
                         }
-                        p.circulo(centro, r * 0.25, con_alfa(color, 0.9 * foco));
-                        let lunas = c.cuentas.get(proyecto).copied().unwrap_or(0);
-                        texto_centrado(
-                            p,
-                            &rotulo_de_galaxia(&nombre, lunas),
-                            centro.0,
-                            centro.1 + r + 4.0 * e,
-                            13.0 * e,
-                            con_alfa(PALETA.texto, foco),
-                        );
+                        rotulo_de_sol(p, c, &nombre, lunas, centro, r, foco, color, true);
                     }
                     _ => p.circulo(centro, 2.0 * e, con_alfa(color, foco)),
                 }
@@ -364,6 +448,125 @@ pub fn astros(p: &Pintor, c: &Contexto, camara: &Camara) {
     }
 }
 
+/// **El sol de un proyecto, como en el movil** (`Galaxia.kt:985-1038`): dos
+/// coronas, el cuerpo en degradado y el borde claro.
+///
+/// Todo con `Pintor::brillo` —un bitmap de 256 px cacheado por color— y no
+/// con pinceles radiales: un pincel por sol y fotograma costaba 0,5 ms de
+/// CPU, once milisegundos con veinte soles (medido, `lienzo.rs:529-535`).
+///
+/// En Ligero se queda en un disco liso: la grafica integrada del usuario no
+/// tiene los cinco blits por sol.
+fn sol(p: &Pintor, centro: (f32, f32), r: f32, color: Color, foco: f32, ligero: bool, e: f32) {
+    if ligero {
+        p.circulo(centro, r, con_alfa(color, 0.35 * foco));
+        p.anillo(centro, r, 1.5 * e, con_alfa(color, 0.7 * foco));
+        return;
+    }
+    // La corona ancha del color, y la calida pegada al cuerpo.
+    p.brillo(centro, r * 2.1, color, 0.40 * foco);
+    p.brillo(centro, r * 1.3, color, 0.25 * foco);
+    p.brillo(centro, r * 1.3, Color::BLANCO, 0.35 * foco);
+    // El cuerpo: oscuro en el borde y claro en el centro, que es como se ve
+    // una bola iluminada desde dentro.
+    p.circulo(centro, r, con_alfa(mezcla(color, Color::NEGRO, 0.45), foco));
+    p.brillo(centro, r, mezcla(color, Color::BLANCO, 0.35), foco);
+    p.anillo(
+        centro,
+        r,
+        (2.0 * e).min(r * 0.25),
+        con_alfa(mezcla(color, Color::BLANCO, 0.5), 0.95 * foco),
+    );
+}
+
+/// La inicial dentro del sol, como el movil cuando el proyecto no tiene
+/// portada: en blanco, a 0,38 del diametro.
+fn inicial_del_sol(p: &Pintor, nombre: &str, centro: (f32, f32), r: f32, foco: f32) {
+    let Some(letra) = nombre
+        .trim()
+        .chars()
+        .next()
+        .map(|c| c.to_uppercase().to_string())
+    else {
+        return;
+    };
+    let tam = r * 2.0 * 0.38;
+    let (w, h) = p.medir_texto(&letra, tam);
+    p.texto(
+        &letra,
+        centro.0 - w / 2.0,
+        centro.1 - h / 2.0,
+        tam,
+        con_alfa(Color::BLANCO, 0.95 * foco),
+    );
+}
+
+/// **El rotulo de un sol, en dos lineas** como en el movil: el nombre, y
+/// debajo «N archivos» mas apagado. Antes iba todo en una, «Nombre · 12»,
+/// que se leia como parte del nombre.
+///
+/// `debajo`: si el sitio preferido es bajo el disco (sol cerrado) o encima
+/// (galaxia abierta, donde debajo estarian sus lunas).
+#[allow(clippy::too_many_arguments)]
+fn rotulo_de_sol(
+    p: &Pintor,
+    c: &Contexto,
+    nombre: &str,
+    lunas: usize,
+    centro: (f32, f32),
+    r: f32,
+    foco: f32,
+    color: Color,
+    debajo: bool,
+) {
+    let e = c.escala;
+    let tam = 14.0 * e;
+    let tam_bajo = 11.5 * e;
+    let (w, h) = p.medir_texto(nombre, tam);
+    let cuenta = (lunas > 0).then(|| (c.etiqueta_archivos)(lunas));
+    let alto = h + cuenta.as_ref().map_or(0.0, |_| tam_bajo * 1.25);
+    let ancho = w.max(
+        cuenta
+            .as_ref()
+            .map_or(0.0, |t| p.medir_texto(t, tam_bajo).0),
+    );
+    let y = y_de_rotulo(
+        centro.0,
+        ancho,
+        alto,
+        if debajo {
+            centro.1 + r + 8.0 * e
+        } else {
+            centro.1 - r - alto - 10.0 * e
+        },
+        if debajo {
+            centro.1 - r - alto - 10.0 * e
+        } else {
+            centro.1 + r + 8.0 * e
+        },
+        c.estorbo,
+        c.techo,
+    );
+    texto_centrado(
+        p,
+        nombre,
+        centro.0,
+        y,
+        tam,
+        con_alfa(PALETA.texto, 0.96 * foco),
+    );
+    if let Some(t) = cuenta {
+        texto_centrado(
+            p,
+            &t,
+            centro.0,
+            y + h + 1.0 * e,
+            tam_bajo,
+            con_alfa(mezcla(PALETA.texto_suave, color, 0.35), 0.75 * foco),
+        );
+    }
+}
+
 /// La caja de pantalla de una luna: el cuadrado que la contiene.
 fn caja_de(centro: (f32, f32), r: f32) -> RectF {
     RectF {
@@ -406,11 +609,13 @@ fn luna(p: &Pintor, c: &Contexto, a: &Astro, v: &Visto, centro: (f32, f32), foco
     let r = v.radio_px * c.escala;
     let Some(f) = c.ficha_de(a) else {
         // Su cuaderno aun no ha llegado: un punto, que ya dice que ahi hay
-        // algo sin inventarse lo que es.
+        // algo sin inventarse lo que es. Muy tenue a proposito: con el gris
+        // claro del tema Cosmos a plena opacidad, una galaxia todavia
+        // leyendose era una parrilla de bolas palidas que tapaba el cielo.
         p.circulo(
             centro,
             (r * 0.3).max(2.0 * e),
-            con_alfa(PALETA.texto_suave, foco),
+            con_alfa(PALETA.texto_suave, 0.3 * foco),
         );
         return;
     };
@@ -510,6 +715,22 @@ fn luna(p: &Pintor, c: &Contexto, a: &Astro, v: &Visto, centro: (f32, f32), foco
     }
 }
 
+/// El color con el que se pinta un astro: el de su proyecto si lo tiene, el
+/// suyo propio si se lo pusieron, y el acento si no.
+fn color_de_astro(c: &Contexto, a: &Astro) -> Color {
+    match &a.clase {
+        Clase::Galaxia { proyecto } => color_de_sol(proyecto),
+        Clase::Luna { proyecto, .. } => color_de_sol(proyecto),
+        Clase::Planeta => a.color.map(hex).unwrap_or_else(|| {
+            a.padre
+                .and_then(|g| c.u.astro(g))
+                .and_then(|g| g.proyecto())
+                .map(color_de_sol)
+                .unwrap_or(PALETA.acento)
+        }),
+    }
+}
+
 /// La punta de flecha en `hasta`, apuntando desde `desde`.
 fn punta(desde: (f32, f32), hasta: (f32, f32), largo: f32) -> [(f32, f32); 3] {
     let (dx, dy) = (hasta.0 - desde.0, hasta.1 - desde.1);
@@ -541,13 +762,21 @@ pub fn conexiones(p: &Pintor, c: &Contexto, camara: &Camara) {
         } else {
             FUERA_DE_FOCO
         };
+        // Como en el movil (`Galaxia.kt:866`): una conexion sin color propio
+        // es la media de los colores de los dos astros, no un gris. Asi la
+        // linea «pertenece» a los dos y se ve de lejos.
         let base = match con.tipo {
-            TipoConexion::Relacion => PALETA.texto_suave,
+            TipoConexion::Relacion => mezcla(color_de_astro(c, a), color_de_astro(c, b), 0.5),
             _ => PALETA.acento,
         };
         let color = con_alfa(con.color.map(hex).unwrap_or(base), foco);
+        // El halo del movil: la misma linea a 3,5 veces de grosor y muy
+        // tenue. Es lo que hace que una conexion se lea sobre el cielo sin
+        // tener que engordarla.
+        let halo = 2.6 * e;
+        p.linea(pa, pb, halo * 3.5, con_alfa(color, 0.20));
         match con.tipo {
-            TipoConexion::Relacion => p.linea(pa, pb, 1.5 * e, color),
+            TipoConexion::Relacion => p.linea(pa, pb, halo, con_alfa(color, 0.9)),
             TipoConexion::Depende => {
                 p.linea(pa, pb, 2.0 * e, color);
                 p.poligono(&punta(pa, pb, 10.0 * e), color);
@@ -683,10 +912,55 @@ mod pruebas {
     use super::*;
     use crate::universo::estrellas;
 
+    fn caja(x: f32, y: f32, ancho: f32, alto: f32) -> RectF {
+        RectF { x, y, ancho, alto }
+    }
+
     #[test]
-    fn el_rotulo_de_una_galaxia_lleva_su_nombre_y_sus_lunas() {
-        assert_eq!(rotulo_de_galaxia("Casa nueva", 12), "Casa nueva · 12");
-        assert_eq!(rotulo_de_galaxia("Vacio", 0), "Vacio");
+    fn el_mismo_proyecto_sale_del_mismo_color_que_en_el_movil() {
+        // `"".hashCode()` es 0 y `"a".hashCode()` es 97 en Java.
+        assert_eq!(hash_java(""), 0);
+        assert_eq!(hash_java("a"), 97);
+        assert_eq!(hash_java("hola"), 3_208_380);
+        // El indice nunca es negativo aunque el hash se desborde.
+        for p in ["", "p1", "un id de proyecto bastante largo para desbordar"] {
+            assert!(COLORES_DE_SOL.iter().any(|h| hex(*h) == color_de_sol(p)));
+        }
+        // Caso negativo: dos proyectos distintos no tienen por que coincidir.
+        assert_ne!(color_de_sol("p1"), color_de_sol("p2"));
+    }
+
+    #[test]
+    fn un_rotulo_que_caeria_bajo_la_isla_o_sobre_la_barra_se_va_al_otro_lado() {
+        let isla = caja(16.0, 50.0, 120.0, 44.0);
+        let techo = 36.0;
+        // Sitio libre: se queda donde prefiere.
+        assert_eq!(
+            y_de_rotulo(600.0, 80.0, 20.0, 200.0, 400.0, isla, techo),
+            200.0
+        );
+        // Debajo de la isla: se va al alternativo.
+        assert_eq!(
+            y_de_rotulo(60.0, 80.0, 20.0, 60.0, 400.0, isla, techo),
+            400.0
+        );
+        // Por encima del techo: tambien.
+        assert_eq!(
+            y_de_rotulo(600.0, 80.0, 20.0, 10.0, 400.0, isla, techo),
+            400.0
+        );
+        // Caso negativo: si los dos estorban, se pega al techo y no se
+        // pierde arriba.
+        assert_eq!(y_de_rotulo(60.0, 80.0, 20.0, 5.0, 60.0, isla, techo), 36.0);
+    }
+
+    #[test]
+    fn mezclar_da_los_extremos_y_el_medio() {
+        let a = Color::NEGRO;
+        let b = Color::BLANCO;
+        assert_eq!(mezcla(a, b, 0.0), a);
+        assert_eq!(mezcla(a, b, 1.0), b);
+        assert_eq!(mezcla(a, b, 0.5).r, 0.5);
     }
 
     #[test]

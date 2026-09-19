@@ -30,6 +30,7 @@ use pixpin_universo::{
 use super::Pedido;
 use super::abrir::{self, Apertura, Motivo};
 use super::cargador::Cargador;
+use super::cielo::Cielo;
 use super::estrellas::Estrellas;
 use super::pintar::{self, Contexto, PALETA};
 use crate::miniaturas::Miniaturas;
@@ -134,6 +135,7 @@ pub struct Sesion {
     guardar_en: Option<Instant>,
     visto: (u64, u64),
     estrellas: Option<Estrellas>,
+    cielo: Cielo,
     miniaturas: Miniaturas,
     indice_busqueda: Option<(u64, IndiceBusqueda)>,
     /// El texto del buscador, si esta abierto.
@@ -312,6 +314,7 @@ impl Sesion {
             guardar_en: None,
             visto: (0, 0),
             estrellas: None,
+            cielo: Cielo::default(),
             // D238: menos miniaturas en Ligero.
             miniaturas: Miniaturas::con_lado(if ligero { 120 } else { 164 }),
             indice_busqueda: None,
@@ -1405,11 +1408,23 @@ impl Sesion {
         self.revisar_cuadernos();
         self.rehacer_cuentas();
 
+        // El cielo del movil (degradado y nebulosas) es una pasada de
+        // pantalla entera: medido a 3000 x 2000, unos 2,5 ms frente a los
+        // 0,5 de un `Clear`, que la grafica resuelve con su borrado rapido.
+        // En Ligero no se paga: se queda el color liso `CosmosBase`, que es
+        // el mismo del movil sin el degradado. Ver `cielo`.
+        if !self.ligero
+            && let Err(err) = self.cielo.preparar(motor, self.tamano.0, self.tamano.1)
+        {
+            // Sin el bitmap, `fondo` limpia con un color liso: se pierde el
+            // degradado, no la pantalla.
+            tracing::warn!(?err, "sin degradado de cielo");
+        }
         let capas = if self.ligero { 1 } else { 3 };
         let s = self
             .estrellas
             .get_or_insert_with(|| Estrellas::nuevas(0x5eed, capas));
-        if let Err(err) = s.preparar(motor, self.tamano.0, self.tamano.1) {
+        if let Err(err) = s.preparar(motor, self.tamano.0, self.tamano.1, e) {
             // Son adorno: sin ellas el cielo es liso. Sin capas no se
             // vuelve a intentar en cada fotograma.
             tracing::warn!(?err, "sin estrellas de fondo");
@@ -1437,13 +1452,22 @@ impl Sesion {
         if let Some(s) = self.estrellas.as_mut() {
             s.soltar();
         }
+        self.cielo.soltar();
         self.miniaturas.soltar();
     }
 
     /// El cielo y los astros, debajo de las anotaciones. En pixeles de
     /// pantalla: quien llama quita antes la vista del mundo.
     pub fn pintar_detras(&self, p: &Pintor, efectiva: &Camara) {
-        pintar::fondo(p, self.estrellas.as_ref(), efectiva, self.en_movimiento());
+        pintar::fondo(
+            p,
+            Some(&self.cielo),
+            self.estrellas.as_ref(),
+            efectiva,
+            self.en_movimiento(),
+            self.tamano.0,
+            self.tamano.1,
+        );
         self.con_contexto(|c| {
             pintar::conexiones(p, c, efectiva);
             pintar::astros(p, c, efectiva);
@@ -1493,6 +1517,12 @@ impl Sesion {
                 )
             })
             .collect();
+        let pan = self.paneles();
+        let etiqueta = |n: usize| {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("n", n);
+            self.textos.t_args("universo-archivos", &args)
+        };
         let c = Contexto {
             u: &self.u,
             vistos: &self.vistos,
@@ -1506,6 +1536,12 @@ impl Sesion {
             escala: self.escala(),
             miniaturas: &self.miniaturas,
             raiz: &self.raiz,
+            etiqueta_archivos: &etiqueta,
+            // Los paneles se pintan despues que los astros: un rotulo que
+            // caiga bajo ellos desaparece (la falla del rotulo detras de la
+            // isla de herramientas).
+            estorbo: rectf(self.barra(&pan).marco),
+            techo: (pan.ruta.y + pan.ruta.alto as i32) as f32,
         };
         f(&c)
     }
@@ -1926,6 +1962,24 @@ impl Sesion {
         hecho
     }
 
+    /// «N proyectos · N archivos · N conexiones», como la segunda linea del
+    /// titulo en el movil (`Galaxia.kt:460-467`).
+    fn recuento(&self) -> String {
+        let (mut galaxias, mut lunas) = (0usize, 0usize);
+        for a in &self.u.astros {
+            match a.clase {
+                Clase::Galaxia { .. } => galaxias += 1,
+                Clase::Luna { .. } => lunas += 1,
+                Clase::Planeta => {}
+            }
+        }
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("p", galaxias);
+        args.set("a", lunas);
+        args.set("c", self.u.conexiones.len());
+        self.textos.t_args("universo-recuento", &args)
+    }
+
     fn pintar_ruta(&self, p: &Pintor, pan: &Paneles) {
         let e = self.escala();
         p.rellenar(rectf(pan.ruta), PALETA.panel);
@@ -1960,8 +2014,24 @@ impl Sesion {
                 );
             }
         }
-        // El buscador.
+        // El recuento del movil («N proyectos · N archivos · N conexiones»),
+        // pegado al buscador: dice de un vistazo lo que hay sin tener que
+        // alejarse a verlo. Solo si le quedan cien pixeles propios, que en
+        // una ventana estrecha se comeria la ruta.
         let b = rectf(pan.buscador);
+        let cuenta = self.recuento();
+        let (wc, _) = p.medir_texto(&cuenta, tam);
+        let xc = b.x - 12.0 * e - wc;
+        if xc > pan.ruta.x as f32 + 200.0 * e {
+            p.texto(
+                &cuenta,
+                xc,
+                pan.ruta.y as f32 + (pan.ruta.alto as f32 - tam * 1.3) / 2.0,
+                tam,
+                PALETA.texto_suave,
+            );
+        }
+        // El buscador.
         p.rellenar_redondeado(b, 6.0 * e, PALETA.borde_panel);
         let (texto, color) = match &self.busqueda {
             Some(q) => (format!("{q}|"), PALETA.texto),
@@ -2040,7 +2110,7 @@ impl Sesion {
                 continue;
             };
             let (x, y) = mundo_a_minimapa(m, cosmos, (a.x, a.y));
-            p.circulo((x, y), 3.0 * e, pintar::color_avatar(proyecto));
+            p.circulo((x, y), 3.0 * e, pintar::color_de_sol(proyecto));
         }
         // La vista actual, recortada al minimapa.
         let (x0, y0, x1, y1) = efectiva.ventana(ancho, alto);
