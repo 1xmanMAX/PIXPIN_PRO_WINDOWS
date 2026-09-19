@@ -14,6 +14,10 @@
 //! anuncio mDNS que el movil (`_pixpin._tcp` con `g`, `id`, `l`, `n`). Lo
 //! que todavia no: juntar los chats, que necesita el `Disco` del movil
 //! portado sobre el almacen de aqui.
+//!
+//! «Recibir» y «Enviar» de «Pasar algo a otra persona» abren sus pantallas
+//! aqui mismo (`recibir_wifi`, `enviar_wifi`), con la flecha de volver
+//! arriba: en el movil todo eso cuelga de Sincronizar, y aqui tambien.
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
@@ -35,6 +39,7 @@ use pixpin_store::{Catalogo, Ubicacion};
 use crate::caja_dibujo::hex;
 use crate::overlay::Recursos;
 
+mod enviar_wifi;
 mod recibir_wifi;
 
 const ANCHO_LOGICO: u32 = 480;
@@ -112,6 +117,7 @@ enum Aviso {
     /// Lo que cuentan los hilos de «Recibir por Wi-Fi», con el turno de la
     /// pantalla que los lanzo: lo de una pantalla ya cerrada no pisa la nueva.
     Recibir(u64, recibir_wifi::Estado),
+    Enviar(u64, enviar_wifi::Novedad),
 }
 
 /// Lo que necesitan los hilos de recibir y enviar: donde vive todo, quien
@@ -137,6 +143,7 @@ enum Tecla {
 enum Sub {
     Portada,
     Recibir(Box<recibir_wifi::Recibir>),
+    Enviar(Box<enviar_wifi::Enviar>),
 }
 
 /// Que se esta escribiendo.
@@ -185,7 +192,8 @@ enum Accion {
     ConfirmarSalir,
     /// Los dos botones de «Pasar algo a otra persona».
     AbrirRecibir,
-    Enviar,
+    AbrirEnviar,
+    Enviar(enviar_wifi::Toque),
     /// La flecha de una sub-pantalla: a la portada.
     Volver,
     Recibir(recibir_wifi::Toque),
@@ -245,6 +253,7 @@ impl Pantalla {
         match &self.sub {
             Sub::Portada => false,
             Sub::Recibir(r) => r.animando(),
+            Sub::Enviar(e) => e.animando(),
         }
     }
 
@@ -253,6 +262,7 @@ impl Pantalla {
         match &mut self.sub {
             Sub::Portada => false,
             Sub::Recibir(r) => recibir_wifi::tecla(r, t, &cx),
+            Sub::Enviar(e) => enviar_wifi::tecla(e, t, &cx),
         }
     }
 }
@@ -426,7 +436,9 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         .map(|(_, a)| a.clone());
                     match accion {
                         Some(Accion::Cerrar) => break 'bucle,
-                        Some(a) => atender(a, &mut pantalla, &tx, puerto),
+                        Some(a) => atender(a, &mut pantalla, &tx, puerto, &|| {
+                            pixpin_shell::elegir::pedir_ficheros(ventana.handle())
+                        }),
                         None if y < BARRA * escala as f32 / 100.0 => {
                             ventana.capturar_raton();
                             arrastre = Some((p, marco));
@@ -475,6 +487,14 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         r.estado = estado;
                     }
                 }
+                Aviso::Enviar(turno, n) => {
+                    let cx = pantalla.contexto();
+                    if let Sub::Enviar(s) = &mut pantalla.sub
+                        && s.turno == turno
+                    {
+                        enviar_wifi::novedad(s, n, &cx);
+                    }
+                }
             }
             hay_que_pintar = true;
         }
@@ -514,7 +534,13 @@ fn escribir(c: &mut Campo, ch: char) {
     }
 }
 
-fn atender(accion: Accion, s: &mut Pantalla, tx: &mpsc::Sender<Aviso>, puerto: Option<u16>) {
+fn atender(
+    accion: Accion,
+    s: &mut Pantalla,
+    tx: &mpsc::Sender<Aviso>,
+    puerto: Option<u16>,
+    elegir: &dyn Fn() -> Vec<PathBuf>,
+) {
     match accion {
         Accion::Cerrar => {}
         Accion::Renombrar => {
@@ -573,12 +599,13 @@ fn atender(accion: Accion, s: &mut Pantalla, tx: &mpsc::Sender<Aviso>, puerto: O
                 s.volver();
             }
         }
-        Accion::Enviar => {
-            s.fase = Fase::Terminado {
-                titulo: "Enviar".into(),
-                texto: "Enviar desde el ordenador llega en la próxima versión. Mientras, \
-                        en el móvil: Sincronizar → Recibir, y aquí Recibir le enseña el código."
-                    .into(),
+        Accion::AbrirEnviar => s.entrar(|t| Sub::Enviar(Box::new(enviar_wifi::Enviar::nuevo(t)))),
+        Accion::Enviar(toque) => {
+            let cx = s.contexto();
+            if let Sub::Enviar(e) = &mut s.sub
+                && enviar_wifi::tocar(e, toque, &cx, elegir)
+            {
+                s.volver();
             }
         }
         Accion::CerrarFase => s.fase = Fase::Nada,
@@ -1735,6 +1762,9 @@ fn pintar(
             // El movil deja 20 dp a los lados en estas pantallas.
             y = recibir_wifi::pintar(&mut l, textos, r, 20.0 * e, ancho - 40.0 * e, y);
         }
+        Sub::Enviar(en) => {
+            y = enviar_wifi::pintar(&mut l, textos, en, 20.0 * e, ancho - 40.0 * e, y);
+        }
         Sub::Portada => y = pintar_portada(&mut l, textos, s, ancho, y),
     }
     y += 40.0 * e;
@@ -1753,6 +1783,7 @@ fn pintar(
     let (titulo, vuelta) = match &s.sub {
         Sub::Portada => (textos.t("sinc-titulo"), Accion::Cerrar),
         Sub::Recibir(_) => (textos.t("rw-titulo"), Accion::Volver),
+        Sub::Enviar(_) => (textos.t("ew-titulo"), Accion::Volver),
     };
     l.icono(&VOLVER, 28.0 * e, barra / 2.0, TEXTO, vuelta);
     let tam = 24.0 * e;
@@ -1894,7 +1925,7 @@ fn pintar_portada(
         &textos.t("sinc-enviar"),
         Some(&ENVIAR),
         false,
-        Accion::Enviar,
+        Accion::AbrirEnviar,
     );
     l.parrafo(&tambien, xi, yb + 56.0 * e, wi, 12.0 * e, SUAVE);
     y += hp;
