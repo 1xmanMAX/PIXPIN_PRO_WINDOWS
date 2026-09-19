@@ -75,6 +75,10 @@ pub enum Respuesta {
         proyecto: String,
         referencia: String,
     },
+    /// Se fue al chat: el universo se aparta (se minimiza) para que el chat
+    /// se vea, porque el editor va siempre encima. Sigue abierto y vuelve
+    /// con su boton, con Ctrl+U o desde la bandeja.
+    Apartarse,
 }
 
 /// Lo que la sesion necesita saber del editor en cada evento.
@@ -137,6 +141,9 @@ pub struct Sesion {
     textos: Catalogo,
     /// La hoja que hay que abrir al cerrar el universo (D224).
     pub hoja_pedida: Option<(String, String)>,
+    /// Como abrir el chat (Ctrl+clic en una galaxia o una nota, «Ir al
+    /// chat» del inspector). Lo pone quien lanza el universo.
+    pub al_chat: Option<abrir::AlChat>,
     hwnd: isize,
     /// Pixeles fisicos de la ventana y escala del monitor: para encajar.
     tamano: (f32, f32),
@@ -307,6 +314,7 @@ impl Sesion {
             aviso: None,
             textos,
             hoja_pedida: None,
+            al_chat: None,
             hwnd: 0,
             tamano: (1920.0, 1080.0),
             escala_por_cien: 100,
@@ -644,11 +652,23 @@ impl Sesion {
                 }
                 Respuesta::Consumido { repintar: true }
             }
+            (_, a @ Apertura::Chat { .. }) => self.ir_al_chat(&a),
             (_, a) => {
-                abrir::ejecutar(&a);
+                abrir::ejecutar(&a, self.al_chat.as_ref());
                 Respuesta::Consumido { repintar: false }
             }
         }
+    }
+
+    /// Lleva al chat y aparta el universo para que se vea. Sin forma de
+    /// abrir el chat no se aparta: quedaria minimizado para nada.
+    fn ir_al_chat(&mut self, a: &Apertura) -> Respuesta {
+        if self.al_chat.is_none() {
+            tracing::warn!("ir al chat sin saber como abrirlo");
+            return Respuesta::Consumido { repintar: false };
+        }
+        abrir::ejecutar(a, self.al_chat.as_ref());
+        Respuesta::Apartarse
     }
 
     fn ir_a_hallazgo(&mut self, h: Hallazgo, camara: &mut Camara) {
@@ -1778,7 +1798,7 @@ impl Sesion {
                         .u
                         .astro(id)
                         .and_then(|x| x.codigo().map(str::to_string));
-                    abrir::ejecutar(&Apertura::Chat {
+                    return self.ir_al_chat(&Apertura::Chat {
                         proyecto: p,
                         codigo,
                     });
@@ -2315,6 +2335,22 @@ mod pruebas {
         };
         let c = s.camara_inicial();
         assert_eq!((c.x, c.y, c.zoom), (1.0, 2.0, 0.5));
+    }
+
+    #[test]
+    fn sin_forma_de_abrir_el_chat_el_universo_no_se_aparta() {
+        // Caso negativo: quedarse minimizado sin que el chat aparezca
+        // dejaria al usuario sin nada delante. (Con `al_chat` se abriria
+        // una ventana de verdad, y eso lo prueba el usuario a mano.)
+        let mut s = sesion(Universo::nuevo());
+        let r = s.resolver_apertura((
+            None,
+            Apertura::Chat {
+                proyecto: "p1".into(),
+                codigo: None,
+            },
+        ));
+        assert_eq!(r, Respuesta::Consumido { repintar: false });
     }
 
     #[test]

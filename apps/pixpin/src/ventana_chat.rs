@@ -353,6 +353,52 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, lienzo: Opcion
     }
 }
 
+/// Adonde hay que llevar el chat: un proyecto y, si lo hay, un mensaje por
+/// su codigo unico. Lo deja el universo (Ctrl+clic en una galaxia o en una
+/// nota) y lo recoge el hilo del chat al despertar o al nacer.
+static IR_A: std::sync::Mutex<Option<(String, Option<String>)>> = std::sync::Mutex::new(None);
+
+/// Lo que dura resaltado el mensaje al que se llega desde el universo.
+const RESALTE: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// Lleva el chat a un proyecto y, si se da, a un mensaje suyo. Abre el chat
+/// si estaba cerrado; si no, lo trae al frente y lo despierta.
+///
+/// Solo cabe un destino: si se piden dos seguidos gana el ultimo, que es el
+/// que el usuario acaba de pulsar.
+pub(crate) fn ir_a(
+    idioma: pixpin_store::Idioma,
+    ubicacion: Ubicacion,
+    opciones: OpcionesLienzo,
+    proyecto: String,
+    codigo: Option<String>,
+) {
+    if let Ok(mut g) = IR_A.lock() {
+        *g = Some((proyecto, codigo));
+    }
+    let ya = ABIERTA.load(std::sync::atomic::Ordering::SeqCst);
+    if ya > 0 {
+        VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(ya as *mut _));
+        pixpin_shell::overlay::despertar(ya);
+    } else {
+        // Cerrado o naciendo: el bucle lo recoge en su primera vuelta.
+        lanzar(idioma, ubicacion, opciones);
+    }
+}
+
+fn tomar_ir_a() -> Option<(String, Option<String>)> {
+    IR_A.lock().ok().and_then(|mut g| g.take())
+}
+
+/// Donde esta un mensaje por su codigo unico, que es lo que el universo
+/// sabe de el.
+pub(crate) fn indice_de_codigo(
+    mensajes: &[pixpin_proyecto::cuaderno::Mensaje],
+    codigo: &str,
+) -> Option<usize> {
+    mensajes.iter().position(|m| m.codigo_unico() == codigo)
+}
+
 pub fn abrir(
     recursos: &Recursos,
     textos: &Catalogo,
@@ -1734,6 +1780,54 @@ pub fn abrir(
             sello_indice = Some(ahora_sello);
         }
 
+        // Lo que pidio el universo (Ctrl+clic en una galaxia o una nota):
+        // abrir ese proyecto como si se pulsara su fila y, si hay mensaje,
+        // llevar la vista a el y resaltarlo. Se mira en cada vuelta, que es
+        // un candado sin nadie esperando: asi vale al despertar y al nacer.
+        if let Some((proyecto, codigo)) = tomar_ir_a() {
+            match fichas.iter().position(|f| f.id == proyecto) {
+                Some(i) => {
+                    if elegida != Some(i) || abierto.is_none() {
+                        if let Some(a) = abierto.as_mut() {
+                            cerrar_hoja(ubicacion, a);
+                            apagar_lienzo(ubicacion, a);
+                        }
+                        if let Some(a) = abierto.take() {
+                            borradores.insert(a.ficha.id.clone(), a.borrador);
+                        }
+                        marcados.clear();
+                        elegida = Some(i);
+                        let mut nuevo = abrir_proyecto(ubicacion, &fichas[i]);
+                        nuevo.borrador = borradores.remove(&fichas[i].id).unwrap_or_default();
+                        abierto = Some(nuevo);
+                    }
+                    if let Some(a) = abierto.as_mut() {
+                        // Lo que tapara la conversacion se quita: se viene a
+                        // ver ese mensaje. La hoja se guarda al cerrarse.
+                        a.info = None;
+                        cerrar_hoja(ubicacion, a);
+                        if let Some(j) = codigo.and_then(|c| indice_de_codigo(&a.mensajes, &c)) {
+                            a.ir_a = Some(j);
+                            a.resaltado = Some((j, std::time::Instant::now()));
+                        }
+                    }
+                    menu = None;
+                    hay_que_pintar = true;
+                }
+                None => {
+                    tracing::warn!(%proyecto, "el universo pidio un proyecto que no esta en la lista")
+                }
+            }
+        }
+        // El resalte se apaga solo, como el aviso.
+        if let Some(a) = abierto.as_mut()
+            && a.resaltado
+                .is_some_and(|(_, desde)| desde.elapsed() >= RESALTE)
+        {
+            a.resaltado = None;
+            hay_que_pintar = true;
+        }
+
         // Un PDF que haya entrado abre su propio proyecto, con una hoja por
         // pagina: cada chat ES un proyecto, y un documento entero no es un
         // adjunto suelto de otra conversacion.
@@ -1794,7 +1888,11 @@ pub fn abrir(
 
         // Llevar la vista a un mensaje (una cita, el fijado, un comentario):
         // un poco por encima de el, para que se vea de donde viene.
+        // Un proyecto recien abierto aun no esta medido (se mide al pintar):
+        // entonces se espera a la vuelta siguiente, en vez de perder el
+        // destino.
         if let Some(a) = abierto.as_mut()
+            && a.colocado.borrow().puestos.len() == a.mensajes.len()
             && let Some(j) = a.ir_a.take()
         {
             let area = disposicion.historial(a.alto_caja.get(), a.fijado.is_some(), escala);
@@ -1957,17 +2055,32 @@ pub fn abrir(
                     .iter()
                     .any(|r| previas.pendiente(r));
             }
+            // Un destino que esperaba a que se midieran las burbujas: ya
+            // estan, otra vuelta para llevar la vista alli.
+            // Solo con el historial a la vista: con la hoja o el panel
+            // delante no se mide nada, y esto daria vueltas sin parar.
+            if abierto
+                .as_ref()
+                .is_some_and(|a| a.ir_a.is_some() && a.hoja.is_none() && a.info.is_none())
+            {
+                hay_que_pintar = true;
+            }
         }
         // Sin nada que hacer, el hilo duerme: la ventana abierta en reposo no
         // cuesta CPU. Con un aviso a la vista, solo hasta que toque quitarlo.
         let hasta_el_aviso = aviso.as_ref().map(|(_, desde)| {
             AVISO_MS.saturating_sub(desde.elapsed().as_millis() as u64) as u32 + 1
         });
-        pixpin_shell::overlay::esperar_eventos(if hay_que_pintar {
-            Some(0)
-        } else {
-            hasta_el_aviso
-        });
+        // Y hasta que se apague el resalte, si hay uno.
+        let hasta_el_resalte = abierto
+            .as_ref()
+            .and_then(|a| a.resaltado)
+            .map(|(_, desde)| RESALTE.saturating_sub(desde.elapsed()).as_millis() as u32 + 1);
+        let dormir = match (hasta_el_aviso, hasta_el_resalte) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        pixpin_shell::overlay::esperar_eventos(if hay_que_pintar { Some(0) } else { dormir });
     }
 
     // Donde quedo, para la proxima vez.
@@ -2068,6 +2181,9 @@ struct Abierto {
     zonas: std::cell::RefCell<Vec<(Rect, Zona)>>,
     /// A que mensaje hay que llevar la vista en cuanto se sepa donde cae.
     ir_a: Option<usize>,
+    /// El mensaje que se resalta y desde cuando: al llegar desde el
+    /// universo, durante `RESALTE`.
+    resaltado: Option<(usize, std::time::Instant)>,
     /// Desde arriba. `None` es «pegado al final», que es como se abre y
     /// como se queda hasta que el usuario sube.
     scroll: Option<i32>,
@@ -2758,6 +2874,21 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                     alto: burbuja.alto as f32 + 2.0 * e,
                 },
                 con_alfa(tema.enviar, 0.16),
+            );
+        }
+        // El mensaje al que se llego desde el universo, tenido un momento
+        // del color de la fila elegida: entre cien burbujas, dice cual era.
+        if a.resaltado
+            .is_some_and(|(j, desde)| j == i && desde.elapsed() < RESALTE)
+        {
+            p.rellenar(
+                RectF {
+                    x: area.x as f32,
+                    y: burbuja.y as f32 - 1.0 * e,
+                    ancho: area.ancho as f32,
+                    alto: burbuja.alto as f32 + 2.0 * e,
+                },
+                con_alfa(tema.fila_elegida, 0.35),
             );
         }
         if !a.marcados.is_empty() {
@@ -3749,6 +3880,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         marcados: Default::default(),
         zonas: std::cell::RefCell::new(Vec::new()),
         ir_a: None,
+        resaltado: None,
         alto_caja: std::cell::Cell::new(0),
         scroll: None,
         alto: std::cell::Cell::new(0),
@@ -7813,6 +7945,36 @@ mod pruebas_universo {
         assert_eq!(otra[0].ruta.as_deref(), Some("archivos/plano (1).pdf"));
         assert_eq!(otra[0].numero, hechos[1].numero + 1);
         let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn el_mensaje_se_encuentra_por_su_codigo_unico_y_uno_que_no_esta_no() {
+        use pixpin_proyecto::cuaderno::Mensaje;
+        let a = Mensaje {
+            id: "1".into(),
+            uid: Some("A".into()),
+            ..Default::default()
+        };
+        let b = Mensaje {
+            id: "2".into(),
+            uid: Some("B".into()),
+            ..Default::default()
+        };
+        let v = vec![a, b.clone()];
+        assert_eq!(indice_de_codigo(&v, &b.codigo_unico()), Some(1));
+        assert_eq!(indice_de_codigo(&v, "m:nada"), None);
+    }
+
+    #[test]
+    fn ir_al_chat_deja_un_solo_destino_y_gana_el_ultimo() {
+        tomar_ir_a();
+        if let Ok(mut g) = IR_A.lock() {
+            *g = Some(("p1".into(), None));
+            *g = Some(("p2".into(), Some("m:x".into())));
+        }
+        assert_eq!(tomar_ir_a(), Some(("p2".into(), Some("m:x".into()))));
+        // Caso negativo: recogido una vez, no se repite.
+        assert_eq!(tomar_ir_a(), None);
     }
 
     #[test]

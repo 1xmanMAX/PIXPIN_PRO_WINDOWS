@@ -131,6 +131,11 @@ fn abrir_en_este_hilo(
         textos,
         Some(pedido),
     );
+    sesion.al_chat = Some(abrir::AlChat {
+        idioma,
+        ubicacion: ubicacion.clone(),
+        opciones,
+    });
     if roto {
         sesion.avisar_roto();
     }

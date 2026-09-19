@@ -816,6 +816,13 @@ fn abrir_en_modo(
                             s.tras_evento(&escena);
                             continue;
                         }
+                        Respuesta::Apartarse => {
+                            // El editor va siempre encima: minimizado deja
+                            // ver el chat, y `universo::lanzar` lo devuelve.
+                            ventana.minimizar();
+                            s.tras_evento(&escena);
+                            continue;
+                        }
                         Respuesta::Cerrar | Respuesta::AbrirHoja { .. } => break 'bucle,
                     }
                 }

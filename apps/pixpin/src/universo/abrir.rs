@@ -131,10 +131,19 @@ pub fn que_abre_ficha(f: &FichaLuna, raiz: &Path) -> Apertura {
     }
 }
 
+/// Lo que hace falta para abrir el chat desde el universo, que vive en
+/// otro hilo y puede estar cerrado.
+#[derive(Clone)]
+pub struct AlChat {
+    pub idioma: pixpin_store::Idioma,
+    pub ubicacion: pixpin_store::Ubicacion,
+    pub opciones: crate::ventana_chat::OpcionesLienzo,
+}
+
 /// Lo que se hace con cada apertura. `Hoja` no: la abre quien llama al
 /// editor (ver `Sesion::hoja_pedida`), porque hay que cerrar el universo
-/// antes. `Chat` se enchufa cuando el chat sepa ir a un mensaje (Tarea 18).
-pub fn ejecutar(a: &Apertura) {
+/// antes. `Chat` necesita `chat`; sin el (en las pruebas) no hace nada.
+pub fn ejecutar(a: &Apertura, chat: Option<&AlChat>) {
     let abrir = |r: &Path| {
         if let Err(e) = pixpin_shell::abrir(r) {
             tracing::warn!(?e, ruta = %r.display(), "no se pudo abrir desde el universo");
@@ -143,9 +152,16 @@ pub fn ejecutar(a: &Apertura) {
     match a {
         Apertura::Fichero(r) | Apertura::Carpeta(r) => abrir(r),
         Apertura::Varios(v) => v.iter().for_each(|r| abrir(r)),
-        Apertura::Chat { proyecto, codigo } => {
-            tracing::info!(%proyecto, ?codigo, "ir al chat desde el universo (pendiente)");
-        }
+        Apertura::Chat { proyecto, codigo } => match chat {
+            Some(c) => crate::ventana_chat::ir_a(
+                c.idioma,
+                c.ubicacion.clone(),
+                c.opciones,
+                proyecto.clone(),
+                codigo.clone(),
+            ),
+            None => tracing::warn!(%proyecto, "ir al chat sin saber como abrirlo"),
+        },
         Apertura::Hoja { .. } | Apertura::Nada(_) => {}
     }
 }
