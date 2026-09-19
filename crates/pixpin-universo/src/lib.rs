@@ -18,6 +18,7 @@ mod historia;
 pub mod jerarquia;
 pub mod nebulosa;
 pub mod universo;
+pub mod vista;
 
 pub use astro::{
     Astro, Clase, Conexion, IdAstro, RADIO_GALAXIA, RADIO_LUNA, RADIO_PLANETA_L, RADIO_PLANETA_M,
@@ -31,3 +32,6 @@ pub use galaxias::{DISTANCIA_MINIMA, Informe, SEPARACION, siguiente_hueco, sincr
 pub use herramienta::HerramientaUniverso;
 pub use jerarquia::{Aterriza, Rechazo};
 pub use universo::{Encuadre, Universo, VERSION};
+pub use vista::{
+    RejillaAstros, TOPE_DETALLE, Visto, astro_en, conexiones_visibles, extremos, visibles,
+};
