@@ -13,6 +13,7 @@ pub mod astro;
 pub mod buscar;
 pub mod detalle;
 pub mod ficha;
+pub mod formato;
 pub mod galaxias;
 pub mod herramienta;
 pub mod historia;
@@ -31,6 +32,7 @@ pub use detalle::{
     HISTERESIS, Nivel, Tipo, ZOOM_MINIMO_UNIVERSO, abre_hijos, nivel, nivel_con_memoria, tipo_de,
 };
 pub use ficha::{ClaseLuna, EXTRACTO, FichaLuna, es_colocable, extracto};
+pub use formato::{Cargado, ErrorUniverso, FICHERO, cargar, guardar, ruta};
 pub use galaxias::{DISTANCIA_MINIMA, Informe, SEPARACION, siguiente_hueco, sincronizar};
 pub use herramienta::HerramientaUniverso;
 pub use jerarquia::{Aterriza, Rechazo};
