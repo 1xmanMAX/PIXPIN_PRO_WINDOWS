@@ -349,6 +349,17 @@ sinc-conectar = Conectar
 sinc-cancelar = Cancelar
 sinc-ocultar = Ocultar
 sinc-vale = Vale
+sinc-con-todos-rondas = Sin preguntar nada, uno detrás de otro y en dos rondas, para que todos acaben con todo.
+sinc-elegir-titulo = ¿Qué sincronizar?
+sinc-elegir-con = Con { $otro }. Lo marcado queda igual en los dos.
+sinc-en-los-dos = En los dos
+sinc-solo-en-uno = Solo en uno
+sinc-este-aparato-n = Este aparato · { $n }
+sinc-elegir-como = Lo que cambió en los dos se junta: figura a figura, celda a celda, párrafo a párrafo. Si los dos tocaron lo mismo, gana el último cambio, y lo de antes queda en «Copias de seguridad».
+sinc-todo = Todo
+sinc-nada = Nada
+sinc-sincronizar-n = Sincronizar { $n }
+sinc-sincronizando = Sincronizando
 
 ## El universo
 universo-titulo = Universo

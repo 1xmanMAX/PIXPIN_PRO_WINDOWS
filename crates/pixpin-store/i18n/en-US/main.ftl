@@ -348,6 +348,17 @@ sinc-conectar = Connect
 sinc-cancelar = Cancel
 sinc-ocultar = Hide
 sinc-vale = OK
+sinc-con-todos-rondas = Without asking, one after another and in two rounds, so that everyone ends up with everything.
+sinc-elegir-titulo = What to sync?
+sinc-elegir-con = With { $otro }. What you tick ends up the same on both.
+sinc-en-los-dos = On both
+sinc-solo-en-uno = Only on one
+sinc-este-aparato-n = This device · { $n }
+sinc-elegir-como = What changed on both is merged: shape by shape, cell by cell, paragraph by paragraph. If both touched the same thing, the last change wins, and the earlier one stays in «Backups».
+sinc-todo = All
+sinc-nada = None
+sinc-sincronizar-n = Sync { $n }
+sinc-sincronizando = Syncing
 
 ## The universe
 universo-titulo = Universe

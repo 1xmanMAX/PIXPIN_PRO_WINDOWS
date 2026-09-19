@@ -7,13 +7,15 @@
 //! noche. El usuario compara las dos pantallas una al lado de la otra: lo que
 //! aqui se aparte de alli lo va a ver.
 //!
-//! Lo que ya habla con el movil, por el protocolo de verdad (`pixpin-sincro`):
-//! crear un grupo, unirse con un codigo, aceptar a quien se une, el saludo con
-//! los miembros, la sonda `PING`/`PONG` que dice quien esta disponible, y el
-//! catalogo de proyectos del otro, y encontrarse por la red con el mismo
-//! anuncio mDNS que el movil (`_pixpin._tcp` con `g`, `id`, `l`, `n`). Lo
-//! que todavia no: juntar los chats, que necesita el `Disco` del movil
-//! portado sobre el almacen de aqui.
+//! Habla con el movil por el protocolo de verdad (`pixpin-sincro`): crear un
+//! grupo, unirse con un codigo, aceptar a quien se une, la sonda `PING`/`PONG`
+//! que dice quien esta disponible, encontrarse por la red con el mismo
+//! anuncio mDNS que el movil (`_pixpin._tcp` con `g`, `id`, `l`, `n`) y
+//! **juntar los chats y sus archivos en los dos sentidos**: cuando el movil
+//! llama, este equipo responde con el `Respondedor`; cuando se pulsa
+//! «Sincronizar» aqui, se elige que en «¿Que sincronizar?» (`elegir`) y la
+//! `Sesion` lleva la vuelta. Lo de este equipo lo ve el protocolo a traves
+//! de `pixpin_proyecto::vista::DiscoPc`, sin cambiar como se guarda.
 //!
 //! «Recibir» y «Enviar» de «Pasar algo a otra persona» abren sus pantallas
 //! aqui mismo (`recibir_wifi`, `enviar_wifi`), con la flecha de volver
@@ -29,16 +31,21 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use pixpin_geom::{Punto, Rect};
 use pixpin_proyecto::identidad::{Aparato, Identidad};
+use pixpin_proyecto::vista::DiscoPc;
 use pixpin_render::icono::{Icono, Pintura, TrazoIcono};
 use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_sincro::canal::{Canal, Tipo};
+use pixpin_sincro::disco::Disco;
 use pixpin_sincro::mensajes::{self as m, Peticion, Respuesta};
+use pixpin_sincro::protocolo::{ErrorSincro, Hecho, Respondedor, Sesion};
+use pixpin_sincro::vuelta;
 use pixpin_store::{Catalogo, Ubicacion};
 
 use crate::caja_dibujo::hex;
 use crate::overlay::Recursos;
 
+mod elegir;
 mod enviar_wifi;
 mod recibir_wifi;
 
@@ -66,6 +73,8 @@ const ERROR: Color = hex(0xffb4ab);
 const DIALOGO: Color = hex(0x192123);
 /// `VERDE` de `SincronizarActivity.kt`.
 const VERDE: Color = hex(0x2e9e4f);
+/// `ROJO` de `SincronizarActivity.kt`: lo que solo esta en un aparato.
+const ROJO: Color = hex(0xe0453a);
 
 /// Solo una ventana de sincronizar a la vez: dos escuchando en el mismo
 /// puerto y escribiendo la misma identidad se pisarian.
@@ -101,7 +110,14 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion) {
 enum Fase {
     Nada,
     Trabajando(String),
-    Terminado { titulo: String, texto: String },
+    /// Sincronizando: lo que hace, y la barra si se pasan archivos.
+    Progreso(pixpin_sincro::vuelta::Trabajo),
+    Terminado {
+        titulo: String,
+        texto: String,
+        /// Lo que merece leerse aparte, en el color de los avisos.
+        aviso: Option<String>,
+    },
     Fallo(String),
 }
 
@@ -118,6 +134,13 @@ enum Aviso {
     /// pantalla que los lanzo: lo de una pantalla ya cerrada no pisa la nueva.
     Recibir(u64, recibir_wifi::Estado),
     Enviar(u64, enviar_wifi::Novedad),
+    /// La vuelta pregunta que chats: se abre «¿Que sincronizar?» y el hilo
+    /// espera la respuesta por `responde`.
+    Elegir {
+        otro: String,
+        filas: Vec<pixpin_sincro::vuelta::Fila>,
+        responde: mpsc::Sender<Option<std::collections::BTreeSet<String>>>,
+    },
 }
 
 /// Lo que necesitan los hilos de recibir y enviar: donde vive todo, quien
@@ -144,6 +167,7 @@ enum Sub {
     Portada,
     Recibir(Box<recibir_wifi::Recibir>),
     Enviar(Box<enviar_wifi::Enviar>),
+    Elegir(Box<elegir::Eligiendo>),
 }
 
 /// Que se esta escribiendo.
@@ -186,6 +210,9 @@ enum Accion {
     Unirme,
     /// Nombre, host y puerto del otro.
     SincronizarCon(String, String, u16),
+    /// «Sincronizar con todos»: nombre, host y puerto de cada uno.
+    SincronizarConTodos(Vec<(String, String, u16)>),
+    Elegir(elegir::Toque),
     ConectarDireccion,
     VerCodigo,
     SalirDelGrupo,
@@ -250,8 +277,12 @@ impl Pantalla {
     }
 
     fn animando(&self) -> bool {
+        // La barra sin total de «Sincronizando» se mueve sola.
+        if matches!(&self.fase, Fase::Progreso(t) if t.total == 0) {
+            return true;
+        }
         match &self.sub {
-            Sub::Portada => false,
+            Sub::Portada | Sub::Elegir(_) => false,
             Sub::Recibir(r) => r.animando(),
             Sub::Enviar(e) => e.animando(),
         }
@@ -260,7 +291,7 @@ impl Pantalla {
     fn tecla(&mut self, t: Tecla) -> bool {
         let cx = self.contexto();
         match &mut self.sub {
-            Sub::Portada => false,
+            Sub::Portada | Sub::Elegir(_) => false,
             Sub::Recibir(r) => recibir_wifi::tecla(r, t, &cx),
             Sub::Enviar(e) => enviar_wifi::tecla(e, t, &cx),
         }
@@ -495,6 +526,19 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         enviar_wifi::novedad(s, n, &cx);
                     }
                 }
+                Aviso::Elegir {
+                    otro,
+                    filas,
+                    responde,
+                } => {
+                    // Mientras se elige no hay dialogo encima: la lista es la
+                    // pantalla, como en el movil.
+                    pantalla.fase = Fase::Nada;
+                    pantalla.campo = None;
+                    pantalla.entrar(|_| {
+                        Sub::Elegir(Box::new(elegir::Eligiendo::nuevo(otro, filas, responde)))
+                    });
+                }
             }
             hay_que_pintar = true;
         }
@@ -586,6 +630,14 @@ fn atender(
         }
         Accion::SincronizarCon(nombre, host, p) => {
             lanzar_vuelta(&s.raiz, tx, host, p, nombre, puerto)
+        }
+        Accion::SincronizarConTodos(lista) => lanzar_con_todos(&s.raiz, tx, lista, puerto),
+        Accion::Elegir(toque) => {
+            if let Sub::Elegir(el) = &mut s.sub
+                && elegir::tocar(el, toque)
+            {
+                s.volver();
+            }
         }
         Accion::AbrirRecibir => {
             s.entrar(|t| Sub::Recibir(Box::new(recibir_wifi::Recibir::nuevo(t))))
@@ -797,6 +849,7 @@ fn miembros_o_yo(id: &Identidad) -> Vec<Aparato> {
     }
 }
 
+#[cfg(test)]
 use pixpin_sincro::grupo::sena::libre as letra_libre;
 use pixpin_sincro::grupo::{legible, valido as codigo_valido};
 
@@ -869,31 +922,8 @@ fn apuntar_direccion(raiz: &Path, id: &str, host: &str, puerto: u16) {
 
 /// `Disco.ultimaVez`: `sincro/elegidos/<id>.cuando`.
 fn ultima_vez(raiz: &Path, otro: &str) -> i64 {
-    std::fs::read_to_string(
-        carpeta_sincro(raiz)
-            .join("elegidos")
-            .join(format!("{}.cuando", limpio(otro))),
-    )
-    .ok()
-    .and_then(|t| t.trim().parse().ok())
-    .unwrap_or(0)
-}
-
-fn apuntar_vez(raiz: &Path, otro: &str, cuando: i64) {
-    let carpeta = carpeta_sincro(raiz).join("elegidos");
-    let _ = std::fs::create_dir_all(&carpeta);
-    let _ = std::fs::write(
-        carpeta.join(format!("{}.cuando", limpio(otro))),
-        cuando.to_string(),
-    );
-}
-
-/// Un id de aparato como nombre de fichero: nada que pueda salirse de la
-/// carpeta.
-fn limpio(id: &str) -> String {
-    id.chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-        .collect()
+    // La misma que apunta la sincronizacion al acabar cada chat.
+    DiscoPc::nuevo(raiz).ultima_vez(otro)
 }
 
 fn ip_local() -> Option<String> {
@@ -923,12 +953,6 @@ fn leer_respuesta<F: Read + Write>(c: &mut Canal<F>) -> Result<Respuesta> {
         anyhow::bail!(e);
     }
     Ok(r)
-}
-
-fn leer_peticion<F: Read + Write>(c: &mut Canal<F>) -> Result<Peticion> {
-    let (tipo, datos) = c.recibir()?;
-    anyhow::ensure!(tipo == Tipo::Json, "se esperaba una peticion");
-    Ok(serde_json::from_slice(&datos)?)
 }
 
 /// `Red.conectar`: 8 s para llegar y 2 min de espera, que mientras el otro
@@ -1032,10 +1056,18 @@ fn escuchar(raiz: PathBuf, tx: mpsc::Sender<Aviso>, vivo: Arc<AtomicBool>) -> Op
                     Ok((flujo, de)) => {
                         let _ = flujo.set_nonblocking(false);
                         let _ = flujo.set_read_timeout(Some(Duration::from_secs(120)));
-                        if let Err(e) = responder(flujo, &raiz, &tx, puerto) {
-                            tracing::info!(%de, ?e, "una conexion de sincronizar termino mal");
-                            let _ = tx.send(Aviso::Registro(format!("{de}: {e}")));
-                        }
+                        // Cada conexion en su hilo: mientras se junta un chat
+                        // largo, la sonda del movil tiene que seguir teniendo
+                        // respuesta, y un segundo que llame, oir «ocupado».
+                        let (raiz, tx) = (raiz.clone(), tx.clone());
+                        let _ = std::thread::Builder::new()
+                            .name("sincro-atiende".into())
+                            .spawn(move || {
+                                if let Err(e) = responder(flujo, &raiz, &tx, puerto) {
+                                    tracing::info!(%de, ?e, "una conexion de sincronizar termino mal");
+                                    let _ = tx.send(Aviso::Registro(format!("{de}: {e}")));
+                                }
+                            });
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                         std::thread::sleep(Duration::from_millis(150));
@@ -1050,9 +1082,10 @@ fn escuchar(raiz: PathBuf, tx: mpsc::Sender<Aviso>, vivo: Arc<AtomicBool>) -> Op
     Some(puerto)
 }
 
-/// `Respondedor.atender` del movil, hasta donde llega hoy este lado: la
-/// sonda, el saludo, dar letra a quien se une y despedirse. Lo demas se
-/// contesta con un error que dice la verdad, y el movil lo ensena tal cual.
+/// `Respondedor.atender` del movil, entero: la sonda, el saludo (dar letra a
+/// quien se une) y despues todo lo que pida quien dirige —inventario,
+/// mensajes, proyecto, archivos, parches, lo acordado, lapidas— sobre el
+/// almacen de este equipo visto como el del movil (`vista::DiscoPc`).
 fn responder(
     mut flujo: TcpStream,
     raiz: &Path,
@@ -1067,114 +1100,36 @@ fn responder(
         return Ok(());
     }
     let de = flujo.peer_addr().ok();
-    let actual = leer_identidad(raiz)?;
-    let codigo = actual
-        .codigo
-        .clone()
-        .context("este equipo no esta en un grupo")?;
-    let clave = pixpin_sincro::codigo::clave_de_grupo(&codigo);
-    let mut canal = Canal::saludar(flujo, &clave, nonce().context("sin azar")?, false)?;
-    let hola = leer_peticion(&mut canal)?.hola.context("falto el saludo")?;
-    let base = miembros_o_yo(&actual);
-    let (otro, juntos) = if hola.unirme {
-        let miembros = juntar(&base, &hola.miembros, None);
-        // Si vuelve alguien que ya estuvo, recupera su letra: lo que sello
-        // con ella sigue siendo suyo.
-        let suya = miembros
-            .iter()
-            .find(|x| x.id == hola.yo.id)
-            .and_then(|x| x.letra.as_ref())
-            .and_then(|l| l.chars().next());
-        let ocupadas: Vec<char> = miembros
-            .iter()
-            .filter(|x| x.id != hola.yo.id)
-            .filter_map(|x| x.letra.as_ref().and_then(|l| l.chars().next()))
-            .collect();
-        let letra = suya
-            .or_else(|| letra_libre(&ocupadas))
-            .context("El grupo ya tiene 26 aparatos")?;
-        let otro = m::Aparato {
-            letra: Some(letra.to_string()),
-            desde: ahora_ms(),
-            ..hola.yo.clone()
-        };
-        let mut juntos: Vec<Aparato> = miembros.into_iter().filter(|x| x.id != otro.id).collect();
-        juntos.push(del_cable(&otro));
-        let _ = tx.send(Aviso::Registro(format!(
-            "{} se unió al grupo con la letra {letra}",
-            otro.nombre
-        )));
-        (otro, juntos)
-    } else {
-        (
-            hola.yo.clone(),
-            juntar(&base, &hola.miembros, Some(&hola.yo)),
-        )
-    };
-    Identidad {
-        miembros: juntos.clone(),
-        ..actual.clone()
-    }
-    .guardar(raiz)?;
-    if let Some(d) = de {
-        apuntar_direccion(raiz, &otro.id, &d.ip().to_string(), hola.puerto as u16);
-    }
-    let _ = tx.send(Aviso::Identidad);
-    mandar(
-        &mut canal,
-        &Respuesta {
-            hola: Some(m::Hola {
-                yo: al_cable(&actual.yo),
-                miembros: juntos.iter().map(al_cable).collect(),
-                reloj: ahora_ms(),
-                puerto: mi_puerto as u32,
-                ..Default::default()
-            }),
-            ..Default::default()
-        },
-    )?;
-    loop {
-        // Cerrar sin despedirse es como el movil termina a veces: no es un
-        // fallo de este lado.
-        let Ok(p) = leer_peticion(&mut canal) else {
-            return Ok(());
-        };
-        match p.t.as_str() {
-            "adios" => {
-                mandar(&mut canal, &Respuesta::default())?;
-                apuntar_vez(raiz, &otro.id, ahora_ms());
-                let _ = tx.send(Aviso::Identidad);
-                return Ok(());
-            }
-            // Sin borrados que contar: la lista vacia no viaja.
-            "lapidas" => mandar(&mut canal, &Respuesta::default())?,
-            _ => {
-                let _ = tx.send(Aviso::Registro(format!(
-                    "{} quiso juntar chats: todavía no se puede desde aquí",
-                    otro.nombre
-                )));
-                mandar(
-                    &mut canal,
-                    &Respuesta {
-                        error: Some(
-                            "PixPin para Windows todavía no sabe juntar chats. Ya estáis en el \
-                             mismo grupo; juntarlos llega en su próxima versión."
-                                .into(),
-                        ),
-                        ..Default::default()
-                    },
-                )?;
-            }
+    let aviso = tx.clone();
+    let disco = DiscoPc::nuevo(raiz).con_avisos(move |c| {
+        if c == pixpin_sincro::disco::Cambio::Identidad {
+            let _ = aviso.send(Aviso::Identidad);
         }
-    }
+    });
+    let r = Respondedor {
+        disco: &disco,
+        estado: &|t: &str| {
+            let _ = tx.send(Aviso::Registro(t.to_string()));
+        },
+        ahora: &ahora_ms,
+        mi_puerto: u32::from(mi_puerto),
+        al_saludar: &|otro: &m::Aparato, puerto: u32| {
+            if let Some(d) = de {
+                apuntar_direccion(raiz, &otro.id, &d.ip().to_string(), puerto as u16);
+            }
+        },
+    };
+    let hecho = r.atender(flujo, nonce().context("sin azar")?);
+    // Lo que se escribio (la lista de proyectos, «sincronizado hace…»).
+    let _ = tx.send(Aviso::Identidad);
+    hecho?;
+    Ok(())
 }
 
 /// Lo que queda de un saludo como quien llama.
 struct Saludo {
     canal: Canal<TcpStream>,
     otro: m::Aparato,
-    /// Cuanto va adelantado el reloj del otro, en milisegundos.
-    desfase: i64,
 }
 
 /// El saludo de quien llama (`Sesion.abrir`).
@@ -1207,7 +1162,6 @@ fn saludar_como_cliente(
         },
     )?;
     let r = leer_respuesta(&mut canal)?;
-    let despues = ahora_ms();
     let hola = r.hola.context("El otro aparato no saludó")?;
     anyhow::ensure!(
         hola.version == pixpin_sincro::VERSION,
@@ -1245,7 +1199,6 @@ fn saludar_como_cliente(
     Ok(Saludo {
         canal,
         otro: hola.yo,
-        desfase: hola.reloj - (antes + despues) / 2,
     })
 }
 
@@ -1257,7 +1210,28 @@ fn despedirse(canal: &mut Canal<TcpStream>) {
 
 /// `explicar` del movil: el fallo en palabras de quien lo sufre.
 fn explicar(e: &anyhow::Error, nombre: &str) -> String {
-    if let Some(io) = e.downcast_ref::<std::io::Error>() {
+    // Lo del protocolo, como lo cuenta el movil: «ocupado» con sus palabras;
+    // lo que dijo el otro, como un corte con su motivo; lo de la red, abajo.
+    let io = match e.downcast_ref::<ErrorSincro>() {
+        Some(ErrorSincro::Remoto(t)) if t == m::OCUPADO => {
+            return format!(
+                "{nombre} está sincronizando con otro aparato. Prueba otra vez en un momento."
+            );
+        }
+        Some(ErrorSincro::Remoto(t)) => {
+            return format!(
+                "Se cortó la conexión con {nombre}: {t}. Vuelve a sincronizar para terminar."
+            );
+        }
+        Some(ErrorSincro::Protocolo(t)) => return t.clone(),
+        Some(ErrorSincro::Canal(pixpin_sincro::canal::ErrorCanal::Io(io)))
+        | Some(ErrorSincro::Io(io)) => Some(io),
+        Some(ErrorSincro::Canal(_)) => {
+            return format!("{nombre} no aceptó la conexión: ¿tiene el mismo código de grupo?");
+        }
+        _ => e.downcast_ref::<std::io::Error>(),
+    };
+    if let Some(io) = io {
         use std::io::ErrorKind as K;
         return match io.kind() {
             K::ConnectionRefused | K::TimedOut | K::HostUnreachable | K::NetworkUnreachable => {
@@ -1266,7 +1240,9 @@ fn explicar(e: &anyhow::Error, nombre: &str) -> String {
                 )
             }
             K::UnexpectedEof => {
-                format!("{nombre} cortó la conexión a medias. Vuelve a sincronizar para terminar.")
+                format!(
+                    "{nombre} cortó la conexión a medias. Lo que ya se había pasado está bien; vuelve a sincronizar para terminar."
+                )
             }
             _ => format!(
                 "Se cortó la conexión con {nombre}: {io}. Vuelve a sincronizar para terminar."
@@ -1408,6 +1384,7 @@ fn lanzar_union(
                         .and_then(|i| i.yo.letra)
                         .unwrap_or_default();
                     Fase::Terminado {
+                        aviso: None,
                         titulo: "Dentro del grupo".into(),
                         texto: format!(
                             "Este aparato es la letra «{letra}»: sus mensajes se nombran #1{letra}, #2{letra}…\n\nYa puedes sincronizar con {}.",
@@ -1422,8 +1399,9 @@ fn lanzar_union(
         });
 }
 
-/// Una vuelta con un aparato: el saludo y su catalogo. Juntar los chats es
-/// la parte que falta, y se dice en vez de disimularlo.
+/// Una vuelta con un aparato, preguntando que chats (`sincronizarCon`):
+/// «¿Que sincronizar?», juntar cada chat elegido con su barra y, al acabar,
+/// «Al dia con X» con lo hecho y los avisos.
 fn lanzar_vuelta(
     raiz: &Path,
     tx: &mpsc::Sender<Aviso>,
@@ -1440,35 +1418,195 @@ fn lanzar_vuelta(
     let _ = std::thread::Builder::new()
         .name("sincro-vuelta".into())
         .spawn(move || {
-            let hecho = (|| -> Result<Fase> {
-                let id = leer_identidad(&raiz)?;
-                let codigo = id.codigo.context("Este aparato no está en un grupo")?;
-                let mut s = saludar_como_cliente(&raiz, &host, puerto, &codigo, false, mi_puerto)?;
-                mandar(&mut s.canal, &Peticion::de("catalogo"))?;
-                let chats = leer_respuesta(&mut s.canal)?.chats;
-                despedirse(&mut s.canal);
-                apuntar_vez(&raiz, &s.otro.id, ahora_ms());
-                let mut texto = format!(
-                    "{} tiene {} proyectos. La conexión y el grupo funcionan.\n\nJuntar los chats desde este equipo llega en la próxima versión de PixPin para Windows.",
-                    s.otro.nombre,
-                    chats.len()
-                );
-                // `avisoDelReloj` del movil: con la hora mal, lo que llega se
-                // coloca en el chat donde no toca.
-                let minutos = s.desfase.abs() / 60_000;
-                if minutos >= 2 {
-                    let sentido = if s.desfase > 0 { "adelantado" } else { "atrasado" };
-                    texto.push_str(&format!(
-                        "\n\nEl reloj de {} va {minutos} min {sentido}. Pon «fecha y hora automáticas» en los dos.",
-                        s.otro.nombre
+            let mut hecho = Hecho::default();
+            let r = una_vuelta(
+                &raiz, &tx, &host, puerto, &nombre, mi_puerto, true, &mut hecho, "",
+            );
+            let fase = match r {
+                Ok(v) if v.cancelada => Fase::Nada,
+                Ok(v) => {
+                    let mut avisos = vuelta::avisos_de_lo_hecho(&hecho);
+                    avisos.extend(v.avisos);
+                    Fase::Terminado {
+                        titulo: format!("Al día con {}", v.nombre),
+                        texto: vuelta::contar_lo_hecho(&hecho, v.bytes, v.segundos),
+                        aviso: (!avisos.is_empty()).then(|| avisos.join("\n\n")),
+                    }
+                }
+                Err(e) => Fase::Fallo(explicar(&e, &nombre)),
+            };
+            let _ = tx.send(Aviso::Identidad);
+            let _ = tx.send(Aviso::Fase(fase));
+        });
+}
+
+/// `unaVuelta`: conecta, saluda, resuelve lo borrado y junta lo elegido
+/// (`preguntar`) o lo de la ultima vez con ese aparato. `rotulo` va delante
+/// de lo que se ensena, para saber por donde va una ronda.
+#[allow(clippy::too_many_arguments)]
+fn una_vuelta(
+    raiz: &Path,
+    tx: &mpsc::Sender<Aviso>,
+    host: &str,
+    puerto: u16,
+    nombre: &str,
+    mi_puerto: Option<u16>,
+    preguntar: bool,
+    hecho: &mut Hecho,
+    rotulo: &str,
+) -> Result<vuelta::Vuelta> {
+    let _ = tx.send(Aviso::Fase(Fase::Trabajando(format!(
+        "{rotulo}Conectando con {nombre}…"
+    ))));
+    let flujo = conectar(host, puerto)?;
+    let disco = DiscoPc::nuevo(raiz);
+    let mut s = Sesion::conectar(
+        flujo,
+        &disco,
+        false,
+        None,
+        ahora_ms,
+        u32::from(mi_puerto.unwrap_or(0)),
+        nonce().context("sin azar")?,
+    )
+    .map_err(|e| {
+        // Cortar en el saludo es lo que hace quien no descifra: otro codigo.
+        if e.es_corte() {
+            anyhow::anyhow!("{nombre} no aceptó la conexión: ¿tiene el mismo código de grupo?")
+        } else {
+            anyhow::Error::from(e)
+        }
+    })?;
+    let suyo = if s.puerto_del_otro > 0 {
+        s.puerto_del_otro as u16
+    } else {
+        puerto
+    };
+    apuntar_direccion(raiz, &s.otro.id, host, suyo);
+    let _ = tx.send(Aviso::Identidad);
+    let mut elegir = |otro: &m::Aparato, filas: &[vuelta::Fila]| {
+        let (responde, espera) = mpsc::channel();
+        tx.send(Aviso::Elegir {
+            otro: otro.nombre.clone(),
+            filas: filas.to_vec(),
+            responde,
+        })
+        .ok()?;
+        espera.recv().ok().flatten()
+    };
+    let mut progreso = |t: vuelta::Trabajo| {
+        let _ = tx.send(Aviso::Fase(Fase::Progreso(t)));
+    };
+    let r = vuelta::una(
+        &mut s,
+        if preguntar { Some(&mut elegir) } else { None },
+        hecho,
+        rotulo,
+        &ahora_ms,
+        &mut progreso,
+    );
+    if r.is_err() {
+        s.soltar();
+    }
+    Ok(r?)
+}
+
+/// **Todos mis aparatos de una vez** (`sincronizarConTodos`): uno detras de
+/// otro y sin preguntar, con lo elegido la ultima vez con cada uno. Con dos
+/// o mas, dos rondas: en la primera este equipo queda con todo, pero los
+/// primeros se quedaron con lo de antes de hablar con los ultimos; la
+/// segunda lo reparte, y cuesta poco porque solo viajan los cambios. Si uno
+/// falla se sigue con los demas y se dice al final cual quedo pendiente.
+fn lanzar_con_todos(
+    raiz: &Path,
+    tx: &mpsc::Sender<Aviso>,
+    lista: Vec<(String, String, u16)>,
+    mi_puerto: Option<u16>,
+) {
+    if lista.is_empty() {
+        return;
+    }
+    let raiz = raiz.to_path_buf();
+    let tx = tx.clone();
+    let _ = std::thread::Builder::new()
+        .name("sincro-todos".into())
+        .spawn(move || {
+            let mut hecho = Hecho::default();
+            let mut avisos: Vec<String> = Vec::new();
+            let mut fallaron: Vec<(String, String)> = Vec::new();
+            let mut al_dia: Vec<String> = Vec::new();
+            let mut bytes = 0u64;
+            let empezo = std::time::Instant::now();
+            let rondas = if lista.len() >= 2 { 2 } else { 1 };
+            for ronda in 1..=rondas {
+                for (nombre, host, puerto) in &lista {
+                    // Uno que ya fallo no se reintenta: si estaba apagado lo
+                    // sigue estando, y cada intento cuesta agotar la conexion.
+                    if fallaron.iter().any(|(n, _)| n == nombre) {
+                        continue;
+                    }
+                    let rotulo = if rondas > 1 {
+                        format!("Ronda {ronda} de {rondas} · ")
+                    } else {
+                        String::new()
+                    };
+                    match una_vuelta(
+                        &raiz, &tx, host, *puerto, nombre, mi_puerto, false, &mut hecho, &rotulo,
+                    ) {
+                        Ok(v) if v.cancelada => {
+                            let _ = tx.send(Aviso::Fase(Fase::Nada));
+                            return;
+                        }
+                        Ok(v) => {
+                            bytes += v.bytes;
+                            for a in v.avisos {
+                                if !avisos.contains(&a) {
+                                    avisos.push(a);
+                                }
+                            }
+                            if !al_dia.contains(&v.nombre) {
+                                al_dia.push(v.nombre);
+                            }
+                        }
+                        Err(e) => fallaron.push((nombre.clone(), explicar(&e, nombre))),
+                    }
+                }
+            }
+            let segundos = empezo.elapsed().as_secs_f64();
+            let fase = if al_dia.is_empty() {
+                let t: Vec<String> = fallaron.iter().map(|(_, t)| t.clone()).collect();
+                Fase::Fallo(if t.is_empty() {
+                    "No se pudo con ninguno.".into()
+                } else {
+                    t.join("\n\n")
+                })
+            } else {
+                let titulo = if al_dia.len() == 1 {
+                    format!("Al día con {}", al_dia[0])
+                } else {
+                    format!("Al día con {} aparatos", al_dia.len())
+                };
+                let mut texto = vuelta::contar_lo_hecho(&hecho, bytes, segundos);
+                if al_dia.len() > 1 {
+                    texto.push('\n');
+                    texto.push_str(&al_dia.join(" · "));
+                }
+                let mut todos = vuelta::avisos_de_lo_hecho(&hecho);
+                todos.extend(avisos);
+                if let Some((_, primero)) = fallaron.first() {
+                    let pendientes: Vec<String> =
+                        fallaron.iter().map(|(n, _)| format!("«{n}»")).collect();
+                    todos.push(format!(
+                        "Quedó pendiente {}: {primero}",
+                        pendientes.join(", ")
                     ));
                 }
-                Ok(Fase::Terminado {
-                    titulo: format!("Conectado con {}", s.otro.nombre),
+                Fase::Terminado {
+                    titulo,
                     texto,
-                })
-            })();
-            let fase = hecho.unwrap_or_else(|e| Fase::Fallo(explicar(&e, &nombre)));
+                    aviso: (!todos.is_empty()).then(|| todos.join("\n\n")),
+                }
+            };
             let _ = tx.send(Aviso::Identidad);
             let _ = tx.send(Aviso::Fase(fase));
         });
@@ -1754,8 +1892,15 @@ fn pintar(
         zonas: Vec::new(),
     };
 
+    // «¿Que sincronizar?» lleva abajo una barra fija con sus botones.
+    let pie = if matches!(s.sub, Sub::Elegir(_)) {
+        72.0 * e
+    } else {
+        0.0
+    };
+
     // ---- el contenido, desplazable, por debajo de la barra
-    p.empujar_recorte(rect(0.0, barra, ancho, alto - barra));
+    p.empujar_recorte(rect(0.0, barra, ancho, alto - barra - pie));
     let mut y = barra - s.desplazamiento;
     match &s.sub {
         Sub::Recibir(r) => {
@@ -1765,9 +1910,12 @@ fn pintar(
         Sub::Enviar(en) => {
             y = enviar_wifi::pintar(&mut l, textos, en, 20.0 * e, ancho - 40.0 * e, y);
         }
+        Sub::Elegir(el) => {
+            y = elegir::pintar(&mut l, textos, el, &s.identidad.yo.nombre, ancho, y);
+        }
         Sub::Portada => y = pintar_portada(&mut l, textos, s, ancho, y),
     }
-    y += 40.0 * e;
+    y += 40.0 * e + pie;
     s.alto_contenido = y + s.desplazamiento - barra;
     p.soltar_recorte();
 
@@ -1775,8 +1923,11 @@ fn pintar(
     zonas.extend(
         std::mem::take(&mut l.zonas)
             .into_iter()
-            .filter(|(r, _)| r.y + r.alto > barra),
+            .filter(|(r, _)| r.y + r.alto > barra && r.y < alto - pie),
     );
+    if let Sub::Elegir(el) = &s.sub {
+        elegir::pintar_pie(&mut l, textos, el, ancho, alto - pie, pie);
+    }
 
     // ---- la barra: volver, el titulo y cerrar
     p.rellenar(rect(0.0, 0.0, ancho, barra), FONDO);
@@ -1784,6 +1935,10 @@ fn pintar(
         Sub::Portada => (textos.t("sinc-titulo"), Accion::Cerrar),
         Sub::Recibir(_) => (textos.t("rw-titulo"), Accion::Volver),
         Sub::Enviar(_) => (textos.t("ew-titulo"), Accion::Volver),
+        Sub::Elegir(_) => (
+            textos.t("sinc-elegir-titulo"),
+            Accion::Elegir(elegir::Toque::Cancelar),
+        ),
     };
     l.icono(&VOLVER, 28.0 * e, barra / 2.0, TEXTO, vuelta);
     let tam = 24.0 * e;
@@ -2053,22 +2208,32 @@ fn pintar_grupo(
         y += fila;
     }
     if disponibles.len() > 1 {
-        // «Sincronizar con todos (n)»: el boton esta como en el movil; de
-        // momento hace la vuelta con el primero disponible.
-        let primero = disponibles[0];
-        if let Some((h, pu)) = &primero.host {
-            let mut args = fluent_bundle::FluentArgs::new();
-            args.set("n", disponibles.len().to_string());
-            l.boton(
-                rect(xi, y + 8.0 * e, wi, 48.0 * e),
-                &textos.t_args("sinc-con-todos", &args),
-                Some(&SINCRO),
-                true,
-                Accion::SincronizarCon(primero.nombre.clone(), h.clone(), *pu),
-            );
-        }
+        // «Sincronizar con todos (n)»: uno detras de otro y sin preguntar
+        // (`sincronizarConTodos`).
+        let todos: Vec<(String, String, u16)> = disponibles
+            .iter()
+            .filter_map(|m| {
+                let (h, pu) = m.host.as_ref()?;
+                Some((m.nombre.clone(), h.clone(), *pu))
+            })
+            .collect();
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("n", disponibles.len().to_string());
+        l.boton(
+            rect(xi, y + 8.0 * e, wi, 48.0 * e),
+            &textos.t_args("sinc-con-todos", &args),
+            Some(&SINCRO),
+            true,
+            Accion::SincronizarConTodos(todos),
+        );
         y += 64.0 * e;
-        p.texto_linea(&textos.t("sinc-con-todos-como"), xi, y, 12.0 * e, wi, SUAVE);
+        // Con tres o mas se dice que van en dos rondas, como en el movil.
+        let como = if disponibles.len() > 2 {
+            textos.t("sinc-con-todos-rondas")
+        } else {
+            textos.t("sinc-con-todos-como")
+        };
+        p.texto_linea(&como, xi, y, 12.0 * e, wi, SUAVE);
         y += 24.0 * e;
     }
     if lista.iter().any(|m| !m.cerca) {
@@ -2183,6 +2348,46 @@ fn campo(
 
 /// Los `AlertDialog` del movil: titulo, texto, campos y los botones de texto
 /// abajo a la derecha.
+/// La barra de «Sincronizando»: con total, lo hecho y «x de y · velocidad»
+/// debajo (`LinearProgressIndicator(progress = …)`); sin total, un trozo que
+/// va y viene, como el indeterminado del movil.
+fn barra_de_progreso(l: &Lienzo<'_>, t: &vuelta::Trabajo, r: RectF) {
+    let (p, e) = (l.p, l.e);
+    if t.total > 0 {
+        l.barra(r, t.hechos as f32 / t.total as f32);
+        let hecho = vuelta::tamano_legible(t.hechos as i64);
+        let texto = format!(
+            "{} de {} · {}",
+            if hecho.is_empty() {
+                "0 B".into()
+            } else {
+                hecho
+            },
+            vuelta::tamano_legible(t.total as i64),
+            t.velocidad
+        );
+        p.texto_linea(&texto, r.x, r.y + 12.0 * e, 12.0 * e, r.ancho, SUAVE);
+    } else {
+        p.rellenar_redondeado(r, r.alto / 2.0, VARIANTE);
+        let fase = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() % 1600)
+            .unwrap_or(0) as f32
+            / 1600.0;
+        let largo = r.ancho * 0.3;
+        let x = r.x - largo + (r.ancho + largo) * fase;
+        let desde = x.max(r.x);
+        let hasta = (x + largo).min(r.x + r.ancho);
+        if hasta > desde {
+            p.rellenar_redondeado(
+                rect(desde, r.y, hasta - desde, r.alto),
+                r.alto / 2.0,
+                PRIMARIO,
+            );
+        }
+    }
+}
+
 fn dialogo(l: &mut Lienzo<'_>, ancho: f32, alto: f32, textos: &Catalogo, s: &Pantalla) {
     let (p, e) = (l.p, l.e);
     let w = (ancho - 48.0 * e).min(380.0 * e);
@@ -2202,7 +2407,8 @@ fn dialogo(l: &mut Lienzo<'_>, ancho: f32, alto: f32, textos: &Catalogo, s: &Pan
     } else {
         match &s.fase {
             Fase::Trabajando(t) => (textos.t("sinc-un-momento"), t.clone()),
-            Fase::Terminado { titulo, texto } => (titulo.clone(), texto.clone()),
+            Fase::Progreso(t) => (textos.t("sinc-sincronizando"), t.texto.clone()),
+            Fase::Terminado { titulo, texto, .. } => (titulo.clone(), texto.clone()),
             Fase::Fallo(t) => (textos.t("sinc-no-se-pudo"), t.clone()),
             Fase::Nada => return,
         }
@@ -2216,10 +2422,25 @@ fn dialogo(l: &mut Lienzo<'_>, ancho: f32, alto: f32, textos: &Catalogo, s: &Pan
     };
     let con_la_mia =
         matches!(&s.campo, Some(c) if c.que == QueCampo::Direccion) && !s.mi_direccion.is_empty();
+    // Lo de debajo del texto en una vuelta: el aviso del final, en el color
+    // de los errores, o la barra mientras pasan archivos.
+    let sin_campo = s.campo.is_none() && !s.saliendo;
+    let aviso = match &s.fase {
+        Fase::Terminado { aviso: Some(a), .. } if sin_campo => Some(a.as_str()),
+        _ => None,
+    };
+    let progreso = match &s.fase {
+        Fase::Progreso(t) if sin_campo => Some(t),
+        _ => None,
+    };
+    let h_aviso = aviso.map_or(0.0, |a| l.alto_de(a, 14.0 * e, dentro) + 10.0 * e);
+    let h_barra = if progreso.is_some() { 36.0 * e } else { 0.0 };
     let h = 24.0 * e
         + 36.0 * e
         + h_cuerpo
         + 12.0 * e
+        + h_aviso
+        + h_barra
         + campos * 70.0 * e
         + if con_la_mia { 48.0 * e } else { 0.0 }
         + 56.0 * e;
@@ -2230,6 +2451,13 @@ fn dialogo(l: &mut Lienzo<'_>, ancho: f32, alto: f32, textos: &Catalogo, s: &Pan
     p.texto_linea(&titulo, xi, yy, 22.0 * e, dentro, TEXTO);
     yy += 36.0 * e;
     yy += l.parrafo(&cuerpo, xi, yy, dentro, 14.0 * e, TEXTO) + 12.0 * e;
+    if let Some(a) = aviso {
+        yy += l.parrafo(a, xi, yy, dentro, 14.0 * e, ERROR) + 10.0 * e;
+    }
+    if let Some(t) = progreso {
+        barra_de_progreso(l, t, rect(xi, yy, dentro, 4.0 * e));
+        yy += h_barra;
+    }
 
     if let Some(c) = &s.campo {
         let r = |yy: f32| rect(xi, yy + 8.0 * e, dentro, 52.0 * e);
@@ -2302,7 +2530,7 @@ fn dialogo(l: &mut Lienzo<'_>, ancho: f32, alto: f32, textos: &Catalogo, s: &Pan
             Accion::ConfirmarSalir,
             true,
         )
-    } else if matches!(s.fase, Fase::Trabajando(_)) {
+    } else if matches!(s.fase, Fase::Trabajando(_) | Fase::Progreso(_)) {
         (textos.t("sinc-ocultar"), true, Accion::CerrarFase, false)
     } else {
         (textos.t("sinc-vale"), true, Accion::CerrarFase, false)
@@ -2417,12 +2645,6 @@ mod pruebas {
             con.iter().find(|a| a.id == "t").map(|a| a.nombre.as_str()),
             Some("Tableta")
         );
-    }
-
-    #[test]
-    fn un_id_con_barras_no_se_sale_de_la_carpeta() {
-        assert_eq!(limpio("../../x"), "x");
-        assert_eq!(limpio("ab-12"), "ab-12");
     }
 
     #[test]

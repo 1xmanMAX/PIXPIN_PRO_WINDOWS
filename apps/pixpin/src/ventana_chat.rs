@@ -4330,10 +4330,9 @@ fn ruta_del_mensaje(
     m: &pixpin_proyecto::cuaderno::Mensaje,
 ) -> Option<std::path::PathBuf> {
     let relativa = m.ruta.as_deref().filter(|r| !r.is_empty())?;
-    if std::path::Path::new(relativa).is_absolute() {
-        return None;
-    }
-    Some(pixpin_proyecto::almacen::carpeta(raiz, proyecto).join(relativa))
+    // `pixpin:files/…` es lo que llego sincronizando con el movil: la vista
+    // de sincronizar sabe donde lo guardo (`vista::ruta_real`).
+    pixpin_proyecto::vista::ruta_real(raiz, proyecto, relativa)
 }
 
 /// Las fotos de las burbujas que se ven ahora mismo en el historial.
@@ -4651,7 +4650,10 @@ fn leer_vista(
                     pixpin_motor2d::Figura::Imagen { id_objeto } => ficheros
                         .iter()
                         .find(|(id, _)| *id == id_objeto)
-                        .map(|(_, rel)| (carpeta.join(rel), e.caja())),
+                        .and_then(|(_, rel)| {
+                            pixpin_proyecto::vista::ruta_real(ubicacion.raiz(), proyecto, rel)
+                        })
+                        .map(|r| (r, e.caja())),
                     _ => None,
                 })
                 .filter(|(r, _)| r.is_file())
@@ -4848,7 +4850,10 @@ fn abrir_mensaje(ubicacion: &Ubicacion, a: &Abierto, indice: usize) {
     // La ruta del mensaje es relativa a la carpeta del proyecto. Una que
     // venga del movil sera absoluta y de otro aparato: entonces no hay nada
     // que abrir aqui, y decirlo es mejor que abrir cualquier cosa.
-    let ruta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id).join(relativa);
+    let Some(ruta) = pixpin_proyecto::vista::ruta_real(ubicacion.raiz(), &a.ficha.id, relativa)
+    else {
+        return;
+    };
     if !ruta.is_file() {
         tracing::info!(
             ruta = %ruta.display(),
@@ -6181,7 +6186,9 @@ fn abrir_una_hoja(
     let carpeta = pixpin_proyecto::almacen::carpeta(raiz, proyecto);
     let fotos: Vec<(u64, std::path::PathBuf)> = pixpin_motor2d::excalidraw::ficheros(&lienzo)
         .into_iter()
-        .map(|(id, rel)| (id, carpeta.join(rel)))
+        .filter_map(|(id, rel)| {
+            Some((id, pixpin_proyecto::vista::ruta_real(raiz, proyecto, &rel)?))
+        })
         .collect();
     // Y si la hoja se dibujo sobre una pagina del PDF, esa pagina ES el
     // fondo: sin ella se ven los trazos flotando sobre el blanco.
@@ -7569,6 +7576,24 @@ fn borrar_mensajes(
         apagar_lienzo(ubicacion, a);
     }
     let quitados = quitar_del_cuaderno(&carpeta, &ids)?;
+    // La marca de cada uno, como la deja el movil al borrar: sin ella, la
+    // siguiente vuelta de sincronizar los traeria otra vez del otro aparato.
+    // Con la hora del reloj (UTC) y no la local: se compara con la del movil.
+    let idos: Vec<_> = a
+        .mensajes
+        .iter()
+        .filter(|m| ids.contains(&m.id))
+        .cloned()
+        .collect();
+    let ahora_utc = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    if let Err(e) =
+        pixpin_proyecto::vista::anotar_borrados(ubicacion.raiz(), &a.ficha.id, &idos, ahora_utc)
+    {
+        tracing::warn!(?e, "no se pudo apuntar lo borrado para sincronizar");
+    }
     for m in a.mensajes.iter().filter(|m| ids.contains(&m.id)) {
         let con_fichero = matches!(m.clase, Some(Clase::Archivo | Clase::Imagen | Clase::Voz));
         if let Some(ruta) = ruta_del_mensaje(&a.raiz, &a.ficha.id, m).filter(|_| con_fichero)
