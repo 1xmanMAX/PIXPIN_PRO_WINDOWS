@@ -35,6 +35,8 @@ use pixpin_store::{Catalogo, Ubicacion};
 use crate::caja_dibujo::hex;
 use crate::overlay::Recursos;
 
+mod recibir_wifi;
+
 const ANCHO_LOGICO: u32 = 480;
 const ALTO_LOGICO: u32 = 760;
 /// La barra de arriba: por donde se arrastra la ventana, como la del chat.
@@ -75,7 +77,7 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion) {
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
-            let hecho = Recursos::nuevos().and_then(|r| abrir(&r, &textos, &ubicacion, idioma));
+            let hecho = Recursos::nuevos().and_then(|r| abrir(&r, &textos, &ubicacion));
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir la ventana de sincronizar");
             }
@@ -107,6 +109,34 @@ enum Aviso {
     Identidad,
     /// Una linea para «Actividad».
     Registro(String),
+    /// Lo que cuentan los hilos de «Recibir por Wi-Fi», con el turno de la
+    /// pantalla que los lanzo: lo de una pantalla ya cerrada no pisa la nueva.
+    Recibir(u64, recibir_wifi::Estado),
+}
+
+/// Lo que necesitan los hilos de recibir y enviar: donde vive todo, quien
+/// soy y por donde avisar a la ventana.
+#[derive(Clone)]
+struct Contexto {
+    raiz: PathBuf,
+    nombre: String,
+    id: String,
+    tx: mpsc::Sender<Aviso>,
+}
+
+/// Una tecla para el campo de una sub-pantalla.
+enum Tecla {
+    Letra(char),
+    Borrar,
+    Intro,
+    Pegar(String),
+}
+
+/// Que se ve: la portada o una de las pantallas que cuelgan de ella, como en
+/// el movil cuelgan de Sincronizar «Recibir» y «Enviar».
+enum Sub {
+    Portada,
+    Recibir(Box<recibir_wifi::Recibir>),
 }
 
 /// Que se esta escribiendo.
@@ -153,8 +183,12 @@ enum Accion {
     VerCodigo,
     SalirDelGrupo,
     ConfirmarSalir,
-    Recibir,
+    /// Los dos botones de «Pasar algo a otra persona».
+    AbrirRecibir,
     Enviar,
+    /// La flecha de una sub-pantalla: a la portada.
+    Volver,
+    Recibir(recibir_wifi::Toque),
     Aceptar,
     Cancelar,
     CampoPrincipal,
@@ -175,16 +209,57 @@ struct Pantalla {
     mi_direccion: String,
     desplazamiento: f32,
     alto_contenido: f32,
+    sub: Sub,
+    /// Cuantas sub-pantallas se han abierto: el turno de la siguiente.
+    turnos: u64,
+    /// Donde estaba la portada al entrar en una sub-pantalla, para volver
+    /// al mismo sitio.
+    desplazamiento_portada: f32,
+    tx: mpsc::Sender<Aviso>,
+}
+
+impl Pantalla {
+    fn contexto(&self) -> Contexto {
+        Contexto {
+            raiz: self.raiz.clone(),
+            nombre: self.identidad.yo.nombre.clone(),
+            id: self.identidad.yo.id.clone(),
+            tx: self.tx.clone(),
+        }
+    }
+
+    fn entrar(&mut self, sub: impl FnOnce(u64) -> Sub) {
+        self.turnos += 1;
+        self.desplazamiento_portada = self.desplazamiento;
+        self.desplazamiento = 0.0;
+        self.sub = sub(self.turnos);
+    }
+
+    fn volver(&mut self) {
+        // Soltar la sub-pantalla cierra su puerta (su `Drop`).
+        self.sub = Sub::Portada;
+        self.desplazamiento = self.desplazamiento_portada;
+    }
+
+    fn animando(&self) -> bool {
+        match &self.sub {
+            Sub::Portada => false,
+            Sub::Recibir(r) => r.animando(),
+        }
+    }
+
+    fn tecla(&mut self, t: Tecla) -> bool {
+        let cx = self.contexto();
+        match &mut self.sub {
+            Sub::Portada => false,
+            Sub::Recibir(r) => recibir_wifi::tecla(r, t, &cx),
+        }
+    }
 }
 
 // ------------------------------------------------------------------ ventana
 
-pub fn abrir(
-    recursos: &Recursos,
-    textos: &Catalogo,
-    ubicacion: &Ubicacion,
-    idioma: pixpin_store::Idioma,
-) -> Result<()> {
+pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Result<()> {
     let raiz = ubicacion.raiz().to_path_buf();
     let identidad = leer_identidad(&raiz).context("sin identidad de este equipo")?;
 
@@ -244,6 +319,10 @@ pub fn abrir(
         },
         desplazamiento: 0.0,
         alto_contenido: 0.0,
+        sub: Sub::Portada,
+        turnos: 0,
+        desplazamiento_portada: 0.0,
+        tx: tx.clone(),
     };
 
     let mut zonas: Vec<(RectF, Accion)> = Vec::new();
@@ -266,14 +345,40 @@ pub fn abrir(
                         pantalla.saliendo = false;
                     } else if pantalla.fase != Fase::Nada {
                         pantalla.fase = Fase::Nada;
+                    } else if !matches!(pantalla.sub, Sub::Portada) {
+                        pantalla.volver();
                     } else {
                         break 'bucle;
                     }
                     hay_que_pintar = true;
                 }
                 EventoOverlay::Tecla { vk: 0x0D, .. } => {
-                    aceptar_campo(&mut pantalla, &tx, puerto);
+                    if pantalla.campo.is_some() {
+                        aceptar_campo(&mut pantalla, &tx, puerto);
+                    } else {
+                        pantalla.tecla(Tecla::Intro);
+                    }
                     hay_que_pintar = true;
+                }
+                // Ctrl+V: en el ordenador no hay camara, y pegar el texto
+                // del QR que alguien mando es lo que la sustituye.
+                EventoOverlay::Tecla {
+                    vk: 0x56,
+                    ctrl: true,
+                    ..
+                } => {
+                    if let Some(pixpin_codec::ContenidoPortapapeles::Texto(t)) =
+                        pixpin_codec::leer()
+                    {
+                        if let Some(c) = pantalla.campo.as_mut() {
+                            for ch in t.trim().chars().filter(|c| !c.is_control()) {
+                                escribir(c, ch);
+                            }
+                        } else {
+                            pantalla.tecla(Tecla::Pegar(t));
+                        }
+                        hay_que_pintar = true;
+                    }
                 }
                 EventoOverlay::Tecla { vk: 0x09, .. } => {
                     if let Some(c) = pantalla.campo.as_mut()
@@ -291,11 +396,15 @@ pub fn abrir(
                             c.texto.pop();
                         }
                         hay_que_pintar = true;
+                    } else if pantalla.tecla(Tecla::Borrar) {
+                        hay_que_pintar = true;
                     }
                 }
                 EventoOverlay::Caracter(ch) if !ch.is_control() => {
                     if let Some(c) = pantalla.campo.as_mut() {
                         escribir(c, ch);
+                        hay_que_pintar = true;
+                    } else if pantalla.tecla(Tecla::Letra(ch)) {
                         hay_que_pintar = true;
                     }
                 }
@@ -317,7 +426,7 @@ pub fn abrir(
                         .map(|(_, a)| a.clone());
                     match accion {
                         Some(Accion::Cerrar) => break 'bucle,
-                        Some(a) => atender(a, &mut pantalla, &tx, puerto, idioma, ubicacion),
+                        Some(a) => atender(a, &mut pantalla, &tx, puerto),
                         None if y < BARRA * escala as f32 / 100.0 => {
                             ventana.capturar_raton();
                             arrastre = Some((p, marco));
@@ -359,7 +468,17 @@ pub fn abrir(
                     pantalla.registro.insert(0, linea);
                     pantalla.registro.truncate(5);
                 }
+                Aviso::Recibir(turno, estado) => {
+                    if let Sub::Recibir(r) = &mut pantalla.sub
+                        && r.turno == turno
+                    {
+                        r.estado = estado;
+                    }
+                }
             }
+            hay_que_pintar = true;
+        }
+        if pantalla.animando() {
             hay_que_pintar = true;
         }
 
@@ -395,14 +514,7 @@ fn escribir(c: &mut Campo, ch: char) {
     }
 }
 
-fn atender(
-    accion: Accion,
-    s: &mut Pantalla,
-    tx: &mpsc::Sender<Aviso>,
-    puerto: Option<u16>,
-    idioma: pixpin_store::Idioma,
-    ubicacion: &Ubicacion,
-) {
+fn atender(accion: Accion, s: &mut Pantalla, tx: &mpsc::Sender<Aviso>, puerto: Option<u16>) {
     match accion {
         Accion::Cerrar => {}
         Accion::Renombrar => {
@@ -449,7 +561,18 @@ fn atender(
         Accion::SincronizarCon(nombre, host, p) => {
             lanzar_vuelta(&s.raiz, tx, host, p, nombre, puerto)
         }
-        Accion::Recibir => crate::recibir::lanzar(idioma, ubicacion.clone()),
+        Accion::AbrirRecibir => {
+            s.entrar(|t| Sub::Recibir(Box::new(recibir_wifi::Recibir::nuevo(t))))
+        }
+        Accion::Volver => s.volver(),
+        Accion::Recibir(toque) => {
+            let cx = s.contexto();
+            if let Sub::Recibir(r) = &mut s.sub
+                && recibir_wifi::tocar(r, toque, &cx)
+            {
+                s.volver();
+            }
+        }
         Accion::Enviar => {
             s.fase = Fase::Terminado {
                 titulo: "Enviar".into(),
@@ -1501,6 +1624,80 @@ impl Lienzo<'_> {
         self.p.medir_texto_ajustado(texto, tam, ancho).1
     }
 
+    /// Una linea centrada en `[x, x + ancho]`.
+    fn centrado(&self, texto: &str, x: f32, ancho: f32, y: f32, tam: f32, color: Color) {
+        let (w, _) = self.p.medir_texto(texto, tam);
+        if w <= ancho {
+            self.p.texto(texto, x + (ancho - w) / 2.0, y, tam, color);
+        } else {
+            self.p.texto_linea(texto, x, y, tam, ancho, color);
+        }
+    }
+
+    /// Un parrafo con cada linea centrada, como `TextAlign.Center`. DirectWrite
+    /// lo haria solo, pero el pintor solo sabe alinear a la izquierda: se
+    /// parte a mano por palabras. Devuelve el alto que ocupo.
+    #[allow(clippy::too_many_arguments)]
+    fn parrafo_centrado(
+        &self,
+        texto: &str,
+        x: f32,
+        y: f32,
+        ancho: f32,
+        tam: f32,
+        color: Color,
+    ) -> f32 {
+        let (_, alto_linea) = self.p.medir_texto("Ag", tam);
+        let mut yy = y;
+        for renglon in texto.lines() {
+            let mut linea = String::new();
+            for palabra in renglon.split_whitespace() {
+                let prueba = if linea.is_empty() {
+                    palabra.to_string()
+                } else {
+                    format!("{linea} {palabra}")
+                };
+                if !linea.is_empty() && self.p.medir_texto(&prueba, tam).0 > ancho {
+                    self.centrado(&linea, x, ancho, yy, tam, color);
+                    yy += alto_linea;
+                    linea = palabra.to_string();
+                } else {
+                    linea = prueba;
+                }
+            }
+            self.centrado(&linea, x, ancho, yy, tam, color);
+            yy += alto_linea;
+        }
+        yy - y
+    }
+
+    /// `CircularProgressIndicator`: tres cuartos de anillo que giran con el
+    /// reloj. La ventana se repinta mientras hay uno (ver `animando`).
+    fn girando(&self, cx: f32, cy: f32, radio: f32, grosor: f32) {
+        let t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() % 1200)
+            .unwrap_or(0) as f32
+            / 1200.0;
+        let inicio = t * std::f32::consts::TAU;
+        let puntos: Vec<(f32, f32)> = (0..=36)
+            .map(|i| {
+                let a = inicio + i as f32 / 36.0 * std::f32::consts::TAU * 0.75;
+                (cx + radio * a.cos(), cy + radio * a.sin())
+            })
+            .collect();
+        self.p.polilinea(&puntos, grosor, PRIMARIO);
+    }
+
+    /// `LinearProgressIndicator`: la pista y lo hecho encima.
+    fn barra(&self, r: RectF, parte: f32) {
+        self.p.rellenar_redondeado(r, r.alto / 2.0, VARIANTE);
+        let lleno = rect(r.x, r.y, r.ancho * parte.clamp(0.0, 1.0), r.alto);
+        if lleno.ancho > 0.0 {
+            self.p.rellenar_redondeado(lleno, r.alto / 2.0, PRIMARIO);
+        }
+    }
+
     /// `Titulo` del movil: el rotulo de cada seccion, en el color primario.
     fn titulo(&self, texto: &str, x: f32, y: &mut f32) {
         let e = self.e;
@@ -1524,10 +1721,6 @@ fn pintar(
     p.rellenar(rect(0.0, 0.0, ancho, alto), FONDO);
 
     let barra = BARRA * e;
-    let x0 = 16.0 * e;
-    let w = ancho - 32.0 * e;
-    let xi = x0 + 16.0 * e;
-    let wi = w - 32.0 * e;
     let mut l = Lienzo {
         p,
         e,
@@ -1537,6 +1730,82 @@ fn pintar(
     // ---- el contenido, desplazable, por debajo de la barra
     p.empujar_recorte(rect(0.0, barra, ancho, alto - barra));
     let mut y = barra - s.desplazamiento;
+    match &s.sub {
+        Sub::Recibir(r) => {
+            // El movil deja 20 dp a los lados en estas pantallas.
+            y = recibir_wifi::pintar(&mut l, textos, r, 20.0 * e, ancho - 40.0 * e, y);
+        }
+        Sub::Portada => y = pintar_portada(&mut l, textos, s, ancho, y),
+    }
+    y += 40.0 * e;
+    s.alto_contenido = y + s.desplazamiento - barra;
+    p.soltar_recorte();
+
+    // Lo de dentro solo es pulsable donde se ve: bajo la barra no.
+    zonas.extend(
+        std::mem::take(&mut l.zonas)
+            .into_iter()
+            .filter(|(r, _)| r.y + r.alto > barra),
+    );
+
+    // ---- la barra: volver, el titulo y cerrar
+    p.rellenar(rect(0.0, 0.0, ancho, barra), FONDO);
+    let (titulo, vuelta) = match &s.sub {
+        Sub::Portada => (textos.t("sinc-titulo"), Accion::Cerrar),
+        Sub::Recibir(_) => (textos.t("rw-titulo"), Accion::Volver),
+    };
+    l.icono(&VOLVER, 28.0 * e, barra / 2.0, TEXTO, vuelta);
+    let tam = 24.0 * e;
+    let (_, h) = p.medir_texto(&titulo, tam);
+    p.texto_linea(
+        &titulo,
+        56.0 * e,
+        (barra - h) / 2.0,
+        tam,
+        ancho - 112.0 * e,
+        TEXTO,
+    );
+    l.icono(
+        &CERRAR,
+        ancho - 28.0 * e,
+        barra / 2.0,
+        SUAVE,
+        Accion::Cerrar,
+    );
+
+    // ---- los dialogos, encima de todo
+    if s.campo.is_some() || s.saliendo || s.fase != Fase::Nada {
+        // Lo de debajo deja de ser pulsable mientras hay un dialogo, como
+        // en Android.
+        l.zonas.clear();
+        zonas.clear();
+        p.rellenar(
+            rect(0.0, 0.0, ancho, alto),
+            Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 0.55,
+            },
+        );
+        dialogo(&mut l, ancho, alto, textos, s);
+    }
+    zonas.append(&mut l.zonas);
+}
+
+/// La portada: las cajas de la pantalla del movil. Devuelve donde acaba.
+fn pintar_portada(
+    l: &mut Lienzo<'_>,
+    textos: &Catalogo,
+    s: &Pantalla,
+    ancho: f32,
+    mut y: f32,
+) -> f32 {
+    let (p, e) = (l.p, l.e);
+    let x0 = 16.0 * e;
+    let w = ancho - 32.0 * e;
+    let xi = x0 + 16.0 * e;
+    let wi = w - 32.0 * e;
     p.texto(&textos.t("sinc-subtitulo"), xi, y, 14.0 * e, SUAVE);
     y += 36.0 * e;
 
@@ -1599,7 +1868,7 @@ fn pintar(
         );
         y += alto_caja;
     } else {
-        y = pintar_grupo(&mut l, textos, s, x0, w, y);
+        y = pintar_grupo(l, textos, s, x0, w, y);
     }
 
     // Pasar algo a otra persona
@@ -1618,7 +1887,7 @@ fn pintar(
         &textos.t("sinc-recibir"),
         Some(&BAJAR),
         true,
-        Accion::Recibir,
+        Accion::AbrirRecibir,
     );
     l.boton(
         rect(xi + medio + 10.0 * e, yb, medio, 48.0 * e),
@@ -1656,50 +1925,7 @@ fn pintar(
         }
         y += ha;
     }
-    y += 40.0 * e;
-    s.alto_contenido = y + s.desplazamiento - barra;
-    p.soltar_recorte();
-
-    // Lo de dentro solo es pulsable donde se ve: bajo la barra no.
-    zonas.extend(
-        std::mem::take(&mut l.zonas)
-            .into_iter()
-            .filter(|(r, _)| r.y + r.alto > barra),
-    );
-
-    // ---- la barra: volver, el titulo y cerrar
-    p.rellenar(rect(0.0, 0.0, ancho, barra), FONDO);
-    l.icono(&VOLVER, 28.0 * e, barra / 2.0, TEXTO, Accion::Cerrar);
-    let tam = 24.0 * e;
-    let titulo = textos.t("sinc-titulo");
-    let (_, h) = p.medir_texto(&titulo, tam);
-    p.texto(&titulo, 56.0 * e, (barra - h) / 2.0, tam, TEXTO);
-    l.icono(
-        &CERRAR,
-        ancho - 28.0 * e,
-        barra / 2.0,
-        SUAVE,
-        Accion::Cerrar,
-    );
-
-    // ---- los dialogos, encima de todo
-    if s.campo.is_some() || s.saliendo || s.fase != Fase::Nada {
-        // Lo de debajo deja de ser pulsable mientras hay un dialogo, como
-        // en Android.
-        l.zonas.clear();
-        zonas.clear();
-        p.rellenar(
-            rect(0.0, 0.0, ancho, alto),
-            Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 0.55,
-            },
-        );
-        dialogo(&mut l, ancho, alto, textos, s);
-    }
-    zonas.append(&mut l.zonas);
+    y
 }
 
 /// «Tus aparatos» con grupo, y la caja de «Anadir otro aparato». Devuelve
