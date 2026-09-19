@@ -204,6 +204,21 @@ pub struct Paquete {
 }
 
 impl Paquete {
+    /// Un paquete hecho aqui, sin mas que su proyecto y su manifiesto; lo
+    /// demas se anade con `poner_entrada`.
+    pub fn nuevo(manifiesto: Manifiesto, proyecto: Proyecto) -> Paquete {
+        let mut entradas = BTreeMap::new();
+        // Vacias a proposito: `a_bytes` escribe estas dos desde la
+        // estructura, pero solo si estan en la lista.
+        entradas.insert("manifest.json".to_string(), Vec::new());
+        entradas.insert("proyecto.json".to_string(), Vec::new());
+        Paquete {
+            manifiesto,
+            proyecto,
+            entradas,
+        }
+    }
+
     /// Abre un `.pixpin`.
     pub fn abrir(ruta: &Path) -> Result<Paquete, ErrorProyecto> {
         let bytes =

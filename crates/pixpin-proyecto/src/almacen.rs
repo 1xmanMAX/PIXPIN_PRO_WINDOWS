@@ -390,6 +390,68 @@ pub fn importar_paquete(
     Ok(ficha)
 }
 
+/// Lo contrario de `importar_paquete`: un proyecto de la lista, entero, como
+/// un `.pixpin` para mandarlo a otro aparato.
+///
+/// Va todo lo que hay en su carpeta —cuaderno, adjuntos, lienzos y lo que
+/// trajo del movil y aqui no se entiende—, porque lo que no viaja se pierde
+/// al otro lado. El `proyecto.json` sale con los tres codigos de la FICHA:
+/// son los que este equipo conoce, y con ellos el otro sabra que es la misma
+/// cosa si ya la tenia. Un proyecto nacido aqui no tiene `proyecto.json`: se
+/// le hace uno con lo que dice la ficha.
+pub fn empaquetar(raiz: &Path, id: &str, cuando: i64) -> std::io::Result<Vec<u8>> {
+    let ficha = Indice::leer(raiz)
+        .buscar(id)
+        .cloned()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "ese proyecto no está"))?;
+    let dir = carpeta(raiz, id);
+    let mut proyecto: crate::Proyecto = std::fs::read(dir.join("proyecto.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_else(|| crate::Proyecto {
+            id: ficha.id.clone(),
+            tocado: ficha.tocado,
+            ..Default::default()
+        });
+    proyecto.nombre = ficha.nombre.clone();
+    proyecto.uid = ficha.uid.clone().or(proyecto.uid);
+    if ficha.creado > 0 {
+        proyecto.creado = ficha.creado;
+    }
+    proyecto.aparato = ficha.aparato.clone().or(proyecto.aparato);
+    proyecto.tocado = proyecto.tocado.max(ficha.tocado);
+    proyecto.sellar(ficha.aparato.as_deref());
+    let manifiesto = crate::Manifiesto {
+        escrito: cuando,
+        proyecto: ficha.nombre.clone(),
+        ..Default::default()
+    };
+    let mut paquete = crate::Paquete::nuevo(manifiesto, proyecto);
+    let mut pendientes = vec![dir.clone()];
+    while let Some(d) = pendientes.pop() {
+        let Ok(leidas) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for entrada in leidas.flatten() {
+            let ruta = entrada.path();
+            if ruta.is_dir() {
+                pendientes.push(ruta);
+                continue;
+            }
+            let Ok(relativa) = ruta.strip_prefix(&dir) else {
+                continue;
+            };
+            let nombre = relativa.to_string_lossy().replace('\\', "/");
+            // Estos dos los escribe el paquete desde su estructura.
+            if nombre == "proyecto.json" || nombre == "manifest.json" {
+                continue;
+            }
+            paquete.poner_entrada(&nombre, std::fs::read(&ruta)?);
+        }
+    }
+    paquete.a_bytes().map_err(std::io::Error::other)
+}
+
 /// Anade al cuaderno las hojas del `proyecto.json` que todavia no estan.
 ///
 /// Un proyecto que entro con una version anterior se quedo sin las paginas
@@ -610,6 +672,40 @@ mod pruebas {
         ));
         let _ = std::fs::remove_dir_all(&d);
         d
+    }
+
+    #[test]
+    fn un_proyecto_empaquetado_se_lleva_su_carpeta_y_sus_tres_codigos() {
+        let raiz = carpeta_temporal("empaquetar");
+        let mut i = Indice::default();
+        i.proyectos.push(ficha("p1", "Casa", 10));
+        i.guardar(&raiz).unwrap();
+        let dir = carpeta(&raiz, "p1");
+        std::fs::create_dir_all(dir.join("archivos")).unwrap();
+        std::fs::write(dir.join("guardados.jsonl"), b"{}\n").unwrap();
+        std::fs::write(dir.join("archivos").join("plano.png"), b"png").unwrap();
+
+        let bytes = empaquetar(&raiz, "p1", 99).unwrap();
+        let p = crate::Paquete::desde_bytes(&bytes).expect("es un .pixpin legible");
+        assert_eq!(p.proyecto.nombre, "Casa");
+        assert_eq!(p.proyecto.uid.as_deref(), Some("VVT587BFCA"));
+        assert_eq!(p.proyecto.creado, 1_757_939_357_123);
+        assert_eq!(p.proyecto.aparato.as_deref(), Some("K7Q2"));
+        assert_eq!(p.entrada("archivos/plano.png"), Some(&b"png"[..]));
+        assert_eq!(p.entrada("guardados.jsonl"), Some(&b"{}\n"[..]));
+        assert_eq!(p.manifiesto.escrito, 99);
+
+        // Y al otro lado se reconoce como la misma cosa, no como otra.
+        let otra = carpeta_temporal("empaquetar-otro");
+        let llega = importar_paquete(&otra, &p, "ZZZZ").unwrap();
+        assert!(llega.misma_que(&ficha("x", "Casa", 0)));
+    }
+
+    #[test]
+    fn empaquetar_un_proyecto_que_no_esta_falla_y_no_inventa_uno() {
+        let raiz = carpeta_temporal("empaquetar-nada");
+        let e = empaquetar(&raiz, "no-existe", 1).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
     }
 
     #[test]
