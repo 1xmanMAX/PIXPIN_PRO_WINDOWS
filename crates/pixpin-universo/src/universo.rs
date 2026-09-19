@@ -114,6 +114,152 @@ impl Universo {
         }
         quitadas
     }
+
+    /// Abre un paso si no hay uno abierto. Devuelve si lo abrio este: solo
+    /// quien lo abre lo cierra, asi una operacion puede usar otra dentro.
+    pub(crate) fn empezar(&mut self) -> bool {
+        if self.historia.en_curso.is_some() {
+            return false;
+        }
+        self.historia.en_curso = Some(crate::historia::Paso::default());
+        true
+    }
+
+    pub(crate) fn apuntar_astro(&mut self, id: IdAstro) {
+        let actual = self.astro(id).cloned();
+        if let Some(p) = &mut self.historia.en_curso
+            && !p.astros.iter().any(|(i, _, _)| *i == id)
+        {
+            p.astros.push((id, actual, None));
+        }
+    }
+
+    pub(crate) fn apuntar_conexion(&mut self, id: u64) {
+        let actual = self.conexiones.iter().find(|c| c.id == id).cloned();
+        if let Some(p) = &mut self.historia.en_curso
+            && !p.conexiones.iter().any(|(i, _, _)| *i == id)
+        {
+            p.conexiones.push((id, actual, None));
+        }
+    }
+
+    pub(crate) fn marcar_anotaciones(&mut self, escena: &Escena) {
+        if let Some(p) = &mut self.historia.en_curso {
+            p.anotaciones = true;
+        }
+        self.visto = escena.pasos_cerrados();
+    }
+
+    pub(crate) fn terminar(&mut self, propio: bool) {
+        if !propio {
+            return;
+        }
+        let Some(mut p) = self.historia.en_curso.take() else {
+            return;
+        };
+        for (id, _, despues) in &mut p.astros {
+            *despues = self.astros.iter().find(|a| a.id == *id).cloned();
+        }
+        for (id, _, despues) in &mut p.conexiones {
+            *despues = self.conexiones.iter().find(|c| c.id == *id).cloned();
+        }
+        p.astros.retain(|(_, a, d)| a != d);
+        p.conexiones.retain(|(_, a, d)| a != d);
+        self.cambios += 1;
+        if !p.vacio() {
+            self.historia.empujar(p);
+        }
+    }
+
+    /// Deshace lo hecho en el paso abierto, sin apuntarlo.
+    pub(crate) fn cancelar(&mut self, propio: bool) {
+        if !propio {
+            return;
+        }
+        let Some(p) = self.historia.en_curso.take() else {
+            return;
+        };
+        for (id, antes, _) in p.astros.iter().rev() {
+            self.poner_astro(*id, antes.clone());
+        }
+        for (id, antes, _) in p.conexiones.iter().rev() {
+            self.poner_conexion(*id, antes.clone());
+        }
+        self.cambios += 1;
+    }
+
+    fn poner_astro(&mut self, id: IdAstro, valor: Option<Astro>) {
+        let pos = self.astros.iter().position(|a| a.id == id);
+        match (pos, valor) {
+            (Some(i), Some(v)) => self.astros[i] = v,
+            (Some(i), None) => {
+                self.astros.remove(i);
+            }
+            (None, Some(v)) => self.astros.push(v),
+            (None, None) => {}
+        }
+    }
+
+    fn poner_conexion(&mut self, id: u64, valor: Option<Conexion>) {
+        let pos = self.conexiones.iter().position(|c| c.id == id);
+        match (pos, valor) {
+            (Some(i), Some(v)) => self.conexiones[i] = v,
+            (Some(i), None) => {
+                self.conexiones.remove(i);
+            }
+            (None, Some(v)) => self.conexiones.push(v),
+            (None, None) => {}
+        }
+    }
+
+    pub fn deshacer(&mut self, escena: &mut Escena) -> bool {
+        let Some(p) = self.historia.atras.pop() else {
+            return false;
+        };
+        for (id, antes, _) in &p.astros {
+            self.poner_astro(*id, antes.clone());
+        }
+        for (id, antes, _) in &p.conexiones {
+            self.poner_conexion(*id, antes.clone());
+        }
+        if p.anotaciones {
+            escena.deshacer();
+        }
+        self.historia.adelante.push(p);
+        self.cambios += 1;
+        true
+    }
+
+    pub fn rehacer(&mut self, escena: &mut Escena) -> bool {
+        let Some(p) = self.historia.adelante.pop() else {
+            return false;
+        };
+        for (id, _, despues) in &p.astros {
+            self.poner_astro(*id, despues.clone());
+        }
+        for (id, _, despues) in &p.conexiones {
+            self.poner_conexion(*id, despues.clone());
+        }
+        if p.anotaciones {
+            escena.rehacer();
+        }
+        self.historia.atras.push(p);
+        self.cambios += 1;
+        true
+    }
+
+    /// Apunta un paso «solo anotaciones» por cada paso que el editor cerro
+    /// en la escena desde la ultima vez. Se llama tras cada evento.
+    pub fn sincronizar_trazos(&mut self, escena: &Escena) {
+        let ahora = escena.pasos_cerrados();
+        while self.visto < ahora {
+            self.historia.empujar(crate::historia::Paso {
+                anotaciones: true,
+                ..Default::default()
+            });
+            self.visto += 1;
+        }
+    }
 }
 
 #[cfg(test)]
