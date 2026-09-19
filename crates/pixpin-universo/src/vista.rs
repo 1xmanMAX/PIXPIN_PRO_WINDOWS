@@ -22,9 +22,16 @@ fn se_cruzan(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)) -> bool {
 /// Rejilla propia: la del motor esta atada a `Escena`. Se reconstruye entera,
 /// pero solo cuando cambia el universo (`Universo::cambios`), no en cada
 /// fotograma: miles de astros son un milisegundo.
+///
+/// Las lunas van en su propia rejilla: son casi todos los astros, y desde
+/// lejos no se ve ninguna. Asi el cosmos entero cuesta lo que sus galaxias y
+/// no lo que sus cinco mil archivos (D239).
 #[derive(Debug, Default)]
 pub struct RejillaAstros {
     celdas: HashMap<(i32, i32), Vec<IdAstro>>,
+    lunas: HashMap<(i32, i32), Vec<IdAstro>>,
+    /// La luna mas grande, para saber desde que zoom no se ve ninguna.
+    radio_luna: f32,
     hecha_con: Option<u64>,
 }
 
@@ -34,11 +41,22 @@ impl RejillaAstros {
             return;
         }
         self.celdas.clear();
+        self.lunas.clear();
+        self.radio_luna = 0.0;
         for a in &u.astros {
+            let es_luna = matches!(a.clase, Clase::Luna { .. });
+            if es_luna {
+                self.radio_luna = self.radio_luna.max(a.radio);
+            }
+            let destino = if es_luna {
+                &mut self.lunas
+            } else {
+                &mut self.celdas
+            };
             let (x0, y0, x1, y1) = a.caja();
             for cx in celda(x0)..=celda(x1) {
                 for cy in celda(y0)..=celda(y1) {
-                    self.celdas.entry((cx, cy)).or_default().push(a.id);
+                    destino.entry((cx, cy)).or_default().push(a.id);
                 }
             }
         }
@@ -47,11 +65,34 @@ impl RejillaAstros {
 
     /// Pueden sobrar, nunca faltar.
     pub fn candidatos(&self, caja: (f32, f32, f32, f32)) -> Vec<IdAstro> {
+        self.candidatos_con(caja, true)
+    }
+
+    fn candidatos_con(&self, caja: (f32, f32, f32, f32), con_lunas: bool) -> Vec<IdAstro> {
         let mut vistos = HashSet::new();
-        for cx in celda(caja.0)..=celda(caja.2) {
-            for cy in celda(caja.1)..=celda(caja.3) {
-                if let Some(ids) = self.celdas.get(&(cx, cy)) {
-                    vistos.extend(ids.iter().copied());
+        let mapas: &[&HashMap<(i32, i32), Vec<IdAstro>>] = if con_lunas {
+            &[&self.celdas, &self.lunas]
+        } else {
+            &[&self.celdas]
+        };
+        for mapa in mapas {
+            // Menos celdas ocupadas que celdas en la ventana (el cosmos
+            // entero son miles): entonces se recorren las ocupadas.
+            let (cx0, cx1, cy0, cy1) = (celda(caja.0), celda(caja.2), celda(caja.1), celda(caja.3));
+            let en_ventana = (cx1 - cx0 + 1) as i64 * (cy1 - cy0 + 1) as i64;
+            if (mapa.len() as i64) < en_ventana {
+                for ((cx, cy), ids) in mapa.iter() {
+                    if (cx0..=cx1).contains(cx) && (cy0..=cy1).contains(cy) {
+                        vistos.extend(ids.iter().copied());
+                    }
+                }
+            } else {
+                for cx in cx0..=cx1 {
+                    for cy in cy0..=cy1 {
+                        if let Some(ids) = mapa.get(&(cx, cy)) {
+                            vistos.extend(ids.iter().copied());
+                        }
+                    }
                 }
             }
         }
@@ -95,8 +136,11 @@ pub fn visibles(
     memoria: &mut HashMap<IdAstro, Nivel>,
 ) -> Vec<Visto> {
     let ventana = camara.ventana(ancho_px, alto_px);
+    // Una luna mas pequena que esto sale oculta seguro: ni se miran.
+    let con_lunas =
+        rejilla.radio_luna * camara.zoom >= detalle::radio_siempre_oculto(detalle::Tipo::Luna);
     let mut cands: Vec<&Astro> = rejilla
-        .candidatos(ventana)
+        .candidatos_con(ventana, con_lunas)
         .into_iter()
         .filter_map(|id| u.astro(id))
         .filter(|a| se_cruzan(a.caja(), ventana))
@@ -107,9 +151,6 @@ pub fn visibles(
     let mut cerrados: HashSet<IdAstro> = HashSet::new();
     let mut salida = Vec::with_capacity(cands.len());
     for a in cands {
-        let r = a.radio * camara.zoom;
-        let n = detalle::nivel_con_memoria(detalle::tipo_de(a), r, memoria.get(&a.id).copied());
-        memoria.insert(a.id, n);
         let padre_abierto = match a.padre {
             None => true,
             Some(p) if cerrados.contains(&p) => false,
@@ -119,8 +160,22 @@ pub fn visibles(
                 (None, _) => true,
             },
         };
-        if !padre_abierto || n == Nivel::Oculto {
-            cerrados.insert(a.id);
+        // Con el padre cerrado no hace falta ni su nivel: no se pinta, y su
+        // memoria se iba a borrar al final igual. Solo un contenedor puede
+        // ser padre de otro, asi que solo esos se apuntan como cerrados.
+        if !padre_abierto {
+            if a.es_contenedor() {
+                cerrados.insert(a.id);
+            }
+            continue;
+        }
+        let r = a.radio * camara.zoom;
+        let n = detalle::nivel_con_memoria(detalle::tipo_de(a), r, memoria.get(&a.id).copied());
+        memoria.insert(a.id, n);
+        if n == Nivel::Oculto {
+            if a.es_contenedor() {
+                cerrados.insert(a.id);
+            }
             continue;
         }
         nivel_de.insert(a.id, n);
@@ -259,6 +314,30 @@ mod pruebas {
         let v = ver(&u, 0.5); // radio de galaxia 1000 px, de luna 24 px
         assert!(v.iter().any(|x| x.nivel == Nivel::Icono));
         assert!(v.len() > 1);
+    }
+
+    #[test]
+    fn desde_lejos_las_lunas_ni_se_miran_pero_la_rejilla_las_sigue_teniendo() {
+        let u = galaxia_con_lunas(100);
+        let mut r = RejillaAstros::default();
+        r.al_dia(&u);
+        let caja = camara(0.03).ventana(1920.0, 1080.0);
+        // A este zoom una luna mediria 1,4 px: ni se piden.
+        assert_eq!(r.candidatos_con(caja, false).len(), 1, "solo la galaxia");
+        // Caso negativo: quien pide candidatos sin mas las sigue teniendo.
+        assert_eq!(r.candidatos(caja).len(), 101);
+    }
+
+    #[test]
+    fn una_exoluna_huerfana_de_padre_se_ve_de_cerca_como_antes() {
+        // Una luna sin padre (su planeta se borro a mano) no depende de
+        // ningun contenedor: de cerca sale, de lejos no.
+        let mut u = Universo::nuevo();
+        let l = u.nuevo_id();
+        u.astros.push(Astro::luna(l, "m:a", "q", 0.0, 0.0));
+        u.marcar_cambio();
+        assert!(ver(&u, 0.5).iter().any(|x| x.id == l));
+        assert!(ver(&u, 0.03).iter().all(|x| x.id != l));
     }
 
     #[test]

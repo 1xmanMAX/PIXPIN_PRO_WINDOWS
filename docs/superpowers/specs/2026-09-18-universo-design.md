@@ -1,7 +1,8 @@
 # El Universo: los archivos del chat en un lienzo infinito
 
 **Fecha:** 2026-09-18
-**Estado:** diseño escrito a partir de la conversación con el usuario; pendiente de su revisión
+**Estado:** implementado (Tareas 1–19 del plan, rama `pin-en-vivo`). Falta la prueba manual del usuario
+(§11) y la medición con GPU de D239.
 **Rama:** `universo` (sale de la rama en curso cuando `pin-en-vivo` quede commiteada)
 **Decisiones:** D200–D259 (se salta el hueco para no chocar con numeraciones de otras ramas)
 
@@ -431,6 +432,23 @@ bytes por luna: 10.000 lunas son unos 4 MB.
 | Fotograma con 600 lunas con ficha en vista | < 8 ms | < 14 ms |
 | Memoria añadida con el universo abierto (sin miniaturas) | < 40 MB | < 30 MB |
 | CPU en reposo | 0 % | 0 % |
+
+**Medido sin GPU** (2026-09-19, `apps/pixpin/tests/universo_rendimiento.rs`, `--release`, 20 proyectos y
+5.000 lunas colocadas):
+
+| Medida | Tope | Medido |
+|---|---|---|
+| `visibles` con el cosmos entero a la vista (zoom 0,02) | < 2 ms | 0,013 ms |
+| `visibles` dentro de una galaxia llena (zoom 1) | < 2 ms | 0,06 ms |
+| Guardar `universo.json` | < 50 ms | 3,8–4,9 ms |
+| Tamaño de `universo.json` | < 1 MB | 967 KB |
+
+La primera medición del cosmos dio 2,12 ms: `Universo::astro` buscaba de uno en uno (cuadrático con miles de
+lunas) y la rejilla devolvía todas las lunas aunque desde lejos no se ve ninguna. Ahora `astro` busca a
+saltos (los ids son crecientes) y las lunas tienen su propia rejilla, que no se consulta cuando una luna
+saldría oculta seguro. El tamaño está al 97 % del tope: si crece el formato, es lo primero que mirar.
+
+Lo que pide GPU (los fotogramas de la tabla de arriba) lo mide el usuario con `medir_fotogramas`.
 
 ---
 

@@ -80,8 +80,17 @@ impl Universo {
         IdAstro(id)
     }
 
+    /// Se llama miles de veces por fotograma (cada visto y su padre), y
+    /// buscando de uno en uno 5.000 lunas costaban 90 ms sin optimizar. Los
+    /// astros nacen con ids crecientes y se guardan en ese orden, asi que
+    /// casi siempre estan ordenados: primero se busca a saltos, y solo si
+    /// no aparece (un deshacer que lo devolvio al final, un vector armado a
+    /// mano) se recorre entero. Un acierto a saltos siempre es el bueno.
     pub fn astro(&self, id: IdAstro) -> Option<&Astro> {
-        self.astros.iter().find(|a| a.id == id)
+        match self.astros.binary_search_by_key(&id, |a| a.id) {
+            Ok(i) => self.astros.get(i),
+            Err(_) => self.astros.iter().find(|a| a.id == id),
+        }
     }
 
     pub fn luna_de(&self, codigo: &str) -> Option<&Astro> {
@@ -266,6 +275,23 @@ impl Universo {
 mod pruebas {
     use super::*;
     use crate::astro::{Astro, Conexion, IdAstro};
+
+    #[test]
+    fn un_astro_se_encuentra_este_o_no_ordenado_el_vector_y_uno_que_no_esta_no() {
+        let mut u = Universo::nuevo();
+        for id in [1, 2, 5, 9] {
+            u.astros.push(Astro::planeta(IdAstro(id), 0.0, 0.0, 100.0));
+        }
+        assert_eq!(u.astro(IdAstro(5)).map(|a| a.id), Some(IdAstro(5)));
+        // Desordenado, como tras devolver uno al final con deshacer.
+        u.astros.push(Astro::planeta(IdAstro(3), 0.0, 0.0, 100.0));
+        u.astros.swap(0, 3);
+        for id in [1, 2, 3, 5, 9] {
+            assert_eq!(u.astro(IdAstro(id)).map(|a| a.id), Some(IdAstro(id)));
+        }
+        assert!(u.astro(IdAstro(4)).is_none());
+        assert!(Universo::nuevo().astro(IdAstro(1)).is_none());
+    }
 
     #[test]
     fn un_universo_nuevo_empieza_en_la_version_uno_y_el_id_uno() {

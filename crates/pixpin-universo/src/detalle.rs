@@ -89,6 +89,18 @@ pub fn nivel_con_memoria(t: Tipo, radio_px: f32, antes: Option<Nivel>) -> Nivel 
     }
 }
 
+/// El radio en pantalla por debajo del cual un astro de este tipo sale
+/// `Oculto` seguro, recuerde lo que recuerde: el umbral del primer nivel
+/// visible con la histeresis ya descontada. `0` si el tipo nunca se oculta.
+pub fn radio_siempre_oculto(t: Tipo) -> f32 {
+    tabla(t)
+        .iter()
+        .find(|(_, n)| *n != Nivel::Oculto)
+        .filter(|_| tabla(t)[0].1 == Nivel::Oculto)
+        .map(|(u, _)| u * HISTERESIS)
+        .unwrap_or(0.0)
+}
+
 /// Si a este nivel se ve lo de dentro. Una galaxia cerrada es un disco,
 /// aunque tenga tres mil lunas (D238.2).
 pub fn abre_hijos(a: &Astro, n: Nivel) -> bool {
@@ -102,6 +114,25 @@ pub fn abre_hijos(a: &Astro, n: Nivel) -> bool {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn por_debajo_del_radio_siempre_oculto_no_se_ve_ni_con_memoria() {
+        let r = radio_siempre_oculto(Tipo::Luna);
+        assert!((r - 3.4).abs() < 1e-4, "{r}");
+        for antes in [None, Some(Nivel::Punto), Some(Nivel::Vista)] {
+            assert_eq!(
+                nivel_con_memoria(Tipo::Luna, r - 0.01, antes),
+                Nivel::Oculto
+            );
+        }
+        // Justo en el umbral, recordando el punto, todavia se ve.
+        assert_eq!(
+            nivel_con_memoria(Tipo::Luna, r, Some(Nivel::Punto)),
+            Nivel::Punto
+        );
+        // Caso negativo: una galaxia no se oculta nunca.
+        assert_eq!(radio_siempre_oculto(Tipo::Galaxia), 0.0);
+    }
 
     #[test]
     fn cada_tipo_cambia_de_nivel_en_sus_umbrales() {
