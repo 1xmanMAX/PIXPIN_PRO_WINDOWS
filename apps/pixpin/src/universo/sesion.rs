@@ -149,6 +149,40 @@ pub struct Sesion {
     encontrados: Vec<Hallazgo>,
 }
 
+/// Adonde van los ficheros soltados o pegados en el universo (D227).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Destino {
+    Proyecto(String),
+    /// En el cosmos vacio o en un exoplaneta no hay un proyecto claro: se
+    /// pregunta, porque el fichero tiene que entrar en algun chat.
+    Preguntar,
+}
+
+/// Cuanto se separan en fila las lunas de varios ficheros soltados a la
+/// vez, en unidades del mundo: mas que dos radios de luna, para que no se
+/// tapen.
+const SEPARACION_SOLTADOS: f32 = 120.0;
+
+/// D227: el contenedor mas pequeno bajo el punto decide. Una galaxia, o un
+/// planeta dentro de una, dan su proyecto; lo demas se pregunta.
+pub fn destino_de_soltar(u: &Universo, x: f32, y: f32) -> Destino {
+    let debajo = u
+        .astros
+        .iter()
+        .filter(|a| a.es_contenedor() && a.contiene(x, y))
+        .min_by(|a, b| a.radio.total_cmp(&b.radio));
+    let galaxia = match debajo {
+        Some(a) if matches!(a.clase, Clase::Galaxia { .. }) => Some(a),
+        // Un planeta: el de una galaxia da la suya; un exoplaneta, ninguna.
+        Some(a) => a.padre.and_then(|g| u.astro(g)),
+        None => None,
+    };
+    match galaxia.and_then(|g| g.proyecto()) {
+        Some(p) => Destino::Proyecto(p.to_string()),
+        None => Destino::Preguntar,
+    }
+}
+
 /// La clave de `Universo::resto` donde se guardan los emojis recientes.
 const CLAVE_RECIENTES: &str = "emojis_recientes";
 
@@ -719,8 +753,110 @@ impl Sesion {
                 Respuesta::Pasa
             }
             EventoOverlay::BotonSoltado(p) => self.soltar(p, camara, escena, ed),
+            EventoOverlay::FicherosSoltados => {
+                // Las rutas se recogen siempre: si se quedaran, saldrian en
+                // la siguiente vez que se suelte algo.
+                let rutas = pixpin_shell::overlay::ficheros_soltados();
+                // Donde esta el raton AHORA: mientras se arrastra desde el
+                // Explorador la ventana no recibe movimientos, asi que el
+                // ultimo que vio no sirve.
+                let q = self.a_mundo(pixpin_shell::entorno::posicion_del_cursor(), camara, ed);
+                let ficheros = crate::ventana_chat::leer_ficheros(&rutas);
+                Respuesta::Consumido {
+                    repintar: self.meter_ficheros(&ficheros, q),
+                }
+            }
             _ => Respuesta::Pasa,
         }
+    }
+
+    /// Mete ficheros en el chat del proyecto que toque y pone sus lunas
+    /// donde cayeron (D227). `true` si entro alguno.
+    fn meter_ficheros(&mut self, ficheros: &[(String, Vec<u8>)], q: Punto2) -> bool {
+        if ficheros.is_empty() {
+            return false;
+        }
+        let proyecto = match destino_de_soltar(&self.u, q.x, q.y) {
+            Destino::Proyecto(p) => p,
+            Destino::Preguntar => match self.preguntar_proyecto() {
+                Some(p) => p,
+                None => return false,
+            },
+        };
+        let aparato = pixpin_proyecto::identidad::Identidad::leer_o_crear(&self.raiz, "PC")
+            .map(|i| i.yo.codigo())
+            .unwrap_or_default();
+        let hechos =
+            match crate::ventana_chat::meter_en_proyecto(&self.raiz, &proyecto, ficheros, &aparato)
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(?e, %proyecto, "no se pudieron meter los ficheros");
+                    return false;
+                }
+            };
+        for (i, m) in hechos.iter().enumerate() {
+            let x = q.x + i as f32 * SEPARACION_SOLTADOS;
+            // Si no se puede colocar ahi (un exoplaneta dentro de otra
+            // galaxia, el cosmos vacio), la luna se queda en la nebulosa:
+            // el fichero ya esta en el chat y no se pierde.
+            if let Err(r) = self.u.colocar_luna(&m.codigo_unico(), &proyecto, x, q.y) {
+                tracing::info!(?r, "la luna nueva se queda en la nebulosa");
+            }
+        }
+        // Sus fichas, para que las lunas nuevas tengan nombre e icono.
+        let notas = self
+            .galaxia_de(&proyecto)
+            .and_then(|g| self.u.astro(g))
+            .is_some_and(|a| a.notas_del_chat);
+        self.cargador.pedir(&proyecto, notas);
+        !hechos.is_empty()
+    }
+
+    /// El menu con los proyectos, por nombre, para lo que cae fuera de
+    /// toda galaxia. `None` si se cierra sin elegir.
+    fn preguntar_proyecto(&self) -> Option<String> {
+        let mut lista: Vec<(&String, &String)> = self.nombres.iter().collect();
+        lista.sort_by_key(|(_, nombre)| nombre.to_lowercase());
+        let entradas: Vec<(u32, String)> = lista
+            .iter()
+            .enumerate()
+            .map(|(i, (_, nombre))| (i as u32 + 1, (*nombre).clone()))
+            .collect();
+        let elegido = pixpin_shell::menu_llano(
+            windows::Win32::Foundation::HWND(self.hwnd as *mut _),
+            &entradas,
+        )?;
+        lista
+            .get(elegido.checked_sub(1)? as usize)
+            .map(|(id, _)| (*id).clone())
+    }
+
+    /// Ctrl+V (D244): ficheros o una imagen del portapapeles entran al chat
+    /// como si se soltaran en el centro de la vista. `None` si lo que hay
+    /// es otra cosa (texto): eso es del editor.
+    fn pegar(&mut self, camara: &Camara) -> Option<bool> {
+        use pixpin_codec::ContenidoPortapapeles as Que;
+        let ficheros = match pixpin_codec::portapapeles::leer()? {
+            Que::Rutas(rutas) => crate::ventana_chat::leer_ficheros(&rutas),
+            // Una imagen suelta en la escena solo viviria en memoria: se
+            // mete en el proyecto y nace como luna.
+            Que::Imagen(imagen) => match pixpin_codec::codificar_png(&imagen) {
+                Ok(bytes) => {
+                    let cuando = pixpin_shell::entorno::ahora_local_ms();
+                    vec![(format!("pegada-{cuando}.png"), bytes)]
+                }
+                Err(e) => {
+                    tracing::warn!(?e, "no se pudo guardar la imagen pegada");
+                    return Some(false);
+                }
+            },
+            Que::Texto(_) => return None,
+        };
+        let (w, h) = self.tamano_logico();
+        let zoom = camara.zoom.max(f32::EPSILON);
+        let centro = Punto2::nuevo(camara.x + w / (2.0 * zoom), camara.y + h / (2.0 * zoom));
+        Some(self.meter_ficheros(&ficheros, centro))
     }
 
     fn tecla(
@@ -778,6 +914,10 @@ impl Sesion {
                 self.busqueda = Some(String::new());
                 hecho
             }
+            v if ctrl && v == b'V' as u32 => match self.pegar(camara) {
+                Some(repintar) => Respuesta::Consumido { repintar },
+                None => Respuesta::Pasa,
+            },
             VK_INICIO => {
                 self.encajar_cosmos(camara);
                 hecho
@@ -2175,6 +2315,70 @@ mod pruebas {
         };
         let c = s.camara_inicial();
         assert_eq!((c.x, c.y, c.zoom), (1.0, 2.0, 0.5));
+    }
+
+    #[test]
+    fn soltar_en_una_galaxia_va_a_su_proyecto_y_en_el_vacio_o_un_exoplaneta_se_pregunta() {
+        use pixpin_universo::Astro;
+        let mut u = Universo::nuevo();
+        u.astros.push(Astro::galaxia(IdAstro(1), "p1", 0.0, 0.0));
+        let mut dentro = Astro::planeta(IdAstro(3), 500.0, 0.0, 400.0);
+        dentro.padre = Some(IdAstro(1));
+        u.astros.push(dentro);
+        u.astros
+            .push(Astro::planeta(IdAstro(2), 50_000.0, 0.0, 400.0));
+        assert_eq!(
+            destino_de_soltar(&u, 100.0, 0.0),
+            Destino::Proyecto("p1".into())
+        );
+        assert_eq!(
+            destino_de_soltar(&u, 500.0, 0.0),
+            Destino::Proyecto("p1".into())
+        );
+        assert_eq!(destino_de_soltar(&u, 50_000.0, 0.0), Destino::Preguntar);
+        assert_eq!(destino_de_soltar(&u, -90_000.0, 0.0), Destino::Preguntar);
+    }
+
+    #[test]
+    fn soltar_dos_ficheros_en_una_galaxia_los_mete_en_el_chat_y_los_pone_en_fila() {
+        use pixpin_universo::Astro;
+        let raiz = std::env::temp_dir().join(format!("pixpin-soltar-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let mut u = Universo::nuevo();
+        // Con `nuevo_id`, como al cargar: un id puesto a mano chocaria con
+        // el de la primera luna.
+        let g = u.nuevo_id();
+        u.astros.push(Astro::galaxia(g, "p1", 0.0, 0.0));
+        let mut s = Sesion::nueva(
+            raiz.clone(),
+            u,
+            HashMap::new(),
+            pixpin_nivel::Nivel::Ligero,
+            Catalogo::nuevo(pixpin_store::Idioma::Espanol),
+            None,
+        );
+        let ficheros = vec![
+            ("a.pdf".to_string(), b"%PDF".to_vec()),
+            ("b.txt".to_string(), b"hola".to_vec()),
+        ];
+        assert!(s.meter_ficheros(&ficheros, Punto2::nuevo(100.0, 50.0)));
+        let c = pixpin_proyecto::cuaderno::Cuaderno::leer_de(&pixpin_proyecto::almacen::carpeta(
+            &raiz, "p1",
+        ))
+        .unwrap();
+        assert_eq!(c.mensajes.len(), 2, "los dos estan en el chat");
+        for (i, m) in c.mensajes.iter().enumerate() {
+            let l =
+                s.u.luna_de(&m.codigo_unico())
+                    .expect("su luna esta colocada");
+            assert_eq!(l.padre, Some(g));
+            assert_eq!((l.x, l.y), (100.0 + i as f32 * SEPARACION_SOLTADOS, 50.0));
+        }
+        // Caso negativo: nada que meter no toca nada.
+        let antes = s.u.cambios();
+        assert!(!s.meter_ficheros(&[], Punto2::nuevo(100.0, 50.0)));
+        assert_eq!(s.u.cambios(), antes);
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 
     fn centro(r: Rect) -> Punto {

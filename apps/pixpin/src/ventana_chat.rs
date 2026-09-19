@@ -3826,20 +3826,7 @@ fn pegar(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Resu
             let cuando = pixpin_shell::entorno::ahora_local_ms();
             vec![(format!("pegado-{cuando}.png"), bytes)]
         }
-        Que::Rutas(rutas) => rutas
-            .iter()
-            .filter_map(|r| {
-                let nombre = r.file_name()?.to_string_lossy().to_string();
-                // Uno que no se pueda leer no puede llevarse los demas.
-                match std::fs::read(r) {
-                    Ok(bytes) => Some((nombre, bytes)),
-                    Err(e) => {
-                        tracing::warn!(?e, ruta = %r.display(), "fichero que no se pudo leer");
-                        None
-                    }
-                }
-            })
-            .collect(),
+        Que::Rutas(rutas) => leer_ficheros(&rutas),
     };
 
     let mut hechos = 0;
@@ -3861,11 +3848,41 @@ fn adjuntar(
     nombre: &str,
     bytes: &[u8],
 ) -> std::io::Result<()> {
-    use pixpin_proyecto::{almacen, cuaderno};
-    let raiz = ubicacion.raiz();
-    let ruta = almacen::guardar_adjunto(raiz, &a.ficha.id, nombre, bytes)?;
-    let cuando = pixpin_shell::entorno::ahora_local_ms();
     let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    // Primero al cuaderno y solo despues a la pantalla, como al escribir.
+    let mensaje = adjuntar_en_proyecto(
+        ubicacion.raiz(),
+        &a.ficha.id,
+        aparato,
+        nombre,
+        bytes,
+        numero,
+    )?;
+    // Su ojeada AHORA, no al reabrir el proyecto: una foto recien adjuntada
+    // salia como una fila con el nombre del fichero («pegado-…png») en vez
+    // de verse, y solo aparecia al volver a entrar.
+    a.vistas.push(leer_vista(ubicacion, &a.ficha.id, &mensaje));
+    a.ficha.tocado = mensaje.cuando;
+    a.ficha.resumen = nombre.to_string();
+    a.mensajes.push(mensaje);
+    Ok(())
+}
+
+/// Lo de `adjuntar` sin la conversacion abierta: copia el fichero al
+/// proyecto, lo apunta en su cuaderno y sube el proyecto en la lista.
+/// Devuelve el mensaje nuevo. Es lo que usa el universo al soltar o pegar
+/// (D227, D244): un fichero entra al chat por un solo sitio.
+pub(crate) fn adjuntar_en_proyecto(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    aparato: &str,
+    nombre: &str,
+    bytes: &[u8],
+    numero: i64,
+) -> std::io::Result<pixpin_proyecto::cuaderno::Mensaje> {
+    use pixpin_proyecto::{almacen, cuaderno};
+    let ruta = almacen::guardar_adjunto(raiz, proyecto, nombre, bytes)?;
+    let cuando = pixpin_shell::entorno::ahora_local_ms();
     let mensaje = cuaderno::Mensaje::adjunto(
         cuaderno::clase_de_nombre(nombre),
         nombre,
@@ -3875,25 +3892,64 @@ fn adjuntar(
             cuando,
             numero,
             aparato: aparato.to_string(),
-            proyecto: a.ficha.id.clone(),
+            proyecto: proyecto.to_string(),
         },
     );
-    // Primero al cuaderno y solo despues a la pantalla, como al escribir.
-    cuaderno::anadir(&almacen::carpeta(raiz, &a.ficha.id), &mensaje)?;
-    // Su ojeada AHORA, no al reabrir el proyecto: una foto recien adjuntada
-    // salia como una fila con el nombre del fichero («pegado-…png») en vez
-    // de verse, y solo aparecia al volver a entrar.
-    a.vistas.push(leer_vista(ubicacion, &a.ficha.id, &mensaje));
-    a.mensajes.push(mensaje);
-    a.ficha.tocado = cuando;
-    a.ficha.resumen = nombre.to_string();
+    cuaderno::anadir(&almacen::carpeta(raiz, proyecto), &mensaje)?;
     let mut indice = almacen::Indice::leer(raiz);
-    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == a.ficha.id) {
-        f.tocado = a.ficha.tocado;
-        f.resumen = a.ficha.resumen.clone();
+    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == proyecto) {
+        f.tocado = cuando;
+        f.resumen = nombre.to_string();
         indice.guardar(raiz)?;
     }
-    Ok(())
+    Ok(mensaje)
+}
+
+/// Mete en un proyecto varios ficheros ya leidos, con numeros seguidos a
+/// partir del ultimo de su cuaderno. Uno que falle se apunta en el registro
+/// y no se lleva los demas; lo que devuelve son los que entraron.
+pub(crate) fn meter_en_proyecto(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    ficheros: &[(String, Vec<u8>)],
+    aparato: &str,
+) -> std::io::Result<Vec<pixpin_proyecto::cuaderno::Mensaje>> {
+    use pixpin_proyecto::{almacen, cuaderno};
+    let mut numero = match cuaderno::Cuaderno::leer_de(&almacen::carpeta(raiz, proyecto)) {
+        Ok(c) => c.siguiente_numero(Some(proyecto)),
+        // Un proyecto sin nada escrito todavia empieza por el uno.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 1,
+        Err(e) => return Err(e),
+    };
+    let mut hechos = Vec::new();
+    for (nombre, bytes) in ficheros {
+        match adjuntar_en_proyecto(raiz, proyecto, aparato, nombre, bytes, numero) {
+            Ok(m) => {
+                hechos.push(m);
+                numero += 1;
+            }
+            Err(e) => tracing::warn!(?e, nombre, "fichero que no se pudo meter en el proyecto"),
+        }
+    }
+    Ok(hechos)
+}
+
+/// Lee de disco los ficheros que se sueltan o se pegan, con su nombre. Uno
+/// que no se pueda leer se salta: no puede llevarse los demas.
+pub(crate) fn leer_ficheros(rutas: &[std::path::PathBuf]) -> Vec<(String, Vec<u8>)> {
+    rutas
+        .iter()
+        .filter_map(|r| {
+            let nombre = r.file_name()?.to_string_lossy().to_string();
+            match std::fs::read(r) {
+                Ok(bytes) => Some((nombre, bytes)),
+                Err(e) => {
+                    tracing::warn!(?e, ruta = %r.display(), "fichero que no se pudo leer");
+                    None
+                }
+            }
+        })
+        .collect()
 }
 
 /// La fecha del separador de dias, como la escribe PixPin Android: «Hoy»,
@@ -7729,6 +7785,34 @@ mod pruebas_universo {
     fn ctrl_u_con_un_proyecto_abierto_va_a_su_galaxia_y_sin_ninguno_al_cosmos() {
         assert_eq!(pedido_de_ctrl_u(Some("p1")), Pedido::Galaxia("p1".into()));
         assert_eq!(pedido_de_ctrl_u(None), Pedido::Cosmos);
+    }
+
+    #[test]
+    fn meter_dos_ficheros_en_un_proyecto_deja_dos_mensajes_con_su_ruta_y_su_clase() {
+        use pixpin_proyecto::{almacen, cuaderno};
+        let raiz = std::env::temp_dir().join(format!("pixpin-meter-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let ficheros = vec![
+            ("plano.pdf".to_string(), b"%PDF".to_vec()),
+            ("foto.png".to_string(), vec![1, 2, 3]),
+        ];
+        let hechos = meter_en_proyecto(&raiz, "p1", &ficheros, "K7Q2").unwrap();
+        assert_eq!(hechos.len(), 2);
+        assert_eq!(hechos[0].ruta.as_deref(), Some("archivos/plano.pdf"));
+        assert_eq!(
+            hechos[0].clase,
+            Some(cuaderno::clase_de_nombre("plano.pdf"))
+        );
+        assert_eq!(hechos[1].clase, Some(cuaderno::Clase::Imagen));
+        assert_eq!(hechos[1].numero, hechos[0].numero + 1, "numeros seguidos");
+        let leido = cuaderno::Cuaderno::leer_de(&almacen::carpeta(&raiz, "p1")).unwrap();
+        assert_eq!(leido.mensajes.len(), 2);
+        // Caso negativo: el mismo nombre otra vez no pisa el primero, y el
+        // numero sigue donde iba.
+        let otra = meter_en_proyecto(&raiz, "p1", &ficheros[..1], "K7Q2").unwrap();
+        assert_eq!(otra[0].ruta.as_deref(), Some("archivos/plano (1).pdf"));
+        assert_eq!(otra[0].numero, hechos[1].numero + 1);
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 
     #[test]

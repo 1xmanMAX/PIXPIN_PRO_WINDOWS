@@ -545,6 +545,9 @@ fn abrir_en_modo(
     // mirar y mover astros, no dibujar.
     if universo.is_some() {
         elegir_herramienta(&mut gesto, Herramienta::Mano);
+        // D227: soltar ficheros del Explorador encima los mete en el chat.
+        // Solo con el universo: en un dibujo suelto no hay chat al que ir.
+        ventana.aceptar_ficheros(true);
     }
     // Lo copiado del lienzo. Vive con la ventana: cerrar el editor se lo
     // lleva, que es lo que espera cualquiera.
