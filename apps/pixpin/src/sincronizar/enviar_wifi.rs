@@ -399,7 +399,7 @@ fn de_archivo(ruta: &Path, yo: &str) -> Option<(Elemento, PathBuf)> {
 /// Un proyecto de la lista, empaquetado en `carpeta` (`deProyecto`).
 fn de_proyecto(raiz: &Path, id: &str, carpeta: &Path) -> Result<(Elemento, PathBuf), String> {
     let bytes =
-        pixpin_proyecto::almacen::empaquetar(raiz, id, pixpin_shell::entorno::ahora_local_ms())
+        pixpin_proyecto::almacen::empaquetar(raiz, id, pixpin_shell::entorno::ahora_utc_ms())
             .map_err(|e| e.to_string())?;
     let p = pixpin_proyecto::Paquete::desde_bytes(&bytes).map_err(|e| e.to_string())?;
     let pr = &p.proyecto;
@@ -451,7 +451,7 @@ fn preparar(cx: &Contexto, turno: u64, que: Que) {
                     let carpeta = cx
                         .raiz
                         .join("envio")
-                        .join(pixpin_shell::entorno::ahora_local_ms().to_string());
+                        .join(pixpin_shell::entorno::ahora_utc_ms().to_string());
                     de_proyecto(&cx.raiz, &id, &carpeta).map(|c| (vec![c], Some(carpeta)))
                 }
             };

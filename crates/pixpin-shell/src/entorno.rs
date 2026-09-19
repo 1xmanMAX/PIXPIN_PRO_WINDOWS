@@ -130,9 +130,50 @@ pub fn ahora_local_ms() -> i64 {
     (cien_ns - A_1970) / 10_000
 }
 
+/// Ahora, en milisegundos desde 1970 en UTC: la hora que se GUARDA.
+///
+/// Es la de `System.currentTimeMillis()` del movil. Lo que se guarda con la
+/// hora local viaja al movil corrido por el huso (unas cinco horas en Peru),
+/// se coloca en el chat donde no toca y, al decidir si un proyecto borrado
+/// alli se toco aqui despues, puede parecer anterior de lo que fue.
+pub fn ahora_utc_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or_default()
+}
+
+/// Cuanto hay que sumarle a una hora UTC para pintarla en la del usuario.
+///
+/// Se redondea al cuarto de hora: los husos van de cuarto en cuarto y asi
+/// los pocos milisegundos entre las dos lecturas del reloj no se cuelan.
+/// Se recalcula a cada llamada porque es barato y el cambio de horario de
+/// verano tiene que notarse sin reiniciar la aplicacion.
+pub fn desfase_local_ms() -> i64 {
+    const CUARTO: i64 = 15 * 60_000;
+    let d = ahora_local_ms() - ahora_utc_ms();
+    (d as f64 / CUARTO as f64).round() as i64 * CUARTO
+}
+
+/// Una hora guardada (UTC) vista en la hora del usuario, para pintarla.
+pub fn a_local(utc_ms: i64) -> i64 {
+    utc_ms + desfase_local_ms()
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn el_desfase_del_huso_va_en_cuartos_de_hora_y_a_local_lo_suma() {
+        let d = desfase_local_ms();
+        assert_eq!(d % (15 * 60_000), 0, "desfase {d}");
+        assert!(d.abs() <= 14 * 3_600_000, "ningun huso pasa de 14 h");
+        assert_eq!(a_local(1_000), 1_000 + d);
+        // Caso negativo: la hora UTC no es la local corrida, salvo en UTC.
+        let (utc, local) = (ahora_utc_ms(), ahora_local_ms());
+        assert!((local - utc - d).abs() < 60_000);
+    }
 
     #[test]
     fn el_tema_se_responde_sin_reventar() {

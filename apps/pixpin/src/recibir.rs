@@ -483,8 +483,7 @@ fn al_cuaderno(
     if sueltos.is_empty() {
         return Ok(0);
     }
-    let ficha =
-        almacen::asegurar_guardados(raiz, pixpin_shell::entorno::ahora_local_ms(), aparato)?;
+    let ficha = almacen::asegurar_guardados(raiz, pixpin_shell::entorno::ahora_utc_ms(), aparato)?;
     let carpeta = almacen::carpeta(raiz, &ficha.id);
     let previos = cuaderno::Cuaderno::leer_de(&carpeta).unwrap_or_default();
     // El numero sigue al ultimo del cuaderno: es el que ordena la
@@ -498,7 +497,7 @@ fn al_cuaderno(
         let cuando = if elemento.creado > 0 {
             elemento.creado
         } else {
-            pixpin_shell::entorno::ahora_local_ms()
+            pixpin_shell::entorno::ahora_utc_ms()
         };
         let mut m = cuaderno::Mensaje::adjunto(
             cuaderno::clase_de_nombre(&nombre),
@@ -522,7 +521,7 @@ fn al_cuaderno(
     // La ficha sube en la lista, como con cualquier mensaje nuevo.
     let mut indice = almacen::Indice::leer(raiz);
     if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == ficha.id) {
-        f.tocado = pixpin_shell::entorno::ahora_local_ms();
+        f.tocado = pixpin_shell::entorno::ahora_utc_ms();
         let _ = indice.guardar(raiz);
     }
     Ok(hechos)

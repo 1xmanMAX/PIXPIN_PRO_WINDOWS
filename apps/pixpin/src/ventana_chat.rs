@@ -478,9 +478,11 @@ pub fn abrir(
     let ahora = pixpin_shell::entorno::ahora_local_ms();
     // «Mensajes guardados» existe siempre, tambien en un almacen recien
     // estrenado: es adonde va lo suelto, y el usuario lo busco y no estaba.
-    if let Err(e) =
-        pixpin_proyecto::almacen::asegurar_guardados(ubicacion.raiz(), ahora, &identidad)
-    {
+    if let Err(e) = pixpin_proyecto::almacen::asegurar_guardados(
+        ubicacion.raiz(),
+        pixpin_shell::entorno::ahora_utc_ms(),
+        &identidad,
+    ) {
         tracing::warn!(?e, "no se pudo crear «Mensajes guardados»");
     }
     let indice = pixpin_proyecto::almacen::Indice::leer(ubicacion.raiz());
@@ -1034,7 +1036,7 @@ pub fn abrir(
                         // abre con el nombre ya listo para escribirlo. Nace
                         // sin nombre a proposito: teclear es mas rapido que
                         // borrar «Proyecto 3» para poner el de verdad.
-                        let cuando = pixpin_shell::entorno::ahora_local_ms();
+                        let cuando = pixpin_shell::entorno::ahora_utc_ms();
                         let mut indice = pixpin_proyecto::almacen::Indice::leer(ubicacion.raiz());
                         let ficha = pixpin_proyecto::almacen::Ficha::nueva("", cuando, &identidad);
                         indice.proyectos.push(ficha.clone());
@@ -1239,7 +1241,7 @@ pub fn abrir(
                                 abierto = None;
                                 elegida = None;
                             }
-                            let cuando = pixpin_shell::entorno::ahora_local_ms();
+                            let cuando = pixpin_shell::entorno::ahora_utc_ms();
                             match pixpin_proyecto::almacen::borrar_proyectos(
                                 ubicacion.raiz(),
                                 &ids,
@@ -2599,7 +2601,10 @@ fn pintar_filas(p: &Pintor, d: &Disposicion, tema: &Tema, escala: u32, lista: &L
             (tema.texto, tema.apagado)
         };
         // La hora primero: dice cuanto sitio le queda al nombre.
-        let hora = pixpin_ui::chat::etiqueta_hora(ficha.tocado, lista.ahora);
+        let hora = pixpin_ui::chat::etiqueta_hora(
+            pixpin_shell::entorno::a_local(ficha.tocado),
+            lista.ahora,
+        );
         let tam_hora = chat::CONTADOR_TAM * e;
         let mut hueco_nombre = partes.ancho_texto as f32;
         if !hora.is_empty() {
@@ -2837,7 +2842,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
 
         if let Some(sep) = puesto.separador {
             let sep = mover(sep);
-            let fecha = fecha_larga(m.cuando, ahora, textos);
+            let fecha = fecha_larga(pixpin_shell::entorno::a_local(m.cuando), ahora, textos);
             if !fecha.is_empty() {
                 // La pastilla del dia del movil (`SeparadorDeDia`): radio 11,
                 // 8 de aire a los lados y 3 arriba y abajo, letra de 14.
@@ -3119,7 +3124,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
 
         // Abajo a la IZQUIERDA: la chapa del codigo, la etiqueta, la
         // chincheta si esta fijado y la hora, en ese orden, como el movil.
-        let hora = pixpin_ui::chat::etiqueta_hora(m.cuando, ahora);
+        let hora = pixpin_ui::chat::etiqueta_hora(pixpin_shell::entorno::a_local(m.cuando), ahora);
         let (_, alto_hora) = p.medir_texto(&hora, HORA_TAM * e);
         let y_hora =
             burbuja.abajo() as f32 - (h::RELLENO_Y - h::HORA_INVADE_Y) as f32 * e - alto_hora;
@@ -3246,7 +3251,7 @@ fn medir_mensaje(
             alto: (alto_vista + extra - relleno_y).max(0.0).ceil() as u32,
             mio: false,
             cuando: m.cuando,
-            dia: m.cuando.div_euclid(86_400_000),
+            dia: pixpin_shell::entorno::a_local(m.cuando).div_euclid(86_400_000),
         };
         let piezas = Piezas {
             foto_sola,
@@ -3300,7 +3305,7 @@ fn medir_mensaje(
         sumar(&mut ancho, &mut alto, w, alto_texto);
     }
     // El renglon de abajo: la chapa, la etiqueta, la chincheta y la hora.
-    let hora = pixpin_ui::chat::etiqueta_hora(m.cuando, ahora);
+    let hora = pixpin_ui::chat::etiqueta_hora(pixpin_shell::entorno::a_local(m.cuando), ahora);
     let (ancho_hora, alto_hora) = p.medir_texto(&hora, HORA_TAM * e);
     let mut renglon = ancho_hora;
     if let Some(codigo) = chapa_de_codigo(m) {
@@ -3321,7 +3326,7 @@ fn medir_mensaje(
         // una conversacion entre dos, y alternar lados no decia nada.
         mio: false,
         cuando: m.cuando,
-        dia: m.cuando.div_euclid(86_400_000),
+        dia: pixpin_shell::entorno::a_local(m.cuando).div_euclid(86_400_000),
     };
     let piezas = Piezas {
         foto_sola,
@@ -3579,7 +3584,7 @@ fn pintar_hora_sobre_foto(
     ahora: i64,
     e: f32,
 ) {
-    let hora = pixpin_ui::chat::etiqueta_hora(m.cuando, ahora);
+    let hora = pixpin_ui::chat::etiqueta_hora(pixpin_shell::entorno::a_local(m.cuando), ahora);
     let tam = HORA_TAM * e;
     let codigo = chapa_de_codigo(m);
     let emoji = m.emoji.clone().filter(|s| !s.is_empty());
@@ -3898,7 +3903,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
 fn guardar_nota(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Result<()> {
     use pixpin_proyecto::cuaderno;
     let texto = a.borrador.trim().to_string();
-    let cuando = pixpin_shell::entorno::ahora_local_ms();
+    let cuando = pixpin_shell::entorno::ahora_utc_ms();
     // El numero sigue al mayor que ya hay, que es lo que hace el codigo de
     // chat (`47·K7Q2`) unico dentro de la conversacion.
     let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
@@ -3955,7 +3960,7 @@ fn pegar(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Resu
             let bytes = pixpin_codec::codificar_png(&imagen).map_err(std::io::Error::other)?;
             // Una imagen pegada no tiene nombre; se le pone la hora, que es
             // lo unico verdadero que se sabe de ella.
-            let cuando = pixpin_shell::entorno::ahora_local_ms();
+            let cuando = pixpin_shell::entorno::ahora_utc_ms();
             vec![(format!("pegado-{cuando}.png"), bytes)]
         }
         Que::Rutas(rutas) => leer_ficheros(&rutas),
@@ -4014,7 +4019,7 @@ pub(crate) fn adjuntar_en_proyecto(
 ) -> std::io::Result<pixpin_proyecto::cuaderno::Mensaje> {
     use pixpin_proyecto::{almacen, cuaderno};
     let ruta = almacen::guardar_adjunto(raiz, proyecto, nombre, bytes)?;
-    let cuando = pixpin_shell::entorno::ahora_local_ms();
+    let cuando = pixpin_shell::entorno::ahora_utc_ms();
     let mensaje = cuaderno::Mensaje::adjunto(
         cuaderno::clase_de_nombre(nombre),
         nombre,
@@ -4441,7 +4446,7 @@ fn crear_tabla(
         .escribir()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
-    let cuando = pixpin_shell::entorno::ahora_local_ms();
+    let cuando = pixpin_shell::entorno::ahora_utc_ms();
     let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
     let mensaje = cuaderno::Mensaje::miniapp(
         pixpin_proyecto::tabla::MINIAPP,
@@ -4485,7 +4490,7 @@ fn crear_lienzo(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::i
     let json = pixpin_motor2d::excalidraw::escribir(&pixpin_motor2d::excalidraw::Lienzo::vacio());
     std::fs::write(&ruta, &json)?;
 
-    let cuando = pixpin_shell::entorno::ahora_local_ms();
+    let cuando = pixpin_shell::entorno::ahora_utc_ms();
     let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
     let nombre = format!("{id}.excalidraw");
     let mut mensaje = cuaderno::Mensaje::adjunto(
@@ -5162,7 +5167,7 @@ fn pintar_info(
                 );
             }
             p.texto_linea(
-                &pixpin_ui::chat::etiqueta_hora(m.cuando, c.ahora),
+                &pixpin_ui::chat::etiqueta_hora(pixpin_shell::entorno::a_local(m.cuando), c.ahora),
                 f.fecha.x as f32,
                 f.fecha.y as f32,
                 info::ARCHIVO_ESTADO_TAM * e,
@@ -5428,7 +5433,7 @@ fn cerrar_hoja(ubicacion: &Ubicacion, a: &mut Abierto) {
 
 /// Escribe la tabla en su mensaje del cuaderno y refresca lo que se ve.
 fn guardar_hoja(ubicacion: &Ubicacion, a: &mut Abierto, h: &mut HojaAbierta) -> Result<()> {
-    h.tabla.tocado = pixpin_shell::entorno::ahora_local_ms();
+    h.tabla.tocado = pixpin_shell::entorno::ahora_utc_ms();
     let texto = h
         .tabla
         .escribir()
@@ -6006,7 +6011,7 @@ fn proyecto_de_pdf(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| nombre_fichero.clone());
 
-    let cuando = pixpin_shell::entorno::ahora_local_ms();
+    let cuando = pixpin_shell::entorno::ahora_utc_ms();
     let identidad = pixpin_proyecto::identidad::Identidad::leer_o_crear(raiz, "PC")
         .map(|i| i.yo.codigo())
         .unwrap_or_else(|_| aparato.to_string());
@@ -7478,7 +7483,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             let Some(ficha) = cx.fichas.iter().find(|f| f.id == id) else {
                 return Efecto::Nada;
             };
-            let cuando = pixpin_shell::entorno::ahora_local_ms();
+            let cuando = pixpin_shell::entorno::ahora_utc_ms();
             let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
             // Un proyecto adjunto no se copia: es la puerta a lo que ya
             // existe (`guardados_adj_proyecto`). Pulsarlo lo abre.
@@ -7635,7 +7640,7 @@ fn reenviar(
     let carpeta = almacen::carpeta(raiz, destino);
     let alli = cuaderno::Cuaderno::leer_de(&carpeta).unwrap_or_default();
     let mut numero = alli.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-    let ahora = pixpin_shell::entorno::ahora_local_ms();
+    let ahora = pixpin_shell::entorno::ahora_utc_ms();
     let mut ordenados: Vec<usize> = indices.to_vec();
     ordenados.sort_by_key(|&i| a.mensajes.get(i).map(|m| m.cuando));
     let mut hechos = 0;

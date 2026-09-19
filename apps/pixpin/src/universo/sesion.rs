@@ -873,7 +873,7 @@ impl Sesion {
             // mete en el proyecto y nace como luna.
             Que::Imagen(imagen) => match pixpin_codec::codificar_png(&imagen) {
                 Ok(bytes) => {
-                    let cuando = pixpin_shell::entorno::ahora_local_ms();
+                    let cuando = pixpin_shell::entorno::ahora_utc_ms();
                     vec![(format!("pegada-{cuando}.png"), bytes)]
                 }
                 Err(e) => {
