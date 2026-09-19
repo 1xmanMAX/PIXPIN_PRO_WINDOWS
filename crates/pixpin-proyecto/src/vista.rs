@@ -45,13 +45,22 @@ pub const MARCA_CHAT: &str = "chat";
 pub struct DiscoPc {
     raiz: PathBuf,
     avisos: Option<Box<dyn Fn(Cambio) + Send + Sync>>,
+    /// El mapa de chats, por la firma del indice (tamano y fecha): cada ruta
+    /// de archivo lo necesita, y rehacerlo es leer el indice y el
+    /// `proyecto.json` de cada ficha.
+    mapa: std::sync::Mutex<Option<(Firma, Mapa)>>,
 }
+
+type Firma = (u64, Option<std::time::SystemTime>);
+/// Cada chat con su ficha.
+type Mapa = Vec<(String, Ficha)>;
 
 impl DiscoPc {
     pub fn nuevo(raiz: &Path) -> DiscoPc {
         DiscoPc {
             raiz: raiz.to_path_buf(),
             avisos: None,
+            mapa: std::sync::Mutex::new(None),
         }
     }
 
@@ -65,7 +74,28 @@ impl DiscoPc {
     /// id de chat se lo queda; uno repetido (el mismo `.pixpin` importado
     /// dos veces) se queda con el id de su ficha.
     pub fn mapa(&self) -> Vec<(String, Ficha)> {
-        mapa_de(&self.raiz, &Indice::leer(&self.raiz))
+        let firma = std::fs::metadata(almacen::ruta(&self.raiz))
+            .map(|m| (m.len(), m.modified().ok()))
+            .unwrap_or((0, None));
+        if let Ok(g) = self.mapa.lock()
+            && let Some((f, m)) = g.as_ref()
+            && *f == firma
+        {
+            return m.clone();
+        }
+        let m = mapa_de(&self.raiz, &Indice::leer(&self.raiz));
+        if let Ok(mut g) = self.mapa.lock() {
+            *g = Some((firma, m.clone()));
+        }
+        m
+    }
+
+    /// Despues de escribir el indice o un `proyecto.json`: la firma podria no
+    /// cambiar si dos escrituras caen en el mismo instante con el mismo largo.
+    fn olvidar_mapa(&self) {
+        if let Ok(mut g) = self.mapa.lock() {
+            *g = None;
+        }
     }
 
     pub fn ficha_de(&self, chat: &str) -> Option<Ficha> {
@@ -94,7 +124,9 @@ impl DiscoPc {
         let aparato = self.identidad()?.yo;
         let aparato = crate::codigos::de_aparato(&aparato.id);
         if chat == GENERAL {
-            return almacen::asegurar_guardados(&self.raiz, ahora(), &aparato);
+            let f = almacen::asegurar_guardados(&self.raiz, ahora(), &aparato);
+            self.olvidar_mapa();
+            return f;
         }
         let mut indice = Indice::leer(&self.raiz);
         let valido = !chat.is_empty()
@@ -120,6 +152,7 @@ impl DiscoPc {
             .insert(MARCA_SINCRO.into(), serde_json::Value::Bool(true));
         indice.proyectos.push(ficha.clone());
         indice.guardar(&self.raiz)?;
+        self.olvidar_mapa();
         Ok(ficha)
     }
 
@@ -472,6 +505,7 @@ impl Disco for DiscoPc {
             f.resto
                 .insert(MARCA_SINCRO.into(), serde_json::Value::Bool(true));
             indice.guardar(&self.raiz)?;
+            self.olvidar_mapa();
         }
         self.avisar(Cambio::Mensajes);
         Ok(())
@@ -505,6 +539,7 @@ impl Disco for DiscoPc {
         let mensajes: Vec<Json> = todos.into_iter().map(|(_, m)| m).collect();
         self.marcas_tras_aplicar(chat, &[], &claves, &mensajes, cuando)?;
         almacen::borrar_proyectos(&self.raiz, std::slice::from_ref(&f.id), cuando)?;
+        self.olvidar_mapa();
         // `borrar_proyectos` ya dejo lapida; esta dice ademas quien lo borro.
         self.anotar_lapida(chat, cuando, aparato)?;
         self.avisar(Cambio::Proyectos);
@@ -539,6 +574,7 @@ impl Disco for DiscoPc {
         let puesto = disco::actualizado(antes.as_ref(), &nuevo);
         let dir = almacen::carpeta(&self.raiz, &ficha.id);
         escribir_atomico(&dir.join("proyecto.json"), puesto.a_texto().as_bytes())?;
+        self.olvidar_mapa();
         let mut indice = Indice::leer(&self.raiz);
         if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == ficha.id) {
             f.nombre = nombre;
@@ -554,6 +590,7 @@ impl Disco for DiscoPc {
             f.resto
                 .insert(MARCA_SINCRO.into(), serde_json::Value::Bool(true));
             indice.guardar(&self.raiz)?;
+            self.olvidar_mapa();
         }
         self.avisar(Cambio::Proyectos);
         Ok(())

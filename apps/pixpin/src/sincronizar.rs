@@ -1055,7 +1055,9 @@ fn escuchar(raiz: PathBuf, tx: mpsc::Sender<Aviso>, vivo: Arc<AtomicBool>) -> Op
                 match escucha.accept() {
                     Ok((flujo, de)) => {
                         let _ = flujo.set_nonblocking(false);
-                        let _ = flujo.set_read_timeout(Some(Duration::from_secs(120)));
+                        // Diez segundos para la sonda; `responder` lo alarga si es
+                        // una sincronizacion.
+                        let _ = flujo.set_read_timeout(Some(Duration::from_secs(10)));
                         // Cada conexion en su hilo: mientras se junta un chat
                         // largo, la sonda del movil tiene que seguir teniendo
                         // respuesta, y un segundo que llame, oir «ocupado».
@@ -1099,6 +1101,10 @@ fn responder(
         flujo.write_all(pixpin_sincro::SONDA_RESPUESTA)?;
         return Ok(());
     }
+    // Largo, como `Red.escuchar` del movil: mientras el otro decide que
+    // sincronizar, aqui no llega nada, y cortarle a los dos minutos le
+    // tiraria la vuelta.
+    flujo.set_read_timeout(Some(Duration::from_secs(30 * 60)))?;
     let de = flujo.peer_addr().ok();
     let aviso = tx.clone();
     let disco = DiscoPc::nuevo(raiz).con_avisos(move |c| {
