@@ -20,6 +20,7 @@ pub mod gestos;
 pub mod guardar;
 pub mod hechos;
 pub mod instancia;
+pub mod mdns;
 pub mod mensajero;
 pub mod overlay;
 pub mod primer_plano;

@@ -12,16 +12,34 @@
 //! - `codigo`: del codigo que se teclea a la clave del grupo (PBKDF2) y a la
 //!   etiqueta publica que se anuncia en la red.
 //! - `canal`: el saludo, las dos claves de sesion y los tramos cifrados.
+//! - `mensajes`: las peticiones y respuestas del dialogo, en JSON.
+//! - `canonico`: el JSON canonico y el resumen SHA-256 con que los dos
+//!   aparatos saben si algo cambio (sobre un arbol propio que conserva los
+//!   numeros tal cual, que `serde_json::Value` no lo hace).
+//! - `diferencia`: el plan (traer, mandar, fusionar) a partir de dos
+//!   inventarios y lo acordado.
+//! - `fusion`: la fusion a tres bandas de lienzos, tablas, croquis y notas,
+//!   y los parches con que viajan solo los cambios.
+//! - `mezcla`: juntar dos versiones de un proyecto, hoja por hoja.
+//! - `grupo`: el codigo del grupo, sus miembros, el codigo fijo de un
+//!   aparato y la sena `47a`.
 //!
-//! Lo que falta, dicho en vez de disimulado: el descubrimiento por mDNS, los
-//! mensajes del dialogo, la diferencia y la fusion.
+//! Lo que falta, dicho en vez de disimulado: el descubrimiento por mDNS, el
+//! `Disco` (leer y escribir el almacen de aqui como lo hace el de Android),
+//! el `Protocolo` que hila todo lo anterior por el canal, y `Codigos`, que
+//! necesita la estructura `Mensaje` de una capa mas arriba.
 
 #![forbid(unsafe_code)]
 
 pub mod canal;
+pub mod canonico;
 pub mod codigo;
+pub mod diferencia;
 pub mod envio;
+pub mod fusion;
+pub mod grupo;
 pub mod mensajes;
+pub mod mezcla;
 
 /// La version del protocolo que se habla. Viaja en el saludo `hola`.
 ///

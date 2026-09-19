@@ -787,9 +787,9 @@ pub fn abrir(
                         }
                         buscando = false;
                     } else if disposicion.boton_sincro(escala).contiene(l) {
-                        // La misma ventana que abria «Del movil» en el menu
-                        // de adjuntar, ahora a la vista.
-                        crate::recibir::lanzar(idioma, ubicacion.clone());
+                        // La pantalla de Sincronizar del movil: tus aparatos,
+                        // y desde ella Recibir y Enviar.
+                        crate::sincronizar::lanzar(idioma, ubicacion.clone());
                         buscando = false;
                         hay_que_pintar = true;
                     } else if disposicion.buscador(escala).contiene(l) {

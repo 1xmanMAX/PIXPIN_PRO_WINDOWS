@@ -65,6 +65,7 @@ mod panel_dibujo;
 mod pin_vivo;
 mod pines;
 mod recibir;
+mod sincronizar;
 mod reproductor;
 mod scroll;
 mod ventana_ajustes;

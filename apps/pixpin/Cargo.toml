@@ -28,6 +28,9 @@ pixpin-sincro = { version = "0.1.0", path = "../../crates/pixpin-sincro" }
 pixpin-store = { version = "0.1.0", path = "../../crates/pixpin-store" }
 pixpin-ui = { version = "0.1.0", path = "../../crates/pixpin-ui" }
 qrcodegen = "1.8.0"
+# El dialogo de sincronizar viaja en JSON: mismas versiones que pixpin-sincro.
+serde = "1.0"
+serde_json = "1.0"
 tracing = "0.1.44"
 tracing-appender = "0.2.5"
 tracing-subscriber = "0.3.23"
