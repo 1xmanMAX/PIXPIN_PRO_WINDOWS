@@ -53,6 +53,13 @@ pub fn de_mensaje(m: &Mensaje, raiz: &Path, proyecto: &str) -> FichaLuna {
     }
 }
 
+/// Si el mensaje tiene luna en el universo con el interruptor de notas
+/// apagado, que es como nace cada galaxia. Lo usa el chat para ofrecer
+/// «Mostrar en el universo» (D212) solo donde hay algo que ensenar.
+pub fn es_luna(m: &Mensaje) -> bool {
+    es_colocable(ClaseLuna::de_palabra(palabra_de(m)), m.en_buzon, false)
+}
+
 pub fn de_cuaderno(
     c: &Cuaderno,
     raiz: &Path,
@@ -132,5 +139,16 @@ mod pruebas {
         };
         assert_eq!(de_cuaderno(&c, &raiz, "p1", false).len(), 1);
         assert_eq!(de_cuaderno(&c, &raiz, "p1", true).len(), 2);
+    }
+
+    #[test]
+    fn mostrar_en_el_universo_sale_en_archivos_y_fotos_y_no_en_notas_ni_en_el_buzon() {
+        assert!(es_luna(&mensaje(Clase::Archivo, Some("archivos/a.pdf"))));
+        assert!(es_luna(&mensaje(Clase::Imagen, Some("archivos/a.jpg"))));
+        assert!(es_luna(&mensaje(Clase::Dibujo, None)));
+        assert!(!es_luna(&mensaje(Clase::Nota, None)));
+        let mut buzon = mensaje(Clase::Imagen, None);
+        buzon.en_buzon = true;
+        assert!(!es_luna(&buzon));
     }
 }

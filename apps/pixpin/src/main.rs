@@ -111,6 +111,40 @@ const _: () = assert!(
      el menu lo convertiria en MostrarGrupo y el editor no se abriria"
 );
 
+/// El identificador del «Universo» de la bandeja (D213). Como el del
+/// editor, fuera del catalogo de comandos: no tiene atajo global (con el
+/// chat enfocado es Ctrl+U) y fuera del tramo de los grupos ocultos.
+const ID_VENTANA_UNIVERSO: u32 = 901;
+
+const _: () = assert!(
+    ID_VENTANA_UNIVERSO >= pixpin_shell::ventana::ID_MENU_GRUPO_TOPE,
+    "el identificador del Universo cae dentro del tramo de los grupos ocultos"
+);
+
+/// Las entradas de la bandeja, en su orden, menos «Salir» (que va aparte).
+///
+/// Sale del catalogo de comandos, no de una lista escrita a mano: anadir
+/// una funcion es anadir su fila. El universo va justo debajo del chat
+/// (D213) porque es la otra forma de ver lo mismo.
+fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
+    let mut v = Vec::new();
+    // «Salir» sale aparte, al final y tras una raya: no debe pulsarse por
+    // inercia al buscar otra cosa.
+    for d in comandos::CATALOGO
+        .iter()
+        .filter(|d| d.en_bandeja && d.comando != comandos::Comando::Salir)
+    {
+        v.push((d.comando.id(), t(d.clave_titulo)));
+        if d.comando == comandos::Comando::AbrirChat {
+            v.push((ID_VENTANA_UNIVERSO, t("bandeja-universo")));
+        }
+    }
+    // El editor avanzado (tarea 11): sin catalogo ni traduccion todavia, es
+    // lo minimo para abrirlo desde la bandeja y probarlo a mano.
+    v.push((ID_VENTANA_EDITOR, "Editor".to_string()));
+    v
+}
+
 fn main() -> Result<()> {
     // Con panic = "abort" y sin consola, un panico moria MUDO: ni log ni
     // dialogo (costo una sesion de depuracion a ciegas). El hook escribe al
@@ -340,18 +374,7 @@ fn arrancar(
     let etiquetas_base = |ocultos: Vec<(u32, String)>| {
         let entrada = |d: &comandos::Descriptor| (d.comando.id(), textos.t(d.clave_titulo));
         EtiquetasMenu {
-            acciones: comandos::CATALOGO
-                .iter()
-                // «Salir» sale aparte, al final y tras una raya: no debe
-                // pulsarse por inercia al buscar otra cosa.
-                .filter(|d| d.en_bandeja && d.comando != comandos::Comando::Salir)
-                .map(entrada)
-                // El editor avanzado (tarea 11): sin catalogo ni traduccion
-                // todavia, es lo minimo para abrirlo desde la bandeja y
-                // probarlo a mano. Abrir un `.pixpin` desde aqui es la
-                // tarea siguiente del plan maestro.
-                .chain(std::iter::once((ID_VENTANA_EDITOR, "Editor".to_string())))
-                .collect(),
+            acciones: acciones_de_bandeja(|clave| textos.t(clave)),
             aparte: comandos::CATALOGO
                 .iter()
                 .find(|d| d.en_bandeja && d.comando == comandos::Comando::Salir)
@@ -788,6 +811,16 @@ fn arrancar(
                     Ok(cuantos) => tracing::info!(cuantos, "ficheros abiertos como pines"),
                     Err(e) => tracing::warn!(?e, "no se pudieron abrir los ficheros"),
                 }
+                Continuar::Si
+            }
+            Evento::Menu(id) if id == ID_VENTANA_UNIVERSO => {
+                // En su propio hilo, como el chat (D215).
+                universo::lanzar(
+                    lengua,
+                    ubicacion.clone(),
+                    opciones_lienzo,
+                    universo::Pedido::Cosmos,
+                );
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_VENTANA_EDITOR => {
@@ -1546,4 +1579,34 @@ fn iniciar_registro(ubicacion: &Ubicacion) -> tracing_appender::non_blocking::Wo
         .with_ansi(false)
         .init();
     guardia
+}
+
+#[cfg(test)]
+mod pruebas_bandeja {
+    use super::*;
+
+    #[test]
+    fn el_universo_sale_en_la_bandeja_justo_debajo_del_chat() {
+        let v = acciones_de_bandeja(|clave| clave.to_string());
+        let chat = v
+            .iter()
+            .position(|(id, _)| *id == comandos::Comando::AbrirChat.id())
+            .expect("el chat esta en la bandeja");
+        assert_eq!(
+            v.get(chat + 1),
+            Some(&(ID_VENTANA_UNIVERSO, "bandeja-universo".to_string()))
+        );
+    }
+
+    #[test]
+    fn el_universo_sale_una_sola_vez_y_salir_no_se_cuela() {
+        let v = acciones_de_bandeja(|clave| clave.to_string());
+        assert_eq!(
+            v.iter()
+                .filter(|(id, _)| *id == ID_VENTANA_UNIVERSO)
+                .count(),
+            1
+        );
+        assert!(!v.iter().any(|(id, _)| *id == comandos::Comando::Salir.id()));
+    }
 }

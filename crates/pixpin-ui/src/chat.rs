@@ -427,12 +427,14 @@ impl Disposicion {
         let alto = e(BUSCADOR_ALTO).min(c.alto);
         // El sitio del boton se quita solo si el boton esta: en una lista
         // estrecha no cabe, y el buscador se queda con todo el ancho.
-        let boton = self.boton_sincro(escala_por_cien);
-        let ocupado = if boton.ancho > 0 {
-            boton.ancho + e(BUSCADOR_MARGEN)
-        } else {
-            0
-        };
+        let ocupado: u32 = [
+            self.boton_sincro(escala_por_cien),
+            self.boton_universo(escala_por_cien),
+        ]
+        .iter()
+        .filter(|b| b.ancho > 0)
+        .map(|b| b.ancho + e(BUSCADOR_MARGEN))
+        .sum();
         Rect {
             x: c.x + e(BUSCADOR_MARGEN) as i32,
             y: c.y + (c.alto as i32 - alto as i32) / 2,
@@ -460,6 +462,29 @@ impl Disposicion {
             y: c.y + (c.alto as i32 - lado as i32) / 2,
             ancho: lado,
             alto: lado,
+        }
+    }
+
+    /// El boton redondo del universo (D210), a la izquierda del de
+    /// sincronizar y con su mismo aspecto: los dos llevan a una pantalla con
+    /// TODOS los proyectos, no a uno.
+    ///
+    /// Es el primero que se retira en una lista estrecha: sincronizar tiene
+    /// la preferencia porque el universo tambien se abre desde la bandeja y
+    /// con Ctrl+U.
+    pub fn boton_universo(&self, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let sincro = self.boton_sincro(escala_por_cien);
+        let c = self.cabecera_lista;
+        let lado = sincro.ancho;
+        // Sin el de sincronizar no hay sitio para ninguno; y con este de
+        // mas, el buscador tiene que seguir midiendo lo que dos botones.
+        if lado == 0 || c.ancho < 4 * lado + 4 * e(BUSCADOR_MARGEN) {
+            return vacio();
+        }
+        Rect {
+            x: sincro.x - (lado + e(BUSCADOR_MARGEN)) as i32,
+            ..sincro
         }
     }
 
@@ -872,9 +897,38 @@ mod pruebas_ventana {
     }
 
     #[test]
+    fn el_boton_del_universo_va_a_la_izquierda_del_de_sincronizar_sin_pisar_el_buscador() {
+        let d = Disposicion::calcular(1000, 700, 100, 320, Vista::Ambas);
+        let (b, u, s) = (d.buscador(100), d.boton_universo(100), d.boton_sincro(100));
+        assert_eq!((u.ancho, u.alto), (s.ancho, s.alto), "el mismo boton");
+        assert_eq!(u.y, s.y);
+        assert!(b.derecha() < u.x, "el buscador acaba antes");
+        assert!(u.derecha() < s.x, "y los dos no se tocan");
+        assert!(d.cabecera_lista.contiene(Punto {
+            x: u.x + u.ancho as i32 / 2,
+            y: u.y + u.alto as i32 / 2,
+        }));
+    }
+
+    #[test]
+    fn en_una_lista_estrecha_el_universo_se_retira_antes_que_sincronizar() {
+        // Caso negativo: caben tres botones de ancho pero no cuatro.
+        let mut d = Disposicion::calcular(1000, 700, 100, 320, Vista::Ambas);
+        d.cabecera_lista.ancho = 3 * BUSCADOR_ALTO + 3 * BUSCADOR_MARGEN + 4;
+        assert!(d.boton_sincro(100).ancho > 0);
+        assert_eq!(d.boton_universo(100).ancho, 0);
+        // Y el buscador no le guarda un sitio que no ocupa.
+        assert_eq!(
+            d.buscador(100).derecha() + BUSCADOR_MARGEN as i32,
+            d.boton_sincro(100).x
+        );
+    }
+
+    #[test]
     fn con_la_lista_plegada_no_hay_boton_y_el_buscador_no_le_guarda_sitio() {
         let d = Disposicion::calcular(1200, 800, 100, LISTA_PLEGADA, Vista::Ambas);
         assert_eq!(d.boton_sincro(100).ancho, 0);
+        assert_eq!(d.boton_universo(100).ancho, 0);
         // Un punto cualquiera no cae en un boton que no esta.
         assert!(!d.boton_sincro(100).contiene(Punto { x: 0, y: 0 }));
     }
@@ -1221,8 +1275,12 @@ mod pruebas_hora {
 /// (`ALTO_DE_LA_PILDORA` y `AIRE_DE_LA_PILDORA` de `CabeceraFlotante.kt`).
 pub const PILDORA: u32 = 46;
 pub const PILDORA_AIRE: u32 = 6;
-/// La de la derecha lleva dos botones de 48: la lupa y los tres puntos.
+/// La de la derecha lleva botones de 48: el universo, la lupa y los tres
+/// puntos. El movil tiene solo los dos ultimos; el del universo es del
+/// escritorio (D211) y va en la misma pastilla para no abrir una cuarta.
 pub const PILDORA_BOTON: u32 = 48;
+/// Cuantos botones lleva la pastilla de la derecha.
+pub const PILDORA_BOTONES: u32 = 3;
 /// La del centro se mide a su contenido, pero no pasa de aqui.
 pub const PILDORA_CENTRO_MAXIMA: u32 = 420;
 
@@ -1234,8 +1292,10 @@ pub struct Pildoras {
     /// El sitio donde se centra la del titulo: quien pinta la mide a su
     /// texto y la centra aqui dentro.
     pub centro: Rect,
-    /// La pastilla de la derecha entera, y sus dos botones.
+    /// La pastilla de la derecha entera, y sus botones de izquierda a
+    /// derecha: ver en el universo (D211), la lupa y los tres puntos.
     pub derecha: Rect,
+    pub universo: Rect,
     pub buscar: Rect,
     pub menu: Rect,
 }
@@ -1258,21 +1318,28 @@ impl Disposicion {
             ancho: alto,
             alto,
         };
-        let ancho_derecha = (2 * e(PILDORA_BOTON)).min(c.ancho);
+        let ancho_derecha = (PILDORA_BOTONES * e(PILDORA_BOTON)).min(c.ancho);
         let derecha = Rect {
             x: c.derecha() - aire - ancho_derecha as i32,
             y,
             ancho: ancho_derecha,
             alto,
         };
-        let mitad = ancho_derecha / 2;
-        let buscar = Rect {
-            ancho: mitad,
+        let tercio = ancho_derecha / PILDORA_BOTONES;
+        let universo = Rect {
+            ancho: tercio,
             ..derecha
         };
+        let buscar = Rect {
+            x: universo.derecha(),
+            ancho: tercio,
+            ..derecha
+        };
+        // El ultimo se queda con lo que sobre del redondeo: asi la pastilla
+        // acaba justo donde acaba su boton.
         let menu = Rect {
-            x: derecha.x + mitad as i32,
-            ancho: ancho_derecha - mitad,
+            x: buscar.derecha(),
+            ancho: ancho_derecha - 2 * tercio,
             ..derecha
         };
         let izquierda = volver.derecha() + aire;
@@ -1286,6 +1353,7 @@ impl Disposicion {
             volver,
             centro,
             derecha,
+            universo,
             buscar,
             menu,
         }
@@ -1517,11 +1585,26 @@ mod pruebas_movil {
         }
         assert!(p.volver.derecha() < p.centro.x);
         assert!(p.centro.derecha() < p.derecha.x);
-        // Volver es un circulo de 46 y la de la derecha, dos botones de 48.
+        // Volver es un circulo de 46 y la de la derecha, tres botones de 48.
         assert_eq!((p.volver.ancho, p.volver.alto), (PILDORA, PILDORA));
-        assert_eq!(p.derecha.ancho, 2 * PILDORA_BOTON);
+        assert_eq!(p.derecha.ancho, 3 * PILDORA_BOTON);
         assert_eq!(p.buscar.derecha(), p.menu.x, "la lupa y los puntos, juntos");
         assert_eq!(p.menu.derecha(), p.derecha.derecha());
+    }
+
+    #[test]
+    fn ver_en_el_universo_va_en_la_pastilla_de_la_derecha_antes_de_la_lupa() {
+        let d = disposicion();
+        let p = d.pildoras(100);
+        assert_eq!(p.universo.ancho, PILDORA_BOTON);
+        assert_eq!(p.universo.x, p.derecha.x, "el primero de la pastilla");
+        assert_eq!(p.universo.derecha(), p.buscar.x);
+        assert!(d.cabecera_chat.contiene(Punto {
+            x: p.universo.x + p.universo.ancho as i32 / 2,
+            y: p.universo.y + p.universo.alto as i32 / 2,
+        }));
+        // Caso negativo: no se monta encima del titulo.
+        assert!(p.centro.derecha() < p.universo.x);
     }
 
     #[test]

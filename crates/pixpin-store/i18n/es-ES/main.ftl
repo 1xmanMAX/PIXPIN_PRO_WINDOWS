@@ -382,3 +382,7 @@ universo-exoplaneta = Exoplaneta
 universo-galaxia = Galaxia
 universo-luna = Archivo
 universo-varios = { $n } elementos
+universo-abrir-todo = Universo
+universo-ver-proyecto = Ver en el universo
+menu-foto-universo = Mostrar en el universo
+bandeja-universo = Universo

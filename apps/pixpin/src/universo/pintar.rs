@@ -73,51 +73,23 @@ pub fn con_alfa(c: Color, a: f32) -> Color {
     Color { a: c.a * a, ..c }
 }
 
-// --- Lo que se copia del chat --------------------------------------------
+// --- Lo que se comparte con el chat -----------------------------------------
 //
-// Estas cuatro funciones son las del chat (`ventana_chat.rs`), con la misma
-// tabla. Estan copiadas y no compartidas porque ese fichero lo esta
-// cambiando otro trabajo en paralelo; cuando se asiente, el chat puede
-// llamar a estas y borrar las suyas.
+// El color de cada galaxia, la extension y el tamano son los MISMOS que en el
+// chat, y se toman de alli: el usuario reconoce un proyecto por su color y un
+// archivo por su chapa, y si las dos pantallas discreparan en eso dejaria de
+// fiarse de las dos.
 
-const COLORES_AVATAR: [u32; 7] = [
-    0xe17076, 0xfaa774, 0xa695e7, 0x7bc862, 0x6ec9cb, 0x65aadd, 0xee7aae,
-];
+pub(crate) use crate::ventana_chat::{color_avatar, extension_de};
 
-/// El color del avatar de un proyecto: el mismo que en la lista del chat,
-/// para que el usuario reconozca la galaxia por el color.
-pub fn color_avatar(codigo: &str) -> Color {
-    let suma: u32 = codigo.bytes().map(u32::from).sum();
-    hex(COLORES_AVATAR[suma as usize % COLORES_AVATAR.len()])
-}
-
-/// La extension en minusculas, o vacio. Mas de cuatro signos no es una
-/// extension, es un nombre con puntos.
-pub fn extension_de(nombre: &str) -> String {
-    nombre
-        .rsplit_once('.')
-        .map(|(_, e)| e.to_ascii_lowercase())
-        .filter(|e| !e.is_empty() && e.len() <= 4 && e.chars().all(|c| c.is_ascii_alphanumeric()))
-        .unwrap_or_default()
-}
-
-/// De cuantos bytes a «1,2 MB», con coma.
+/// El tamano como lo escribe el chat en su cabecera (y el movil).
 pub fn tamano_legible(bytes: i64) -> String {
-    const UNIDADES: [&str; 4] = ["B", "KB", "MB", "GB"];
-    let mut valor = bytes.max(0) as f64;
-    let mut cual = 0;
-    while valor >= 1024.0 && cual + 1 < UNIDADES.len() {
-        valor /= 1024.0;
-        cual += 1;
-    }
-    if cual == 0 {
-        format!("{} {}", valor as i64, UNIDADES[cual])
-    } else {
-        format!("{:.1} {}", valor, UNIDADES[cual]).replace('.', ",")
-    }
+    pixpin_ui::chat::tamano_corto(bytes.max(0) as u64)
 }
 
-/// El color de la chapa de un archivo segun su tipo, como en el movil.
+/// El color de la chapa de un archivo segun su tipo. El chat no pinta
+/// chapas de color (su fila lleva el icono), asi que esta es solo del
+/// universo.
 pub fn color_de_extension(extension: &str) -> Color {
     match extension {
         "pdf" => hex(0xd93b3b),
@@ -318,12 +290,19 @@ pub fn astros(p: &Pintor, c: &Contexto, camara: &Camara) {
                         );
                     }
                     Nivel::Disco => {
-                        p.circulo_degradado(
-                            centro,
-                            r,
-                            con_alfa(color, 0.9 * foco),
-                            con_alfa(color, 0.0),
-                        );
+                        // En Ligero, un disco liso y tenue: el degradado
+                        // radial pide un pincel nuevo por galaxia y fotograma,
+                        // y en una grafica integrada se nota con veinte.
+                        if c.ligero {
+                            p.circulo(centro, r, con_alfa(color, 0.3 * foco));
+                        } else {
+                            p.circulo_degradado(
+                                centro,
+                                r,
+                                con_alfa(color, 0.9 * foco),
+                                con_alfa(color, 0.0),
+                            );
+                        }
                         p.circulo(centro, r * 0.25, con_alfa(color, 0.9 * foco));
                         let lunas = c.cuentas.get(proyecto).copied().unwrap_or(0);
                         texto_centrado(

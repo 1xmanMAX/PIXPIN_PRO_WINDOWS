@@ -5,12 +5,6 @@
 //! La puerta de entrada es `lanzar`: abre el universo en su propio hilo, o
 //! le deja el pedido al que ya esta abierto.
 
-// Las piezas llegan tarea a tarea y el binario solo usa lo que ya esta
-// enganchado: sin esto, lo que aun no tiene llamante (las entradas desde el
-// chat, Tareas 16 a 18) romperia el `clippy -D warnings`. Se quita cuando la
-// ultima entrada este conectada.
-#![allow(dead_code)]
-
 pub mod abrir;
 pub mod cargador;
 pub mod estrellas;

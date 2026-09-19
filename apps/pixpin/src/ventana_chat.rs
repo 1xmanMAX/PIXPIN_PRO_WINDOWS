@@ -40,6 +40,16 @@ const VK_ESCAPE: u32 = 0x1B;
 const VK_RETROCESO: u32 = 0x08;
 const VK_ENTRAR: u32 = 0x0D;
 const VK_V: u32 = 0x56;
+const VK_U: u32 = 0x55;
+
+/// Lo que abre Ctrl+U (D214): la galaxia del proyecto abierto o, sin
+/// ninguno, el cosmos entero (lo mismo que el boton de la lista, D210).
+fn pedido_de_ctrl_u(abierto: Option<&str>) -> crate::universo::Pedido {
+    match abierto {
+        Some(id) => crate::universo::Pedido::Galaxia(id.to_string()),
+        None => crate::universo::Pedido::Cosmos,
+    }
+}
 /// El lado mayor de la vista previa de una foto, guardada: el doble del ancho
 /// de la burbuja al 100 %, para que al 200 % no se vea pastosa.
 const PREVIA_LADO: u32 = 2 * pixpin_ui::historial::VISTA_ANCHO;
@@ -673,6 +683,7 @@ pub fn abrir(
                                         lienzo,
                                         ventana: &ventana,
                                         fichas: &fichas,
+                                        idioma,
                                     };
                                     match ejecutar(otra, a, &cx) {
                                         Efecto::Nada | Efecto::Cambio => {}
@@ -708,6 +719,7 @@ pub fn abrir(
                                 lienzo,
                                 ventana: &ventana,
                                 fichas: &fichas,
+                                idioma,
                             };
                             let efecto = match zona {
                                 Zona::Volver => {
@@ -728,9 +740,18 @@ pub fn abrir(
                                     a.buscando_info = true;
                                     Efecto::Nada
                                 }
-                                Zona::Menu => {
-                                    Efecto::Menu(menu_de_cabecera(textos, a.ficha.es_guardados()))
-                                }
+                                Zona::Menu => Efecto::Menu(menu_de_cabecera(
+                                    textos,
+                                    a.ficha.es_guardados(),
+                                    &a.ficha.id,
+                                )),
+                                Zona::Universo => ejecutar(
+                                    Accion::Universo(crate::universo::Pedido::Galaxia(
+                                        a.ficha.id.clone(),
+                                    )),
+                                    a,
+                                    &cx,
+                                ),
                                 Zona::Abrir(i) => ejecutar(Accion::Pinear(i), a, &cx),
                                 Zona::VieneDe(i) => {
                                     abrir_el_origen(ubicacion, a, i, lienzo, textos)
@@ -988,6 +1009,16 @@ pub fn abrir(
                         // La pantalla de Sincronizar del movil: tus aparatos,
                         // y desde ella Recibir y Enviar.
                         crate::sincronizar::lanzar(idioma, ubicacion.clone());
+                        buscando = false;
+                        hay_que_pintar = true;
+                    } else if disposicion.boton_universo(escala).contiene(l) {
+                        // D210: todo el cosmos, en su propio hilo.
+                        crate::universo::lanzar(
+                            idioma,
+                            ubicacion.clone(),
+                            lienzo,
+                            crate::universo::Pedido::Cosmos,
+                        );
                         buscando = false;
                         hay_que_pintar = true;
                     } else if disposicion.buscador(escala).contiene(l) {
@@ -1301,6 +1332,20 @@ pub fn abrir(
                 EventoOverlay::Tecla { vk, .. } if menu.is_some() && vk == VK_ESCAPE => {
                     menu = None;
                     hay_que_pintar = true;
+                }
+                // D214: Ctrl+U abre el universo en la galaxia del proyecto
+                // abierto, o el cosmos entero sin ninguno. Va antes que lo
+                // que escribe: Ctrl+U no es una letra en ninguna caja. Solo
+                // el cuadro de confirmar lo para, porque es modal.
+                EventoOverlay::Tecla { vk, ctrl, .. }
+                    if vk == VK_U && ctrl && pendientes.is_none() =>
+                {
+                    crate::universo::lanzar(
+                        idioma,
+                        ubicacion.clone(),
+                        lienzo,
+                        pedido_de_ctrl_u(abierto.as_ref().map(|a| a.ficha.id.as_str())),
+                    );
                 }
                 // El nombre de un lienzo, escribiendose en su fila: manda
                 // sobre la nota, como el del proyecto.
@@ -2103,7 +2148,8 @@ fn iniciales(nombre: &str) -> String {
         .collect()
 }
 
-fn color_avatar(codigo: &str) -> Color {
+/// El universo pinta cada galaxia con este mismo color (D217).
+pub(crate) fn color_avatar(codigo: &str) -> Color {
     let suma: u32 = codigo.bytes().map(u32::from).sum();
     hex(COLORES_AVATAR[suma as usize % COLORES_AVATAR.len()])
 }
@@ -2290,13 +2336,20 @@ fn pintar(
         );
     }
 
-    // El boton de sincronizar: redondo, marron oscuro y con el icono crema,
-    // los colores de los botones redondos del chat del movil.
-    let sincro = d.boton_sincro(escala);
-    if sincro.ancho > 0 {
+    // Los botones de sincronizar y del universo (D210): redondos, marron
+    // oscuro y con el icono crema, los colores de los botones redondos del
+    // chat del movil. Los dos iguales porque los dos llevan a una pantalla
+    // de TODOS los proyectos.
+    for (boton, icono) in [
+        (d.boton_sincro(escala), &SINCRO),
+        (d.boton_universo(escala), &mi::PUBLIC),
+    ] {
+        if boton.ancho == 0 {
+            continue;
+        }
         p.rellenar_redondeado(
-            rf(sincro),
-            sincro.alto as f32 / 2.0,
+            rf(boton),
+            boton.alto as f32 / 2.0,
             Color {
                 r: 0.290,
                 g: 0.227,
@@ -2304,12 +2357,12 @@ fn pintar(
                 a: 1.0,
             },
         );
-        let lado = sincro.ancho as f32 * 0.56;
+        let lado = boton.ancho as f32 * 0.56;
         p.icono(
-            &SINCRO,
+            icono,
             RectF {
-                x: sincro.x as f32 + (sincro.ancho as f32 - lado) / 2.0,
-                y: sincro.y as f32 + (sincro.alto as f32 - lado) / 2.0,
+                x: boton.x as f32 + (boton.ancho as f32 - lado) / 2.0,
+                y: boton.y as f32 + (boton.alto as f32 - lado) / 2.0,
                 ancho: lado,
                 alto: lado,
             },
@@ -3223,10 +3276,12 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     pildora(p, tema, rf(pil.volver), e);
     icono_centrado(p, &mi::ARROW_BACK, pil.volver, 24.0 * e, tema.pildora_texto);
     zonas.push((pil.volver, Zona::Volver));
-    // La lupa y los tres puntos, en una sola pastilla.
+    // El universo, la lupa y los tres puntos, en una sola pastilla.
     pildora(p, tema, rf(pil.derecha), e);
+    icono_centrado(p, &mi::PUBLIC, pil.universo, 24.0 * e, tema.pildora_texto);
     icono_centrado(p, &mi::SEARCH, pil.buscar, 24.0 * e, tema.pildora_texto);
     icono_centrado(p, &mi::MORE_VERT, pil.menu, 24.0 * e, tema.pildora_texto);
+    zonas.push((pil.universo, Zona::Universo));
     zonas.push((pil.buscar, Zona::Buscar));
     zonas.push((pil.menu, Zona::Menu));
 
@@ -5865,13 +5920,26 @@ fn abrir_dibujo(
     indice: usize,
     opciones: OpcionesLienzo,
 ) -> Vec<usize> {
+    abrir_hojas(ubicacion.raiz(), &a.ficha.id, &a.mensajes, indice, opciones)
+}
+
+/// Lo de `abrir_dibujo` sin el proyecto abierto en el chat: el universo abre
+/// asi las hojas desde su Ctrl+clic, con los mensajes recien leidos del
+/// cuaderno. `indice` es el mensaje de la hoja dentro de `mensajes`.
+pub(crate) fn abrir_hojas(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    mensajes: &[pixpin_proyecto::cuaderno::Mensaje],
+    indice: usize,
+    opciones: OpcionesLienzo,
+) -> Vec<usize> {
     let mut guardadas = Vec::new();
     // Pulsar una «zona» de una pagina lleva a su hoja, y desde ella se puede
     // saltar a otra: por eso es un bucle y no una llamada. El tope es por si
     // dos hojas se enlazan entre si; sin el, el ir y venir no acabaria.
     let mut indice = indice;
     for _ in 0..SALTOS_MAXIMOS {
-        let (guardada, siguiente) = abrir_una_hoja(ubicacion, a, indice, opciones);
+        let (guardada, siguiente) = abrir_una_hoja(raiz, proyecto, mensajes, indice, opciones);
         if guardada {
             guardadas.push(indice);
         }
@@ -5889,18 +5957,19 @@ const SALTOS_MAXIMOS: usize = 32;
 /// Abre una hoja. Devuelve si se guardo algo y a cual hay que saltar, si se
 /// pulso un enlace.
 fn abrir_una_hoja(
-    ubicacion: &Ubicacion,
-    a: &Abierto,
+    raiz: &std::path::Path,
+    proyecto: &str,
+    mensajes: &[pixpin_proyecto::cuaderno::Mensaje],
     indice: usize,
     opciones: OpcionesLienzo,
 ) -> (bool, Option<usize>) {
-    let Some(m) = a.mensajes.get(indice) else {
+    let Some(m) = mensajes.get(indice) else {
         return (false, None);
     };
     let Some(id) = m.referencia.as_deref().filter(|r| !r.is_empty()) else {
         return (false, None);
     };
-    let ruta = pixpin_proyecto::almacen::lienzo(ubicacion.raiz(), &a.ficha.id, id);
+    let ruta = pixpin_proyecto::almacen::lienzo(raiz, proyecto, id);
     let texto = match std::fs::read_to_string(&ruta) {
         Ok(t) => t,
         Err(e) => {
@@ -5921,7 +5990,7 @@ fn abrir_una_hoja(
     // Las fotos de la hoja viven en `imagenes/<id>` del proyecto, no dentro
     // del JSON: el movil deja ahi una ruta en vez de un `dataURL` para que un
     // plano de quince megas no se convierta en veinte de base64.
-    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
+    let carpeta = pixpin_proyecto::almacen::carpeta(raiz, proyecto);
     let fotos: Vec<(u64, std::path::PathBuf)> = pixpin_motor2d::excalidraw::ficheros(&lienzo)
         .into_iter()
         .map(|(id, rel)| (id, carpeta.join(rel)))
@@ -5967,8 +6036,7 @@ fn abrir_una_hoja(
     // Se pulso un recuadro con enlace: la hoja a la que lleva es la que tiene
     // ese dibujo como referencia.
     let siguiente = destino.and_then(|destino| {
-        let s = a
-            .mensajes
+        let s = mensajes
             .iter()
             .position(|m| m.referencia.as_deref() == Some(destino.as_str()));
         if s.is_none() {
@@ -6074,6 +6142,8 @@ enum Zona {
     Titulo,
     Buscar,
     Menu,
+    /// Ver este proyecto en el universo (D211).
+    Universo,
     /// Sacar a la pantalla: la pastilla de la fila o la esquina de la foto.
     Abrir(usize),
     /// La tarjeta «Viene de»: lleva al lienzo de origen.
@@ -6247,7 +6317,7 @@ fn viene_de(m: &pixpin_proyecto::cuaderno::Mensaje) -> Option<(String, Option<St
 /// La extension en minusculas, o vacio si el nombre no lleva ninguna.
 /// Se corta a cuatro signos: lo que pasa de ahi no es una extension, es un
 /// nombre con puntos.
-fn extension_de(nombre: &str) -> String {
+pub(crate) fn extension_de(nombre: &str) -> String {
     nombre
         .rsplit_once('.')
         .map(|(_, e)| e.to_ascii_lowercase())
@@ -6603,6 +6673,8 @@ enum Accion {
     Fondos,
     Fondo(usize),
     Proyectos,
+    /// Abrir el universo con esto a la vista (D211, D212).
+    Universo(crate::universo::Pedido),
     /// Lo que en Windows aun no existe: la clave del aviso.
     Aviso(&'static str),
 }
@@ -6755,8 +6827,16 @@ fn menu_del_clip(textos: &Catalogo) -> Vec<EntradaMenu> {
 
 /// Los tres puntos de la cabecera, en el orden del movil. La biblioteca y
 /// las conversaciones solo salen en «Mensajes guardados», que es la general.
-fn menu_de_cabecera(textos: &Catalogo, en_guardados: bool) -> Vec<EntradaMenu> {
-    let mut v = Vec::new();
+///
+/// «Ver en el universo» (D211) es del escritorio y va el primero: tambien
+/// tiene su boton en la pastilla, y aqui es donde se busca con el nombre
+/// escrito.
+fn menu_de_cabecera(textos: &Catalogo, en_guardados: bool, proyecto: &str) -> Vec<EntradaMenu> {
+    let mut v = vec![entrada(
+        Some(&mi::PUBLIC),
+        textos.t("universo-ver-proyecto"),
+        Accion::Universo(crate::universo::Pedido::Galaxia(proyecto.to_string())),
+    )];
     if en_guardados {
         v.push(entrada(
             Some(&mi::LIBRARY_MUSIC),
@@ -6921,6 +7001,18 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             Accion::FotoAqui(i),
         ));
     }
+    // D212: solo lo que es una luna del universo (archivos, fotos, dibujos;
+    // no las notas ni lo del buzon), que es lo que alli se puede resaltar.
+    if crate::universo::fichas::es_luna(m) {
+        v.push(entrada(
+            Some(&mi::PUBLIC),
+            textos.t("menu-foto-universo"),
+            Accion::Universo(crate::universo::Pedido::Luna {
+                proyecto: a.ficha.id.clone(),
+                codigo: m.codigo_unico(),
+            }),
+        ));
+    }
     v.push(entrada(
         Some(&mi::ALARM),
         textos.t("chat-recordar"),
@@ -7011,6 +7103,8 @@ struct Contexto<'a> {
     lienzo: OpcionesLienzo,
     ventana: &'a VentanaOverlay,
     fichas: &'a [pixpin_proyecto::almacen::Ficha],
+    /// Para abrir otras ventanas en sus hilos (el universo).
+    idioma: pixpin_store::Idioma,
 }
 
 /// Hace una accion sobre el proyecto abierto. Lo del clip que abre dialogos
@@ -7046,6 +7140,11 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
     };
     match accion {
         Accion::Aviso(clave) => Efecto::Aviso(cx.textos.t(clave)),
+        // En su propio hilo: el chat sigue abierto y usable detras (D215).
+        Accion::Universo(pedido) => {
+            crate::universo::lanzar(cx.idioma, cx.ubicacion.clone(), cx.lienzo, pedido);
+            Efecto::Nada
+        }
         Accion::Responder(i) => {
             a.respondiendo = a.mensajes.get(i).map(|m| m.id.clone());
             Efecto::Nada
@@ -7618,5 +7717,39 @@ mod pruebas_piezas {
     fn la_extension_de_la_fila_va_en_minusculas() {
         assert_eq!(extension_de("GE_Sem16.pdf"), "pdf");
         assert_eq!(extension_de("Lienzo"), "");
+    }
+}
+
+#[cfg(test)]
+mod pruebas_universo {
+    use super::*;
+    use crate::universo::Pedido;
+
+    #[test]
+    fn ctrl_u_con_un_proyecto_abierto_va_a_su_galaxia_y_sin_ninguno_al_cosmos() {
+        assert_eq!(pedido_de_ctrl_u(Some("p1")), Pedido::Galaxia("p1".into()));
+        assert_eq!(pedido_de_ctrl_u(None), Pedido::Cosmos);
+    }
+
+    #[test]
+    fn los_tres_puntos_ofrecen_ver_el_proyecto_en_el_universo() {
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        for en_guardados in [false, true] {
+            let v = menu_de_cabecera(&textos, en_guardados, "p1");
+            let n = v
+                .iter()
+                .filter(|e| e.accion == Accion::Universo(Pedido::Galaxia("p1".into())))
+                .count();
+            assert_eq!(n, 1, "una sola vez, en guardados={en_guardados}");
+        }
+        // Caso negativo: ninguna entrada lleva a otro proyecto ni al cosmos.
+        assert!(
+            !menu_de_cabecera(&textos, false, "p1")
+                .iter()
+                .any(|e| matches!(
+                    &e.accion,
+                    Accion::Universo(Pedido::Cosmos | Pedido::Luna { .. })
+                ))
+        );
     }
 }

@@ -381,3 +381,7 @@ universo-exoplaneta = Exoplanet
 universo-galaxia = Galaxy
 universo-luna = File
 universo-varios = { $n } items
+universo-abrir-todo = Universe
+universo-ver-proyecto = Show in the universe
+menu-foto-universo = Show in the universe
+bandeja-universo = Universe

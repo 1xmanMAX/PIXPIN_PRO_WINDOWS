@@ -150,15 +150,10 @@ pub fn ejecutar(a: &Apertura) {
     }
 }
 
-/// El ancho con el que se dibuja una pagina de PDF de fondo: el del chat.
-const ANCHO_PAGINA: u32 = 1600;
-/// Cuantas hojas enlazadas se siguen antes de parar.
-const SALTOS_MAXIMOS: usize = 32;
-
 /// Abre una hoja de un proyecto en el lienzo y la guarda al cerrar,
-/// siguiendo los enlaces a otras hojas. Es lo que hace el chat con
-/// `abrir_dibujo`; va aqui aparte porque el chat no se puede tocar ahora
-/// mismo (ver el informe de la Tarea 14).
+/// siguiendo los enlaces a otras hojas: lo mismo que pulsarla en el chat,
+/// con la misma funcion (`ventana_chat::abrir_hojas`). Los mensajes se leen
+/// aqui porque el universo no tiene el proyecto abierto como el chat.
 pub fn abrir_hoja(
     raiz: &Path,
     proyecto: &str,
@@ -166,77 +161,29 @@ pub fn abrir_hoja(
     opciones: crate::ventana_chat::OpcionesLienzo,
 ) {
     let carpeta = pixpin_proyecto::almacen::carpeta(raiz, proyecto);
-    let mensajes = pixpin_proyecto::cuaderno::Cuaderno::leer_de(&carpeta)
-        .map(|c| c.mensajes)
-        .unwrap_or_default();
-    let mut actual = referencia.to_string();
-    for _ in 0..SALTOS_MAXIMOS {
-        let ruta = pixpin_proyecto::almacen::lienzo(raiz, proyecto, &actual);
-        let lienzo = match std::fs::read_to_string(&ruta)
-            .map_err(|e| e.to_string())
-            .and_then(|t| pixpin_motor2d::excalidraw::leer(&t).map_err(|e| e.to_string()))
-        {
-            Ok(l) => l,
-            Err(e) => {
-                tracing::warn!(%e, ruta = %ruta.display(), "no se pudo abrir la hoja");
-                return;
-            }
-        };
-        let escena = pixpin_motor2d::excalidraw::a_escena(&lienzo);
-        let fotos: Vec<(u64, PathBuf)> = pixpin_motor2d::excalidraw::ficheros(&lienzo)
-            .into_iter()
-            .map(|(id, rel)| (id, carpeta.join(rel)))
-            .collect();
-        let pagina = mensajes
-            .iter()
-            .find(|m| m.referencia.as_deref() == Some(actual.as_str()))
-            .and_then(|m| m.pagina);
-        let fondo = pagina.and_then(|pagina| {
-            pixpin_pdf::Documento::abrir(&carpeta.join("documento.pdf"))
-                .and_then(|d| d.renderizar(pagina, ANCHO_PAGINA))
-                .map_err(|e| tracing::warn!(?e, pagina, "no se pudo dibujar la pagina"))
-                .ok()
-        });
-        let (escena, destino) = match crate::ventana_editor::abrir(
-            escena,
-            opciones.enganche,
-            opciones.nivel,
-            opciones.medir_fotogramas,
-            fondo,
-            &fotos,
-        ) {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!(?e, "no se pudo abrir el lienzo de la hoja");
-                return;
-            }
-        };
-        guardar_hoja(&ruta, &lienzo, &escena);
-        match destino {
-            Some(d) => actual = d,
-            None => return,
+    let mensajes = match pixpin_proyecto::cuaderno::Cuaderno::leer_de(&carpeta) {
+        Ok(c) => c.mensajes,
+        Err(e) => {
+            tracing::warn!(?e, %proyecto, "no se pudo leer el cuaderno de la hoja");
+            return;
         }
+    };
+    match indice_de_referencia(&mensajes, referencia) {
+        Some(i) => {
+            crate::ventana_chat::abrir_hojas(raiz, proyecto, &mensajes, i, opciones);
+        }
+        None => tracing::warn!(%referencia, %proyecto, "la hoja no esta en el chat"),
     }
 }
 
-/// Lo mismo que `guardar_hoja_dibujada` del chat: a un temporal y
-/// renombrar, y solo si algo cambio.
-fn guardar_hoja(
-    ruta: &Path,
-    lienzo: &pixpin_motor2d::excalidraw::Lienzo,
-    escena: &pixpin_motor2d::Escena,
-) {
-    use pixpin_motor2d::excalidraw::{con_escena, escribir};
-    let despues = escribir(&con_escena(lienzo, escena));
-    if escribir(lienzo) == despues {
-        return;
-    }
-    let temporal = ruta.with_extension("excalidraw.tmp");
-    if let Err(e) =
-        std::fs::write(&temporal, despues).and_then(|()| std::fs::rename(&temporal, ruta))
-    {
-        tracing::error!(?e, ruta = %ruta.display(), "no se pudo guardar la hoja");
-    }
+/// El mensaje que lleva esa hoja, que es por donde el chat la abre.
+fn indice_de_referencia(
+    mensajes: &[pixpin_proyecto::cuaderno::Mensaje],
+    referencia: &str,
+) -> Option<usize> {
+    mensajes
+        .iter()
+        .position(|m| m.referencia.as_deref() == Some(referencia))
 }
 
 #[cfg(test)]
@@ -352,6 +299,24 @@ mod pruebas {
             que_abre(&u, IdAstro(2), &f, &raiz, true),
             Apertura::Varios(vec![carpeta.join("archivos/a.pdf")])
         );
+    }
+
+    #[test]
+    fn la_hoja_se_busca_por_su_referencia_y_una_que_no_esta_no_se_abre() {
+        use pixpin_proyecto::cuaderno::Mensaje;
+        let v = vec![
+            Mensaje {
+                id: "1".into(),
+                ..Default::default()
+            },
+            Mensaje {
+                id: "2".into(),
+                referencia: Some("d1".into()),
+                ..Default::default()
+            },
+        ];
+        assert_eq!(indice_de_referencia(&v, "d1"), Some(1));
+        assert_eq!(indice_de_referencia(&v, "otra"), None);
     }
 
     #[test]
