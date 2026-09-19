@@ -11,6 +11,7 @@
 
 pub mod astro;
 pub mod detalle;
+pub mod galaxias;
 pub mod herramienta;
 mod historia;
 pub mod jerarquia;
@@ -23,6 +24,7 @@ pub use astro::{
 pub use detalle::{
     HISTERESIS, Nivel, Tipo, ZOOM_MINIMO_UNIVERSO, abre_hijos, nivel, nivel_con_memoria, tipo_de,
 };
+pub use galaxias::{DISTANCIA_MINIMA, Informe, SEPARACION, siguiente_hueco, sincronizar};
 pub use herramienta::HerramientaUniverso;
 pub use jerarquia::{Aterriza, Rechazo};
 pub use universo::{Encuadre, Universo, VERSION};
