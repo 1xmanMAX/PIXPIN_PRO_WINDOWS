@@ -354,15 +354,22 @@ pub fn abrir(
     // Los proyectos, ya ordenados como se ensenan. La lista se lee entera
     // una vez: es un indice pequeno, y lo caro (abrir cada `.pixpin`) no se
     // hace hasta que se elige uno.
-    let indice = pixpin_proyecto::almacen::Indice::leer(ubicacion.raiz());
-    let mut fichas: Vec<pixpin_proyecto::almacen::Ficha> =
-        indice.ordenadas().into_iter().cloned().collect();
-    let ahora = pixpin_shell::entorno::ahora_local_ms();
     // El codigo de este equipo va en cada nota que se escriba aqui: es lo
     // que hace que el movil sepa de donde vino.
     let identidad = pixpin_proyecto::identidad::Identidad::leer_o_crear(ubicacion.raiz(), "PC")
         .map(|i| i.yo.codigo())
         .unwrap_or_default();
+    let ahora = pixpin_shell::entorno::ahora_local_ms();
+    // «Mensajes guardados» existe siempre, tambien en un almacen recien
+    // estrenado: es adonde va lo suelto, y el usuario lo busco y no estaba.
+    if let Err(e) =
+        pixpin_proyecto::almacen::asegurar_guardados(ubicacion.raiz(), ahora, &identidad)
+    {
+        tracing::warn!(?e, "no se pudo crear «Mensajes guardados»");
+    }
+    let indice = pixpin_proyecto::almacen::Indice::leer(ubicacion.raiz());
+    let mut fichas: Vec<pixpin_proyecto::almacen::Ficha> =
+        indice.ordenadas().into_iter().cloned().collect();
     // Lo escrito y sin enviar de cada proyecto, para que cambiar de
     // conversacion y volver no se lo lleve por delante.
     let mut borradores: std::collections::HashMap<String, String> = Default::default();

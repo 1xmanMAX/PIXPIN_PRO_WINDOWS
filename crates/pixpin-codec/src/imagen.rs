@@ -90,10 +90,12 @@ pub enum ErrorCodec {
 
 /// Lee una imagen del disco a RGBA. La pareja de `guardar`.
 pub fn cargar(ruta: &Path) -> Result<ImagenRgba, ErrorCodec> {
-    let dinamica = image::open(ruta).map_err(|fuente| ErrorCodec::Lectura {
-        ruta: ruta.to_path_buf(),
-        fuente,
-    })?;
+    let dinamica = lector(ruta)
+        .and_then(|l| l.decode())
+        .map_err(|fuente| ErrorCodec::Lectura {
+            ruta: ruta.to_path_buf(),
+            fuente,
+        })?;
     let rgba = dinamica.to_rgba8();
     Ok(ImagenRgba {
         ancho: rgba.width(),
@@ -109,10 +111,23 @@ pub fn cargar(ruta: &Path) -> Result<ImagenRgba, ErrorCodec> {
 /// para colocarlos. Cargarlas enteras para eso seria descomprimir doce
 /// megapixeles por burbuja.
 pub fn medidas(ruta: &Path) -> Result<(u32, u32), ErrorCodec> {
-    image::image_dimensions(ruta).map_err(|fuente| ErrorCodec::Lectura {
-        ruta: ruta.to_path_buf(),
-        fuente,
-    })
+    lector(ruta)
+        .and_then(|l| l.into_dimensions())
+        .map_err(|fuente| ErrorCodec::Lectura {
+            ruta: ruta.to_path_buf(),
+            fuente,
+        })
+}
+
+/// Abre el fichero y decide que formato es MIRANDO DENTRO, no por el nombre.
+///
+/// El movil guarda las fotos de un proyecto como `imagenes/<id>`, sin
+/// extension. Por el nombre, todas eran «formato desconocido»: ni vista
+/// previa en el chat, ni fondo en el lienzo, ni pin de imagen.
+fn lector(
+    ruta: &Path,
+) -> Result<image::ImageReader<std::io::BufReader<std::fs::File>>, image::ImageError> {
+    Ok(image::ImageReader::open(ruta)?.with_guessed_format()?)
 }
 
 /// PNG en memoria: para el almacen, que guarda bytes, no rutas.

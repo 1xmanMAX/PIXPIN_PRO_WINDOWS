@@ -1414,6 +1414,18 @@ fn pinear_portapapeles(
         C::Rutas(rutas) => {
             let mut hechas = 0;
             for r in rutas {
+                // Una foto es una foto: se pinea como imagen y no como la
+                // ficha de un archivo. Se decide leyendola, porque las del
+                // movil no traen extension por la que guiarse.
+                if r.is_file()
+                    && let Ok(img) = pixpin_codec::cargar(&r)
+                {
+                    match pines.pinear_imagen_centrada(&img, &monitor) {
+                        Ok(_) => hechas += 1,
+                        Err(e) => tracing::warn!(?e, ruta = ?r, "no se pudo pinear la imagen"),
+                    }
+                    continue;
+                }
                 // Una ruta que falle no puede impedir que las demas se
                 // pineen: se registra y se sigue.
                 match pines.pinear_archivo(&r, &monitor) {

@@ -226,8 +226,11 @@ impl Indice {
     pub fn ordenadas(&self) -> Vec<&Ficha> {
         let mut v: Vec<&Ficha> = self.proyectos.iter().collect();
         v.sort_by(|a, b| {
-            b.tocado
-                .cmp(&a.tocado)
+            // «Mensajes guardados» primero, pase lo que pase con las fechas:
+            // es el unico chat que tiene que estar siempre en el mismo sitio.
+            b.es_guardados()
+                .cmp(&a.es_guardados())
+                .then_with(|| b.tocado.cmp(&a.tocado))
                 .then_with(|| a.nombre.cmp(&b.nombre))
         });
         v
@@ -476,6 +479,56 @@ pub fn completar_hojas(raiz: &Path, id: &str, aparato: &str) -> std::io::Result<
     Ok(hechas)
 }
 
+/// Como se llama el chat de lo suelto, igual que en el movil.
+pub const NOMBRE_GUARDADOS: &str = "Mensajes guardados";
+/// Como se llamo aqui antes de tener su nombre de verdad.
+const NOMBRE_VIEJO_DE_GUARDADOS: &str = "Del movil";
+/// La marca que lo distingue en el indice. Una marca y no el nombre: si el
+/// usuario lo renombra sigue siendo el, y un proyecto suyo que se llame igual
+/// no lo suplanta.
+const MARCA_GUARDADOS: &str = "guardados";
+
+impl Ficha {
+    /// Si es el chat de «Mensajes guardados»: el que existe siempre, va
+    /// arriba y no se borra.
+    pub fn es_guardados(&self) -> bool {
+        self.resto.get(MARCA_GUARDADOS).and_then(|v| v.as_bool()) == Some(true)
+    }
+}
+
+/// El chat de «Mensajes guardados», creandolo si no esta.
+///
+/// Es adonde va todo lo suelto -un archivo que llega del movil, por ejemplo-,
+/// asi que tiene que existir ANTES de que llegue nada: el usuario lo busco y
+/// no estaba. El «Del movil» de las primeras versiones se convierte en el, con
+/// lo que ya tenia dentro.
+pub fn asegurar_guardados(raiz: &Path, cuando: i64, aparato: &str) -> std::io::Result<Ficha> {
+    let mut indice = Indice::leer(raiz);
+    if let Some(f) = indice.proyectos.iter().find(|f| f.es_guardados()) {
+        return Ok(f.clone());
+    }
+    let marca = (MARCA_GUARDADOS.to_string(), serde_json::Value::Bool(true));
+    let ficha = match indice
+        .proyectos
+        .iter_mut()
+        .find(|f| f.nombre == NOMBRE_VIEJO_DE_GUARDADOS)
+    {
+        Some(vieja) => {
+            vieja.nombre = NOMBRE_GUARDADOS.to_string();
+            vieja.resto.insert(marca.0, marca.1);
+            vieja.clone()
+        }
+        None => {
+            let mut nueva = Ficha::nueva(NOMBRE_GUARDADOS, cuando, aparato);
+            nueva.resto.insert(marca.0, marca.1);
+            indice.proyectos.push(nueva.clone());
+            nueva
+        }
+    };
+    indice.guardar(raiz)?;
+    Ok(ficha)
+}
+
 /// Donde van a parar los proyectos borrados.
 pub fn papelera(raiz: &Path) -> PathBuf {
     raiz.join("papelera")
@@ -506,7 +559,15 @@ pub fn borrar_proyectos(
         .collect();
     let mut indice = Indice::leer(raiz);
     let antes = indice.proyectos.len();
-    indice.proyectos.retain(|f| !validos.contains(&&f.id));
+    // «Mensajes guardados» no se borra: es donde cae lo que llega, y sin el
+    // lo siguiente que llegara no tendria adonde ir.
+    indice
+        .proyectos
+        .retain(|f| f.es_guardados() || !validos.contains(&&f.id));
+    let validos: Vec<&String> = validos
+        .into_iter()
+        .filter(|id| indice.buscar(id).is_none())
+        .collect();
     let quitados = antes - indice.proyectos.len();
     if quitados > 0 {
         indice.guardar(raiz)?;
@@ -714,6 +775,49 @@ mod pruebas {
                 .is_file()
         );
         let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn mensajes_guardados_se_crea_una_vez_va_arriba_y_no_se_borra() {
+        let raiz = carpeta_temporal("guardados");
+        let mut i = Indice::default();
+        i.proyectos.push(ficha("a", "Casa", 9_999));
+        i.guardar(&raiz).unwrap();
+
+        let g = asegurar_guardados(&raiz, 10, "K7Q2").unwrap();
+        let otra_vez = asegurar_guardados(&raiz, 20, "K7Q2").unwrap();
+        assert_eq!(g.id, otra_vez.id);
+
+        let indice = Indice::leer(&raiz);
+        assert_eq!(indice.proyectos.len(), 2);
+        // «Casa» se toco mucho despues y aun asi va debajo.
+        assert_eq!(indice.ordenadas()[0].nombre, NOMBRE_GUARDADOS);
+
+        let (n, _) = borrar_proyectos(&raiz, std::slice::from_ref(&g.id), 1).unwrap();
+        assert_eq!(n, 0);
+        assert!(Indice::leer(&raiz).buscar(&g.id).is_some());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn el_del_movil_de_antes_se_convierte_en_mensajes_guardados_con_su_id() {
+        let raiz = carpeta_temporal("guardados-viejo");
+        let mut i = Indice::default();
+        i.proyectos.push(ficha("buzon", "Del movil", 5));
+        i.guardar(&raiz).unwrap();
+
+        let g = asegurar_guardados(&raiz, 10, "K7Q2").unwrap();
+
+        // El mismo id: su carpeta, con lo recibido, sigue siendo la suya.
+        assert_eq!(g.id, "buzon");
+        assert_eq!(g.nombre, NOMBRE_GUARDADOS);
+        assert_eq!(Indice::leer(&raiz).proyectos.len(), 1);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn un_proyecto_que_solo_se_llama_igual_no_es_mensajes_guardados() {
+        assert!(!ficha("a", NOMBRE_GUARDADOS, 1).es_guardados());
     }
 
     #[test]

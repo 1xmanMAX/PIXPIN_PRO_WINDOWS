@@ -434,17 +434,8 @@ fn al_cuaderno(
     if sueltos.is_empty() {
         return Ok(0);
     }
-    let mut indice = almacen::Indice::leer(raiz);
-    let ficha = match indice.proyectos.iter().find(|f| f.nombre == NOMBRE_BUZON) {
-        Some(f) => f.clone(),
-        None => {
-            let cuando = pixpin_shell::entorno::ahora_local_ms();
-            let f = almacen::Ficha::nueva(NOMBRE_BUZON, cuando, aparato);
-            indice.proyectos.push(f.clone());
-            indice.guardar(raiz)?;
-            f
-        }
-    };
+    let ficha =
+        almacen::asegurar_guardados(raiz, pixpin_shell::entorno::ahora_local_ms(), aparato)?;
     let carpeta = almacen::carpeta(raiz, &ficha.id);
     let previos = cuaderno::Cuaderno::leer_de(&carpeta).unwrap_or_default();
     // El numero sigue al ultimo del cuaderno: es el que ordena la
@@ -487,6 +478,3 @@ fn al_cuaderno(
     }
     Ok(hechos)
 }
-
-/// El proyecto donde se guarda lo que llega suelto del movil.
-const NOMBRE_BUZON: &str = "Del movil";
