@@ -99,6 +99,10 @@ pub enum Herramienta {
     EscalaGrafica,
     /// Un marco: recuadro con nombre que se lleva consigo lo que encierra.
     Marco,
+    /// Un emoji suelto (universo). El gesto no crea nada con ella: quien
+    /// sabe que emoji se eligio es la sesion del universo, y es ella la que
+    /// lo coloca en la escena.
+    Emoji,
 }
 
 impl Herramienta {
@@ -844,7 +848,11 @@ impl Gesto {
                 pide: None,
             };
         }
-        if self.herramienta.deja_rastro() && self.herramienta != Herramienta::Texto {
+        // Texto y emoji no nacen aqui: el texto se escribe, y el emoji lo
+        // coloca la sesion del universo con el caracter ya elegido.
+        if self.herramienta.deja_rastro()
+            && !matches!(self.herramienta, Herramienta::Texto | Herramienta::Emoji)
+        {
             // Igual que en calibrar: la figura nace ya pegada al vertice
             // ajeno, pero la decision de que NACE se tomo con el punto
             // crudo.

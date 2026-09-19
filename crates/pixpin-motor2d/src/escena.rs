@@ -45,6 +45,10 @@ pub struct Escena {
     /// Lo que ocupan `historia` y `rehacer`, para no tener que recorrerlos.
     #[serde(skip)]
     bytes_historial: usize,
+    /// Cuantos pasos nuevos ha cerrado el usuario. Sube y nunca baja: es
+    /// una senal para quien lleva otra pila encima de esta (D234).
+    #[serde(skip)]
+    cerrados: u64,
 }
 
 /// Un cambio suelto. Cada uno sabe invertirse.
@@ -126,6 +130,7 @@ impl Default for Escena {
             rehacer: Vec::new(),
             en_curso: None,
             bytes_historial: 0,
+            cerrados: 0,
         }
     }
 }
@@ -177,6 +182,17 @@ impl Escena {
         for p in self.rehacer.drain(..) {
             self.bytes_historial -= bytes_de(&p);
         }
+        // Todo paso nuevo del usuario pasa por aqui (`cerrar_paso` y el
+        // cambio suelto sin paso abierto); deshacer y rehacer, no. Por eso
+        // el contador vive aqui y no en cada `historia.push`.
+        self.cerrados += 1;
+    }
+
+    /// Cuantos pasos nuevos se han cerrado desde que se abrio: sube con cada
+    /// uno y no baja al deshacer. Lo usa quien tiene su propia pila y tiene
+    /// que saber que el usuario hizo algo aqui (el universo, D234).
+    pub fn pasos_cerrados(&self) -> u64 {
+        self.cerrados
     }
 
     fn apuntar_anadido(&mut self, id: u64) {
@@ -959,5 +975,19 @@ mod pruebas {
             escena.bytes_de_historial()
         );
         assert!(escena.deshacer(), "y aun asi se deshace lo reciente");
+    }
+
+    #[test]
+    fn pasos_cerrados_sube_con_cada_paso_nuevo_y_no_al_deshacer() {
+        let mut e = Escena::nueva();
+        assert_eq!(e.pasos_cerrados(), 0);
+        let id = e.anadir(rect(0.0));
+        e.abrir_paso();
+        e.borrar_apuntando(id);
+        e.cerrar_paso();
+        let tras_uno = e.pasos_cerrados();
+        assert!(tras_uno >= 1);
+        e.deshacer();
+        assert_eq!(e.pasos_cerrados(), tras_uno);
     }
 }

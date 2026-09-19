@@ -5,13 +5,14 @@
 //! bitmap, texto— y encierra el protocolo SetTarget/BeginDraw/EndDraw en
 //! una unica funcion con clausura, donde no se puede olvidar ningun paso.
 
-use windows::Win32::Graphics::Direct2D::Common::D2D_RECT_F;
+use windows::Win32::Graphics::Direct2D::Common::{D2D_RECT_F, D2D1_GRADIENT_STOP};
 use windows::Win32::Graphics::Direct2D::{
     D2D1_ANTIALIAS_MODE_ALIASED, D2D1_CAP_STYLE_FLAT, D2D1_DASH_STYLE_DASH,
+    D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, D2D1_ELLIPSE, D2D1_EXTEND_MODE_CLAMP, D2D1_GAMMA_2_2,
     D2D1_INTERPOLATION_MODE, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
     D2D1_INTERPOLATION_MODE_LINEAR, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_LINE_JOIN_MITER,
-    D2D1_ROUNDED_RECT, D2D1_STROKE_STYLE_PROPERTIES1, ID2D1Bitmap1, ID2D1PathGeometry1,
-    ID2D1SolidColorBrush, ID2D1StrokeStyle,
+    D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES, D2D1_ROUNDED_RECT, D2D1_STROKE_STYLE_PROPERTIES1,
+    ID2D1Bitmap1, ID2D1PathGeometry1, ID2D1RenderTarget, ID2D1SolidColorBrush, ID2D1StrokeStyle,
 };
 use windows::Win32::Graphics::DirectWrite::{
     DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL,
@@ -350,6 +351,85 @@ impl Pintor<'_> {
             // SAFETY: dentro del fotograma; pincel y contexto vivos.
             unsafe { self.motor.contexto().FillRoundedRectangle(&rr, &p) };
         }
+    }
+
+    /// Un circulo relleno. Es un rectangulo redondeado con radio = mitad:
+    /// Direct2D ya lo hace con antialias y no hace falta geometria nueva.
+    pub fn circulo(&self, centro: (f32, f32), radio: f32, color: Color) {
+        let r = RectF {
+            x: centro.0 - radio,
+            y: centro.1 - radio,
+            ancho: 2.0 * radio,
+            alto: 2.0 * radio,
+        };
+        self.rellenar_redondeado(r, radio, color);
+    }
+
+    /// Solo el borde de un circulo, de `grosor` centrado en el radio.
+    pub fn anillo(&self, centro: (f32, f32), radio: f32, grosor: f32, color: Color) {
+        if let Some(p) = self.pincel(color) {
+            let e = D2D1_ELLIPSE {
+                point: Vector2 {
+                    X: centro.0,
+                    Y: centro.1,
+                },
+                radiusX: radio,
+                radiusY: radio,
+            };
+            // SAFETY: dentro del fotograma; pincel y contexto vivos.
+            unsafe { self.motor.contexto().DrawEllipse(&e, &p, grosor, None) };
+        }
+    }
+
+    /// Un circulo que va de `dentro` en el centro a `fuera` en el borde: el
+    /// brillo de una galaxia o de un planeta.
+    ///
+    /// Crea el pincel en cada llamada: son decenas de galaxias por
+    /// fotograma como mucho. Si la medicion de rendimiento del universo lo
+    /// senala, se cachea por par de colores.
+    pub fn circulo_degradado(&self, centro: (f32, f32), radio: f32, dentro: Color, fuera: Color) {
+        let paradas = [
+            D2D1_GRADIENT_STOP {
+                position: 0.0,
+                color: dentro.a_d2d(),
+            },
+            D2D1_GRADIENT_STOP {
+                position: 1.0,
+                color: fuera.a_d2d(),
+            },
+        ];
+        // La version de `ID2D1RenderTarget`, que es la de dos paradas y
+        // gamma: la del contexto pide espacios de color que aqui sobran.
+        let destino: &ID2D1RenderTarget = self.motor.contexto();
+        // SAFETY: dentro del fotograma; `paradas` vive hasta que la
+        // coleccion se crea, y Direct2D la copia.
+        let Ok(coleccion) = (unsafe {
+            destino.CreateGradientStopCollection(&paradas, D2D1_GAMMA_2_2, D2D1_EXTEND_MODE_CLAMP)
+        }) else {
+            return;
+        };
+        let centro_d2d = Vector2 {
+            X: centro.0,
+            Y: centro.1,
+        };
+        let props = D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES {
+            center: centro_d2d,
+            gradientOriginOffset: Vector2 { X: 0.0, Y: 0.0 },
+            radiusX: radio,
+            radiusY: radio,
+        };
+        // SAFETY: props y coleccion vivas; el pincel nace dentro del fotograma.
+        let Ok(pincel) = (unsafe { destino.CreateRadialGradientBrush(&props, None, &coleccion) })
+        else {
+            return;
+        };
+        let e = D2D1_ELLIPSE {
+            point: centro_d2d,
+            radiusX: radio,
+            radiusY: radio,
+        };
+        // SAFETY: dentro del fotograma; pincel y contexto vivos.
+        unsafe { destino.FillEllipse(&e, &pincel) };
     }
 
     pub fn trazar(&self, r: RectF, grosor: f32, color: Color) {
@@ -971,6 +1051,27 @@ impl Pintor<'_> {
         }
     }
 
+    /// Como `texto`, pero dejando que la fuente ponga sus propios colores:
+    /// es lo que hace que un emoji salga en color y no como una silueta
+    /// negra. Se pide aparte porque el texto normal no lo necesita y la
+    /// opcion tiene coste.
+    pub fn texto_color(&self, texto: &str, x: f32, y: f32, tam: f32, color: Color) {
+        let Some((disposicion, _, _)) = self.disposicion(texto, tam) else {
+            return;
+        };
+        if let Some(p) = self.pincel(color) {
+            // SAFETY: dentro del fotograma; objetos vivos.
+            unsafe {
+                self.motor.contexto().DrawTextLayout(
+                    Vector2 { X: x, Y: y },
+                    &disposicion,
+                    &p,
+                    D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
+                )
+            };
+        }
+    }
+
     /// Texto sobre una caja redondeada semitransparente: las etiquetas del
     /// overlay (dimensiones, color de la lupa).
     pub fn texto_con_fondo(
@@ -1214,5 +1315,91 @@ mod pruebas {
             pixel(&d3d, &ctx, &destino_tex, 80, 70),
             [255, 255, 255, 255]
         );
+    }
+
+    /// Luminancia aproximada de un pixel BGRA, de 0 a 1.
+    fn luminancia(p: [u8; 4]) -> f32 {
+        (0.114 * p[0] as f32 + 0.587 * p[1] as f32 + 0.299 * p[2] as f32) / 255.0
+    }
+
+    #[test]
+    #[ignore = "necesita GPU real; ejecutar con --ignored"]
+    fn un_circulo_pinta_el_centro_y_no_la_esquina_de_su_caja() {
+        let (d3d, ctx) = dispositivo();
+        let motor = MotorRender::nuevo(&d3d).unwrap();
+        let destino_tex = textura(&d3d, 64, 64);
+        let destino = motor.destino_desde_textura(&destino_tex).unwrap();
+        let rojo = Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        };
+        motor
+            .dibujar(&destino, |p| {
+                p.limpiar(Color::BLANCO);
+                p.circulo((32.0, 32.0), 30.0, rojo);
+                p.anillo((32.0, 32.0), 30.0, 2.0, rojo);
+            })
+            .expect("el fotograma completo deberia dibujarse");
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 32, 32), [0, 0, 255, 255]);
+        // Caso negativo: la esquina de la caja del circulo queda fuera de el.
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 1, 1), [255, 255, 255, 255]);
+    }
+
+    #[test]
+    #[ignore = "necesita GPU real; ejecutar con --ignored"]
+    fn el_degradado_es_mas_intenso_en_el_centro_que_cerca_del_borde() {
+        let (d3d, ctx) = dispositivo();
+        let motor = MotorRender::nuevo(&d3d).unwrap();
+        let destino_tex = textura(&d3d, 64, 64);
+        let destino = motor.destino_desde_textura(&destino_tex).unwrap();
+        motor
+            .dibujar(&destino, |p| {
+                p.limpiar(Color::NEGRO);
+                p.circulo_degradado(
+                    (32.0, 32.0),
+                    30.0,
+                    Color::BLANCO,
+                    Color {
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: 0.0,
+                    },
+                );
+            })
+            .expect("el fotograma completo deberia dibujarse");
+        let centro = luminancia(pixel(&d3d, &ctx, &destino_tex, 32, 32));
+        let borde = luminancia(pixel(&d3d, &ctx, &destino_tex, 32 + 27, 32));
+        assert!(centro > borde, "centro {centro} <= borde {borde}");
+        assert!(centro > 0.9, "el centro es blanco: {centro}");
+        // Caso negativo: fuera del circulo no se pinta nada.
+        assert_eq!(pixel(&d3d, &ctx, &destino_tex, 1, 1), [0, 0, 0, 255]);
+    }
+
+    #[test]
+    #[ignore = "necesita GPU real; ejecutar con --ignored"]
+    fn un_emoji_con_texto_color_no_sale_monocromo() {
+        let (d3d, ctx) = dispositivo();
+        let motor = MotorRender::nuevo(&d3d).unwrap();
+        let destino_tex = textura(&d3d, 64, 64);
+        let destino = motor.destino_desde_textura(&destino_tex).unwrap();
+        motor
+            .dibujar(&destino, |p| {
+                p.limpiar(Color::BLANCO);
+                p.texto_color("🟥", 8.0, 8.0, 32.0, Color::NEGRO);
+            })
+            .expect("el fotograma completo deberia dibujarse");
+        let mut rojo = false;
+        for y in 0..64 {
+            for x in 0..64 {
+                let [b, g, r, _] = pixel(&d3d, &ctx, &destino_tex, x, y);
+                if r as f32 / 255.0 > 0.5 && (g as f32 / 255.0) < 0.3 && (b as f32 / 255.0) < 0.3 {
+                    rojo = true;
+                }
+            }
+        }
+        assert!(rojo, "el cuadrado rojo tiene que salir rojo, no negro");
     }
 }

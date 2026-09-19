@@ -413,9 +413,44 @@ pub fn abrir(
             medir_fotogramas,
             fondo.clone(),
             fotos,
+            None,
         )?;
         if !cambiar {
             return Ok((vuelta, enlace));
+        }
+        escena = vuelta;
+        let ahora = !PANTALLA_COMPLETA.load(std::sync::atomic::Ordering::SeqCst);
+        PANTALLA_COMPLETA.store(ahora, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// El mismo editor con el universo detras (D215): la escena son sus
+/// anotaciones y la sesion atiende lo que es del universo antes que el
+/// editor. Vuelve con la escena al cerrar; si se pidio abrir una hoja, la
+/// sesion la lleva en `hoja_pedida`.
+///
+/// Va aparte de `abrir` y no como un parametro mas de ella para no tocar
+/// a quien ya la llama: el chat y la bandeja siguen abriendo dibujos igual.
+pub fn abrir_universo(
+    escena: Escena,
+    ajustes_iman: pixpin_motor2d::enganche::Ajustes,
+    nivel: pixpin_nivel::Nivel,
+    medir_fotogramas: bool,
+    sesion: &mut crate::universo::sesion::Sesion,
+) -> Result<Escena> {
+    let mut escena = escena;
+    loop {
+        let (vuelta, _, cambiar) = abrir_en_modo(
+            escena,
+            ajustes_iman,
+            nivel,
+            medir_fotogramas,
+            None,
+            &[],
+            Some(&mut *sesion),
+        )?;
+        if !cambiar {
+            return Ok(vuelta);
         }
         escena = vuelta;
         let ahora = !PANTALLA_COMPLETA.load(std::sync::atomic::Ordering::SeqCst);
@@ -437,6 +472,7 @@ fn abrir_en_modo(
     medir_fotogramas: bool,
     fondo: Option<pixpin_codec::ImagenRgba>,
     fotos: &[(u64, std::path::PathBuf)],
+    mut universo: Option<&mut crate::universo::sesion::Sesion>,
 ) -> Result<(Escena, Option<String>, bool)> {
     let dispositivo =
         pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para el editor")?;
@@ -505,6 +541,11 @@ fn abrir_en_modo(
 
     let mut escena = escena;
     let mut gesto = gesto_inicial(ajustes_iman);
+    // En el universo se abre con la mano: lo primero que se hace ahi es
+    // mirar y mover astros, no dibujar.
+    if universo.is_some() {
+        elegir_herramienta(&mut gesto, Herramienta::Mano);
+    }
     // Lo copiado del lienzo. Vive con la ventana: cerrar el editor se lo
     // lleva, que es lo que espera cualquiera.
     let mut portapapeles: Vec<pixpin_motor2d::Elemento> = Vec::new();
@@ -522,9 +563,15 @@ fn abrir_en_modo(
     // D127: la camara del usuario va en pixeles logicos; `efectiva` es la
     // que pinta y traduce el raton. Se recalcula si cambia la escala.
     let mut escala_por_cien = monitor.escala_por_cien;
-    let mut efectiva = vista_efectiva(&camara, escala_por_cien);
     // D136: rueda, Shift, Ctrl, espacio y boton central, a la Excalidraw.
     let mut navegador = navegacion::Navegador::nuevo();
+    if let Some(s) = universo.as_deref_mut() {
+        s.conectar_ventana(&ventana, area, escala_por_cien);
+        camara = s.camara_inicial();
+        // Alejarse hasta ver todas las galaxias a la vez.
+        navegador.zoom_minimo = pixpin_universo::ZOOM_MINIMO_UNIVERSO;
+    }
+    let mut efectiva = vista_efectiva(&camara, escala_por_cien);
     let mut cache = Cache::nueva();
     let mut cache_tinta = pixpin_render::CacheTinta::nueva();
     let retardo = pixpin_render::retardo_nitido(nivel);
@@ -538,7 +585,23 @@ fn abrir_en_modo(
     // "Contenido" y area de trabajo son el mismo rectangulo, como en
     // `CapaViva::nueva` (`capa.rs`): aqui el contenido ES la pantalla
     // entera, no hay un pin ni una ventana mas pequena de referencia.
-    let mut caja = CajaHerramientas::barra_superior(area, escala_por_cien, &BOTONES_EDITOR);
+    // Con el universo, la caja va bajo su barra de ruta, no encima de ella.
+    let area_caja = |escala: u32, con_universo: bool| {
+        if !con_universo {
+            return area;
+        }
+        let ruta = crate::universo::sesion::Sesion::alto_ruta(escala);
+        pixpin_geom::Rect {
+            y: area.y + ruta as i32,
+            alto: area.alto.saturating_sub(ruta),
+            ..area
+        }
+    };
+    let mut caja = CajaHerramientas::barra_superior(
+        area_caja(escala_por_cien, universo.is_some()),
+        escala_por_cien,
+        &BOTONES_EDITOR,
+    );
     // Donde estaba el raton la ultima vez, para resaltar el boton de debajo.
     let mut raton_barra: Option<Punto> = None;
     // La punta predicha del trazo en curso (ver `tinta::prediccion`): se
@@ -606,7 +669,11 @@ fn abrir_en_modo(
                 {
                     escala_por_cien = m.escala_por_cien;
                     efectiva = vista_efectiva(&camara, escala_por_cien);
-                    caja = CajaHerramientas::barra_superior(area, escala_por_cien, &BOTONES_EDITOR);
+                    caja = CajaHerramientas::barra_superior(
+                        area_caja(escala_por_cien, universo.is_some()),
+                        escala_por_cien,
+                        &BOTONES_EDITOR,
+                    );
                     // La capa congelada se horneo a la escala vieja.
                     capa.soltar();
                     todo_sucio = true;
@@ -689,7 +756,7 @@ fn abrir_en_modo(
                 vivo,
             );
             if let Some(accion) = nav.accion {
-                if navegacion::aplicar(&mut camara, accion) {
+                if navegacion::aplicar_con_minimo(&mut camara, accion, navegador.zoom_minimo) {
                     efectiva = vista_efectiva(&camara, escala_por_cien);
                     // La capa congelada se da por invalida sola: su Estampa
                     // lleva la camara. `decidir_zoom` rehace la tinta nitida
@@ -703,6 +770,52 @@ fn abrir_en_modo(
                     ventana.poner_cursor(FormaCursorWin::Mover);
                 }
                 continue;
+            }
+            // El universo, si lo hay, va antes que los enlaces y que las
+            // herramientas del editor: un clic sobre un astro es suyo. Menos
+            // el que cae en la caja de herramientas o en el panel, que son
+            // del editor tambien con el universo detras.
+            if let Some(s) = universo.as_deref_mut() {
+                use crate::universo::sesion::{Editor, Respuesta};
+                let sobre_la_interfaz = match ev {
+                    EventoOverlay::BotonPulsado(p) => {
+                        !matches!(caja.destino(p), DestinoClic::Lienzo)
+                            || crate::panel_dibujo::panel_para(
+                                &gesto,
+                                &escena,
+                                area,
+                                escala_por_cien,
+                            )
+                            .is_some_and(|panel| {
+                                !matches!(
+                                    panel.destino(p),
+                                    pixpin_ui::panel_lateral::DestinoPanel::Fuera
+                                )
+                            })
+                    }
+                    _ => false,
+                };
+                if !sobre_la_interfaz {
+                    let ed = Editor {
+                        mano: gesto.herramienta == Herramienta::Mano,
+                        escribiendo: gesto.esta_escribiendo(),
+                        escala_por_cien,
+                        area,
+                    };
+                    match s.evento(&ev, &mut camara, &mut escena, &ed) {
+                        Respuesta::Pasa => {}
+                        Respuesta::Consumido { repintar } => {
+                            efectiva = vista_efectiva(&camara, escala_por_cien);
+                            if repintar {
+                                todo_sucio = true;
+                                ventana.invalidar();
+                            }
+                            s.tras_evento(&escena);
+                            continue;
+                        }
+                        Respuesta::Cerrar | Respuesta::AbrirHoja { .. } => break 'bucle,
+                    }
+                }
             }
             // 0. La caja de herramientas es un dialogo en pantalla: un clic
             // ahi ELIGE o dispara una accion, y no puede llegar ademas al
@@ -770,6 +883,10 @@ fn abrir_en_modo(
                     DestinoClic::Boton(boton) => {
                         if !pulsar_boton(boton, &mut gesto, &mut escena) {
                             break 'bucle;
+                        }
+                        // Una herramienta del editor deja la del universo.
+                        if let Some(s) = universo.as_deref_mut() {
+                            s.herramienta = None;
                         }
                         // El cursor se pone al vuelo con el siguiente
                         // `RatonMovido`: no hace falta calcularlo aqui, y
@@ -1087,7 +1204,9 @@ fn abrir_en_modo(
                 // repinta encima; lo demas se copia de la capa.
                 let excluidos = excluidos_de(&gesto);
                 let activo_ahora = !gesto.en_reposo() && !excluidos.is_empty();
-                if activo_ahora && en_reposo_antes {
+                // Con el universo detras no hay capa congelada: se horneria
+                // sobre blanco y sin astros (ver el plan, «Ajustes», D238).
+                if activo_ahora && en_reposo_antes && universo.is_none() {
                     rejilla.sincronizar(&escena);
                     let vista = efectiva.ventana(ancho_px, alto_px);
                     let candidatos = rejilla.candidatos(vista);
@@ -1194,6 +1313,16 @@ fn abrir_en_modo(
             }
         }
         let vaciar = t_vuelta.elapsed();
+        // El universo: su vuelo de camara, sus destellos y su guardado van
+        // con el reloj, no con los eventos.
+        if let Some(s) = universo.as_deref_mut() {
+            if s.tick(&mut camara) {
+                efectiva = vista_efectiva(&camara, escala_por_cien);
+                todo_sucio = true;
+                ventana.invalidar();
+            }
+            s.tras_evento(&escena);
+        }
         let mut pintado_medido = None;
         // Un solo fotograma por vuelta, despues de haber pasado TODOS los
         // puntos al gesto: pintar a mitad de la cola era lo que hacia perder
@@ -1311,6 +1440,7 @@ fn abrir_en_modo(
                 zona_pintada,
                 prediccion,
                 panel.as_ref(),
+                universo.as_deref_mut(),
                 |_| {},
             );
             match pintado {
@@ -1375,11 +1505,15 @@ fn abrir_en_modo(
         // esta quieto): el bucle tiene que despertarse cuando se cumpla.
         let tope_forma = quieto
             .map(|(desde, _)| PAUSA_FORMA.saturating_sub(desde.elapsed()).as_millis() as u32 + 1);
+        let minimo = |a: Option<u32>, b: Option<u32>| match (a, b) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
         let decision = DecisionZoom {
-            tope_ms: match (decision.tope_ms, tope_forma) {
-                (Some(a), Some(b)) => Some(a.min(b)),
-                (a, b) => a.or(b),
-            },
+            tope_ms: minimo(
+                minimo(decision.tope_ms, tope_forma),
+                universo.as_deref().and_then(|s| s.tope_ms()),
+            ),
             ..decision
         };
         let tope = if senal.is_some() {
@@ -1404,6 +1538,10 @@ fn abrir_en_modo(
         }
     }
 
+    // El universo guarda al cerrar, pase lo que pase: su encuadre tambien.
+    if let Some(s) = universo {
+        s.cerrar(&escena, &camara);
+    }
     // D143: la copia en GPU (y la de CPU) se suelta al cerrar, no al volver
     // al gestor de pines.
     drop(fondo);
@@ -1499,10 +1637,16 @@ fn pintar(
     zona: Option<(i32, i32, i32, i32)>,
     prediccion: Option<Punto2>,
     panel: Option<&pixpin_ui::panel_lateral::PanelLateral>,
+    mut universo: Option<&mut crate::universo::sesion::Sesion>,
     encima: impl FnOnce(&pixpin_render::Pintor<'_>),
 ) -> Option<std::time::Duration> {
     if let Some(f) = fondo.as_mut() {
         f.asegurar(motor);
+    }
+    // Lo que se ve, los cuadernos que faltan y las miniaturas: antes de
+    // abrir el fotograma, por lo mismo que las imagenes de abajo.
+    if let Some(s) = universo.as_deref_mut() {
+        s.preparar(motor, camara);
     }
     // Antes de `dibujar`: crear un bitmap con el `BeginDraw` abierto no es
     // lo que espera Direct2D.
@@ -1544,6 +1688,7 @@ fn pintar(
     // dispositivo se ha perdido.
     let error = {
         let imagenes: &ImagenesLienzo = imagenes;
+        let uni = universo.as_deref();
         motor.dibujar(&destino, |p| {
             // El mundo se dibuja en sus propias coordenadas; la matriz activa es
             // lo unico que cambia al encuadrar o acercar (camara.rs lo explica:
@@ -1563,7 +1708,15 @@ fn pintar(
                 });
             }
             if !capa_vale {
-                p.limpiar(Color::BLANCO);
+                match uni {
+                    // El cielo en lugar del papel, en pixeles de pantalla:
+                    // la vista del mundo se pone justo despues.
+                    Some(s) => {
+                        p.desplazar(0.0, 0.0);
+                        s.pintar_detras(p, camara, ancho_px, alto_px);
+                    }
+                    None => p.limpiar(Color::BLANCO),
+                }
             }
             p.poner_vista((0.0, 0.0), camara.zoom, (origen.x, origen.y));
             // D140/D142: con la capa valida la imagen ya esta copiada; si no, va
@@ -1656,10 +1809,19 @@ fn pintar(
             // del mundo que `poner_vista` dejo puesta arriba, igual que hace
             // `dibujar_cajetin` mas abajo.
             p.desplazar(0.0, 0.0);
+            if let Some(s) = uni {
+                s.pintar_delante(p, camara, ancho_px, alto_px);
+            }
             crate::caja_dibujo::pintar_barra(
                 p,
                 caja_herramientas,
-                gesto.herramienta,
+                // Con una herramienta del universo puesta, ninguna del editor
+                // sale elegida: `Emoji` del motor no tiene boton en esta caja.
+                if uni.is_some_and(|s| s.herramienta.is_some()) {
+                    Herramienta::Emoji
+                } else {
+                    gesto.herramienta
+                },
                 escala_por_cien,
                 raton_barra,
                 |b| match b {
@@ -1686,6 +1848,10 @@ fn pintar(
         }
         // Y los de las imagenes pegadas, por lo mismo.
         imagenes.soltar();
+        // Y las estrellas y miniaturas del universo.
+        if let Some(s) = universo {
+            s.soltar_recursos();
+        }
     }
     let t_presentar = std::time::Instant::now();
     let _ = superficie.presentar_sincronizado(zona);
@@ -1792,6 +1958,9 @@ fn pedir_medida(
                         alto_px,
                         None,
                         None,
+                        None,
+                        // El cajetin de calibrar pinta sin el universo: es un
+                        // dialogo corto y el cielo volvera al cerrarlo.
                         None,
                         |p| dibujar_cajetin(p, ancho_px, alto_px, largo_px, &texto, unidad),
                     );

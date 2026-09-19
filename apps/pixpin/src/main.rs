@@ -68,6 +68,7 @@ mod recibir;
 mod reproductor;
 mod scroll;
 mod sincronizar;
+mod universo;
 mod ventana_ajustes;
 mod ventana_chat;
 mod ventana_editor;

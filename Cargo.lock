@@ -543,6 +543,7 @@ dependencies = [
  "pixpin-sincro",
  "pixpin-store",
  "pixpin-ui",
+ "pixpin-universo",
  "qrcodegen",
  "serde",
  "serde_json",
@@ -720,6 +721,17 @@ version = "0.1.0"
 dependencies = [
  "pixpin-geom",
  "pixpin-motor2d",
+ "pixpin-universo",
+]
+
+[[package]]
+name = "pixpin-universo"
+version = "0.1.0"
+dependencies = [
+ "pixpin-motor2d",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

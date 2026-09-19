@@ -60,7 +60,38 @@ fn delta_y_css(delta_rueda: i32) -> f32 {
 /// (packages/excalidraw/components/App.tsx:14024-14045 @afa3a65) y de
 /// `getNormalizedZoom` (packages/excalidraw/scene/normalize.ts:7-9), MIT,
 /// Copyright (c) 2020 Excalidraw.
+// Solo la usan las pruebas: el editor pasa siempre por `zoom_de_rueda_entre`
+// con el minimo de su navegador.
+#[cfg(test)]
 pub fn zoom_de_rueda(zoom: f32, delta_rueda: i32) -> f32 {
+    zoom_de_rueda_entre(zoom, delta_rueda, ZOOM_MINIMO)
+}
+
+/// Como `zoom_de_rueda`, dejando bajar hasta `minimo`.
+///
+/// Por encima del 10 % es la rueda de Excalidraw tal cual. Por debajo no
+/// puede serlo: su paso es de 0,1 fijo, y desde 0,1 una sola muesca lo
+/// dejaria en cero. Ahi el paso pasa a ser proporcional, un 10 % por
+/// muesca, que es como se siente igual a cualquier distancia. Solo lo usa
+/// el universo, que es el unico lienzo que baja de 0,1.
+pub fn zoom_de_rueda_entre(zoom: f32, delta_rueda: i32, minimo: f32) -> f32 {
+    let delta_y = delta_y_css(delta_rueda);
+    if delta_y == 0.0 {
+        return zoom;
+    }
+    if minimo < ZOOM_MINIMO {
+        let paso = delta_y.clamp(-PASO_ZOOM * 100.0, PASO_ZOOM * 100.0);
+        let lineal = zoom_de_rueda_excalidraw(zoom, delta_rueda);
+        if zoom < ZOOM_MINIMO || lineal <= ZOOM_MINIMO && paso > 0.0 {
+            let nuevo = zoom * 1.1f32.powf(-paso / (PASO_ZOOM * 100.0));
+            return ((nuevo * 1e6).round() / 1e6).clamp(minimo, ZOOM_MAXIMO);
+        }
+        return lineal;
+    }
+    zoom_de_rueda_excalidraw(zoom, delta_rueda)
+}
+
+fn zoom_de_rueda_excalidraw(zoom: f32, delta_rueda: i32) -> f32 {
     let delta_y = delta_y_css(delta_rueda);
     if delta_y == 0.0 {
         return zoom;
@@ -173,6 +204,10 @@ pub struct Navegador {
     /// Donde estaba el raton la ultima vez, en pixeles logicos de la
     /// ventana: el foco del zoom con Ctrl+rueda, que no trae posicion.
     ultimo: Punto2,
+    /// Hasta donde deja alejarse este lienzo. Un dibujo se queda en el
+    /// minimo del motor; el universo baja mucho mas para ver todas las
+    /// galaxias a la vez. Quien lo cambia lo pasa a `aplicar_con_minimo`.
+    pub zoom_minimo: f32,
 }
 
 impl Default for Navegador {
@@ -184,6 +219,9 @@ impl Default for Navegador {
             espacio: false,
             arrastre: None,
             ultimo: Punto2::nuevo(0.0, 0.0),
+            // El de la rueda de Excalidraw, que ya era el suelo de hecho: la
+            // camara del motor admite 0,05 pero la rueda nunca bajaba de 0,1.
+            zoom_minimo: ZOOM_MINIMO,
         }
     }
 }
@@ -372,7 +410,16 @@ impl Navegador {
 }
 
 /// Aplica la accion a la camara del usuario (logica). Devuelve si cambio.
+/// Con el minimo de zoom del motor: es lo que quiere todo lienzo que no sea
+/// el universo.
+#[cfg(test)]
 pub fn aplicar(camara: &mut Camara, accion: Accion) -> bool {
+    aplicar_con_minimo(camara, accion, ZOOM_MINIMO)
+}
+
+/// Como `aplicar`, con el tope de alejamiento que diga quien llama (el
+/// `zoom_minimo` de su `Navegador`).
+pub fn aplicar_con_minimo(camara: &mut Camara, accion: Accion, zoom_minimo: f32) -> bool {
     match accion {
         Accion::Desplazar { dx, dy } => {
             if dx == 0.0 && dy == 0.0 {
@@ -382,8 +429,13 @@ pub fn aplicar(camara: &mut Camara, accion: Accion) -> bool {
             true
         }
         Accion::ZoomRueda { foco, delta } => {
-            let nuevo = zoom_de_rueda(camara.zoom, delta);
-            camara.acercar_en(foco, nuevo / camara.zoom)
+            let nuevo = zoom_de_rueda_entre(camara.zoom, delta, zoom_minimo);
+            camara.acercar_en_entre(
+                foco,
+                nuevo / camara.zoom,
+                zoom_minimo,
+                pixpin_motor2d::camara::ZOOM_MAXIMO,
+            )
         }
     }
 }
@@ -430,6 +482,24 @@ mod pruebas {
         assert_eq!(zoom_de_rueda(0.1, -MUESCA), ZOOM_MINIMO);
         // Caso negativo: una rueda sin giro no cambia nada.
         assert_eq!(zoom_de_rueda(1.7, 0), 1.7);
+    }
+
+    #[test]
+    fn con_un_minimo_propio_la_rueda_baja_del_diez_por_ciento_a_pasos_proporcionales() {
+        // El universo: de 0,1 hacia fuera sigue alejando, un 10 % por muesca.
+        let z = zoom_de_rueda_entre(0.1, -MUESCA, 0.002);
+        assert!((z - 0.1 / 1.1).abs() < 1e-5, "{z}");
+        // Y de vuelta hacia dentro, proporcional tambien.
+        let v = zoom_de_rueda_entre(0.01, MUESCA, 0.002);
+        assert!((v - 0.011).abs() < 1e-5, "{v}");
+        // Nunca por debajo de su minimo.
+        assert_eq!(zoom_de_rueda_entre(0.002, -MUESCA, 0.002), 0.002);
+        // Caso negativo: con el minimo de siempre, es la rueda de Excalidraw.
+        for z in [0.1, 0.5, 1.0, 3.0] {
+            for d in [-MUESCA, MUESCA, -3 * MUESCA] {
+                assert_eq!(zoom_de_rueda_entre(z, d, ZOOM_MINIMO), zoom_de_rueda(z, d));
+            }
+        }
     }
 
     #[test]

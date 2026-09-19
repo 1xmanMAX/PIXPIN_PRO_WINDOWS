@@ -88,7 +88,9 @@ pub fn toca(e: &Elemento, p: Punto2) -> bool {
 
         // Texto e imagen son cajas solidas: su interior SI cuenta, porque es
         // donde esta el contenido.
-        Figura::Texto { .. } | Figura::Imagen { .. } => dentro_de_la_caja(p, e, margen),
+        Figura::Texto { .. } | Figura::Imagen { .. } | Figura::Emoji { .. } => {
+            dentro_de_la_caja(p, e, margen)
+        }
     }
 }
 
