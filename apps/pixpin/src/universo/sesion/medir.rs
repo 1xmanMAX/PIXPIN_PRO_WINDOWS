@@ -368,17 +368,20 @@ fn retratar_el_universo() {
     std::fs::create_dir_all(&dir).expect("carpeta");
     let b = Banco::nuevo();
     let mut s = sintetico(pixpin_nivel::Nivel::Completo);
+    let centro = planeta_con_orbita(&mut s);
     let cosmos = camara_cosmos(&mut s);
     let galaxia = camara_galaxia(&mut s);
     let intermedio = acercar_al_centro(&cosmos, 3.0);
     // Dentro de una galaxia, tan cerca que las lunas son fichas con su
     // nombre: es donde se ve el vidrio de las tarjetas y las chapas.
     let lunas = acercar_al_centro(&galaxia, 4.0);
+    let orbitas = mirando_a(centro, 0.55);
     for (nombre, c) in [
         ("cosmos", cosmos),
         ("intermedio", intermedio),
         ("galaxia", galaxia),
         ("lunas", lunas),
+        ("orbitas", orbitas),
     ] {
         b.fotograma(&mut s, &c);
         s.movida = None;
@@ -391,6 +394,41 @@ fn retratar_el_universo() {
         })
         .expect("png");
         std::fs::write(dir.join(format!("{nombre}.png")), png).expect("escribir");
+    }
+}
+
+/// Mete en el retrato un planeta con seis lunas en orbita a su alrededor, en
+/// un rincon vacio, y devuelve donde esta.
+///
+/// El caso sintetico de medir no tiene planetas —mide el peor caso de lunas
+/// en rejilla—, asi que sin esto las orbitas no saldrian en ninguna foto.
+fn planeta_con_orbita(s: &mut Sesion) -> (f32, f32) {
+    let (cx, cy) = (30_000.0f32, 0.0f32);
+    let id = s.u.nuevo_id();
+    let mut p = Astro::planeta(id, cx, cy, pixpin_universo::RADIO_PLANETA_M);
+    p.nombre = "Lo que estoy mirando".into();
+    s.u.astros.push(p);
+    for k in 0..6 {
+        let a = k as f32 * std::f32::consts::TAU / 6.0;
+        let r = 620.0 + 90.0 * (k % 3) as f32;
+        let luna = s.u.nuevo_id();
+        let codigo = format!("m:{k}");
+        let mut l = Astro::luna(luna, &codigo, "p0", cx + r * a.cos(), cy + r * a.sin());
+        l.padre = Some(id);
+        s.u.astros.push(l);
+    }
+    s.u.marcar_cambio();
+    (cx, cy)
+}
+
+/// Una camara con `centro` del mundo en medio de la pantalla, a `zoom`.
+fn mirando_a(centro: (f32, f32), zoom: f32) -> Camara {
+    let e = crate::navegacion::escala_de(ESCALA);
+    let (w, h) = (ANCHO as f32 / e, ALTO as f32 / e);
+    Camara {
+        x: centro.0 - w / (2.0 * zoom),
+        y: centro.1 - h / (2.0 * zoom),
+        zoom,
     }
 }
 
