@@ -251,16 +251,12 @@ fn texto_centrado(p: &Pintor, texto: &str, x: f32, y: f32, tam: f32, color: Colo
     p.texto(texto, x - w / 2.0, y, tam, color);
 }
 
-/// El cielo: el color del espacio y las estrellas.
-pub fn fondo(p: &Pintor, estrellas: Option<&Estrellas>, camara: &Camara, ancho: f32, alto: f32) {
+/// El cielo: el color del espacio y las estrellas. `rapido`: la camara se
+/// esta moviendo, solo la capa lejana (ver `Sesion::en_movimiento`).
+pub fn fondo(p: &Pintor, estrellas: Option<&Estrellas>, camara: &Camara, rapido: bool) {
     p.limpiar(PALETA.espacio);
     if let Some(e) = estrellas {
-        e.pintar(
-            p,
-            (camara.x * camara.zoom, camara.y * camara.zoom),
-            ancho,
-            alto,
-        );
+        e.pintar(p, (camara.x * camara.zoom, camara.y * camara.zoom), rapido);
     }
 }
 
@@ -290,18 +286,14 @@ pub fn astros(p: &Pintor, c: &Contexto, camara: &Camara) {
                         );
                     }
                     Nivel::Disco => {
-                        // En Ligero, un disco liso y tenue: el degradado
-                        // radial pide un pincel nuevo por galaxia y fotograma,
-                        // y en una grafica integrada se nota con veinte.
+                        // En Ligero, un disco liso y tenue. En Completo el
+                        // brillo es un bitmap pre-pintado por color: el
+                        // degradado radial creaba un pincel por galaxia y
+                        // fotograma (0,5 ms cada uno, medido).
                         if c.ligero {
                             p.circulo(centro, r, con_alfa(color, 0.3 * foco));
                         } else {
-                            p.circulo_degradado(
-                                centro,
-                                r,
-                                con_alfa(color, 0.9 * foco),
-                                con_alfa(color, 0.0),
-                            );
+                            p.brillo(centro, r, color, 0.9 * foco);
                         }
                         p.circulo(centro, r * 0.25, con_alfa(color, 0.9 * foco));
                         let lunas = c.cuentas.get(proyecto).copied().unwrap_or(0);

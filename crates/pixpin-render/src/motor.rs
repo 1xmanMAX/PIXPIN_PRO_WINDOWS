@@ -133,7 +133,23 @@ pub struct MotorRender {
     /// tanto como la geometria (diagnostico de E1). Uno por color y no uno
     /// solo con `SetColor`: hay primitivas que piden dos pinceles a la vez y
     /// el segundo pisaria el color del primero.
-    pinceles: std::cell::RefCell<Vec<([u32; 4], ID2D1SolidColorBrush)>>,
+    ///
+    /// Un mapa y no una lista con tope de 32: el universo pide mas de 32
+    /// colores por fotograma (cada galaxia el suyo, con dos o tres alfas), y
+    /// con la lista echando siempre el mas viejo, NINGUNA busqueda acertaba
+    /// y se creaba un pincel por primitiva (medido: `universo::sesion::
+    /// medir`).
+    pinceles: std::cell::RefCell<std::collections::HashMap<[u32; 4], ID2D1SolidColorBrush>>,
+    /// Disposiciones de texto ya construidas (ver `DisposicionCacheada`).
+    /// DirectWrite tarda decenas de microsegundos en cada una, y el mismo
+    /// rotulo se pedia dos veces por fotograma (medir y pintar): con veinte
+    /// galaxias eran 3 ms de CPU solo en rotulos.
+    pub(crate) textos:
+        std::cell::RefCell<std::collections::HashMap<u64, crate::lienzo::DisposicionCacheada>>,
+    /// Cuantos fotogramas se han abierto: la edad de lo cacheado.
+    pub(crate) fotograma: std::cell::Cell<u64>,
+    /// El brillo de cada color (ver `Pintor::brillo`), por su RGB.
+    pub(crate) brillos: std::cell::RefCell<std::collections::HashMap<[u8; 3], ID2D1Bitmap1>>,
     /// Geometrias de los iconos, por la direccion de su trazado estatico.
     /// Un icono se lee y se construye UNA vez; despues cada fotograma solo
     /// cambia la transformada. `None` recuerda un trazado que no se pudo
@@ -171,7 +187,10 @@ impl MotorRender {
             _dispositivo: dispositivo,
             contexto,
             dwrite,
-            pinceles: std::cell::RefCell::new(Vec::new()),
+            pinceles: std::cell::RefCell::new(std::collections::HashMap::new()),
+            textos: std::cell::RefCell::new(std::collections::HashMap::new()),
+            fotograma: std::cell::Cell::new(0),
+            brillos: std::cell::RefCell::new(std::collections::HashMap::new()),
             iconos: std::cell::RefCell::new(std::collections::HashMap::new()),
             estilos_icono: std::cell::RefCell::new([None, None, None, None]),
         })
@@ -189,9 +208,10 @@ impl MotorRender {
         &self.dwrite
     }
 
-    /// Tope pequeno: un dibujo real usa pocos colores, y el tope evita que un
-    /// degradado pintado a mano llene la memoria de pinceles.
-    const MAX_PINCELES: usize = 32;
+    /// Tope: un pincel son unos cientos de bytes, y el tope evita que un
+    /// degradado pintado a mano llene la memoria de pinceles. Al llegar se
+    /// vacia entero: los que sigan haciendo falta vuelven en un fotograma.
+    const MAX_PINCELES: usize = 512;
 
     pub(crate) fn pincel(&self, color: Color) -> Option<ID2D1SolidColorBrush> {
         let clave = [
@@ -200,8 +220,8 @@ impl MotorRender {
             color.b.to_bits(),
             color.a.to_bits(),
         ];
-        let mut lista = self.pinceles.borrow_mut();
-        if let Some((_, p)) = lista.iter().find(|(c, _)| *c == clave) {
+        let mut mapa = self.pinceles.borrow_mut();
+        if let Some(p) = mapa.get(&clave) {
             return Some(p.clone());
         }
         // SAFETY: crear un pincel sobre el contexto vivo no tiene mas
@@ -211,11 +231,24 @@ impl MotorRender {
                 .CreateSolidColorBrush(&color.a_d2d(), None)
                 .ok()?
         };
-        if lista.len() >= Self::MAX_PINCELES {
-            lista.remove(0);
+        if mapa.len() >= Self::MAX_PINCELES {
+            mapa.clear();
         }
-        lista.push((clave, p.clone()));
+        mapa.insert(clave, p.clone());
         Some(p)
+    }
+
+    /// Los recursos cacheados que son del dispositivo (pinceles, brillos) se
+    /// olvidan: tras perderse el dispositivo ya no valen. Las disposiciones
+    /// de texto son de DirectWrite y se quedan.
+    pub fn olvidar_recursos_de_dispositivo(&self) {
+        self.pinceles.borrow_mut().clear();
+        self.brillos.borrow_mut().clear();
+    }
+
+    /// Cuantas disposiciones de texto hay guardadas: para las pruebas.
+    pub fn textos_cacheados(&self) -> usize {
+        self.textos.borrow().len()
     }
 
     /// Mide un texto ajustado a un ancho maximo, **fuera** de un fotograma.

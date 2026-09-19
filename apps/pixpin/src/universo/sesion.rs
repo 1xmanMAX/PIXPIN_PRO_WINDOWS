@@ -58,6 +58,10 @@ const LADO_EMOJI: f32 = 64.0;
 /// Una galaxia por debajo de esto ya no ensena nada de dentro: su cuaderno
 /// se puede soltar.
 const RADIO_LEJANO: f32 = 6.0;
+/// Lo que tiene que estar quieta la camara para volver al detalle entero.
+/// Mientras se mueve se pinta lo barato (una capa de estrellas): en un
+/// arrastre el ojo no ve la diferencia y la grafica integrada si la nota.
+const REPOSO: Duration = Duration::from_millis(150);
 
 /// Lo que le dice la sesion al editor.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -154,6 +158,10 @@ pub struct Sesion {
     /// Los resultados de la busqueda en curso, rehechos antes de pintar:
     /// pintar y pulsar tienen que ver la misma lista.
     encontrados: Vec<Hallazgo>,
+    /// La camara del ultimo fotograma preparado, para saber si se movio.
+    camara_pintada: Option<Camara>,
+    /// Cuando se movio por ultima vez, mientras no haya vuelto al reposo.
+    movida: Option<Instant>,
 }
 
 /// Adonde van los ficheros soltados o pegados en el universo (D227).
@@ -322,6 +330,8 @@ impl Sesion {
             minimapa: true,
             selector,
             encontrados: Vec::new(),
+            camara_pintada: None,
+            movida: None,
         }
     }
 
@@ -1236,6 +1246,14 @@ impl Sesion {
         self.pulsos
             .retain(|(_, t)| ahora.duration_since(*t) < PULSO);
         repintar |= antes > 0;
+        // Quieta ya lo bastante: un fotograma mas, con todo el detalle.
+        if self
+            .movida
+            .is_some_and(|t| ahora.duration_since(t) >= REPOSO)
+        {
+            self.movida = None;
+            repintar = true;
+        }
         if let Some((_, desde, dura)) = &self.aviso {
             if ahora.duration_since(*desde) >= *dura {
                 self.aviso = None;
@@ -1275,6 +1293,12 @@ impl Sesion {
         }
         if let Some(t) = self.guardar_en {
             min(t.saturating_duration_since(Instant::now()).as_millis() as u32 + 1);
+        }
+        if let Some(t) = self.movida {
+            min((t + REPOSO)
+                .saturating_duration_since(Instant::now())
+                .as_millis() as u32
+                + 1);
         }
         if let Some((_, desde, dura)) = &self.aviso {
             let fin = *desde + *dura;
@@ -1327,6 +1351,12 @@ impl Sesion {
     /// falta y que miniaturas subir. Crear recursos de dibujo a medio
     /// fotograma no se puede.
     pub fn preparar(&mut self, motor: &MotorRender, efectiva: &Camara) {
+        // La primera vez no cuenta como moverse: abrir es un fotograma
+        // entero con todo.
+        if self.camara_pintada.is_some_and(|c| c != *efectiva) {
+            self.movida = Some(Instant::now());
+        }
+        self.camara_pintada = Some(*efectiva);
         let e = self.escala();
         // El nivel se mide en pixeles logicos (D218): con la camara del
         // usuario, no con la efectiva.
@@ -1375,17 +1405,15 @@ impl Sesion {
         self.revisar_cuadernos();
         self.rehacer_cuentas();
 
-        if self.estrellas.is_none() {
-            let capas = if self.ligero { 1 } else { 3 };
-            match Estrellas::nuevas(motor, 0x5eed, capas) {
-                Ok(s) => self.estrellas = Some(s),
-                Err(err) => tracing::warn!(?err, "sin estrellas de fondo"),
-            }
-        } else if let Some(s) = self.estrellas.as_mut()
-            && !s.listas()
-            && let Err(err) = s.volver_a_subir(motor)
-        {
-            tracing::warn!(?err, "no se pudieron volver a subir las estrellas");
+        let capas = if self.ligero { 1 } else { 3 };
+        let s = self
+            .estrellas
+            .get_or_insert_with(|| Estrellas::nuevas(0x5eed, capas));
+        if let Err(err) = s.preparar(motor, self.tamano.0, self.tamano.1) {
+            // Son adorno: sin ellas el cielo es liso. Sin capas no se
+            // vuelve a intentar en cada fotograma.
+            tracing::warn!(?err, "sin estrellas de fondo");
+            self.estrellas = Some(Estrellas::nuevas(0x5eed, 0));
         }
         let fotos: Vec<PathBuf> = self
             .vistos
@@ -1399,6 +1427,11 @@ impl Sesion {
         self.encontrados = self.hallazgos();
     }
 
+    /// Si la camara se movio hace menos de `REPOSO`: se pinta lo barato.
+    pub fn en_movimiento(&self) -> bool {
+        self.movida.is_some_and(|t| t.elapsed() < REPOSO)
+    }
+
     /// El dispositivo de dibujo se perdio: los bitmaps eran del viejo.
     pub fn soltar_recursos(&mut self) {
         if let Some(s) = self.estrellas.as_mut() {
@@ -1409,7 +1442,46 @@ impl Sesion {
 
     /// El cielo y los astros, debajo de las anotaciones. En pixeles de
     /// pantalla: quien llama quita antes la vista del mundo.
-    pub fn pintar_detras(&self, p: &Pintor, efectiva: &Camara, ancho: f32, alto: f32) {
+    pub fn pintar_detras(&self, p: &Pintor, efectiva: &Camara) {
+        pintar::fondo(p, self.estrellas.as_ref(), efectiva, self.en_movimiento());
+        self.con_contexto(|c| {
+            pintar::conexiones(p, c, efectiva);
+            pintar::astros(p, c, efectiva);
+            let rotulo = self.textos.t("universo-nebulosa");
+            pintar::nebulosas(
+                p,
+                c,
+                efectiva,
+                &self.paginas,
+                |proyecto| self.sueltas(proyecto),
+                &rotulo,
+                |n| {
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("n", n);
+                    self.textos.t_args("universo-mas", &args)
+                },
+            );
+        });
+        // Los pulsos azules: lo que se pidio desde el chat o se acaba de
+        // encontrar.
+        let ahora = Instant::now();
+        let e = self.escala();
+        for (id, t) in &self.pulsos {
+            let Some(a) = self.u.astro(*id) else { continue };
+            let fase = ahora.duration_since(*t).as_secs_f32() / PULSO.as_secs_f32();
+            let q = efectiva.a_pantalla(Punto2::nuevo(a.x, a.y));
+            let r = (a.radio * efectiva.zoom).max(10.0 * e);
+            p.anillo(
+                (q.x, q.y),
+                r * (1.0 + 0.5 * fase),
+                3.0 * e,
+                pintar::con_alfa(PALETA.acento, 1.0 - fase),
+            );
+        }
+    }
+
+    /// Lo que necesita `pintar` de la sesion, prestado para un fotograma.
+    fn con_contexto<R>(&self, f: impl FnOnce(&Contexto) -> R) -> R {
         let ahora = Instant::now();
         let destellos: Vec<(IdAstro, f32)> = self
             .destellos
@@ -1435,38 +1507,7 @@ impl Sesion {
             miniaturas: &self.miniaturas,
             raiz: &self.raiz,
         };
-        pintar::fondo(p, self.estrellas.as_ref(), efectiva, ancho, alto);
-        pintar::conexiones(p, &c, efectiva);
-        pintar::astros(p, &c, efectiva);
-        let rotulo = self.textos.t("universo-nebulosa");
-        pintar::nebulosas(
-            p,
-            &c,
-            efectiva,
-            &self.paginas,
-            |proyecto| self.sueltas(proyecto),
-            &rotulo,
-            |n| {
-                let mut args = fluent_bundle::FluentArgs::new();
-                args.set("n", n);
-                self.textos.t_args("universo-mas", &args)
-            },
-        );
-        // Los pulsos azules: lo que se pidio desde el chat o se acaba de
-        // encontrar.
-        let e = self.escala();
-        for (id, t) in &self.pulsos {
-            let Some(a) = self.u.astro(*id) else { continue };
-            let fase = ahora.duration_since(*t).as_secs_f32() / PULSO.as_secs_f32();
-            let q = efectiva.a_pantalla(Punto2::nuevo(a.x, a.y));
-            let r = (a.radio * efectiva.zoom).max(10.0 * e);
-            p.anillo(
-                (q.x, q.y),
-                r * (1.0 + 0.5 * fase),
-                3.0 * e,
-                pintar::con_alfa(PALETA.acento, 1.0 - fase),
-            );
-        }
+        f(&c)
     }
 
     /// Encima de las anotaciones: los avisos. Los paneles llegan en la
@@ -2264,6 +2305,9 @@ impl Sesion {
         self.selector_abierto = false;
     }
 }
+
+#[cfg(test)]
+mod medir;
 
 #[cfg(test)]
 mod pruebas {

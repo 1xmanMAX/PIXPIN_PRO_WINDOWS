@@ -1723,7 +1723,7 @@ fn pintar(
                     // la vista del mundo se pone justo despues.
                     Some(s) => {
                         p.desplazar(0.0, 0.0);
-                        s.pintar_detras(p, camara, ancho_px, alto_px);
+                        s.pintar_detras(p, camara);
                     }
                     None => p.limpiar(Color::BLANCO),
                 }
@@ -1852,6 +1852,8 @@ fn pintar(
         // Dispositivo perdido: las realizaciones de tinta son del dispositivo
         // viejo y ya no valen (D2D las rechazaria en el siguiente fotograma).
         cache_tinta.vaciar();
+        // Y los pinceles y brillos que guarda el motor, por lo mismo.
+        motor.olvidar_recursos_de_dispositivo();
         // Dispositivo perdido: el bitmap del fondo tambien era del viejo.
         if let Some(f) = fondo.as_mut() {
             f.soltar();

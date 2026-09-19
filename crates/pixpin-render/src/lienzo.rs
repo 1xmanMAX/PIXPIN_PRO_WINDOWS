@@ -93,6 +93,7 @@ impl MotorRender {
         pintar: impl FnOnce(&Pintor),
     ) -> Result<(), ErrorRender> {
         let c = self.contexto();
+        self.fotograma.set(self.fotograma.get() + 1);
         // SAFETY: protocolo documentado de D2D sobre un contexto vivo; el
         // SetTarget(None) final corre tanto en exito como en error de
         // EndDraw, porque va antes del `?`.
@@ -203,6 +204,100 @@ pub(crate) fn disposicion_dwrite(
         disposicion.GetMetrics(&mut metricas).ok()?;
         Some((disposicion, metricas.width, metricas.height))
     }
+}
+
+/// Una disposicion de texto sin tramos, guardada para el siguiente
+/// fotograma: el mismo rotulo se pinta igual mientras no cambie su texto, su
+/// tamano o su ancho, y una disposicion no depende de donde ni de que color.
+pub(crate) struct DisposicionCacheada {
+    texto: String,
+    tam: u32,
+    ancho: u32,
+    una_linea: bool,
+    disposicion: IDWriteTextLayout,
+    w: f32,
+    h: f32,
+    usado: u64,
+}
+
+/// Cuantas disposiciones se guardan. Mas que las de un fotograma lleno del
+/// universo (600 fichas a la vista con dos lineas cada una), para que un
+/// fotograma no eche lo que va a pedir el siguiente.
+const MAX_TEXTOS: usize = 2048;
+
+/// `disposicion_dwrite` sin tramos, desde la cache del motor.
+pub(crate) fn disposicion_cacheada(
+    motor: &MotorRender,
+    texto: &str,
+    tam: f32,
+    ancho_max: f32,
+    una_linea: bool,
+) -> Option<(IDWriteTextLayout, f32, f32)> {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    texto.hash(&mut h);
+    tam.to_bits().hash(&mut h);
+    ancho_max.to_bits().hash(&mut h);
+    una_linea.hash(&mut h);
+    let clave = h.finish();
+    let ahora = motor.fotograma.get();
+    let mut mapa = motor.textos.borrow_mut();
+    if let Some(e) = mapa.get_mut(&clave)
+        && e.texto == texto
+        && e.tam == tam.to_bits()
+        && e.ancho == ancho_max.to_bits()
+        && e.una_linea == una_linea
+    {
+        e.usado = ahora;
+        return Some((e.disposicion.clone(), e.w, e.h));
+    }
+    let (disposicion, w, hh) =
+        disposicion_dwrite(motor.dwrite(), texto, tam, ancho_max, &[], una_linea)?;
+    if mapa.len() >= MAX_TEXTOS {
+        // Primero lo que no se uso ni en este fotograma ni en el anterior;
+        // si aun asi no cabe, todo (un fotograma que pide mas que el tope
+        // no se puede cachear de todas formas).
+        mapa.retain(|_, e| e.usado + 1 >= ahora);
+        if mapa.len() >= MAX_TEXTOS {
+            mapa.clear();
+        }
+    }
+    mapa.insert(
+        clave,
+        DisposicionCacheada {
+            texto: texto.to_string(),
+            tam: tam.to_bits(),
+            ancho: ancho_max.to_bits(),
+            una_linea,
+            disposicion: disposicion.clone(),
+            w,
+            h: hh,
+            usado: ahora,
+        },
+    );
+    Some((disposicion, w, hh))
+}
+
+/// El lado del brillo pre-pintado. Se estira al radio que haga falta: un
+/// degradado suave no pierde nada al ampliarse.
+const LADO_BRILLO: u32 = 256;
+
+/// Los pixeles RGBA, sin premultiplicar, de un brillo de color `rgb`: alfa 1 en
+/// el centro que cae en linea recta a 0 en el borde, como el
+/// `circulo_degradado` de dos paradas al que sustituye.
+pub fn pixeles_de_brillo(rgb: [u8; 3], lado: u32) -> Vec<u8> {
+    let mut v = vec![0u8; (lado * lado * 4) as usize];
+    let r = lado as f32 / 2.0;
+    for y in 0..lado {
+        for x in 0..lado {
+            let (dx, dy) = (x as f32 + 0.5 - r, y as f32 + 0.5 - r);
+            let a = (1.0 - (dx * dx + dy * dy).sqrt() / r).clamp(0.0, 1.0);
+            let i = ((y * lado + x) * 4) as usize;
+            v[i..i + 3].copy_from_slice(&rgb);
+            v[i + 3] = (255.0 * a).round() as u8;
+        }
+    }
+    v
 }
 
 impl Pintor<'_> {
@@ -384,9 +479,8 @@ impl Pintor<'_> {
     /// Un circulo que va de `dentro` en el centro a `fuera` en el borde: el
     /// brillo de una galaxia o de un planeta.
     ///
-    /// Crea el pincel en cada llamada: son decenas de galaxias por
-    /// fotograma como mucho. Si la medicion de rendimiento del universo lo
-    /// senala, se cachea por par de colores.
+    /// Crea el pincel en cada llamada (medido: unos 0,5 ms de CPU). Para
+    /// muchos por fotograma, `brillo`, que es lo que usa el universo.
     pub fn circulo_degradado(&self, centro: (f32, f32), radio: f32, dentro: Color, fuera: Color) {
         let paradas = [
             D2D1_GRADIENT_STOP {
@@ -430,6 +524,45 @@ impl Pintor<'_> {
         };
         // SAFETY: dentro del fotograma; pincel y contexto vivos.
         unsafe { destino.FillEllipse(&e, &pincel) };
+    }
+
+    /// Lo mismo que `circulo_degradado` de `color` a transparente, pero con
+    /// un bitmap pre-pintado por color y estirado al radio. El degradado
+    /// creaba una coleccion de paradas y un pincel radial por galaxia y
+    /// fotograma: medido, 0,5 ms de CPU cada uno, 11 ms con veinte galaxias.
+    /// `opacidad` es la del centro. Si el bitmap no se puede crear, un
+    /// circulo liso y tenue: se ve donde esta la galaxia, que es lo que
+    /// importa.
+    pub fn brillo(&self, centro: (f32, f32), radio: f32, color: Color, opacidad: f32) {
+        let a_u8 = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+        let rgb = [a_u8(color.r), a_u8(color.g), a_u8(color.b)];
+        let existente = self.motor.brillos.borrow().get(&rgb).cloned();
+        let bitmap = existente.or_else(|| {
+            let pixeles = pixeles_de_brillo(rgb, LADO_BRILLO);
+            let b = self
+                .motor
+                .bitmap_desde_pixeles_premultiplicado(LADO_BRILLO, LADO_BRILLO, &pixeles)
+                .ok()?;
+            self.motor.brillos.borrow_mut().insert(rgb, b.clone());
+            Some(b)
+        });
+        let destino = RectF {
+            x: centro.0 - radio,
+            y: centro.1 - radio,
+            ancho: 2.0 * radio,
+            alto: 2.0 * radio,
+        };
+        match bitmap {
+            Some(b) => self.bitmap_translucido(&b, destino, None, Interpolacion::Lineal, opacidad),
+            None => self.circulo(
+                centro,
+                radio,
+                Color {
+                    a: opacidad * 0.3,
+                    ..color
+                },
+            ),
+        }
     }
 
     pub fn trazar(&self, r: RectF, grosor: f32, color: Color) {
@@ -566,7 +699,7 @@ impl Pintor<'_> {
         tam: f32,
         ancho_max: f32,
     ) -> Option<(IDWriteTextLayout, f32, f32)> {
-        disposicion_dwrite(self.motor.dwrite(), texto, tam, ancho_max, &[], false)
+        disposicion_cacheada(self.motor, texto, tam, ancho_max, false)
     }
 
     /// Un parrafo con tramos de estilo (negrita, cursiva, monoespaciada):
@@ -607,7 +740,7 @@ impl Pintor<'_> {
     /// suspensivos en vez de partirse o salirse: el nombre de una ficha.
     pub fn texto_linea(&self, texto: &str, x: f32, y: f32, tam: f32, ancho_max: f32, color: Color) {
         let Some((disposicion, _, _)) =
-            disposicion_dwrite(self.motor.dwrite(), texto, tam, ancho_max, &[], true)
+            disposicion_cacheada(self.motor, texto, tam, ancho_max, true)
         else {
             return;
         };

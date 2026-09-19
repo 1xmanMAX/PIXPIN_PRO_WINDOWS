@@ -11,9 +11,11 @@ pub mod motor;
 pub use motor::{Color, ErrorRender, MotorRender, premultiplicar, validar_tamano_rgba};
 
 pub mod capa_estatica;
+pub mod fuera_de_pantalla;
 pub mod icono;
 pub mod iconos_excalidraw;
 pub mod lienzo;
+pub mod puntos;
 pub mod superficie;
 pub mod tinta;
 pub mod trayecto_svg;
