@@ -8,4 +8,6 @@
 #![allow(dead_code)]
 
 pub mod cargador;
+pub mod estrellas;
 pub mod fichas;
+pub mod pintar;
