@@ -463,6 +463,15 @@ pub fn empaquetar(raiz: &Path, id: &str, cuando: i64) -> std::io::Result<Vec<u8>
 /// Devuelve cuantas se anadieron.
 pub fn completar_hojas(raiz: &Path, id: &str, aparato: &str) -> std::io::Result<usize> {
     use crate::cuaderno;
+    // Un chat que ya se sincroniza tiene sus mensajes como los tiene el otro
+    // aparato: el movil no pone uno por pagina de PDF, y los que se
+    // inventaran aqui le llegarian como nuevos en la vuelta siguiente.
+    if Indice::leer(raiz)
+        .buscar(id)
+        .is_some_and(|f| f.resto.get(crate::vista::MARCA_SINCRO).is_some())
+    {
+        return Ok(0);
+    }
     let carpeta = carpeta(raiz, id);
     let texto = match std::fs::read_to_string(carpeta.join("proyecto.json")) {
         Ok(t) => t,
@@ -621,11 +630,23 @@ pub fn borrar_proyectos(
         .collect();
     let mut indice = Indice::leer(raiz);
     let antes = indice.proyectos.len();
+    // Los chats que se van, antes de que dejen de estar en el indice: cada
+    // uno deja su lapida (`LapidaDeChat`). Sin ella, la siguiente vuelta de
+    // sincronizar lo traeria entero otra vez del otro aparato.
+    let chats: Vec<String> = indice
+        .proyectos
+        .iter()
+        .filter(|f| !f.es_guardados() && validos.contains(&&f.id))
+        .filter_map(|f| crate::vista::chat_de_ficha(raiz, &f.id))
+        .collect();
     // «Mensajes guardados» no se borra: es donde cae lo que llega, y sin el
     // lo siguiente que llegara no tendria adonde ir.
     indice
         .proyectos
         .retain(|f| f.es_guardados() || !validos.contains(&&f.id));
+    for chat in &chats {
+        pixpin_sincro::disco::anotar_lapida_en(&raiz.join("sincro"), chat, cuando, "")?;
+    }
     let validos: Vec<&String> = validos
         .into_iter()
         .filter(|id| indice.buscar(id).is_none())

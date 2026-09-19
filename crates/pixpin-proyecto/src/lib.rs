@@ -34,6 +34,7 @@ pub mod formula;
 pub mod identidad;
 pub mod mini;
 pub mod tabla;
+pub mod vista;
 
 use std::collections::BTreeMap;
 use std::io::{Cursor, Read, Write};
