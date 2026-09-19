@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 
 pub mod astro;
+pub mod buscar;
 pub mod detalle;
 pub mod ficha;
 pub mod galaxias;
@@ -25,6 +26,7 @@ pub use astro::{
     Astro, Clase, Conexion, IdAstro, RADIO_GALAXIA, RADIO_LUNA, RADIO_PLANETA_L, RADIO_PLANETA_M,
     RADIO_PLANETA_S, TipoConexion,
 };
+pub use buscar::{Hallazgo, IndiceBusqueda, TOPE_RESULTADOS, normalizar};
 pub use detalle::{
     HISTERESIS, Nivel, Tipo, ZOOM_MINIMO_UNIVERSO, abre_hijos, nivel, nivel_con_memoria, tipo_de,
 };
