@@ -121,7 +121,20 @@ impl Camara {
     /// Devuelve `false` si el aumento ya estaba en el tope y no cambio nada:
     /// asi quien llama puede ahorrarse repintar.
     pub fn acercar_en(&mut self, foco_px: Punto2, factor: f32) -> bool {
-        let nuevo = (self.zoom * factor).clamp(ZOOM_MINIMO, ZOOM_MAXIMO);
+        self.acercar_en_entre(foco_px, factor, ZOOM_MINIMO, ZOOM_MAXIMO)
+    }
+
+    /// Como `acercar_en`, con topes propios. El universo deja alejarse mas
+    /// que un dibujo: en un dibujo, alejarse tanto es perderse; en el
+    /// universo es ver todos los proyectos a la vez.
+    pub fn acercar_en_entre(
+        &mut self,
+        foco_px: Punto2,
+        factor: f32,
+        minimo: f32,
+        maximo: f32,
+    ) -> bool {
+        let nuevo = (self.zoom * factor).clamp(minimo, maximo);
         if nuevo == self.zoom {
             return false;
         }
@@ -139,15 +152,26 @@ impl Camara {
     /// lados, y se centra lo que sobra. Una caja sin tamano o un hueco de
     /// cero no tienen encuadre posible: se devuelve la camara de partida.
     pub fn encajar(caja: (f32, f32, f32, f32), ancho_px: f32, alto_px: f32, holgura: f32) -> Self {
+        Self::encajar_entre(caja, ancho_px, alto_px, holgura, ZOOM_MINIMO, ZOOM_MAXIMO)
+    }
+
+    /// Como `encajar`, con topes de zoom propios (los del universo son mas
+    /// amplios que los de un dibujo).
+    pub fn encajar_entre(
+        caja: (f32, f32, f32, f32),
+        ancho_px: f32,
+        alto_px: f32,
+        holgura: f32,
+        minimo: f32,
+        maximo: f32,
+    ) -> Self {
         let (x0, y0, x1, y1) = caja;
         let (ancho, alto) = (x1 - x0, y1 - y0);
         let (util_x, util_y) = (ancho_px - 2.0 * holgura, alto_px - 2.0 * holgura);
         if ancho <= 0.0 || alto <= 0.0 || util_x <= 0.0 || util_y <= 0.0 {
             return Self::nueva();
         }
-        let zoom = (util_x / ancho)
-            .min(util_y / alto)
-            .clamp(ZOOM_MINIMO, ZOOM_MAXIMO);
+        let zoom = (util_x / ancho).min(util_y / alto).clamp(minimo, maximo);
         // Lo que sobra a cada lado, en mundo, para que quede centrado.
         let sobra_x = (ancho_px / zoom - ancho) / 2.0;
         let sobra_y = (alto_px / zoom - alto) / 2.0;
@@ -423,5 +447,18 @@ mod pruebas {
             zoom: 0.25,
         };
         assert!(cerca(lejos.en_mundo(8.0), 32.0));
+    }
+
+    #[test]
+    fn acercar_entre_respeta_limites_propios_por_debajo_del_minimo_general() {
+        let mut c = Camara::nueva();
+        c.zoom = 0.01;
+        assert!(c.acercar_en_entre(Punto2::nuevo(0.0, 0.0), 0.5, 0.002, ZOOM_MAXIMO));
+        assert!((c.zoom - 0.005).abs() < 1e-6);
+        // Caso negativo: el acercar de siempre sigue sin bajar de 0,05.
+        let mut d = Camara::nueva();
+        d.zoom = 0.06;
+        d.acercar_en(Punto2::nuevo(0.0, 0.0), 0.1);
+        assert_eq!(d.zoom, ZOOM_MINIMO);
     }
 }

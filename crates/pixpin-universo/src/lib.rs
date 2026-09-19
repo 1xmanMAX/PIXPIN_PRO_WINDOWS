@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 
 pub mod astro;
+pub mod detalle;
 pub mod herramienta;
 mod historia;
 pub mod jerarquia;
@@ -18,6 +19,9 @@ pub mod universo;
 pub use astro::{
     Astro, Clase, Conexion, IdAstro, RADIO_GALAXIA, RADIO_LUNA, RADIO_PLANETA_L, RADIO_PLANETA_M,
     RADIO_PLANETA_S, TipoConexion,
+};
+pub use detalle::{
+    HISTERESIS, Nivel, Tipo, ZOOM_MINIMO_UNIVERSO, abre_hijos, nivel, nivel_con_memoria, tipo_de,
 };
 pub use herramienta::HerramientaUniverso;
 pub use jerarquia::{Aterriza, Rechazo};

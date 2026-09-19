@@ -173,6 +173,10 @@ pub struct Navegador {
     /// Donde estaba el raton la ultima vez, en pixeles logicos de la
     /// ventana: el foco del zoom con Ctrl+rueda, que no trae posicion.
     ultimo: Punto2,
+    /// Hasta donde deja alejarse este lienzo. Un dibujo se queda en el
+    /// minimo del motor; el universo baja mucho mas para ver todas las
+    /// galaxias a la vez. Quien lo cambia lo pasa a `aplicar_con_minimo`.
+    pub zoom_minimo: f32,
 }
 
 impl Default for Navegador {
@@ -184,6 +188,7 @@ impl Default for Navegador {
             espacio: false,
             arrastre: None,
             ultimo: Punto2::nuevo(0.0, 0.0),
+            zoom_minimo: pixpin_motor2d::camara::ZOOM_MINIMO,
         }
     }
 }
@@ -372,7 +377,15 @@ impl Navegador {
 }
 
 /// Aplica la accion a la camara del usuario (logica). Devuelve si cambio.
+/// Con el minimo de zoom del motor: es lo que quiere todo lienzo que no sea
+/// el universo.
 pub fn aplicar(camara: &mut Camara, accion: Accion) -> bool {
+    aplicar_con_minimo(camara, accion, pixpin_motor2d::camara::ZOOM_MINIMO)
+}
+
+/// Como `aplicar`, con el tope de alejamiento que diga quien llama (el
+/// `zoom_minimo` de su `Navegador`).
+pub fn aplicar_con_minimo(camara: &mut Camara, accion: Accion, zoom_minimo: f32) -> bool {
     match accion {
         Accion::Desplazar { dx, dy } => {
             if dx == 0.0 && dy == 0.0 {
@@ -383,7 +396,12 @@ pub fn aplicar(camara: &mut Camara, accion: Accion) -> bool {
         }
         Accion::ZoomRueda { foco, delta } => {
             let nuevo = zoom_de_rueda(camara.zoom, delta);
-            camara.acercar_en(foco, nuevo / camara.zoom)
+            camara.acercar_en_entre(
+                foco,
+                nuevo / camara.zoom,
+                zoom_minimo,
+                pixpin_motor2d::camara::ZOOM_MAXIMO,
+            )
         }
     }
 }
