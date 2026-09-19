@@ -101,13 +101,32 @@ pub const MARGEN_DERECHO: u32 = 10;
 /// La caja de escribir, abajo de la columna del proyecto. Crece con el
 /// texto hasta un tope; pasado ese tope se desplaza por dentro, que si no
 /// una nota larga se comeria el historial entero.
-/// 36 de campo mas 9 de aire arriba y abajo, como Telegram; el tope de
-/// crecimiento tambien es el suyo.
-pub const REDACCION_MINIMA: u32 = 54;
+///
+/// Es la ISLA del movil (`BarraDeEscribir` de `MensajesActivity.kt`): una
+/// pastilla flotando a 7 de los lados y 9 del borde de abajo, con 4 de aire
+/// por dentro; dentro, el campo es otra pastilla de radio 22 y fila minima
+/// de 44, con el clip dentro a la derecha, y el microfono (o enviar) fuera
+/// del campo, en su hueco de 48.
+pub const ISLA_MARGEN_X: u32 = 7;
+pub const ISLA_BAJO: u32 = 9;
+/// El aire de encima de la isla: el historial no se le pega.
+pub const ISLA_ARRIBA: u32 = 6;
+pub const ISLA_RELLENO_X: u32 = 6;
+pub const ISLA_RELLENO_Y: u32 = 4;
+pub const ISLA_RADIO: u32 = 22;
+/// Lo alto de una fila del campo, y lo que mide el clip.
+pub const CAMPO_FILA: u32 = 44;
+/// El hueco del microfono o de enviar: la fila mas cuatro.
+pub const BOTON_VOZ: u32 = CAMPO_FILA + 4;
+/// Donde empieza el texto dentro del campo, y su aire arriba y abajo.
+pub const CAMPO_TEXTO_X: u32 = 14;
+pub const CAMPO_TEXTO_ARRIBA: u32 = 9;
+pub const CAMPO_TEXTO_ABAJO: u32 = 10;
+pub const REDACCION_MINIMA: u32 = ISLA_ARRIBA + ISLA_BAJO + 2 * ISLA_RELLENO_Y + CAMPO_FILA;
 pub const REDACCION_MAXIMA: u32 = 224;
-pub const REDACCION_RELLENO_X: u32 = 14;
-pub const REDACCION_RELLENO_Y: u32 = 9;
-pub const REDACCION_TAM: f32 = 13.0;
+/// La letra del campo. El movil usa 18 sobre burbujas de 15; aqui las
+/// burbujas van a 13, y se guarda la misma proporcion.
+pub const REDACCION_TAM: f32 = 15.0;
 
 /// Que se ve cuando solo cabe una columna.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,6 +180,10 @@ pub struct Disposicion {
     pub plegada: bool,
     /// Solo cabe una columna.
     pub una_columna: bool,
+    /// Lo que va ENCIMA de la isla de escribir y cuenta como parte de ella:
+    /// la barra de «a quien se contesta». Cero si no hay nada. Lo pone quien
+    /// pinta; el historial se aparta lo que mida.
+    pub encima_de_la_isla: u32,
 }
 
 fn vacio() -> Rect {
@@ -254,6 +277,7 @@ impl Disposicion {
                 asa: vacio(),
                 plegada,
                 una_columna,
+                encima_de_la_isla: 0,
             };
         }
 
@@ -280,6 +304,7 @@ impl Disposicion {
             },
             plegada,
             una_columna,
+            encima_de_la_isla: 0,
         }
     }
 
@@ -370,10 +395,25 @@ impl Disposicion {
     /// dejar el historial sin sitio.
     pub fn alto_redaccion(&self, alto_texto: u32, escala_por_cien: u32) -> u32 {
         let e = |v: u32| v * escala_por_cien / 100;
-        (alto_texto + 2 * e(REDACCION_RELLENO_Y))
-            .clamp(e(REDACCION_MINIMA), e(REDACCION_MAXIMA))
+        let fijo =
+            ISLA_ARRIBA + ISLA_BAJO + 2 * ISLA_RELLENO_Y + CAMPO_TEXTO_ARRIBA + CAMPO_TEXTO_ABAJO;
+        ((alto_texto + e(fijo)).clamp(e(REDACCION_MINIMA), e(REDACCION_MAXIMA))
+            + self.encima_de_la_isla)
             // Y nunca mas de media columna, por estrecha que sea la ventana.
             .min((self.chat.alto / 2).max(1))
+    }
+
+    /// La barra de encima de la isla (a quien se contesta), si hay sitio
+    /// reservado para ella: del ancho de la isla y pegada a ella por arriba.
+    pub fn encima_de_la_isla(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let caja = self.redaccion(alto_texto, escala_por_cien);
+        Rect {
+            x: caja.x + e(ISLA_MARGEN_X) as i32,
+            y: caja.y + e(ISLA_ARRIBA) as i32,
+            ancho: caja.ancho.saturating_sub(2 * e(ISLA_MARGEN_X)),
+            alto: self.encima_de_la_isla.min(caja.alto),
+        }
     }
 
     /// El buscador, en la cabecera de la lista, con el boton de sincronizar a
@@ -450,41 +490,77 @@ impl Disposicion {
         }
     }
 
-    /// El boton de adjuntar, a la izquierda de la caja de escribir; y el de
-    /// enviar, a la derecha. Ambos se apoyan abajo, como en Telegram.
-    pub fn boton_adjuntar(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
+    /// La isla que flota abajo: la caja de escribir sin su aire alrededor.
+    pub fn isla(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
         let e = |v: u32| v * escala_por_cien / 100;
         let caja = self.redaccion(alto_texto, escala_por_cien);
+        let encima = self.encima_de_la_isla.min(caja.alto);
         Rect {
-            x: caja.x + e(BOTON_MARGEN) as i32,
-            y: caja.abajo() - e(BOTON_ALTO) as i32,
-            ancho: e(BOTON_ANCHO).min(caja.ancho),
-            alto: e(BOTON_ALTO).min(caja.alto),
+            x: caja.x + e(ISLA_MARGEN_X) as i32,
+            y: caja.y + (e(ISLA_ARRIBA) + encima) as i32,
+            ancho: caja.ancho.saturating_sub(2 * e(ISLA_MARGEN_X)),
+            alto: caja
+                .alto
+                .saturating_sub(e(ISLA_ARRIBA) + e(ISLA_BAJO) + encima),
         }
     }
 
-    pub fn boton_enviar(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
+    /// El campo donde se escribe: la pastilla de dentro de la isla, que deja
+    /// a su derecha el hueco del microfono.
+    pub fn campo(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
         let e = |v: u32| v * escala_por_cien / 100;
-        let caja = self.redaccion(alto_texto, escala_por_cien);
-        let ancho = e(BOTON_ANCHO).min(caja.ancho);
-        Rect {
-            x: caja.derecha() - e(BOTON_MARGEN) as i32 - ancho as i32,
-            y: caja.abajo() - e(BOTON_ALTO) as i32,
-            ancho,
-            alto: e(BOTON_ALTO).min(caja.alto),
-        }
-    }
-
-    /// Lo que queda para el texto entre los dos botones.
-    pub fn texto_redaccion(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
-        let caja = self.redaccion(alto_texto, escala_por_cien);
-        let izquierda = self.boton_adjuntar(alto_texto, escala_por_cien).derecha();
+        let isla = self.isla(alto_texto, escala_por_cien);
+        let izquierda = isla.x + e(ISLA_RELLENO_X) as i32;
         let derecha = self.boton_enviar(alto_texto, escala_por_cien).x;
         Rect {
             x: izquierda,
-            y: caja.y,
+            y: isla.y + e(ISLA_RELLENO_Y) as i32,
             ancho: (derecha - izquierda).max(0) as u32,
-            alto: caja.alto,
+            alto: isla.alto.saturating_sub(2 * e(ISLA_RELLENO_Y)),
+        }
+    }
+
+    /// El clip: DENTRO del campo, a su derecha y apoyado abajo, como en el
+    /// movil (y no a la izquierda de la barra, como en Telegram).
+    pub fn boton_adjuntar(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let campo = self.campo(alto_texto, escala_por_cien);
+        let lado = e(CAMPO_FILA).min(campo.ancho).min(campo.alto);
+        Rect {
+            x: campo.derecha() - lado as i32,
+            y: campo.abajo() - lado as i32,
+            ancho: lado,
+            alto: lado,
+        }
+    }
+
+    /// El microfono, o enviar si hay algo escrito: el mismo sitio con dos
+    /// caras, fuera del campo y a la derecha de la isla.
+    pub fn boton_enviar(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let isla = self.isla(alto_texto, escala_por_cien);
+        let lado = e(BOTON_VOZ).min(isla.alto).min(isla.ancho);
+        Rect {
+            x: isla.derecha() - e(ISLA_RELLENO_X) as i32 - lado as i32,
+            y: isla.abajo() - e(ISLA_RELLENO_Y) as i32 - lado as i32,
+            ancho: lado,
+            alto: lado,
+        }
+    }
+
+    /// Lo que queda para el texto dentro del campo, sin el clip.
+    pub fn texto_redaccion(&self, alto_texto: u32, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let campo = self.campo(alto_texto, escala_por_cien);
+        let izquierda = campo.x + e(CAMPO_TEXTO_X) as i32;
+        let derecha = self.boton_adjuntar(alto_texto, escala_por_cien).x;
+        Rect {
+            x: izquierda,
+            y: campo.y + e(CAMPO_TEXTO_ARRIBA) as i32,
+            ancho: (derecha - izquierda).max(0) as u32,
+            alto: campo
+                .alto
+                .saturating_sub(e(CAMPO_TEXTO_ARRIBA) + e(CAMPO_TEXTO_ABAJO)),
         }
     }
 
@@ -1132,5 +1208,479 @@ mod pruebas_hora {
             d.chat.alto
         );
         assert!(d.historial(10_000, false, 100).alto > 0);
+    }
+}
+
+// --- Como en el chat del movil -------------------------------------------
+//
+// Lo que sigue se copia de PixPin Android (`guardados/MensajesActivity.kt`,
+// `CabeceraFlotante.kt` y `HojasDelProyecto.kt`, v0.51.0): el usuario compara
+// pantalla con pantalla y las dos apps tienen que ser la misma.
+
+/// El alto de cada pastilla de la cabecera y su separacion
+/// (`ALTO_DE_LA_PILDORA` y `AIRE_DE_LA_PILDORA` de `CabeceraFlotante.kt`).
+pub const PILDORA: u32 = 46;
+pub const PILDORA_AIRE: u32 = 6;
+/// La de la derecha lleva dos botones de 48: la lupa y los tres puntos.
+pub const PILDORA_BOTON: u32 = 48;
+/// La del centro se mide a su contenido, pero no pasa de aqui.
+pub const PILDORA_CENTRO_MAXIMA: u32 = 420;
+
+/// Las tres pastillas flotantes de la cabecera del proyecto.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pildoras {
+    /// El circulo de volver, a la izquierda.
+    pub volver: Rect,
+    /// El sitio donde se centra la del titulo: quien pinta la mide a su
+    /// texto y la centra aqui dentro.
+    pub centro: Rect,
+    /// La pastilla de la derecha entera, y sus dos botones.
+    pub derecha: Rect,
+    pub buscar: Rect,
+    pub menu: Rect,
+}
+
+impl Disposicion {
+    /// Las pastillas de la cabecera del proyecto, flotando sobre el papel.
+    ///
+    /// La del centro se queda con lo que sobra entre las otras dos, como en
+    /// el movil («centrada entre las otras dos»); en una columna estrecha se
+    /// encoge hasta nada antes de montarse encima de los botones.
+    pub fn pildoras(&self, escala_por_cien: u32) -> Pildoras {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let c = self.cabecera_chat;
+        let alto = e(PILDORA).min(c.alto);
+        let y = c.y + (c.alto as i32 - alto as i32) / 2;
+        let aire = e(PILDORA_AIRE) as i32;
+        let volver = Rect {
+            x: c.x + aire,
+            y,
+            ancho: alto,
+            alto,
+        };
+        let ancho_derecha = (2 * e(PILDORA_BOTON)).min(c.ancho);
+        let derecha = Rect {
+            x: c.derecha() - aire - ancho_derecha as i32,
+            y,
+            ancho: ancho_derecha,
+            alto,
+        };
+        let mitad = ancho_derecha / 2;
+        let buscar = Rect {
+            ancho: mitad,
+            ..derecha
+        };
+        let menu = Rect {
+            x: derecha.x + mitad as i32,
+            ancho: ancho_derecha - mitad,
+            ..derecha
+        };
+        let izquierda = volver.derecha() + aire;
+        let centro = Rect {
+            x: izquierda,
+            y,
+            ancho: (derecha.x - aire - izquierda).max(0) as u32,
+            alto,
+        };
+        Pildoras {
+            volver,
+            centro,
+            derecha,
+            buscar,
+            menu,
+        }
+    }
+}
+
+/// La pastilla del titulo, ya medida: `contenido` es lo que ocupa lo de
+/// dentro (disco, nombre y flecha) sin su relleno de 14 por lado.
+pub fn pildora_centro(sitio: Rect, contenido: u32, escala_por_cien: u32) -> Rect {
+    let e = |v: u32| v * escala_por_cien / 100;
+    let ancho = (contenido + 2 * e(14))
+        .min(e(PILDORA_CENTRO_MAXIMA))
+        .min(sitio.ancho);
+    Rect {
+        x: sitio.x + (sitio.ancho as i32 - ancho as i32) / 2,
+        ancho,
+        ..sitio
+    }
+}
+
+/// Coloca un menu que nace en un punto: hacia abajo y a la derecha si cabe,
+/// y si no, hacia arriba o hacia la izquierda. Nunca se sale de `limite`.
+///
+/// Es como sale el menu de un mensaje en el movil, donde se toco
+/// (`DropdownMenu` con `offset = dondeElDedo`), y el de los tres puntos,
+/// colgando de su boton.
+pub fn colocar_menu(
+    ancla: Punto,
+    limite: Rect,
+    anchos_de_texto: &[f32],
+    alto_texto: u32,
+    escala_por_cien: u32,
+) -> crate::menu::Menu {
+    use crate::menu;
+    // El calculo del ancho y del alto es el de siempre; solo cambia donde va.
+    let base = menu::desplegar(
+        Rect {
+            x: 0,
+            y: 0,
+            ancho: 0,
+            alto: 0,
+        },
+        Rect {
+            x: 0,
+            y: 0,
+            ancho: u32::MAX / 4,
+            alto: u32::MAX / 4,
+        },
+        anchos_de_texto,
+        alto_texto,
+        escala_por_cien,
+    );
+    let (ancho, alto) = (base.caja.ancho as i32, base.caja.alto as i32);
+    let x = if ancla.x + ancho <= limite.derecha() {
+        ancla.x
+    } else {
+        ancla.x - ancho
+    };
+    let y = if ancla.y + alto <= limite.abajo() {
+        ancla.y
+    } else {
+        ancla.y - alto
+    };
+    menu::Menu {
+        caja: Rect {
+            x: x.min(limite.derecha() - ancho).max(limite.x),
+            y: y.min(limite.abajo() - alto).max(limite.y),
+            ancho: base.caja.ancho,
+            alto: base.caja.alto,
+        },
+        ..base
+    }
+}
+
+/// Los colores del contorno de una burbuja que viene de un lienzo: azul,
+/// verde, naranja, morado, rojo y turquesa (`HojasDelProyecto.COLORES`).
+pub const COLORES_DEL_BORDE: [u32; 6] =
+    [0x4c7df0, 0x2fa84f, 0xe0803a, 0x9b59d0, 0xd64b6a, 0x12a5a5];
+
+/// El color del contorno de la burbuja de un mensaje con `referencia` (el
+/// lienzo, la tabla o el dibujo de la foto), o `None` si no tiene.
+///
+/// Es la cuenta del movil (`HojasDelProyecto.colorDe`): el `hashCode` de Java
+/// de la cadena, en modulo positivo. Tiene que ser EXACTAMENTE esa, o el mismo
+/// lienzo saldria de un color en el movil y de otro aqui, y el color es lo que
+/// dice de que lienzo viene cada hoja.
+pub fn color_del_borde(referencia: &str) -> Option<u32> {
+    if referencia.is_empty() {
+        return None;
+    }
+    // `String.hashCode`: s[0]*31^(n-1) + ... sobre unidades UTF-16, con el
+    // desbordamiento de un `int`.
+    let hash = referencia
+        .encode_utf16()
+        .fold(0i32, |h, u| h.wrapping_mul(31).wrapping_add(u as i32));
+    let cual = hash.rem_euclid(COLORES_DEL_BORDE.len() as i32) as usize;
+    Some(COLORES_DEL_BORDE[cual])
+}
+
+/// Un tamano como lo escribe el movil (`Formatter.formatShortFileSize`): de
+/// mil en mil, con un decimal por debajo de diez y sin el de ahi en
+/// adelante. «949 kB», «66 kB», «1.1 MB».
+pub fn tamano_corto(bytes: u64) -> String {
+    const UNIDADES: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
+    let mut valor = bytes as f64;
+    let mut cual = 0;
+    while valor >= 1000.0 && cual + 1 < UNIDADES.len() {
+        valor /= 1000.0;
+        cual += 1;
+    }
+    if cual == 0 {
+        return format!("{bytes} B");
+    }
+    if valor < 10.0 {
+        format!("{valor:.1} {}", UNIDADES[cual])
+    } else {
+        format!("{valor:.0} {}", UNIDADES[cual])
+    }
+}
+
+/// Las etiquetas que se le pueden poner a un mensaje, las del movil
+/// (`ETIQUETAS` de `MensajesActivity.kt`) y en su orden.
+pub const ETIQUETAS: [&str; 6] = [
+    "\u{2b50}",
+    "\u{2705}",
+    "\u{23f3}",
+    "\u{1f4a1}",
+    "\u{1f4b0}",
+    "\u{1f4cd}",
+];
+
+/// La fila de dentro de una burbuja: el boton redondo de 44, el punto de si
+/// vive en un proyecto, el nombre y el boton de sacarlo a la pantalla
+/// (`FilaDeArchivo`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FilaArchivo {
+    pub circulo: Rect,
+    pub punto: Rect,
+    /// Donde empieza el texto y cuanto puede ocupar.
+    pub texto: Rect,
+    pub abrir: Rect,
+}
+
+/// Lo que mide el boton redondo de la fila (`BOTON_DEL_ARCHIVO`).
+pub const FILA_CIRCULO: u32 = 44;
+/// El punto verde, con su halo blanco de 2.
+pub const FILA_PUNTO: u32 = 12;
+/// La pastilla de «abrir fuera»: 30 x 24, esquinas de 8
+/// (`ANCHO_DEL_BOTON_DE_TEXTO`, `ALTO_DEL_BOTON_DE_TEXTO`).
+pub const FILA_ABRIR_ANCHO: u32 = 30;
+pub const FILA_ABRIR_ALTO: u32 = 24;
+pub const FILA_ABRIR_RADIO: u32 = 8;
+
+/// Coloca la fila de un archivo en `x, y`, con un texto que mide
+/// `ancho_texto` y sin pasar de `ancho_max` en total.
+///
+/// El nombre CEDE sitio a la pastilla: con un nombre largo, la pastilla no
+/// puede quedarse fuera de la burbuja (lo reporto el usuario en el movil el
+/// 9-sep-2026, `weight(1f, fill = false)`).
+pub fn fila_archivo(
+    x: i32,
+    y: i32,
+    ancho_texto: u32,
+    ancho_max: u32,
+    escala_por_cien: u32,
+) -> FilaArchivo {
+    let e = |v: u32| v * escala_por_cien / 100;
+    let circulo = Rect {
+        x,
+        y,
+        ancho: e(FILA_CIRCULO),
+        alto: e(FILA_CIRCULO),
+    };
+    let medio = y + e(FILA_CIRCULO) as i32 / 2;
+    let punto = Rect {
+        x: circulo.derecha() + e(6) as i32,
+        y: medio - e(FILA_PUNTO) as i32 / 2,
+        ancho: e(FILA_PUNTO),
+        alto: e(FILA_PUNTO),
+    };
+    let texto_x = punto.derecha() + e(10) as i32;
+    let reservado = (texto_x - x).max(0) as u32 + e(8) + e(FILA_ABRIR_ANCHO);
+    let ancho = ancho_texto.min(ancho_max.saturating_sub(reservado));
+    let texto = Rect {
+        x: texto_x,
+        y,
+        ancho,
+        alto: e(FILA_CIRCULO),
+    };
+    let abrir = Rect {
+        x: texto.derecha() + e(8) as i32,
+        y: medio - e(FILA_ABRIR_ALTO) as i32 / 2,
+        ancho: e(FILA_ABRIR_ANCHO),
+        alto: e(FILA_ABRIR_ALTO),
+    };
+    FilaArchivo {
+        circulo,
+        punto,
+        texto,
+        abrir,
+    }
+}
+
+/// Lo ancho que ocupa una fila de archivo con un texto de `ancho_texto`.
+pub fn ancho_fila_archivo(ancho_texto: u32, escala_por_cien: u32) -> u32 {
+    let f = fila_archivo(0, 0, ancho_texto, u32::MAX / 4, escala_por_cien);
+    f.abrir.derecha().max(0) as u32
+}
+
+#[cfg(test)]
+mod pruebas_movil {
+    use super::*;
+
+    fn disposicion() -> Disposicion {
+        Disposicion::calcular(1024, 768, 100, 300, Vista::Ambas)
+    }
+
+    #[test]
+    fn las_tres_pastillas_caben_en_la_cabecera_sin_pisarse() {
+        let d = disposicion();
+        let p = d.pildoras(100);
+        let c = d.cabecera_chat;
+        for r in [p.volver, p.centro, p.derecha] {
+            assert!(
+                r.x >= c.x && r.derecha() <= c.derecha(),
+                "{r:?} fuera de {c:?}"
+            );
+            assert!(r.y >= c.y && r.abajo() <= c.abajo(), "{r:?} fuera de {c:?}");
+        }
+        assert!(p.volver.derecha() < p.centro.x);
+        assert!(p.centro.derecha() < p.derecha.x);
+        // Volver es un circulo de 46 y la de la derecha, dos botones de 48.
+        assert_eq!((p.volver.ancho, p.volver.alto), (PILDORA, PILDORA));
+        assert_eq!(p.derecha.ancho, 2 * PILDORA_BOTON);
+        assert_eq!(p.buscar.derecha(), p.menu.x, "la lupa y los puntos, juntos");
+        assert_eq!(p.menu.derecha(), p.derecha.derecha());
+    }
+
+    #[test]
+    fn en_una_columna_estrecha_el_titulo_se_encoge_y_no_monta_los_botones() {
+        // Caso negativo: una columna apenas mas ancha que los botones.
+        let mut d = disposicion();
+        d.cabecera_chat.ancho = 120;
+        let p = d.pildoras(100);
+        assert_eq!(p.centro.ancho, 0);
+        assert_eq!(pildora_centro(p.centro, 500, 100).ancho, 0);
+    }
+
+    #[test]
+    fn la_pastilla_del_titulo_se_mide_a_su_texto_y_se_centra() {
+        let sitio = Rect {
+            x: 100,
+            y: 10,
+            ancho: 600,
+            alto: 46,
+        };
+        let r = pildora_centro(sitio, 200, 100);
+        assert_eq!(r.ancho, 228, "el texto y 14 por cada lado");
+        assert_eq!(r.x - sitio.x, sitio.derecha() - r.derecha(), "centrada");
+        // Y no pasa de 420 por largo que sea el nombre.
+        assert_eq!(
+            pildora_centro(sitio, 5000, 100).ancho,
+            PILDORA_CENTRO_MAXIMA
+        );
+    }
+
+    #[test]
+    fn el_menu_nace_donde_se_pulso_y_se_da_la_vuelta_si_no_cabe() {
+        let limite = Rect {
+            x: 0,
+            y: 0,
+            ancho: 800,
+            alto: 600,
+        };
+        let anchos = [80.0; 5];
+        let m = colocar_menu(Punto { x: 100, y: 100 }, limite, &anchos, 16, 100);
+        assert_eq!(
+            (m.caja.x, m.caja.y),
+            (100, 100),
+            "hacia abajo y a la derecha"
+        );
+        // Caso negativo: pegado a la esquina de abajo a la derecha no puede
+        // salirse; se abre hacia arriba y hacia la izquierda.
+        let m = colocar_menu(Punto { x: 790, y: 590 }, limite, &anchos, 16, 100);
+        assert!(
+            m.caja.derecha() <= 790 && m.caja.abajo() <= 590,
+            "{:?}",
+            m.caja
+        );
+        assert!(m.caja.x >= 0 && m.caja.y >= 0);
+        assert_eq!(m.cuantas, 5);
+    }
+
+    #[test]
+    fn un_menu_mas_alto_que_la_ventana_se_pega_arriba_y_no_se_sale() {
+        let limite = Rect {
+            x: 0,
+            y: 0,
+            ancho: 800,
+            alto: 120,
+        };
+        let m = colocar_menu(Punto { x: 10, y: 60 }, limite, &[50.0; 12], 16, 100);
+        assert_eq!(m.caja.y, 0);
+    }
+
+    #[test]
+    fn el_color_del_borde_es_el_mismo_que_calcula_el_movil() {
+        // "abc".hashCode() de Java es 96354, y 96354 % 6 = 0: el azul.
+        assert_eq!(color_del_borde("abc"), Some(COLORES_DEL_BORDE[0]));
+        // "polygenelubricants".hashCode() es Integer.MIN_VALUE: floorMod da
+        // 4 (el rojo) y no un indice negativo.
+        assert_eq!(
+            color_del_borde("polygenelubricants"),
+            Some(COLORES_DEL_BORDE[4])
+        );
+        // El mismo lienzo, siempre el mismo color.
+        assert_eq!(color_del_borde("ZD8TP7BZYC"), color_del_borde("ZD8TP7BZYC"));
+    }
+
+    #[test]
+    fn sin_referencia_no_hay_contorno() {
+        assert_eq!(color_del_borde(""), None);
+    }
+
+    #[test]
+    fn el_tamano_se_escribe_como_en_el_movil() {
+        assert_eq!(tamano_corto(949_000), "949 kB");
+        assert_eq!(tamano_corto(66_000), "66 kB");
+        assert_eq!(tamano_corto(1_100_000), "1.1 MB");
+        assert_eq!(tamano_corto(512), "512 B");
+        // Caso negativo: nada no es «0.0 kB».
+        assert_eq!(tamano_corto(0), "0 B");
+    }
+
+    #[test]
+    fn la_fila_de_un_archivo_va_en_su_orden_y_el_nombre_cede_sitio() {
+        let f = fila_archivo(10, 20, 150, 400, 100);
+        assert_eq!((f.circulo.ancho, f.circulo.alto), (44, 44));
+        assert!(f.circulo.derecha() < f.punto.x);
+        assert!(f.punto.derecha() < f.texto.x);
+        assert!(f.texto.derecha() < f.abrir.x);
+        assert_eq!(f.texto.ancho, 150);
+        assert_eq!(
+            ancho_fila_archivo(150, 100),
+            (f.abrir.derecha() - 10) as u32
+        );
+        // Caso negativo: un nombre larguisimo no empuja la pastilla fuera.
+        let f = fila_archivo(10, 20, 5000, 300, 100);
+        assert!(f.abrir.derecha() <= 10 + 300, "{:?}", f.abrir);
+    }
+
+    #[test]
+    fn la_isla_de_escribir_lleva_el_clip_dentro_y_el_microfono_fuera() {
+        let d = disposicion();
+        let isla = d.isla(18, 100);
+        let campo = d.campo(18, 100);
+        let clip = d.boton_adjuntar(18, 100);
+        let voz = d.boton_enviar(18, 100);
+        let caja = d.redaccion(18, 100);
+        assert_eq!(isla.x - caja.x, ISLA_MARGEN_X as i32);
+        assert_eq!(caja.abajo() - isla.abajo(), ISLA_BAJO as i32);
+        assert!(campo.x >= isla.x && campo.derecha() <= voz.x);
+        assert!(
+            clip.x >= campo.x && clip.derecha() == campo.derecha(),
+            "el clip, dentro del campo"
+        );
+        assert!(voz.x >= campo.derecha() && voz.derecha() <= isla.derecha());
+        assert_eq!(campo.alto, CAMPO_FILA, "vacia, una fila de 44");
+        let texto = d.texto_redaccion(18, 100);
+        assert!(
+            texto.derecha() <= clip.x,
+            "el texto no se mete bajo el clip"
+        );
+    }
+
+    #[test]
+    fn la_barra_de_responder_aparta_el_historial_y_no_encoge_la_isla() {
+        let sin = disposicion();
+        let mut con = disposicion();
+        con.encima_de_la_isla = 40;
+        let (isla_sin, isla_con) = (sin.isla(18, 100), con.isla(18, 100));
+        assert_eq!(isla_sin.alto, isla_con.alto, "la isla mide lo mismo");
+        assert_eq!(isla_sin.abajo(), isla_con.abajo(), "y sigue abajo");
+        let barra = con.encima_de_la_isla(18, 100);
+        assert_eq!(barra.alto, 40);
+        assert!(
+            barra.abajo() <= isla_con.y,
+            "la barra va encima, sin pisarla"
+        );
+        assert_eq!(
+            con.historial(18, false, 100).abajo(),
+            con.redaccion(18, 100).y,
+            "el historial se aparta"
+        );
+        // Caso negativo: sin barra no se reserva nada.
+        assert_eq!(sin.encima_de_la_isla(18, 100).alto, 0);
     }
 }

@@ -53,3 +53,9 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Material Icons (Google)
+
+Módulos: `crates/pixpin-render/src/icono/material.rs` y los iconos de `apps/pixpin/src/sincronizar.rs`: trazados `d` de `src/<grupo>/<nombre>/materialicons/24px.svg` del repositorio `google/material-design-icons`, los mismos `Icons.Filled.*` que usa PixPin Android.
+
+Apache License 2.0 — Copyright Google LLC. Texto completo en <https://www.apache.org/licenses/LICENSE-2.0>. Los iconos se usan sin modificar.

@@ -23,6 +23,9 @@ use crate::lienzo::{Pintor, RectF};
 use crate::motor::Color;
 use crate::trayecto_svg::{Tramo, analizar};
 
+/// Los iconos de Material que usa el chat del movil, copiados tal cual.
+pub mod material;
+
 /// De que se pinta un relleno o un trazo.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pintura {
@@ -183,6 +186,69 @@ impl Pintor<'_> {
         }
         // SAFETY: devolver la transformada de quien llamo.
         unsafe { c.SetTransform(&previa) };
+    }
+
+    /// Recorta lo que se pinte despues a un rectangulo de esquinas redondas,
+    /// hasta [`Pintor::soltar_recorte_redondeado`].
+    ///
+    /// Es la misma capa con mascara que usan los iconos, con otra figura: una
+    /// foto que llena su burbuja tiene que redondearse con ella, como en el
+    /// movil (`clip(RoundedCornerShape)`). Sin esto las esquinas de la foto
+    /// asoman por fuera de la burbuja. Si la figura no se puede crear no se
+    /// recorta nada, que es mejor que no pintar la foto.
+    pub fn empujar_recorte_redondeado(&self, caja: RectF, radio: f32) -> bool {
+        use windows::Win32::Graphics::Direct2D::D2D1_ROUNDED_RECT;
+        let figura = D2D1_ROUNDED_RECT {
+            rect: D2D_RECT_F {
+                left: caja.x,
+                top: caja.y,
+                right: caja.x + caja.ancho,
+                bottom: caja.y + caja.alto,
+            },
+            radiusX: radio,
+            radiusY: radio,
+        };
+        // SAFETY: crear una figura sobre la factoria viva no tiene
+        // precondiciones; el cast es el upcast que pide la capa.
+        let mascara: Option<ID2D1Geometry> = unsafe {
+            self.motor
+                .fabrica()
+                .CreateRoundedRectangleGeometry(&figura)
+                .ok()
+                .and_then(|g| g.cast().ok())
+        };
+        let Some(m) = mascara else {
+            return false;
+        };
+        let c = self.motor.contexto();
+        let parametros = D2D1_LAYER_PARAMETERS1 {
+            contentBounds: D2D_RECT_F {
+                left: -1.0e7,
+                top: -1.0e7,
+                right: 1.0e7,
+                bottom: 1.0e7,
+            },
+            geometricMask: std::mem::ManuallyDrop::new(Some(m)),
+            maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+            // La figura va en las coordenadas de quien pinta: Direct2D ya le
+            // aplica la transformada que este puesta, como a la de un icono.
+            maskTransform: Matrix3x2::identity(),
+            opacity: 1.0,
+            opacityBrush: std::mem::ManuallyDrop::new(None),
+            layerOptions: D2D1_LAYER_OPTIONS1_NONE,
+        };
+        // SAFETY: capa emparejada con `soltar_recorte_redondeado`, que quien
+        // llama pone en el mismo fotograma.
+        unsafe { c.PushLayer(&parametros, None) };
+        drop(std::mem::ManuallyDrop::into_inner(parametros.geometricMask));
+        true
+    }
+
+    /// Cierra el recorte de [`Pintor::empujar_recorte_redondeado`]. Solo se
+    /// llama si aquel devolvio `true`.
+    pub fn soltar_recorte_redondeado(&self) {
+        // SAFETY: cierra la capa abierta por `empujar_recorte_redondeado`.
+        unsafe { self.motor.contexto().PopLayer() };
     }
 
     fn geometria_icono(&self, d: &'static str, par_impar: bool) -> Option<ID2D1PathGeometry1> {
