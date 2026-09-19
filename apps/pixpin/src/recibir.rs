@@ -95,7 +95,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     let puerto = escucha.local_addr().map(|d| d.port()).unwrap_or_default();
     let ip = ip_local().unwrap_or_default();
     let qr = qrcodegen::QrCode::encode_text(
-        &pixpin_sincro::envio::texto_del_qr(&codigo, &ip, puerto),
+        &pixpin_sincro::envio::texto_del_qr_de_recepcion(&codigo, &ip, puerto),
         qrcodegen::QrCodeEcc::Medium,
     )
     .ok();

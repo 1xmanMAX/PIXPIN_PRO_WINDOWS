@@ -195,6 +195,14 @@ impl<F: Read + Write> Canal<F> {
         Ok(())
     }
 
+    /// Empuja lo pendiente de salida (`Canal.vaciar`). Hace falta antes de
+    /// cerrar sin leer nada mas: `recibir` vacia solo, pero un ultimo
+    /// «no, gracias» sobre un flujo con bufer se quedaria sin salir.
+    pub fn vaciar(&mut self) -> Result<(), ErrorCanal> {
+        self.flujo.flush()?;
+        Ok(())
+    }
+
     /// Espera un tramo. Vacia lo pendiente de salida antes de bloquearse: si
     /// no, los dos lados podrian quedarse esperando.
     pub fn recibir(&mut self) -> Result<(Tipo, Vec<u8>), ErrorCanal> {
