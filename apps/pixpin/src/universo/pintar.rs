@@ -715,6 +715,65 @@ fn luna(p: &Pintor, c: &Contexto, a: &Astro, v: &Visto, centro: (f32, f32), foco
     }
 }
 
+/// Cuantas lunas puede tener un planeta para que se le pinten las orbitas.
+/// Mas alla de esto ya no se lee como un sistema solar sino como un enjambre
+/// de aros, y el movil nunca llega ahi (sus exoplanetas son notas sueltas).
+const TOPE_ORBITAS: usize = 24;
+
+/// Por debajo de este radio en pantalla, un planeta no ensena sus orbitas:
+/// serian aros de dos pixeles unos encima de otros.
+const RADIO_MINIMO_ORBITA: f32 = 40.0;
+
+/// Si un planeta de `radio_px` (pixeles fisicos) con `hijos` lunas ensena
+/// sus orbitas.
+pub fn con_orbitas(radio_px: f32, hijos: usize, escala: f32) -> bool {
+    radio_px >= RADIO_MINIMO_ORBITA * escala && hijos > 0 && hijos <= TOPE_ORBITAS
+}
+
+/// **Las orbitas** (`Galaxia.kt:848-855`): por cada luna colgada de un
+/// planeta, un anillo tenue del color del planeta con el radio de su orbita
+/// y una raya punteada del centro a la luna.
+///
+/// Es lo que en el movil hace que un sol con sus notas se lea como un
+/// sistema solar y no como cosas sueltas. Solo de planetas: una galaxia
+/// tiene cientos de lunas en rejilla y sus aros serian ruido.
+pub fn orbitas(p: &Pintor, c: &Contexto, camara: &Camara) {
+    let e = c.escala;
+    let fino = (1.2 * e).max(1.0);
+    for v in c.vistos {
+        let Some(luna) = c.u.astro(v.id) else {
+            continue;
+        };
+        if !matches!(luna.clase, Clase::Luna { .. }) || v.nivel < Nivel::Icono {
+            continue;
+        }
+        let Some(padre) = luna.padre.and_then(|id| c.u.astro(id)) else {
+            continue;
+        };
+        if !matches!(padre.clase, Clase::Planeta) {
+            continue;
+        }
+        let hijos = c.u.hijos(padre.id).take(TOPE_ORBITAS + 1).count();
+        if !con_orbitas(padre.radio * camara.zoom, hijos, e) {
+            continue;
+        }
+        let centro = a_pantalla(camara, padre.x, padre.y);
+        let suya = a_pantalla(camara, luna.x, luna.y);
+        let radio = ((suya.0 - centro.0).powi(2) + (suya.1 - centro.1).powi(2)).sqrt();
+        if radio < 1.0 {
+            continue;
+        }
+        let color = color_de_astro(c, padre);
+        let foco = if c.en_foco(luna.id) {
+            1.0
+        } else {
+            FUERA_DE_FOCO
+        };
+        p.anillo(centro, radio, fino, con_alfa(color, 0.10 * foco));
+        p.polilinea_discontinua(&[centro, suya], fino, con_alfa(color, 0.35 * foco));
+    }
+}
+
 /// El color con el que se pinta un astro: el de su proyecto si lo tiene, el
 /// suyo propio si se lo pusieron, y el acento si no.
 fn color_de_astro(c: &Contexto, a: &Astro) -> Color {
@@ -952,6 +1011,21 @@ mod pruebas {
         // Caso negativo: si los dos estorban, se pega al techo y no se
         // pierde arriba.
         assert_eq!(y_de_rotulo(60.0, 80.0, 20.0, 5.0, 60.0, isla, techo), 36.0);
+    }
+
+    #[test]
+    fn las_orbitas_solo_salen_en_un_planeta_grande_con_unas_pocas_lunas() {
+        assert!(con_orbitas(120.0, 5, 1.5));
+        assert!(con_orbitas(40.0, TOPE_ORBITAS, 1.0), "justo en el tope");
+        // Demasiado chico: los aros se pisarian.
+        assert!(!con_orbitas(39.0, 5, 1.0));
+        // Demasiadas lunas: deja de leerse como un sistema solar.
+        assert!(!con_orbitas(300.0, TOPE_ORBITAS + 1, 1.0));
+        // Caso negativo: sin lunas no hay orbita que pintar.
+        assert!(!con_orbitas(300.0, 0, 1.0));
+        // Y el minimo va con la escala del monitor: lo que basta al 100 %
+        // no basta al 150 %.
+        assert!(!con_orbitas(40.0, 5, 1.5));
     }
 
     #[test]

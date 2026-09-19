@@ -311,7 +311,21 @@ chips de abajo** como sitio para la pista y los modos.
 6. Recuento «N proyectos · N archivos · N conexiones» bajo el titulo.
 7. Anillo de orbita y raya punteada de la luna a su planeta.
 
+Todo eso esta hecho. Las orbitas se pintan solo de **planetas** (no de
+galaxias, que tienen cientos de lunas en rejilla) y solo cuando el planeta se
+ve a 40 px o mas y tiene 24 lunas o menos: mas alla de ahi deja de leerse
+como un sistema solar y pasa a ser un enjambre de aros.
+
 **No se hace, con su porque:**
+
+- **El paralaje de las nebulosas** (0,6 en `Galaxia.kt`): van horneadas con
+  el degradado en un bitmap opaco, asi que se quedan quietas en la pantalla
+  —que es como las tiene el propio `FondoCosmico` del tema—. Moverlas
+  obligaria a pintarlas aparte, con alfa, y son dos pasadas de pantalla
+  entera: medido, el fondo pasaba de 0,5 ms a 4,7 ms.
+- **El degradado del cielo en Ligero**: ahi se queda el color liso
+  `CosmosBase`. Ligero existe para la grafica integrada y una pasada de
+  pantalla entera es justo lo que no se le puede pedir.
 
 - **Portar `galaxia.json`/`universos.json`**: son del aparato y no viajan (§1).
 - **La fisica Verlet**: pelea con la jerarquia del PC y con los 8 ms (§6).

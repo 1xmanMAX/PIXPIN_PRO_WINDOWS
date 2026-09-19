@@ -1469,6 +1469,7 @@ impl Sesion {
             self.tamano.1,
         );
         self.con_contexto(|c| {
+            pintar::orbitas(p, c, efectiva);
             pintar::conexiones(p, c, efectiva);
             pintar::astros(p, c, efectiva);
             let rotulo = self.textos.t("universo-nebulosa");
