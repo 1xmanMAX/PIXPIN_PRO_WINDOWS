@@ -250,7 +250,8 @@ fn sellar(mapa: &mut Map<String, Value>, e: &Elemento, original: &Value) {
             Figura::Lapiz { .. } | Figura::Resaltador { .. } => "freedraw",
             Figura::Linea { .. } => "line",
             Figura::Flecha { .. } => "arrow",
-            Figura::Texto { .. } => "text",
+            // El emoji viaja como texto: asi excalidraw.com lo ensena.
+            Figura::Texto { .. } | Figura::Emoji { .. } => "text",
             Figura::Imagen { .. } => "image",
             Figura::Cota { .. } => "pixpin-measure",
             Figura::EscalaGrafica => "pixpin-scalebar",
@@ -516,6 +517,9 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
         "image" => Figura::Imagen {
             id_objeto: id_estable(v.get("fileId").and_then(Value::as_str).unwrap_or_default()),
         },
+        "text" if v["customData"]["pixpin"] == "emoji" => Figura::Emoji {
+            caracter: v.get("text").and_then(|t| t.as_str()).unwrap_or("").into(),
+        },
         "text" => Figura::Texto {
             texto: v.get("text").and_then(|t| t.as_str()).unwrap_or("").into(),
             tam: num_o(v, "fontSize", 20.0),
@@ -720,6 +724,16 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
         Figura::Texto { texto, tam, .. } => {
             mapa.insert("text".into(), Value::String(texto.clone()));
             mapa.insert("fontSize".into(), Value::from(*tam as f64));
+        }
+        Figura::Emoji { caracter } => {
+            // Un texto normal para los demas, con una marca para que aqui
+            // vuelva a ser emoji y no un texto que se edita letra a letra.
+            mapa.insert("text".into(), Value::String(caracter.clone()));
+            mapa.insert("fontSize".into(), Value::from((e.alto * 0.8) as f64));
+            mapa.insert(
+                "customData".into(),
+                serde_json::json!({ "pixpin": "emoji" }),
+            );
         }
         Figura::Cota { puntos } => {
             mapa.insert("type".into(), Value::String("pixpin-measure".to_string()));
@@ -1551,6 +1565,37 @@ mod pruebas {
     fn elementos_de(json: &str) -> Vec<Value> {
         let v: Value = serde_json::from_str(json).unwrap();
         v["elements"].as_array().unwrap().clone()
+    }
+
+    #[test]
+    fn un_emoji_va_y_vuelve_por_excalidraw_como_texto() {
+        let lienzo = leer(HOJA_DEL_MOVIL).unwrap();
+        let mut escena = a_escena(&lienzo);
+        let base = escena.buscar(2).unwrap().clone();
+        escena.anadir(Elemento {
+            id: 0,
+            figura: Figura::Emoji {
+                caracter: "😀".into(),
+            },
+            ancho: 64.0,
+            alto: 64.0,
+            ..base
+        });
+        let texto = escribir(&con_escena(&lienzo, &escena));
+        // Fuera, en excalidraw.com, es un texto normal que ensena el emoji.
+        let ultimo = elementos_de(&texto).pop().unwrap();
+        assert_eq!(ultimo["type"], "text");
+        assert_eq!(ultimo["text"], "😀");
+        assert_eq!(ultimo["customData"]["pixpin"], "emoji");
+        let vuelta = leer(&texto).unwrap();
+        let elementos = vuelta.elementos();
+        assert!(matches!(
+            &elementos.last().unwrap().figura,
+            Figura::Emoji { caracter } if caracter == "😀"
+        ));
+        // Caso negativo: lo que no lleva la marca no se vuelve emoji.
+        assert!(elementos.len() >= 3);
+        assert!(!matches!(elementos[0].figura, Figura::Emoji { .. }));
     }
 
     #[test]

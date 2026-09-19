@@ -362,6 +362,18 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             ancho_max: e.ancho.max(1.0),
         }),
 
+        // Un emoji es texto con la fuente de color de Windows. El 0,8 deja
+        // sitio al glifo, que asoma por encima y por debajo de su cuerpo.
+        Figura::Emoji { caracter } => salida.push(Orden::Texto {
+            texto: caracter.clone(),
+            x: e.x,
+            y: e.y,
+            tam: e.alto * 0.8,
+            familia: "Segoe UI Emoji".to_string(),
+            color,
+            ancho_max: e.ancho.max(1.0),
+        }),
+
         Figura::Marco { nombre } => {
             // Liso y gris, no a mano alzada: el marco es andamiaje para
             // ordenar laminas, no parte del dibujo. Si temblara como una
@@ -1015,6 +1027,29 @@ mod pruebas {
         let con_ambos = ordenes_de_escena(&escena).len();
         escena.borrar(dos);
         assert!(ordenes_de_escena(&escena).len() < con_ambos);
+    }
+
+    #[test]
+    fn un_emoji_se_pinta_como_texto_con_la_fuente_de_emojis_a_su_tamano() {
+        let e = Elemento {
+            figura: Figura::Emoji {
+                caracter: "🪐".into(),
+            },
+            x: 10.0,
+            y: 20.0,
+            ancho: 100.0,
+            alto: 100.0,
+            ..base()
+        };
+        let o = ordenes(&e);
+        assert!(o.iter().any(|o| matches!(o,
+            Orden::Texto { texto, familia, tam, .. }
+                if texto == "🪐" && familia == "Segoe UI Emoji" && (*tam - 80.0).abs() < 0.01)));
+        // Caso negativo: un emoji no tiene contorno que pintar.
+        assert!(
+            !o.iter().any(|o| matches!(o, Orden::Polilinea { .. })),
+            "un emoji no lleva trazo"
+        );
     }
 
     #[test]

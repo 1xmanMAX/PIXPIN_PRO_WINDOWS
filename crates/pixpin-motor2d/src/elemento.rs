@@ -120,6 +120,11 @@ pub enum Figura {
         #[serde(default)]
         nombre: String,
     },
+    /// Un emoji suelto, del tamano de su caja (universo, §2.2). Se pinta
+    /// con la fuente de color de Windows; no hay imagenes empaquetadas.
+    Emoji {
+        caracter: String,
+    },
 }
 
 fn verdadero() -> bool {

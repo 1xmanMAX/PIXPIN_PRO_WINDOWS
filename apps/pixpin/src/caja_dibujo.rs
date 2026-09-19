@@ -96,6 +96,9 @@ fn icono(b: BotonCaja) -> &'static pixpin_render::icono::Icono {
         BotonCaja::Elegir(Herramienta::Escalar) => &i::RESIZE_ICON,
         BotonCaja::Elegir(Herramienta::EscalaGrafica) => &i::GRID_ICON,
         BotonCaja::Elegir(Herramienta::Marco) => &MARCO,
+        // La caja de dibujo no ofrece el emoji (es del universo, que tendra
+        // su propia caja); si alguna vez llega, se ve como texto.
+        BotonCaja::Elegir(Herramienta::Emoji) => &i::TEXT_ICON,
         BotonCaja::Deshacer => &i::UNDO_ICON,
         BotonCaja::Rehacer => &i::REDO_ICON,
         BotonCaja::Color => &i::PALETTE,

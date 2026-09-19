@@ -62,6 +62,8 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
         // ofrece nada que cambiar. Ofrecer color seria invitar a usarlo como
         // una figura mas.
         Figura::Marco { .. } => &[],
+        // El emoji ya trae su color: solo se le puede atenuar.
+        Figura::Emoji { .. } => &[Opacidad],
     }
 }
 
@@ -75,7 +77,8 @@ pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad] {
         | Herramienta::Lupa
         | Herramienta::Borrador
         | Herramienta::Escalar
-        | Herramienta::Marco => &[],
+        | Herramienta::Marco
+        | Herramienta::Emoji => &[],
         Herramienta::Lapiz | Herramienta::Resaltador => &[ColorTrazo, Grosor, Opacidad],
         Herramienta::Linea => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
         Herramienta::Flecha => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad, PuntaFlecha],
