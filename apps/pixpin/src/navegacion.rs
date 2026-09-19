@@ -171,6 +171,11 @@ pub enum Accion {
     /// Ctrl+rueda: el zoom lo decide `zoom_de_rueda` con el de la camara, y
     /// `foco` (pixeles logicos de la ventana) se queda quieto.
     ZoomRueda { foco: Punto2, delta: i32 },
+    /// La rueda en el universo (`Navegador::mapa`): acercar o alejar con
+    /// `foco` quieto, suave. Quien lo recibe lo persigue fotograma a
+    /// fotograma (`universo::mapa::Suave`); `aplicar_con_minimo` lo aplica
+    /// de golpe.
+    ZoomSuave { foco: Punto2, delta: i32 },
 }
 
 /// Si el evento era del navegador y que hay que hacer.
@@ -208,6 +213,10 @@ pub struct Navegador {
     /// minimo del motor; el universo baja mucho mas para ver todas las
     /// galaxias a la vez. Quien lo cambia lo pasa a `aplicar_con_minimo`.
     pub zoom_minimo: f32,
+    /// Con el universo detras: la rueda acerca y aleja (sin Ctrl), como en
+    /// un mapa. En un lienzo normal es `false` y la rueda desplaza, como en
+    /// Excalidraw.
+    pub mapa: bool,
 }
 
 impl Default for Navegador {
@@ -222,6 +231,7 @@ impl Default for Navegador {
             // El de la rueda de Excalidraw, que ya era el suelo de hecho: la
             // camara del motor admite 0,05 pero la rueda nunca bajaba de 0,1.
             zoom_minimo: ZOOM_MINIMO,
+            mapa: false,
         }
     }
 }
@@ -366,7 +376,12 @@ impl Navegador {
                 consumido
             }
             EventoOverlay::Rueda(delta) => {
-                let accion = if m.ctrl {
+                let accion = if self.mapa && !m.shift {
+                    Accion::ZoomSuave {
+                        foco: self.ultimo,
+                        delta,
+                    }
+                } else if m.ctrl {
                     Accion::ZoomRueda {
                         foco: self.ultimo,
                         delta,
@@ -428,6 +443,12 @@ pub fn aplicar_con_minimo(camara: &mut Camara, accion: Accion, zoom_minimo: f32)
             camara.desplazar(dx, dy);
             true
         }
+        Accion::ZoomSuave { foco, delta } => camara.acercar_en_entre(
+            foco,
+            crate::universo::mapa::factor_de_rueda(delta),
+            zoom_minimo,
+            pixpin_motor2d::camara::ZOOM_MAXIMO,
+        ),
         Accion::ZoomRueda { foco, delta } => {
             let nuevo = zoom_de_rueda_entre(camara.zoom, delta, zoom_minimo);
             camara.acercar_en_entre(
@@ -499,6 +520,77 @@ mod pruebas {
             for d in [-MUESCA, MUESCA, -3 * MUESCA] {
                 assert_eq!(zoom_de_rueda_entre(z, d, ZOOM_MINIMO), zoom_de_rueda(z, d));
             }
+        }
+    }
+
+    #[test]
+    fn en_modo_mapa_la_rueda_acerca_donde_esta_el_raton_y_con_shift_sigue_desplazando() {
+        let mut n = Navegador::nuevo();
+        n.mapa = true;
+        n.evento(
+            &EventoOverlay::RatonMovido(Punto { x: 300, y: 150 }),
+            ORIGEN,
+            150,
+            NADA,
+            true,
+            SIEMPRE,
+        );
+        let r = n.evento(
+            &EventoOverlay::Rueda(MUESCA),
+            ORIGEN,
+            150,
+            NADA,
+            true,
+            SIEMPRE,
+        );
+        assert_eq!(
+            r.accion,
+            Some(Accion::ZoomSuave {
+                foco: Punto2::nuevo(200.0, 100.0),
+                delta: MUESCA
+            })
+        );
+        // Caso negativo: con Shift la rueda es horizontal tambien en el mapa.
+        let shift = Modificadores {
+            ctrl: false,
+            shift: true,
+        };
+        let r = n.evento(
+            &EventoOverlay::Rueda(MUESCA),
+            ORIGEN,
+            100,
+            shift,
+            true,
+            SIEMPRE,
+        );
+        assert!(matches!(r.accion, Some(Accion::Desplazar { dy: 0.0, .. })));
+    }
+
+    #[test]
+    fn un_lienzo_normal_no_esta_en_modo_mapa_y_su_rueda_no_cambia() {
+        // Lo que vigila que el universo no se lleve la rueda de todos.
+        let n = Navegador::nuevo();
+        assert!(!n.mapa);
+        for mods in [
+            NADA,
+            Modificadores {
+                ctrl: true,
+                shift: false,
+            },
+        ] {
+            let mut n = Navegador::nuevo();
+            let r = n.evento(
+                &EventoOverlay::Rueda(MUESCA),
+                ORIGEN,
+                100,
+                mods,
+                true,
+                SIEMPRE,
+            );
+            assert!(
+                !matches!(r.accion, Some(Accion::ZoomSuave { .. })),
+                "{mods:?}"
+            );
         }
     }
 

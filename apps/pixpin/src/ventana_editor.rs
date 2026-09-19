@@ -573,7 +573,15 @@ fn abrir_en_modo(
         camara = s.camara_inicial();
         // Alejarse hasta ver todas las galaxias a la vez.
         navegador.zoom_minimo = pixpin_universo::ZOOM_MINIMO_UNIVERSO;
+        // Y moverse como por un mapa: la rueda acerca (`universo::mapa`).
+        navegador.mapa = true;
     }
+    // Solo con el universo: el zoom que persigue la rueda y la inercia de
+    // un arrastre del cielo (ver `universo::mapa`). En un lienzo normal no
+    // se activan nunca.
+    let mut suave = crate::universo::mapa::Suave::default();
+    let mut reloj_suave = std::time::Instant::now();
+    let mut arrastre_mapa: Option<crate::universo::mapa::Arrastre> = None;
     let mut efectiva = vista_efectiva(&camara, escala_por_cien);
     let mut cache = Cache::nueva();
     let mut cache_tinta = pixpin_render::CacheTinta::nueva();
@@ -758,7 +766,19 @@ fn abrir_en_modo(
                 gesto.en_reposo(),
                 vivo,
             );
-            if let Some(accion) = nav.accion {
+            if let Some(navegacion::Accion::ZoomSuave { foco, delta }) = nav.accion {
+                // El universo: la rueda no salta, se persigue en el bucle.
+                if !suave.activo() {
+                    reloj_suave = std::time::Instant::now();
+                }
+                suave.pedir_zoom(
+                    camara.zoom,
+                    foco,
+                    delta,
+                    navegador.zoom_minimo,
+                    pixpin_motor2d::camara::ZOOM_MAXIMO,
+                );
+            } else if let Some(accion) = nav.accion {
                 if navegacion::aplicar_con_minimo(&mut camara, accion, navegador.zoom_minimo) {
                     efectiva = vista_efectiva(&camara, escala_por_cien);
                     // La capa congelada se da por invalida sola: su Estampa
@@ -773,6 +793,57 @@ fn abrir_en_modo(
                     ventana.poner_cursor(FormaCursorWin::Mover);
                 }
                 continue;
+            }
+            // Un clic para la inercia: la mano vuelve a mandar.
+            if matches!(
+                ev,
+                EventoOverlay::BotonPulsado(_) | EventoOverlay::BotonCentralPulsado(_)
+            ) {
+                suave.parar_inercia();
+            }
+            // Arrastrando el cielo del universo (empezo abajo, en su `Pasa`):
+            // lo que se mueve es la camara, y nada mas ve el raton.
+            if let Some(mut a) = arrastre_mapa.take() {
+                let ms = reloj.elapsed().as_secs_f64() * 1000.0;
+                match ev {
+                    // Como con el espacio: si Windows le quito la captura al
+                    // raton, el boton-arriba no llega y el arrastre se suelta
+                    // aqui.
+                    EventoOverlay::RatonMovido(p)
+                        if navegacion::algun_boton_pulsado(
+                            &[0x01, 0x02],
+                            pixpin_shell::entrada::tecla_pulsada_ahora,
+                        ) =>
+                    {
+                        let (dx, dy) = a.mover(p, ms, navegacion::escala_de(escala_por_cien));
+                        arrastre_mapa = Some(a);
+                        ventana.poner_cursor(FormaCursorWin::Mover);
+                        if navegacion::aplicar_con_minimo(
+                            &mut camara,
+                            navegacion::Accion::Desplazar { dx, dy },
+                            navegador.zoom_minimo,
+                        ) {
+                            efectiva = vista_efectiva(&camara, escala_por_cien);
+                            todo_sucio = true;
+                            ventana.invalidar();
+                        }
+                        continue;
+                    }
+                    EventoOverlay::RatonMovido(_) => {}
+                    EventoOverlay::BotonSoltado(_) => {
+                        if let Some(v) = a.soltar(ms) {
+                            reloj_suave = std::time::Instant::now();
+                            suave.empujar(v);
+                        }
+                        ventana.poner_cursor(FormaCursorWin::Flecha);
+                        continue;
+                    }
+                    EventoOverlay::Muestra(_) => {
+                        arrastre_mapa = Some(a);
+                        continue;
+                    }
+                    _ => arrastre_mapa = Some(a),
+                }
             }
             // El universo, si lo hay, va antes que los enlaces y que las
             // herramientas del editor: un clic sobre un astro es suyo. Menos
@@ -806,7 +877,92 @@ fn abrir_en_modo(
                         area,
                     };
                     match s.evento(&ev, &mut camara, &mut escena, &ed) {
-                        Respuesta::Pasa => {}
+                        Respuesta::Pasa => {
+                            use crate::universo::mapa;
+                            let libre = !gesto.esta_escribiendo();
+                            match ev {
+                                EventoOverlay::BotonPulsado(p) if libre => {
+                                    let q = efectiva.a_mundo(Punto2::nuevo(
+                                        (p.x - area.x) as f32,
+                                        (p.y - area.y) as f32,
+                                    ));
+                                    // Los tiradores sobresalen de la caja
+                                    // elegida: se cuentan unos pixeles de mas.
+                                    let margen = 16.0 / efectiva.zoom;
+                                    let en_la_seleccion = gesto
+                                        .seleccion
+                                        .caja(&escena)
+                                        .is_some_and(|(x0, y0, x1, y1)| {
+                                            q.x >= x0 - margen
+                                                && q.x <= x1 + margen
+                                                && q.y >= y0 - margen
+                                                && q.y <= y1 + margen
+                                        });
+                                    let clic = mapa::Clic {
+                                        libre_de_astros: true,
+                                        mano: ed.mano,
+                                        shift: pixpin_shell::entrada::modificadores_pulsados()
+                                            .shift,
+                                        sobre_anotacion: en_la_seleccion
+                                            || pixpin_motor2d::impacto::elemento_en(
+                                                &escena.elementos,
+                                                q,
+                                            )
+                                            .is_some(),
+                                    };
+                                    if mapa::arrastra_el_cielo(clic) {
+                                        // Como un clic en el vacio: suelta
+                                        // lo que hubiera elegido.
+                                        gesto.seleccion.limpiar();
+                                        arrastre_mapa = Some(mapa::Arrastre::nuevo(p));
+                                        ventana.poner_cursor(FormaCursorWin::Mover);
+                                        todo_sucio = true;
+                                        ventana.invalidar();
+                                        continue;
+                                    }
+                                }
+                                // Las flechas llevan el cielo, si no hay
+                                // anotaciones elegidas que mover con ellas.
+                                EventoOverlay::Tecla {
+                                    vk, ctrl: false, ..
+                                } if libre && gesto.seleccion.esta_vacia() => {
+                                    if let Some((dx, dy)) = mapa::desplazamiento_de_flecha(vk) {
+                                        if navegacion::aplicar_con_minimo(
+                                            &mut camara,
+                                            navegacion::Accion::Desplazar { dx, dy },
+                                            navegador.zoom_minimo,
+                                        ) {
+                                            efectiva = vista_efectiva(&camara, escala_por_cien);
+                                            todo_sucio = true;
+                                            ventana.invalidar();
+                                        }
+                                        continue;
+                                    }
+                                }
+                                // `+` y `-`: una muesca de rueda en el centro.
+                                EventoOverlay::Caracter(c) if libre => {
+                                    if let Some(delta) = mapa::delta_de_caracter(c) {
+                                        let e = navegacion::escala_de(escala_por_cien);
+                                        let centro = Punto2::nuevo(
+                                            area.ancho as f32 / (2.0 * e),
+                                            area.alto as f32 / (2.0 * e),
+                                        );
+                                        if !suave.activo() {
+                                            reloj_suave = std::time::Instant::now();
+                                        }
+                                        suave.pedir_zoom(
+                                            camara.zoom,
+                                            centro,
+                                            delta,
+                                            navegador.zoom_minimo,
+                                            pixpin_motor2d::camara::ZOOM_MAXIMO,
+                                        );
+                                        continue;
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
                         Respuesta::Consumido { repintar } => {
                             efectiva = vista_efectiva(&camara, escala_por_cien);
                             if repintar {
@@ -1323,6 +1479,23 @@ fn abrir_en_modo(
             }
         }
         let vaciar = t_vuelta.elapsed();
+        // La rueda y la inercia del universo, con el reloj: se mueven sin
+        // eventos hasta llegar.
+        if suave.activo() {
+            let ahora = std::time::Instant::now();
+            let dt = ahora.duration_since(reloj_suave).as_secs_f32();
+            reloj_suave = ahora;
+            if suave.avanzar(
+                &mut camara,
+                dt,
+                navegador.zoom_minimo,
+                pixpin_motor2d::camara::ZOOM_MAXIMO,
+            ) {
+                efectiva = vista_efectiva(&camara, escala_por_cien);
+                todo_sucio = true;
+                ventana.invalidar();
+            }
+        }
         // El universo: su vuelo de camara, sus destellos y su guardado van
         // con el reloj, no con los eventos.
         if let Some(s) = universo.as_deref_mut() {
@@ -1522,7 +1695,11 @@ fn abrir_en_modo(
         let decision = DecisionZoom {
             tope_ms: minimo(
                 minimo(decision.tope_ms, tope_forma),
-                universo.as_deref().and_then(|s| s.tope_ms()),
+                minimo(
+                    universo.as_deref().and_then(|s| s.tope_ms()),
+                    // Persiguiendo: despertar cada fotograma. Parado, nada.
+                    suave.activo().then_some(8),
+                ),
             ),
             ..decision
         };

@@ -9,6 +9,7 @@ pub mod abrir;
 pub mod cargador;
 pub mod estrellas;
 pub mod fichas;
+pub mod mapa;
 pub mod pintar;
 pub mod sesion;
 
