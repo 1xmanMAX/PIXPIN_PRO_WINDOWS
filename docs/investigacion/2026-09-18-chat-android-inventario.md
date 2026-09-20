@@ -99,7 +99,7 @@ por `OPEN_IN_NEW`; los iconos de Excalidraw del menú del clip por los de Materi
 | Volver (sale del proyecto) | ArrowBack | **sí**: cierra el proyecto (guarda borrador, hoja y lienzo vivo) | `Zona::Volver`, l. 713 |
 | Tocar el título: fichas de secciones | — | **a medias**: abre el panel de información con sus pestañas (Todo, Fotos, …), que es lo mismo por secciones | `Zona::Titulo`, l. 720 |
 | Mantener el título: buscar | — | **no** (no hay pulsación larga); la lupa hace lo mismo | — |
-| Lupa: buscar en la conversación | Search | **a medias**: abre el panel con su buscador encendido; busca en el proyecto pero lista resultados en vez de filtrar las burbujas | `Zona::Buscar`, l. 725 |
+| Lupa: buscar en la conversación | Search | **sí**: filtra las burbujas; con la lupa encendida salen debajo los chips de las etiquetas que de verdad hay puestas, y pulsar uno filtra por ese emoji (pulsarlo otra vez lo quita). Apagar la lupa se lleva las dos cosas, al revés que el móvil, que deja el filtro de emoji puesto sin enseñarlo | `Zona::Buscar` y `Zona::Chip`, `chips_de`, `pixpin_ui::chat::fila_de_chips` |
 | ⋮ Biblioteca de audio (solo general) | LibraryMusic | **aviso** | `menu_de_cabecera`, l. 6758 |
 | ⋮ Conversaciones de proyectos (solo general) | — | **a medias**: en Windows son la lista de la izquierda; enfoca su buscador y lo dice | l. 660 |
 | ⋮ Proyectos | — | **a medias**: igual que la anterior | l. 660 |
@@ -117,7 +117,7 @@ por `OPEN_IN_NEW`; los iconos de Excalidraw del menú del clip por los de Materi
 | Copiar | ContentCopy | **sí** (portapapeles) | l. 7053 |
 | Fijar arriba / Quitar de arriba | — (el móvil no lleva icono) | **sí**: reescribe `fijado`; chincheta junto a la hora; barra del fijado, que al pulsarla lleva al mensaje | l. 7062 |
 | Compartir | IosShare | **a medias**: no hay hoja de compartir en Windows; deja el fichero (o el texto) en el portapapeles y lo dice | l. 7071 |
-| Abrir con otra app | Launch | **a medias**: abre con la aplicación de Windows por omisión (no el diálogo «Abrir con») | l. 7084 |
+| Abrir con otra app | Launch | **a medias**: abre con la aplicación de Windows por omisión (no el diálogo «Abrir con»). Delante va **Abrir aquí**, que solo sale si el visor de PixPin sabe leer ese archivo y lo abre en su propia ventana | `Accion::AbrirAqui` y `Accion::AbrirCon`, `visor::se_abre` |
 | Aligerar el PDF (solo PDF) | Compress | **aviso** | — |
 | Cambiar el nombre (lienzo) | Edit | **sí**: se escribe en la propia fila, Entrar guarda, Escape deja como estaba (solo el nombre del mensaje, no el de la hoja del proyecto) | l. 7100, `guardar_nombre_de_mensaje` l. 7544 |
 | Sacar a la pantalla | OpenInNew | **sí**: manda el fichero a la ventana principal, que lo hace pin (imagen, vídeo o ficha); sin fichero, aviso | l. 7093 |
