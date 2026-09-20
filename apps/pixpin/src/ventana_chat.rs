@@ -3675,6 +3675,177 @@ fn tocar_la_burbuja(
     }
 }
 
+// --- Unir al proyecto y volver a anadir -----------------------------------
+//
+// En el movil, lo que se guardo en la conversacion de una obra acaba siendo
+// parte de la obra: una foto es una hoja, una nota es una nota y el PDF del
+// cliente es el documento. `UnirAlProyecto.unir` crea una `Hoja` en el
+// `proyecto.json` con `deMensaje` apuntando al mensaje, y le pone `unido` al
+// mensaje para no ofrecerlo dos veces.
+//
+// Aqui hay una diferencia que AHORRA trabajo: el movil COPIA el fichero,
+// porque su chat y sus proyectos viven en sitios distintos y borrar el
+// mensaje dejaria al proyecto apuntando a lo que ya no esta. En Windows el
+// chat de un proyecto y el proyecto SON la misma carpeta (`proyectos/<id>/`),
+// asi que la hoja apunta a lo que ya esta ahi y no se copia nada.
+
+/// Si un mensaje puede convertirse en una hoja del proyecto.
+///
+/// Las mismas clases que el movil: fotos, dibujos, notas y documentos. Una
+/// nota de voz o una tabla no son una hoja de un plano.
+fn se_puede_unir(m: &pixpin_proyecto::cuaderno::Mensaje) -> bool {
+    use pixpin_proyecto::cuaderno::Clase;
+    match m.clase.as_ref() {
+        Some(Clase::Imagen) | Some(Clase::Dibujo) | Some(Clase::Pagina) => true,
+        Some(Clase::Nota) => !m.texto.trim().is_empty(),
+        Some(Clase::Archivo) => m.nombre.to_lowercase().ends_with(".pdf"),
+        _ => false,
+    }
+}
+
+/// Si el mensaje dice ya ser una hoja de su proyecto (`unido` del movil).
+///
+/// Vive en `resto` porque el `Mensaje` de aqui no declara ese campo: lo que
+/// el movil anade se guarda tal cual y se devuelve tal cual.
+fn ya_esta_unido(m: &pixpin_proyecto::cuaderno::Mensaje) -> bool {
+    m.resto.get("unido").and_then(|v| v.as_bool()) == Some(true)
+}
+
+/// El `proyecto.json` de un proyecto, si lo tiene. Uno nacido aqui no lo
+/// tiene todavia, y eso no es un error: se empieza uno vacio.
+fn leer_proyecto_json(carpeta: &std::path::Path) -> pixpin_proyecto::Proyecto {
+    std::fs::read_to_string(carpeta.join("proyecto.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+/// Lo escribe entero, primero al lado y luego de un tiron: un corte a mitad
+/// de escribir no puede dejar el proyecto sin sus hojas.
+fn guardar_proyecto_json(
+    carpeta: &std::path::Path,
+    p: &pixpin_proyecto::Proyecto,
+) -> std::io::Result<()> {
+    let texto = serde_json::to_string(p).map_err(std::io::Error::other)?;
+    std::fs::create_dir_all(carpeta)?;
+    let temporal = carpeta.join("proyecto.json.tmp");
+    std::fs::write(&temporal, texto)?;
+    std::fs::rename(&temporal, carpeta.join("proyecto.json"))
+}
+
+/// La hoja que le corresponde a un mensaje, con su vinculo `deMensaje`.
+fn hoja_de_mensaje(
+    m: &pixpin_proyecto::cuaderno::Mensaje,
+    textos: &Catalogo,
+) -> pixpin_proyecto::Hoja {
+    use pixpin_proyecto::cuaderno::Clase;
+    let mut hoja = pixpin_proyecto::Hoja {
+        // El id de la hoja es el del mensaje: son la misma cosa, y asi
+        // reconocerla luego no depende de buscar por `deMensaje`.
+        id: m.id.clone(),
+        nombre: nombre_de_la_fila(m, textos),
+        dibujo: m.referencia.clone().filter(|r| !r.is_empty()),
+        pagina: m.pagina,
+        ..Default::default()
+    };
+    if m.clase == Some(Clase::Nota) {
+        hoja.nota = Some(m.texto.clone());
+        hoja.dibujo = None;
+    }
+    hoja.uid = Some(m.codigo_unico());
+    hoja.resto
+        .insert("deMensaje".into(), serde_json::Value::String(m.id.clone()));
+    hoja
+}
+
+/// Mete el mensaje en las hojas del proyecto de su propia conversacion.
+///
+/// No hay cuadro de eleccion, como en el movil dentro del chat de un
+/// proyecto: el destino es el proyecto que se esta mirando.
+fn unir_al_proyecto(ubicacion: &Ubicacion, a: &mut Abierto, i: usize, textos: &Catalogo) -> Efecto {
+    let Some(m) = a.mensajes.get(i).cloned() else {
+        return Efecto::Nada;
+    };
+    if !se_puede_unir(&m) {
+        return Efecto::Aviso(textos.t("chat-unir-nada"));
+    }
+    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
+    let mut proyecto = leer_proyecto_json(&carpeta);
+    if proyecto.id.is_empty() {
+        proyecto.id = a.ficha.id.clone();
+        proyecto.nombre = a.ficha.nombre.clone();
+    }
+    let hoja = hoja_de_mensaje(&m, textos);
+    // Volver a unir lo mismo no da la hoja dos veces: se pone al dia la que
+    // hay. Es lo que hace «Volver a anadir» cuando la hoja sigue estando.
+    match proyecto.hojas.iter_mut().find(|h| h.id == hoja.id) {
+        Some(vieja) => *vieja = hoja,
+        None => proyecto.hojas.push(hoja),
+    }
+    proyecto.tocado = pixpin_shell::entorno::ahora_utc_ms();
+    // Y deja de estar entre las borradas, si alguien la quito antes.
+    if let Some(borradas) = proyecto
+        .resto
+        .get_mut("borradas")
+        .and_then(|v| v.as_object_mut())
+    {
+        borradas.remove(&m.id);
+    }
+    if let Err(e) = guardar_proyecto_json(&carpeta, &proyecto) {
+        tracing::warn!(?e, "no se pudo guardar el proyecto al unir");
+        return Efecto::Aviso(textos.t("chat-devolver-no"));
+    }
+    // El mensaje se marca para que el menu no vuelva a ofrecer unirlo.
+    let mut puesto = m.clone();
+    puesto
+        .resto
+        .insert("unido".into(), serde_json::Value::Bool(true));
+    match pixpin_proyecto::cuaderno::reemplazar(&carpeta, &puesto) {
+        Ok(_) => a.mensajes[i] = puesto,
+        Err(e) => tracing::warn!(?e, "no se pudo marcar el mensaje como unido"),
+    }
+    a.colocado.borrow_mut().ancho = 0;
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("nombre", a.ficha.nombre.clone());
+    Efecto::Aviso(textos.t_args("chat-unido-a", &args))
+}
+
+/// Devuelve al proyecto la hoja que se quito de el, con lo que se hizo
+/// mientras estuvo fuera. Es unir otra vez, con otro aviso: el mensaje ya
+/// dice `unido`, y lo que falta es la hoja.
+fn devolver_al_proyecto(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    i: usize,
+    textos: &Catalogo,
+) -> Efecto {
+    match unir_al_proyecto(ubicacion, a, i, textos) {
+        Efecto::Aviso(_) if esta_en_las_hojas(a, i) => {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("nombre", a.ficha.nombre.clone());
+            Efecto::Aviso(textos.t_args("chat-devuelto", &args))
+        }
+        Efecto::Aviso(_) => Efecto::Aviso(textos.t("chat-devolver-no")),
+        otro => otro,
+    }
+}
+
+/// Si el mensaje esta AHORA MISMO entre las hojas del proyecto.
+///
+/// Se mira en el disco y no en algo guardado: la hoja puede haberla quitado
+/// el movil en la ultima sincronizacion, y fiarse de `unido` diria que si
+/// cuando ya no esta. Es lo que el movil llama `sePuedeDevolver`.
+fn esta_en_las_hojas(a: &Abierto, i: usize) -> bool {
+    let Some(m) = a.mensajes.get(i) else {
+        return false;
+    };
+    let carpeta = pixpin_proyecto::almacen::carpeta(&a.raiz, &a.ficha.id);
+    leer_proyecto_json(&carpeta)
+        .hojas
+        .iter()
+        .any(|h| h.id == m.id || h.resto.get("deMensaje").and_then(|v| v.as_str()) == Some(&m.id))
+}
+
 /// Lo que hay que moverse para que el gesto deje de ser un toque y pase a
 /// ser un arrastre. Sin este margen, un temblor de la mano al pulsar dejaria
 /// la burbuja sin abrir.
@@ -7572,6 +7743,10 @@ enum Accion {
     Reenviar(Vec<usize>),
     ReenviarA(Vec<usize>, String),
     Elegir(usize),
+    /// Meter el mensaje en las hojas del proyecto, y devolverle la que se le
+    /// quito (`UnirAlProyecto` del movil).
+    Unir(usize),
+    Devolver(usize),
     Borrar(Vec<usize>),
     FotoEnLienzo(usize),
     FotoAqui(usize),
@@ -7958,7 +8133,22 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
         textos.t("chat-reenviar"),
         Accion::Reenviar(vec![i]),
     ));
-    if a.ficha.es_guardados() {
+    // Unir al proyecto, o devolverle la hoja que se le quito. Se mira en el
+    // disco al ABRIR el menu, como en el movil: la hoja puede haberla quitado
+    // la ultima sincronizacion, y fiarse de `unido` diria que sigue ahi.
+    //
+    // En «Mensajes guardados» no se ofrece: alli habria que elegir a que
+    // proyecto va y copiarle el fichero, que es lo que ya hace «Reenviar».
+    if !a.ficha.es_guardados() && se_puede_unir(m) {
+        if !esta_en_las_hojas(a, i) {
+            let (clave, accion) = if ya_esta_unido(m) {
+                ("chat-devolver", Accion::Devolver(i))
+            } else {
+                ("chat-unir", Accion::Unir(i))
+            };
+            v.push(entrada(Some(&mi::LIBRARY_ADD), textos.t(clave), accion));
+        }
+    } else if a.ficha.es_guardados() {
         v.push(entrada(
             Some(&mi::LIBRARY_ADD),
             textos.t("chat-unir"),
@@ -8131,6 +8321,8 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             }
             Efecto::Nada
         }
+        Accion::Unir(i) => unir_al_proyecto(cx.ubicacion, a, i, cx.textos),
+        Accion::Devolver(i) => devolver_al_proyecto(cx.ubicacion, a, i, cx.textos),
         Accion::Reenviar(indices) => {
             let v = menu_de_proyectos(cx.fichas, &a.ficha.id, |id| {
                 Accion::ReenviarA(indices.clone(), id)
@@ -8441,6 +8633,98 @@ fn papel_de(cual: usize, claro: bool) -> (Color, Color) {
         (hex(f.0), hex(f.1))
     } else {
         (hex(f.2), hex(f.3))
+    }
+}
+
+#[cfg(test)]
+mod pruebas_unir {
+    use super::*;
+    use pixpin_proyecto::cuaderno::{Clase, Mensaje};
+
+    fn mensaje(clase: Clase, nombre: &str, texto: &str) -> Mensaje {
+        Mensaje {
+            id: "m1".into(),
+            clase: Some(clase),
+            nombre: nombre.into(),
+            texto: texto.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn solo_se_unen_fotos_dibujos_notas_y_pdf() {
+        assert!(se_puede_unir(&mensaje(Clase::Imagen, "obra.jpg", "")));
+        assert!(se_puede_unir(&mensaje(Clase::Dibujo, "Lienzo", "")));
+        assert!(se_puede_unir(&mensaje(Clase::Pagina, "Plano", "")));
+        assert!(se_puede_unir(&mensaje(Clase::Nota, "", "hay que picar")));
+        assert!(se_puede_unir(&mensaje(Clase::Archivo, "Contrato.PDF", "")));
+        // Casos negativos, los que el movil deja fuera: una nota de voz, una
+        // tabla, un acceso a otro proyecto y un archivo que no es un PDF. Y
+        // una nota en blanco no es una hoja, es nada.
+        assert!(!se_puede_unir(&mensaje(Clase::Voz, "voz_1.m4a", "")));
+        assert!(!se_puede_unir(&mensaje(Clase::MiniApp, "Tabla", "")));
+        assert!(!se_puede_unir(&mensaje(Clase::Proyecto, "Casa", "")));
+        assert!(!se_puede_unir(&mensaje(Clase::Archivo, "notas.txt", "")));
+        assert!(!se_puede_unir(&mensaje(Clase::Nota, "", "   ")));
+    }
+
+    #[test]
+    fn la_hoja_apunta_al_mensaje_del_que_salio() {
+        let textos = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let mut m = mensaje(Clase::Dibujo, "Planta baja", "");
+        m.referencia = Some("dib-7".into());
+        let h = hoja_de_mensaje(&m, &textos);
+        assert_eq!(h.id, "m1");
+        assert_eq!(h.dibujo.as_deref(), Some("dib-7"));
+        assert_eq!(
+            h.resto.get("deMensaje").and_then(|v| v.as_str()),
+            Some("m1"),
+            "sin el vinculo, el proyecto no sabe de donde vino la hoja"
+        );
+        // Una nota lleva su texto y NO un dibujo: los dos a la vez darian una
+        // hoja que es dos cosas.
+        let h = hoja_de_mensaje(&mensaje(Clase::Nota, "", "hay que picar"), &textos);
+        assert_eq!(h.nota.as_deref(), Some("hay que picar"));
+        assert!(h.dibujo.is_none());
+    }
+
+    #[test]
+    fn unir_dos_veces_lo_mismo_no_deja_la_hoja_repetida() {
+        let c = std::env::temp_dir().join(format!("pixpin-unir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&c);
+        std::fs::create_dir_all(&c).unwrap();
+        let mut p = pixpin_proyecto::Proyecto {
+            id: "p1".into(),
+            nombre: "Casa".into(),
+            ..Default::default()
+        };
+        let textos = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let m = mensaje(Clase::Nota, "", "hay que picar");
+        for _ in 0..2 {
+            let hoja = hoja_de_mensaje(&m, &textos);
+            match p.hojas.iter_mut().find(|h| h.id == hoja.id) {
+                Some(vieja) => *vieja = hoja,
+                None => p.hojas.push(hoja),
+            }
+        }
+        assert_eq!(p.hojas.len(), 1);
+        // Y lo escrito se vuelve a leer igual, con su vinculo dentro.
+        guardar_proyecto_json(&c, &p).unwrap();
+        let vuelta = leer_proyecto_json(&c);
+        assert_eq!(vuelta.hojas.len(), 1);
+        assert_eq!(
+            vuelta.hojas[0]
+                .resto
+                .get("deMensaje")
+                .and_then(|v| v.as_str()),
+            Some("m1")
+        );
+        // Caso negativo: una carpeta sin `proyecto.json` no es un error, es un
+        // proyecto sin hojas todavia.
+        let vacia = c.join("otra");
+        std::fs::create_dir_all(&vacia).unwrap();
+        assert!(leer_proyecto_json(&vacia).hojas.is_empty());
+        let _ = std::fs::remove_dir_all(&c);
     }
 }
 
