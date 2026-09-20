@@ -390,6 +390,96 @@ fn tomar_ir_a() -> Option<(String, Option<String>)> {
     IR_A.lock().ok().and_then(|mut g| g.take())
 }
 
+/// Alguien cambio por fuera lo que el chat tiene a la vista: hay que releer.
+///
+/// Lo pone la sincronizacion con el movil, que escribe mensajes, proyectos y
+/// ficheros DEBAJO de la ventana abierta. Es un booleano y no una lista de lo
+/// que cambio a proposito: releer el cuaderno de UN proyecto cuesta leer un
+/// fichero, y afinar mas obligaria a que quien avisa supiera que hay abierto.
+static REFRESCAR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Avisa al chat de que lo guardado cambio por fuera (una sincronizacion).
+///
+/// No hace falta que la ventana este abierta: si no lo esta, no hay nada que
+/// releer y la marca se queda puesta sin molestar a nadie. Si lo esta, se la
+/// despierta para que lo haga en su siguiente vuelta y no dentro de un rato.
+// Todavia no la llama nadie: quien sincroniza vive en ficheros de otro
+// agente (`sincronizar.rs`, `recibir.rs`, `pixpin-sincro`) y la engancha ahi.
+#[allow(dead_code)]
+pub(crate) fn refrescar() {
+    REFRESCAR.store(true, std::sync::atomic::Ordering::SeqCst);
+    let ya = ABIERTA.load(std::sync::atomic::Ordering::SeqCst);
+    if ya > 0 {
+        pixpin_shell::overlay::despertar(ya);
+    }
+}
+
+fn tomar_refrescar() -> bool {
+    REFRESCAR.swap(false, std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Relee el cuaderno del proyecto abierto SIN perder lo que el usuario tenga
+/// a medias: el borrador escrito, la seleccion, a quien contesta, la
+/// busqueda, el panel y la posicion del historial.
+///
+/// Lo que va por POSICION (la hoja abierta, el lienzo vivo, a donde se iba,
+/// lo resaltado, el nombre que se estaba escribiendo) se vuelve a buscar por
+/// el `id` del mensaje: una sincronizacion puede meter mensajes en medio, y
+/// quedarse con el numero de antes apuntaria a otro.
+///
+/// **Con una hoja o un lienzo vivo abiertos no relee**: lo que el usuario
+/// esta escribiendo manda, y pisarlo con lo que acaba de llegar seria perder
+/// trabajo suyo. Devuelve `false` y quien llama vuelve a intentarlo cuando
+/// se cierren.
+fn releer_lo_abierto(ubicacion: &Ubicacion, a: &mut Abierto) -> bool {
+    if a.hoja.is_some() || a.vivo.is_some() {
+        return false;
+    }
+    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
+    let Ok(cuaderno) = pixpin_proyecto::cuaderno::Cuaderno::leer_de(&carpeta) else {
+        return true;
+    };
+    // Quien iba por posicion se apunta por id ANTES de cambiar la lista.
+    let id_de = |i: Option<usize>| i.and_then(|i| a.mensajes.get(i)).map(|m| m.id.clone());
+    let id_ir_a = id_de(a.ir_a);
+    let id_resaltado = id_de(a.resaltado.map(|(i, _)| i));
+    let renombrando = a
+        .renombrando_mensaje
+        .as_ref()
+        .and_then(|(i, escrito)| Some((a.mensajes.get(*i)?.id.clone(), escrito.clone())));
+
+    let mut mensajes = cuaderno.mensajes;
+    mensajes.sort_by_key(|m| m.cuando);
+    a.vistas = mensajes
+        .iter()
+        .map(|m| leer_vista(ubicacion, &a.ficha.id, m))
+        .collect();
+    a.fijado = mensajes.iter().rposition(|m| m.fijado);
+    a.rotas = cuaderno.lineas_rotas;
+    a.mensajes = mensajes;
+
+    let donde = |id: &str| a.mensajes.iter().position(|m| m.id == id);
+    a.ir_a = id_ir_a.as_deref().and_then(donde);
+    a.resaltado = id_resaltado
+        .as_deref()
+        .and_then(donde)
+        .map(|i| (i, std::time::Instant::now()));
+    a.renombrando_mensaje = renombrando.and_then(|(id, escrito)| Some((donde(&id)?, escrito)));
+    // Lo marcado y a quien se contesta van por id desde siempre: lo unico que
+    // hay que hacer es soltar lo que ya no existe, que si no la barra de
+    // arriba contaria mensajes borrados.
+    a.marcados.retain(|id| donde(id).is_some());
+    if a.respondiendo
+        .as_deref()
+        .is_some_and(|id| donde(id).is_none())
+    {
+        a.respondiendo = None;
+    }
+    // Y a medir de nuevo: el historial tiene otras burbujas.
+    a.colocado.borrow_mut().ancho = 0;
+    true
+}
+
 /// Donde esta un mensaje por su codigo unico, que es lo que el universo
 /// sabe de el.
 pub(crate) fn indice_de_codigo(
@@ -536,6 +626,10 @@ pub fn abrir(
     // La fecha del indice la ultima vez que se leyo, para enterarse de lo
     // que llegue por fuera (del movil, de otra ventana).
     let mut sello_indice: Option<std::time::SystemTime> = None;
+    // Hay que releer el cuaderno del proyecto abierto, pero puede que todavia
+    // no se pueda (ver `releer_lo_abierto`): se guarda la deuda en vez de
+    // perderla, y se salda en cuanto la hoja o el lienzo se cierren.
+    let mut pendiente_de_releer = false;
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
@@ -1869,6 +1963,28 @@ pub fn abrir(
                 hay_que_pintar = true;
             }
             sello_indice = Some(ahora_sello);
+            // Si el indice cambio, el cuaderno del proyecto abierto pudo
+            // cambiar con el: lo que llega del movil entra por los dos sitios.
+            pendiente_de_releer = true;
+        }
+
+        // Lo que llego por fuera (una sincronizacion con el movil) se relee
+        // sin tirar lo que el usuario tenga a medias. Con una hoja o un
+        // lienzo abiertos se espera: el que esta escribiendo manda.
+        if tomar_refrescar() {
+            pendiente_de_releer = true;
+        }
+        if pendiente_de_releer
+            && let Some(a) = abierto.as_mut()
+            && releer_lo_abierto(ubicacion, a)
+        {
+            pendiente_de_releer = false;
+            hay_que_pintar = true;
+        }
+        if pendiente_de_releer && abierto.is_none() {
+            // Sin proyecto abierto no hay cuaderno que releer; la lista ya se
+            // puso al dia sola unas lineas mas arriba.
+            pendiente_de_releer = false;
         }
 
         // Lo que pidio el universo (Ctrl+clic en una galaxia o una nota):
@@ -3195,6 +3311,31 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                 Ojeada::Lienzo(l) => {
                     p.rellenar_redondeado(hoja, 6.0 * e, tema.papel);
                     pintar_lienzo(p, l, hoja, Some(previas));
+                    // El numero, encima de la hoja: adjuntando varias paginas
+                    // del mismo plano las miniaturas se parecen entre si y el
+                    // pie hay que leerlo; en la esquina se ve de un golpe.
+                    if m.clase == Some(pixpin_proyecto::cuaderno::Clase::Pagina)
+                        && let Some(pagina) = m.pagina
+                    {
+                        let mut args = fluent_bundle::FluentArgs::new();
+                        args.set("n", pagina + 1);
+                        let rotulo = textos.t_args("chat-pagina-n", &args);
+                        let (w, h) = p.medir_texto(&rotulo, HORA_TAM * e);
+                        let chapa = RectF {
+                            x: hoja.x + 6.0 * e,
+                            y: hoja.y + 6.0 * e,
+                            ancho: w + 12.0 * e,
+                            alto: h + 4.0 * e,
+                        };
+                        p.rellenar_redondeado(chapa, 8.0 * e, con_alfa(hex(0x000000), 0.6));
+                        p.texto(
+                            &rotulo,
+                            chapa.x + 6.0 * e,
+                            chapa.y + 2.0 * e,
+                            HORA_TAM * e,
+                            hex(0xffffff),
+                        );
+                    }
                 }
                 Ojeada::Tabla(t) => {
                     p.rellenar_redondeado(hoja, 6.0 * e, tema.papel);
@@ -3238,36 +3379,44 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
             p.rellenar_redondeado(circulo, circulo.ancho / 2.0, tema.circulo);
             icono_centrado(p, f.icono, fila.circulo, 24.0 * e, tema.circulo_icono);
             punto_de_proyecto(p, rf(fila.punto), !en_guardados);
-            let nombre = match &a.renombrando_mensaje {
-                Some((n, escrito)) if *n == i => format!("{escrito}|"),
-                _ => f.nombre.clone(),
-            };
-            let (_, alto_nombre) = p.medir_texto(&nombre, FICHA_NOMBRE_TAM * e);
-            let (_, alto_detalle) = if f.detalle.is_empty() {
-                (0.0, 0.0)
+            // Una nota de voz ensena su ONDA en el sitio del nombre, dibujada
+            // de los picos que el movil anoto al grabarla. Sin picos no se
+            // inventa ninguna: una onda de mentira mentiria sobre lo que se
+            // dijo, y se queda la fila de siempre con el nombre y el tiempo.
+            if !f.onda.is_empty() {
+                pintar_onda(p, &f.onda, fila.texto, tema, &f.detalle, color_hora, e);
             } else {
-                p.medir_texto(&f.detalle, FICHA_DETALLE_TAM * e)
-            };
-            let alto_todo = alto_nombre + alto_detalle;
-            let mut ty = fila.circulo.y as f32 + (fila.circulo.alto as f32 - alto_todo) / 2.0;
-            p.texto_linea(
-                &nombre,
-                fila.texto.x as f32,
-                ty,
-                FICHA_NOMBRE_TAM * e,
-                fila.texto.ancho as f32 + 1.0,
-                color_texto,
-            );
-            ty += alto_nombre;
-            if !f.detalle.is_empty() {
+                let nombre = match &a.renombrando_mensaje {
+                    Some((n, escrito)) if *n == i => format!("{escrito}|"),
+                    _ => f.nombre.clone(),
+                };
+                let (_, alto_nombre) = p.medir_texto(&nombre, FICHA_NOMBRE_TAM * e);
+                let (_, alto_detalle) = if f.detalle.is_empty() {
+                    (0.0, 0.0)
+                } else {
+                    p.medir_texto(&f.detalle, FICHA_DETALLE_TAM * e)
+                };
+                let alto_todo = alto_nombre + alto_detalle;
+                let mut ty = fila.circulo.y as f32 + (fila.circulo.alto as f32 - alto_todo) / 2.0;
                 p.texto_linea(
-                    &f.detalle,
+                    &nombre,
                     fila.texto.x as f32,
                     ty,
-                    FICHA_DETALLE_TAM * e,
+                    FICHA_NOMBRE_TAM * e,
                     fila.texto.ancho as f32 + 1.0,
-                    con_alfa(color_hora, 0.8),
+                    color_texto,
                 );
+                ty += alto_nombre;
+                if !f.detalle.is_empty() {
+                    p.texto_linea(
+                        &f.detalle,
+                        fila.texto.x as f32,
+                        ty,
+                        FICHA_DETALLE_TAM * e,
+                        fila.texto.ancho as f32 + 1.0,
+                        con_alfa(color_hora, 0.8),
+                    );
+                }
             }
             // La pastilla: el color de la hora al 15,6 %, esquinas de 8 y el
             // icono de «abrir fuera» en ese mismo color.
@@ -3349,6 +3498,61 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
         pintar_flecha_de_comentar(p, tema, burbuja, corrida, escala, e);
     }
     p.soltar_recorte();
+}
+
+/// La onda de una nota de voz, en el sitio del nombre de su fila: las barras
+/// arriba y la duracion debajo, como en el movil.
+///
+/// Se pinta barra a barra y no de un trazado cacheado como en el movil: aqui
+/// no se reproduce nada, asi que no hay un borde de avance que pudiera saltar
+/// de tres en tres; y cincuenta rectangulos por nota de voz a la vista no se
+/// notan al lado de una foto.
+#[allow(clippy::too_many_arguments)] // las barras, donde van, los dos colores y la escala
+fn pintar_onda(
+    p: &Pintor,
+    onda: &[f32],
+    sitio: Rect,
+    tema: &Tema,
+    duracion: &str,
+    color_duracion: Color,
+    e: f32,
+) {
+    let paso = pixpin_ui::chat::ONDA_PASO as f32 * e;
+    let grueso = (pixpin_ui::chat::ONDA_GRUESO as f32 * e).max(1.0);
+    let alto_max = pixpin_ui::chat::ONDA_ALTO as f32 * e;
+    let (_, alto_duracion) = p.medir_texto(duracion, FICHA_DETALLE_TAM * e);
+    // La onda y la duracion, juntas y centradas en la fila de 44.
+    let alto_todo = alto_max + alto_duracion;
+    let arriba = sitio.y as f32 + (sitio.alto as f32 - alto_todo) / 2.0;
+    let eje = arriba + alto_max / 2.0;
+    let tope = sitio.derecha() as f32;
+    for (n, valor) in onda.iter().enumerate() {
+        let x = sitio.x as f32 + n as f32 * paso;
+        if x + grueso > tope {
+            break;
+        }
+        let medio = (alto_max * valor.clamp(0.0, 1.0) / 2.0).max(0.5);
+        p.rellenar_redondeado(
+            RectF {
+                x,
+                y: eje - medio,
+                ancho: grueso,
+                alto: medio * 2.0,
+            },
+            grueso / 2.0,
+            tema.enviar,
+        );
+    }
+    if !duracion.is_empty() {
+        p.texto_linea(
+            duracion,
+            sitio.x as f32,
+            arriba + alto_max,
+            FICHA_DETALLE_TAM * e,
+            sitio.ancho as f32 + 1.0,
+            con_alfa(color_duracion, 0.8),
+        );
+    }
 }
 
 /// La flecha que asoma a la IZQUIERDA de la burbuja mientras se arrastra a la
@@ -3540,11 +3744,27 @@ fn medir_mensaje(
     let fila = fila_de(m, es_foto, textos).map(|(icono, nombre, detalle)| {
         let (wn, _) = p.medir_texto(&nombre, FICHA_NOMBRE_TAM * e);
         let (wd, _) = p.medir_texto(&detalle, FICHA_DETALLE_TAM * e);
+        let onda = if m.clase == Some(pixpin_proyecto::cuaderno::Clase::Voz) {
+            pixpin_ui::chat::barras_de_onda(&picos_de_voz(m))
+        } else {
+            Vec::new()
+        };
+        // Con onda el sitio lo pide ella: la onda arriba y la duracion
+        // debajo, como en el movil. Sin ella manda el texto, como en
+        // cualquier otra fila.
+        let ancho_texto = if onda.is_empty() {
+            wn.max(wd)
+        } else {
+            let ancho_onda =
+                pixpin_ui::chat::ancho_de_la_onda(onda.len(), (e * 100.0).round() as u32) as f32;
+            ancho_onda.max(wd)
+        };
         FilaDeArchivo {
             icono,
             nombre,
             detalle,
-            ancho_texto: wn.max(wd),
+            ancho_texto,
+            onda,
         }
     });
     let texto = texto_de(m, vista.is_some() || fila.is_some(), textos);
@@ -5030,8 +5250,24 @@ fn leer_vista(
         }
         return Some(Ojeada::Tabla(Box::new(tabla)));
     }
-    if m.clase != Some(Clase::Dibujo) {
+    if !matches!(m.clase, Some(Clase::Dibujo) | Some(Clase::Pagina)) {
         return None;
+    }
+    // **Una pagina adjunta se ve, no se lee.** Como fila decia «documento.pdf
+    // · pag. 7», que es justo lo que uno no recuerda: lo que se recuerda es
+    // lo que habia senalado en ella. Se ensena la hoja con lo anotado encima.
+    //
+    // Una pagina sin anotaciones no tiene lienzo que leer, y aun asi tiene
+    // que verse: su vista es el fondo solo.
+    let carpeta_pagina = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), proyecto);
+    if m.clase == Some(Clase::Pagina) && m.referencia.as_deref().is_none_or(|r| r.is_empty()) {
+        let pagina = m.pagina?;
+        let (ruta, w, h) = pagina_del_pdf(&carpeta_pagina, pagina)?;
+        return Some(Ojeada::Lienzo(LienzoVisto {
+            ordenes: Vec::new(),
+            caja: (0.0, 0.0, w, h),
+            fondo: Some((ruta, (0.0, 0.0, w, h))),
+        }));
     }
     // `referencia` es el id del dibujo, no un fichero: asi lo escribe
     // Android, y por eso no se usa `ruta`.
@@ -6773,6 +7009,23 @@ struct FilaDeArchivo {
     nombre: String,
     detalle: String,
     ancho_texto: f32,
+    /// La onda de una nota de voz, si el mensaje trae los picos del
+    /// microfono. Ocupa el sitio del nombre: en una nota de voz el nombre es
+    /// «voz_1758..m4a», que no le dice nada a nadie, y la onda si.
+    onda: Vec<f32>,
+}
+
+/// Los picos del microfono que el movil anoto al grabar la nota.
+///
+/// Viven en `resto` y no en un campo propio porque el `Mensaje` de aqui no
+/// los declara: `resto` guarda tal cual lo que el movil anade, y eso es
+/// justo lo que hace falta para no perderlos al reescribir el cuaderno.
+fn picos_de_voz(m: &pixpin_proyecto::cuaderno::Mensaje) -> Vec<i64> {
+    m.resto
+        .get("picos")
+        .and_then(|v| v.as_array())
+        .map(|v| v.iter().filter_map(|n| n.as_i64()).collect())
+        .unwrap_or_default()
 }
 
 /// La tarjeta «Viene de» ya medida.
