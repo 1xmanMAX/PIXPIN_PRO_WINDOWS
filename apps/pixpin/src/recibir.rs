@@ -484,6 +484,12 @@ pub(crate) fn guardar_lo_recibido(
             }
         }
     }
+    // Lo que acaba de entrar en el almacen y en el cuaderno tiene que verse
+    // en la ventana de chat que ya estuviera abierta: la escritura ocurre
+    // DEBAJO de ella y sin este aviso no sale hasta cerrarla y reabrirla.
+    if !guardados.is_empty() {
+        crate::ventana_chat::refrescar();
+    }
     guardados
 }
 

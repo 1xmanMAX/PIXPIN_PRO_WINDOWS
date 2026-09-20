@@ -1145,6 +1145,11 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
     let disco = DiscoPc::nuevo(raiz).con_avisos(move |c| {
         if c == pixpin_sincro::disco::Cambio::Identidad {
             presencia::difundir(presencia::Novedad::Identidad);
+        } else {
+            // Mensajes, proyectos o archivos: lo que el movil acaba de
+            // escribir DEBAJO de una ventana de chat abierta. Sin avisarla,
+            // lo recien llegado no sale hasta cerrarla y volver a abrirla.
+            crate::ventana_chat::refrescar();
         }
     });
     let r = Respondedor {
@@ -1500,7 +1505,9 @@ fn una_vuelta(
         "{rotulo}Conectando con {nombre}…"
     ))));
     let flujo = conectar(host, puerto)?;
-    let disco = DiscoPc::nuevo(raiz);
+    // La vuelta que se pide desde aqui tambien escribe lo del otro aparato,
+    // asi que el chat abierto tiene que enterarse igual que en `responder`.
+    let disco = DiscoPc::nuevo(raiz).con_avisos(|_| crate::ventana_chat::refrescar());
     let mut s = Sesion::conectar(
         flujo,
         &disco,

@@ -403,9 +403,9 @@ static REFRESCAR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool:
 /// No hace falta que la ventana este abierta: si no lo esta, no hay nada que
 /// releer y la marca se queda puesta sin molestar a nadie. Si lo esta, se la
 /// despierta para que lo haga en su siguiente vuelta y no dentro de un rato.
-// Todavia no la llama nadie: quien sincroniza vive en ficheros de otro
-// agente (`sincronizar.rs`, `recibir.rs`, `pixpin-sincro`) y la engancha ahi.
-#[allow(dead_code)]
+/// La llaman los dos sitios por los que entra lo del movil: la vuelta de
+/// `sincronizar.rs` (de los dos lados: la que se pide aqui y la que pide el
+/// otro aparato) y el `.pixpin` que se recibe en `recibir.rs`.
 pub(crate) fn refrescar() {
     REFRESCAR.store(true, std::sync::atomic::Ordering::SeqCst);
     let ya = ABIERTA.load(std::sync::atomic::Ordering::SeqCst);
@@ -7733,6 +7733,8 @@ enum Accion {
     Fijar(usize),
     Compartir(usize),
     AbrirCon(usize),
+    /// Abrirlo en el visor de PixPin, sin salir a otra aplicacion.
+    AbrirAqui(usize),
     Renombrar(usize),
     Pinear(usize),
     Rescatar(usize),
@@ -8043,6 +8045,20 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
     ));
     let ruta = ruta_del_mensaje(&a.raiz, &a.ficha.id, m).filter(|r| r.is_file());
     if let Some(ruta) = &ruta {
+        // «Abrir aqui» va DELANTE de «Abrir con otra app» y solo cuando el
+        // visor sabe leer eso: ofrecerse para un `.zip` abriria una ventana
+        // en blanco, que es peor que mandarlo a Windows.
+        if ruta
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(crate::visor::se_abre)
+        {
+            v.push(entrada(
+                Some(&mi::MENU_BOOK),
+                textos.t("chat-abrir-aqui"),
+                Accion::AbrirAqui(i),
+            ));
+        }
         v.push(entrada(
             Some(&mi::LAUNCH),
             textos.t("chat-abrir-con"),
@@ -8276,6 +8292,15 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                 Err(e) => fallo(&e),
             }
         }
+        // En su propio hilo, como el universo: el chat sigue abierto detras
+        // y se puede seguir escribiendo mientras se lee el documento.
+        Accion::AbrirAqui(i) => match ruta_de(a, i) {
+            Some(ruta) => {
+                crate::visor::lanzar(cx.idioma, cx.ubicacion.clone(), &ruta);
+                Efecto::Nada
+            }
+            None => Efecto::Aviso(cx.textos.t("chat-sin-archivo")),
+        },
         Accion::AbrirCon(i) => match ruta_de(a, i) {
             Some(ruta) => match pixpin_shell::abrir::abrir(&ruta) {
                 Ok(()) => Efecto::Nada,

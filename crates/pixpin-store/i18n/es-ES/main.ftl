@@ -612,3 +612,6 @@ lienzo-copiar-estilo = Copiar estilo
 lienzo-copiar-estilo-ayuda = Toma el color, el trazo y el relleno de una figura y pégalos en otras. Solo viaja lo que los dos tipos admiten.
 lienzo-estilo-tomado = Estilo tomado
 lienzo-estilo-sin-tomar = Todavía no has tomado ningún estilo.
+
+# El adjunto que el visor de documentos sabe abrir sin salir de PixPin.
+chat-abrir-aqui = Abrir aquí

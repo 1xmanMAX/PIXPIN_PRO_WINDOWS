@@ -611,3 +611,6 @@ lienzo-copiar-estilo = Copy style
 lienzo-copiar-estilo-ayuda = Take the colour, stroke and fill from one shape and paste them on others. Only what both types accept travels.
 lienzo-estilo-tomado = Style taken
 lienzo-estilo-sin-tomar = You have not taken a style yet.
+
+# The attachment the document viewer can open without leaving PixPin.
+chat-abrir-aqui = Open here
