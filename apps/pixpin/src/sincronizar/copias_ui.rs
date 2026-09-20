@@ -29,7 +29,6 @@ pub(super) enum Toque {
     Volver(usize),
     Confirmar,
     Cancelar,
-    Cerrar,
 }
 
 /// Como acabo una vuelta atras, para decirlo donde estaba la lista.
@@ -97,7 +96,6 @@ pub(super) fn tocar(c: &mut Copias, t: Toque) -> bool {
             // La lista cambia: la vuelta atras dejo antes otra copia.
             c.lista = leer(&c.raiz);
         }
-        Toque::Cerrar => return true,
     }
     false
 }
