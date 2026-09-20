@@ -8864,38 +8864,24 @@ fn pintar_barra_del_reproductor(p: &Pintor, barra: Rect, c: &Pinta, a: &Abierto)
     }
 
     let icono_boton = 20.0 * e;
-    // Los diez segundos van con las flechas corrientes: este juego de iconos
-    // no trae las de «10 s» del movil, y una flecha con un rotulo al lado
-    // ocuparia el hueco del titulo. La pausa se dibuja a mano —dos barras—
-    // porque tampoco hay icono de pausa y «Stop» diria otra cosa.
+    // Los mismos tres iconos que el movil: `replay_10` y `forward_10` llevan
+    // el «10» dibujado dentro, asi que dicen CUANTO se salta sin gastar el
+    // hueco del titulo en un rotulo; y la pausa es el `pause` de Material,
+    // no dos barras a mano que nunca caen igual que el resto.
     for (icono, r, zona) in [
-        (&mi::ARROW_BACK, t.atras, Zona::VozAtras),
-        (&mi::ARROW_FORWARD, t.adelante, Zona::VozAdelante),
+        (&mi::REPLAY_10, t.atras, Zona::VozAtras),
+        (&mi::FORWARD_10, t.adelante, Zona::VozAdelante),
         (&mi::CLOSE, t.cerrar, Zona::VozCerrar),
     ] {
         icono_centrado(p, icono, r, icono_boton, tema.texto);
         a.zonas.borrow_mut().push((r, zona));
     }
-    if estado.sonando {
-        let barra_alto = 14.0 * e;
-        let barra_ancho = 4.0 * e;
-        let centro_x = t.tocar.x as f32 + t.tocar.ancho as f32 / 2.0;
-        let arriba = t.tocar.y as f32 + (t.tocar.alto as f32 - barra_alto) / 2.0;
-        for lado in [-1.0f32, 1.0] {
-            p.rellenar_redondeado(
-                RectF {
-                    x: centro_x + lado * 3.0 * e - if lado < 0.0 { barra_ancho } else { 0.0 },
-                    y: arriba,
-                    ancho: barra_ancho,
-                    alto: barra_alto,
-                },
-                1.0 * e,
-                tema.texto,
-            );
-        }
+    let tocar = if estado.sonando {
+        &mi::PAUSE
     } else {
-        icono_centrado(p, &mi::PLAY_ARROW, t.tocar, icono_boton, tema.texto);
-    }
+        &mi::PLAY_ARROW
+    };
+    icono_centrado(p, tocar, t.tocar, icono_boton, tema.texto);
     a.zonas.borrow_mut().push((t.tocar, Zona::VozTocar));
 
     // La velocidad se escribe, no se dibuja: «1,5×» dice mas que cualquier
