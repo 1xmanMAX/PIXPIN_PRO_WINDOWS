@@ -7175,6 +7175,88 @@ fn terminar_de_grabar(
     Ok(())
 }
 
+/// Por que no se pudo aligerar, dicho en el idioma del usuario.
+///
+/// La razon se traduce **aqui** y no en `pixpin-pdf`: aquel crate no conoce
+/// el catalogo —ni debe—, y sus frases estan pensadas para el registro. Se
+/// traduce del enum, asi que anadir una razon alli deja de compilar esto,
+/// que es justo lo que hay que enterarse.
+fn razon_en_palabras(razon: &pixpin_pdf::aligerar::Razon, textos: &Catalogo) -> String {
+    use pixpin_pdf::aligerar::{Estorbo, Razon};
+    match razon {
+        Razon::NoSeEntiende(e) => textos.t(match e {
+            Estorbo::Cifrado => "pdf-aligerar-cifrado",
+            Estorbo::XrefEnFlujo => "pdf-aligerar-indice-comprimido",
+            Estorbo::ObjetosEnFlujo => "pdf-aligerar-objetos-comprimidos",
+            Estorbo::SinTrailer => "pdf-aligerar-sin-trailer",
+            Estorbo::SinObjetos => "pdf-aligerar-sin-objetos",
+            Estorbo::LargoIndirecto => "pdf-aligerar-largo-indirecto",
+        }),
+        Razon::SinFotosQueBajar => textos.t("pdf-aligerar-sin-fotos"),
+        Razon::YaEstaAlMinimo => textos.t("pdf-aligerar-ya-al-minimo"),
+        Razon::NoBajaLoBastante { antes, despues } => {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("antes", pixpin_ui::chat::tamano_corto(*antes));
+            args.set("despues", pixpin_ui::chat::tamano_corto(*despues));
+            textos.t_args("pdf-aligerar-no-compensa", &args)
+        }
+        Razon::ElNuevoNoSeLee => textos.t("pdf-aligerar-no-se-lee"),
+    }
+}
+
+/// Baja las fotos de dentro de un PDF adjunto y lo sustituye.
+///
+/// **Nunca a peor**: `pixpin_pdf::aligerar` solo escribe el fichero nuevo si
+/// de verdad se gana, y si no, dice por que. Se escribe a un temporal al
+/// lado y se renombra encima, para que un corte a mitad deje el PDF de antes
+/// entero.
+fn aligerar_el_pdf(ubicacion: &Ubicacion, a: &mut Abierto, i: usize, textos: &Catalogo) -> Efecto {
+    use pixpin_pdf::aligerar::Resultado;
+    let Some(ruta) = a
+        .mensajes
+        .get(i)
+        .and_then(|m| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
+        .filter(|r| r.is_file())
+    else {
+        return Efecto::Nada;
+    };
+    let temporal = ruta.with_extension("pdf.aligerado");
+    let hecho = pixpin_pdf::aligerar::aligerar(&ruta, &temporal);
+    match hecho {
+        Ok(Resultado::Aligerado { antes, despues }) => {
+            if let Err(e) = std::fs::rename(&temporal, &ruta) {
+                let _ = std::fs::remove_file(&temporal);
+                tracing::warn!(?e, "no se pudo poner el PDF aligerado en su sitio");
+                return Efecto::Aviso(textos.t("chat-no-se-pudo"));
+            }
+            // El peso del mensaje tambien cambia, o la fila seguiria diciendo
+            // los megas de antes y la sincronizacion veria otra cosa.
+            if let Some(m) = a.mensajes.get_mut(i) {
+                m.bytes = despues as i64;
+                let mensaje = m.clone();
+                let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
+                if let Err(e) = pixpin_proyecto::cuaderno::reemplazar(&carpeta, &mensaje) {
+                    tracing::warn!(?e, "el PDF bajo de peso pero el cuaderno dice el de antes");
+                }
+            }
+            a.colocado.borrow_mut().ancho = 0;
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("antes", pixpin_ui::chat::tamano_corto(antes));
+            args.set("despues", pixpin_ui::chat::tamano_corto(despues));
+            Efecto::Aviso(textos.t_args("pdf-aligerado", &args))
+        }
+        Ok(Resultado::NoSeGanaNada(razon)) => {
+            let _ = std::fs::remove_file(&temporal);
+            Efecto::Aviso(razon_en_palabras(&razon, textos))
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(&temporal);
+            tracing::warn!(?e, ruta = %ruta.display(), "no se pudo aligerar");
+            Efecto::Aviso(textos.t("pdf-aligerar-no-se-lee"))
+        }
+    }
+}
+
 /// La biblioteca de audio abierta: todas las notas de voz y toda la musica,
 /// de todas las conversaciones.
 ///
@@ -9129,6 +9211,8 @@ enum Accion {
     AdjMini(&'static str),
     /// Todas las notas de voz y toda la musica, de todas las conversaciones.
     Biblioteca,
+    /// Bajar las fotos de dentro de un PDF adjunto, sustituyendolo.
+    Aligerar(usize),
     // Un mensaje, por su posicion.
     Responder(usize),
     Copiar(usize),
@@ -9525,10 +9609,14 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             Accion::AbrirCon(i),
         ));
         if es_pdf(ruta) {
+            // La entrada sale para cualquier PDF y no solo para los que se
+            // pueden aligerar: saberlo exige leer el fichero entero, y hacer
+            // eso al ABRIR un menu deja la ventana parada con un PDF grande.
+            // Si no se puede, al pulsarla se dice por que.
             v.push(entrada(
                 Some(&mi::COMPRESS),
                 textos.t("chat-aligerar"),
-                Accion::Aviso("chat-no-hay-aligerar"),
+                Accion::Aligerar(i),
             ));
         }
     }
@@ -9899,6 +9987,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             }
         }
         Accion::MiniApps => Efecto::Menu(menu_de_miniapps(cx.textos)),
+        Accion::Aligerar(i) => aligerar_el_pdf(cx.ubicacion, a, i, cx.textos),
         Accion::Biblioteca => {
             a.biblioteca = Some(abrir_biblioteca(cx.ubicacion, cx.fichas));
             Efecto::Cambio

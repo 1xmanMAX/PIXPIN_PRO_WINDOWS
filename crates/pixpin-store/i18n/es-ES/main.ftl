@@ -645,3 +645,16 @@ chat-voz-muy-corta = Demasiado corta: mantén pulsado un poco más.
 chat-voz-sin-microfono = No hay micrófono, o PixPin no tiene permiso para usarlo. Mira en Configuración › Privacidad › Micrófono.
 chat-voz-sin-codec = Este Windows no trae el codificador de audio (suele ser una edición N sin el paquete multimedia).
 chat-voz-fallo = No se pudo grabar la nota de voz.
+
+# Aligerar un PDF adjunto: baja las fotos de dentro y nunca a peor.
+pdf-aligerado = Aligerado: de { $antes } a { $despues }
+pdf-aligerar-cifrado = El PDF está cifrado y no se puede reescribir sin arriesgarse a romperlo.
+pdf-aligerar-indice-comprimido = Este PDF guarda su índice comprimido, y aquí todavía no se sabe rehacerlo.
+pdf-aligerar-objetos-comprimidos = Este PDF guarda sus objetos comprimidos, y aquí todavía no se sabe rehacerlos.
+pdf-aligerar-sin-trailer = El PDF no tiene un tráiler legible.
+pdf-aligerar-sin-objetos = No se reconoció ningún objeto dentro del PDF.
+pdf-aligerar-largo-indirecto = Un flujo del PDF no dice cuánto mide.
+pdf-aligerar-sin-fotos = No lleva fotos que se puedan bajar: lo que pesa es el texto o los vectores.
+pdf-aligerar-ya-al-minimo = Las fotos ya están al mínimo.
+pdf-aligerar-no-compensa = Solo bajaría de { $antes } a { $despues }: no compensa.
+pdf-aligerar-no-se-lee = El fichero aligerado no se leía bien; se queda el original.

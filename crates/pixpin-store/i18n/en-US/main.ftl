@@ -644,3 +644,16 @@ chat-voz-muy-corta = Too short: hold it a little longer.
 chat-voz-sin-microfono = No microphone, or PixPin isn't allowed to use it. Check Settings › Privacy › Microphone.
 chat-voz-sin-codec = This Windows has no audio encoder (usually an N edition without the media feature pack).
 chat-voz-fallo = The voice note couldn't be recorded.
+
+# Shrinking an attached PDF: it lowers the photos inside, and never for the worse.
+pdf-aligerado = Shrunk: from { $antes } to { $despues }
+pdf-aligerar-cifrado = The PDF is encrypted and can't be rewritten without risking it.
+pdf-aligerar-indice-comprimido = This PDF keeps its index compressed, and rebuilding that isn't supported here yet.
+pdf-aligerar-objetos-comprimidos = This PDF keeps its objects compressed, and rebuilding those isn't supported here yet.
+pdf-aligerar-sin-trailer = The PDF has no readable trailer.
+pdf-aligerar-sin-objetos = No object inside the PDF was recognised.
+pdf-aligerar-largo-indirecto = A stream in the PDF doesn't state its length.
+pdf-aligerar-sin-fotos = It has no photos to lower: the weight is text or vectors.
+pdf-aligerar-ya-al-minimo = The photos are already at the minimum.
+pdf-aligerar-no-compensa = It would only drop from { $antes } to { $despues }: not worth it.
+pdf-aligerar-no-se-lee = The shrunk file didn't read back properly; the original stays.
