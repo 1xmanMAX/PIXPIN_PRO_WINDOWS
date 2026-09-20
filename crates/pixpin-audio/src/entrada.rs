@@ -83,9 +83,26 @@ pub struct Grabacion {
     pub picos: Vec<i32>,
 }
 
+/// **El fichero a medio escribir, mientras se graba.**
+///
+/// Media Foundation crea y **trunca** el fichero al abrirlo, y solo escribe
+/// el indice del MPEG-4 en `Finalize`: grabando directamente sobre el destino
+/// definitivo, un corte a mitad —la aplicacion muere, se va la luz— dejaba un
+/// `.m4a` ILEGIBLE con nombre bueno, y si en esa ruta habia algo se truncaba
+/// nada mas pulsar grabar. Es lo mismo que `pixpin_sincro::envio` resuelve con
+/// su `.parte`.
+fn a_medias(destino: &Path) -> PathBuf {
+    let mut s = destino.as_os_str().to_os_string();
+    s.push(".parte");
+    PathBuf::from(s)
+}
+
 /// Una grabacion en marcha.
 pub struct Grabadora {
+    /// Donde acabara la nota **si sale bien**. Hasta el renombrado no existe.
     destino: PathBuf,
+    /// Donde se esta escribiendo de verdad: `<destino>.parte`.
+    parcial: PathBuf,
     parar: Arc<AtomicBool>,
     nivel: Arc<AtomicI32>,
     muestras: Arc<AtomicU64>,
@@ -115,20 +132,22 @@ impl Grabadora {
         let muestras = Arc::new(AtomicU64::new(0));
         let (avisar, arranque) = sync_channel::<Result<u32, ErrorAudio>>(1);
 
+        let parcial = a_medias(destino);
         let hilo = {
-            let destino = destino.to_path_buf();
+            let parcial = parcial.clone();
             let parar = Arc::clone(&parar);
             let nivel = Arc::clone(&nivel);
             let muestras = Arc::clone(&muestras);
             std::thread::Builder::new()
                 .name("pixpin-grabar".into())
-                .spawn(move || grabar(&destino, &parar, &nivel, &muestras, &avisar))
+                .spawn(move || grabar(&parcial, &parar, &nivel, &muestras, &avisar))
                 .map_err(|_| ErrorAudio::HiloCaido)?
         };
 
         match arranque.recv() {
             Ok(Ok(muestreo)) => Ok(Grabadora {
                 destino: destino.to_path_buf(),
+                parcial,
                 parar,
                 nivel,
                 muestras,
@@ -137,6 +156,12 @@ impl Grabadora {
             }),
             Ok(Err(e)) => {
                 let _ = hilo.join();
+                // Si `preparar` fallo DESPUES de abrir el escritor —p. ej. en
+                // `cliente.Start()`— aqui no llega a nacer ninguna
+                // `Grabadora`, asi que su `Drop` no corre y el fichero a
+                // medias se quedaria huerfano. Se barre en el acto; y es el
+                // `.parte`, nunca el destino del usuario.
+                let _ = std::fs::remove_file(&parcial);
                 Err(e)
             }
             // El canal cerrado sin decir nada significa que el hilo se cayo
@@ -170,21 +195,39 @@ impl Grabadora {
     /// y quien llama borra (`GrabadoraActivity.kt:134-151`): por debajo de
     /// eso lo que hubo fue un resbalon en el boton, no una nota.
     pub fn parar(mut self) -> Result<Grabacion, ErrorAudio> {
-        let grabacion = self.terminar()?;
+        let mut grabacion = match self.terminar() {
+            Ok(g) => g,
+            Err(e) => {
+                // El `.m4a` a medias no vale para nada y nadie lo va a
+                // encontrar por su nombre: se barre aqui.
+                let _ = std::fs::remove_file(&self.parcial);
+                return Err(e);
+            }
+        };
         if grabacion.duracion_ms < MINIMO_MS {
-            let _ = std::fs::remove_file(&grabacion.ruta);
+            let _ = std::fs::remove_file(&self.parcial);
             return Err(ErrorAudio::DemasiadoCorta {
                 duro_ms: grabacion.duracion_ms,
                 minimo_ms: MINIMO_MS,
             });
         }
+        // **El renombrado es lo que publica la nota.** Hasta aqui el destino
+        // no existe, asi que no hay ningun momento en el que haya un `.m4a`
+        // con nombre bueno y contenido ilegible.
+        std::fs::rename(&self.parcial, &self.destino).map_err(|_| ErrorAudio::NoEsAudio {
+            ruta: self.destino.display().to_string(),
+        })?;
+        grabacion.ruta = self.destino.clone();
         Ok(grabacion)
     }
 
     /// Para y tira lo grabado: el usuario se arrepintio.
+    ///
+    /// Se borra el `.parte`, no el destino: si en esa ruta habia algo del
+    /// usuario, cancelar una nota no se lo puede llevar por delante.
     pub fn cancelar(mut self) {
         let _ = self.terminar();
-        let _ = std::fs::remove_file(&self.destino);
+        let _ = std::fs::remove_file(&self.parcial);
     }
 
     fn terminar(&mut self) -> Result<Grabacion, ErrorAudio> {
@@ -200,7 +243,10 @@ impl Drop for Grabadora {
         // hilo girando hasta que se cierre la aplicacion.
         if self.hilo.is_some() {
             let _ = self.terminar();
-            let _ = std::fs::remove_file(&self.destino);
+            // El `.parte`, nunca el destino: este `Drop` corria sobre la ruta
+            // que dio quien llama, asi que soltar una grabadora sin pararla
+            // borraba un fichero del usuario si ya habia uno ahi.
+            let _ = std::fs::remove_file(&self.parcial);
         }
     }
 }
@@ -761,5 +807,48 @@ mod pruebas {
             "salio {e:?}"
         );
         assert!(!ruta.exists(), "se quedo un .m4a que no suena");
+        assert!(!a_medias(&ruta).exists(), "se quedo el fichero a medias");
+    }
+
+    #[test]
+    fn el_fichero_a_medias_va_al_lado_del_destino_y_con_su_nombre_entero() {
+        // Se anade el sufijo a la ruta ENTERA y no se cambia la extension:
+        // con `with_extension("parte")` dos notas del mismo milisegundo en
+        // formatos distintos chocarian, y sobre todo el `.parte` dejaria de
+        // decir de quien es.
+        let p = a_medias(Path::new("C:/n/voz_1700000000000.m4a"));
+        assert_eq!(p, Path::new("C:/n/voz_1700000000000.m4a.parte"));
+        assert_eq!(p.parent(), Path::new("C:/n/voz_1.m4a").parent());
+        // Caso negativo: no puede coincidir con el destino, o no habria dos
+        // ficheros y el renombrado no protegeria de nada.
+        assert_ne!(p, PathBuf::from("C:/n/voz_1700000000000.m4a"));
+    }
+
+    #[test]
+    fn un_microfono_que_no_abre_no_toca_el_fichero_que_ya_habia() {
+        // **El fallo:** Media Foundation TRUNCA el destino al abrirlo, asi
+        // que pulsar grabar en una ruta ocupada se llevaba por delante lo que
+        // hubiera antes de saber siquiera si habia microfono. Ahora lo unico
+        // que se abre es el `.parte`.
+        //
+        // No necesita microfono: si lo hay, se para en seguida; si no lo hay,
+        // `empezar` falla. Las dos ramas prometen lo mismo.
+        let ruta = std::env::temp_dir().join("pixpin-audio-no-truncar.m4a");
+        std::fs::write(&ruta, b"esto es de otro").expect("preparar el fichero");
+
+        if let Ok(g) = Grabadora::empezar(&ruta) {
+            g.cancelar();
+        }
+
+        assert_eq!(
+            std::fs::read(&ruta).expect("el fichero de antes"),
+            b"esto es de otro",
+            "abrir el microfono trunco un fichero que no era suyo"
+        );
+        assert!(
+            !a_medias(&ruta).exists(),
+            "el .parte tiene que barrerse al cancelar o al fallar"
+        );
+        let _ = std::fs::remove_file(&ruta);
     }
 }
