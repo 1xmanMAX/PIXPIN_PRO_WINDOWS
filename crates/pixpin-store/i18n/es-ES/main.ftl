@@ -491,3 +491,18 @@ rw-encima-de-lo-tuyo = Se escribe encima de lo tuyo. Lo de antes queda en «Copi
 rw-entra-aparte = Entra aparte, con códigos nuevos: desde ahora es otra cosa.
 rw-proyecto-al-dia = «{ $nombre }» puesto al día
 rw-guardados-al-dia = «{ $nombre }» puesto al día en Mensajes guardados
+
+# La lupa de la cabecera, que busca dentro de la conversación (tarea 1.3).
+chat-buscar-aqui = Buscar aquí…
+chat-buscar-nada = Nada con eso
+chat-buscar-resultados = { $n ->
+    [one] 1 resultado
+   *[other] { $n } resultados
+}
+chat-buscar-en-contexto = Ver en contexto
+chat-pagina-n = Página { $n }
+chat-unido-a = Unido a «{ $nombre }»
+chat-unir-nada = No hay nada que se pueda unir: solo fotos, dibujos, notas y PDF
+chat-devolver = Volver a añadir al proyecto
+chat-devuelto = De vuelta en «{ $nombre }»
+chat-devolver-no = No se pudo volver a añadir

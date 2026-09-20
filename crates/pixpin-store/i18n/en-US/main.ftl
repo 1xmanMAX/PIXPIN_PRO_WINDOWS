@@ -490,3 +490,18 @@ rw-encima-de-lo-tuyo = It is written over yours. What was there stays in «Backu
 rw-entra-aparte = It comes in separately, with new codes: from now on it is another thing.
 rw-proyecto-al-dia = «{ $nombre }» brought up to date
 rw-guardados-al-dia = «{ $nombre }» brought up to date in Saved messages
+
+# The header magnifier, which searches inside the conversation (task 1.3).
+chat-buscar-aqui = Search here…
+chat-buscar-nada = Nothing matches
+chat-buscar-resultados = { $n ->
+    [one] 1 result
+   *[other] { $n } results
+}
+chat-buscar-en-contexto = See in context
+chat-pagina-n = Page { $n }
+chat-unido-a = Added to "{ $nombre }"
+chat-unir-nada = Nothing here can be added: only photos, drawings, notes and PDFs
+chat-devolver = Add back to the project
+chat-devuelto = Back in "{ $nombre }"
+chat-devolver-no = Could not add it back

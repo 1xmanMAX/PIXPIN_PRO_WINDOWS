@@ -782,10 +782,29 @@ pub fn abrir(
                                     a.scroll_info = 0;
                                     Efecto::Nada
                                 }
+                                // La lupa busca DENTRO de la conversacion y
+                                // filtra las burbujas, como en el movil. El
+                                // mismo boton la enciende y la apaga; al
+                                // apagarla se limpia, que dejar una busqueda
+                                // escondida haria parecer el chat vacio.
                                 Zona::Buscar => {
-                                    a.info = Some(SECCIONES[0]);
-                                    a.scroll_info = 0;
-                                    a.buscando_info = true;
+                                    a.busqueda = match a.busqueda {
+                                        None => Some(String::new()),
+                                        Some(_) => None,
+                                    };
+                                    a.scroll = None;
+                                    Efecto::Nada
+                                }
+                                Zona::EnContexto => {
+                                    // Se quita el filtro y se salta al primer
+                                    // resultado: quien buscaba no se queda sin
+                                    // saber donde estaba lo que encontro.
+                                    let primero = indices_visibles(a).first().copied();
+                                    a.busqueda = None;
+                                    if let Some(j) = primero {
+                                        a.ir_a = Some(j);
+                                        a.resaltado = Some((j, std::time::Instant::now()));
+                                    }
                                     Efecto::Nada
                                 }
                                 Zona::Menu => Efecto::Menu(menu_de_cabecera(
@@ -931,8 +950,10 @@ pub fn abrir(
                         let scroll = a.scroll.unwrap_or_else(|| {
                             pixpin_ui::historial::scroll_maximo(area, a.alto.get())
                         });
-                        pixpin_ui::historial::mensaje_en(area, &c.puestos, scroll, l)
-                            .map(|i| (a, i))
+                        let cual = pixpin_ui::historial::mensaje_en(area, &c.puestos, scroll, l)?;
+                        // Buscando no estan todas colocadas: hay que traducir
+                        // de «la burbuja numero N» a «el mensaje numero M».
+                        c.mensaje(cual).map(|i| (a, i))
                     }) {
                         // Eligiendo varios, pulsar marca y desmarca; Ctrl+clic
                         // hace lo mismo sin entrar antes por el menu, que es
@@ -947,89 +968,23 @@ pub fn abrir(
                             {
                                 a.marcados.insert(id);
                             }
+                            // Y sin soltar se puede seguir barriendo hacia
+                            // arriba o hacia abajo para marcar varias de un
+                            // tiron, como en el movil.
+                            a.barriendo = true;
+                            ventana.capturar_raton();
                             hay_que_pintar = true;
                             continue;
                         }
-                        // Un proyecto adjunto es la puerta a ese proyecto:
-                        // pulsarlo lo abre.
-                        let a_otro = abierto
-                            .as_ref()
-                            .and_then(|a| a.mensajes.get(indice))
-                            .filter(|m| m.clase == Some(pixpin_proyecto::cuaderno::Clase::Proyecto))
-                            .and_then(|m| m.referencia.clone())
-                            .and_then(|id| fichas.iter().position(|f| f.id == id));
-                        if let Some(i) = a_otro {
-                            if let Some(a) = abierto.as_mut() {
-                                cerrar_hoja(ubicacion, a);
-                                apagar_lienzo(ubicacion, a);
-                            }
-                            if let Some(a) = abierto.take() {
-                                borradores.insert(a.ficha.id.clone(), a.borrador);
-                            }
-                            elegida = Some(i);
-                            let mut nuevo = abrir_proyecto(ubicacion, &fichas[i]);
-                            nuevo.borrador = borradores.remove(&fichas[i].id).unwrap_or_default();
-                            abierto = Some(nuevo);
-                            hay_que_pintar = true;
-                            continue;
+                        // Sin seleccion, pulsar una burbuja puede ser DOS
+                        // cosas: un toque, que la abre, o un arrastre a la
+                        // derecha, que la comenta. Se apunta el gesto y se
+                        // decide al soltar; abrir aqui mismo dejaria el
+                        // fichero abierto en cuanto se rozara el arrastre.
+                        if let Some(a) = abierto.as_mut() {
+                            a.comentando = Some((indice, l.x, 0));
                         }
-                        // Una tabla se abre para escribir en ella, en el sitio
-                        // del historial; lo demas, con su aplicacion.
-                        let vista = |f: fn(&Option<Ojeada>) -> bool| {
-                            abierto
-                                .as_ref()
-                                .and_then(|a| a.vistas.get(indice))
-                                .is_some_and(f)
-                        };
-                        let es_tabla = vista(|v| matches!(v, Some(Ojeada::Tabla(_))));
-                        let es_foto = vista(|v| matches!(v, Some(Ojeada::Foto { .. })));
-                        // Un dibujo del movil trae cientos de trazos: en la
-                        // burbuja no se lee ninguno, asi que se abre grande.
-                        //
-                        // Se mira la CLASE del mensaje y no su ojeada: un
-                        // lienzo recien creado esta vacio, no tiene ojeada, y
-                        // por eso no se abria nunca -ni se podia empezar a
-                        // dibujar en el-.
-                        let es_dibujo = abierto
-                            .as_ref()
-                            .and_then(|a| a.mensajes.get(indice))
-                            .is_some_and(|m| {
-                                m.clase == Some(pixpin_proyecto::cuaderno::Clase::Dibujo)
-                                    && m.referencia.as_deref().is_some_and(|r| !r.is_empty())
-                            });
-                        match abierto.as_mut() {
-                            Some(a) if es_tabla => abrir_hoja(a, indice),
-                            // Una foto se abre en el editor 2D, con la foto de fondo:
-                            // es donde estan las herramientas. Dibujar en la
-                            // propia burbuja sigue estando, en el menu del
-                            // boton derecho.
-                            Some(a) if es_foto => {
-                                if let Some(ruta) = a
-                                    .mensajes
-                                    .get(indice)
-                                    .and_then(|m| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
-                                {
-                                    abrir_foto_en_lienzo(&ruta, lienzo);
-                                    // Al volver, la burbuja tiene que ensenar lo
-                                    // que se dibujo.
-                                    if let Some(m) = a.mensajes.get(indice).cloned() {
-                                        a.vistas[indice] = leer_vista(ubicacion, &a.ficha.id, &m);
-                                    }
-                                    a.colocado.borrow_mut().ancho = 0;
-                                }
-                            }
-                            Some(a) if es_dibujo => {
-                                for i in abrir_dibujo(ubicacion, a, indice, lienzo) {
-                                    if let Some(m) = a.mensajes.get(i).cloned() {
-                                        a.vistas[i] = leer_vista(ubicacion, &a.ficha.id, &m);
-                                    }
-                                }
-                                a.colocado.borrow_mut().ancho = 0;
-                            }
-                            Some(a) => abrir_mensaje(ubicacion, a, indice),
-                            None => {}
-                        }
-                        buscando = false;
+                        ventana.capturar_raton();
                         hay_que_pintar = true;
                     } else if disposicion.boton_nuevo(escala).contiene(l) {
                         // Proyecto nuevo: se crea, se pone el primero y se
@@ -1180,6 +1135,45 @@ pub fn abrir(
                         hay_que_pintar = true;
                         continue;
                     }
+                    // Barriendo con el boton pulsado se marca lo que va
+                    // pasando por debajo. **Se SUMA, no se alterna**: por
+                    // encima de una ya marcada, alternar la desmarcaria al
+                    // pasar y la volveria a marcar al volver, y el gesto de
+                    // barrer tiene que anadir.
+                    if abierto.as_ref().is_some_and(|a| a.barriendo) {
+                        let bajo_el_raton = abierto.as_ref().and_then(|a| {
+                            let area = disposicion.historial(
+                                a.alto_caja.get(),
+                                a.fijado.is_some(),
+                                escala,
+                            );
+                            let c = a.colocado.borrow();
+                            let scroll = a.scroll.unwrap_or_else(|| {
+                                pixpin_ui::historial::scroll_maximo(area, a.alto.get())
+                            });
+                            let cual =
+                                pixpin_ui::historial::mensaje_en(area, &c.puestos, scroll, l)?;
+                            let i = c.mensaje(cual)?;
+                            a.mensajes.get(i).map(|m| m.id.clone())
+                        });
+                        if let (Some(a), Some(id)) = (abierto.as_mut(), bajo_el_raton) {
+                            a.marcados.insert(id);
+                        }
+                        hay_que_pintar = true;
+                        continue;
+                    }
+                    // Arrastrando una burbuja a la derecha para comentarla:
+                    // sigue al raton hasta el tope y ahi se planta.
+                    if let Some((_, agarre, _)) = abierto.as_ref().and_then(|a| a.comentando) {
+                        let cuanto = pixpin_ui::chat::corrimiento_de_comentar(l.x - agarre, escala);
+                        if let Some((_, _, corrida)) =
+                            abierto.as_mut().and_then(|a| a.comentando.as_mut())
+                        {
+                            *corrida = cuanto;
+                        }
+                        hay_que_pintar = true;
+                        continue;
+                    }
                     match &arrastre {
                         Some(Arrastre::Asa(agarre)) => {
                             let nuevo = chat::ancho_ajustado(l.x - agarre, marco.ancho, escala);
@@ -1266,6 +1260,26 @@ pub fn abrir(
                         hay_que_pintar = true;
                         continue;
                     }
+                    // Mantener pulsado el titulo abre el buscador, como en el
+                    // movil («es el blanco mas grande de la pantalla y llegar
+                    // a la lupa de la esquina obliga a cruzarla entera»). En
+                    // un escritorio, mantener pulsado es el boton derecho.
+                    let en_el_titulo = abierto.as_ref().is_some_and(|a| {
+                        a.zonas
+                            .borrow()
+                            .iter()
+                            .rev()
+                            .any(|(r, z)| *z == Zona::Titulo && r.contiene(l))
+                    });
+                    if en_el_titulo {
+                        if let Some(a) = abierto.as_mut() {
+                            a.busqueda = Some(String::new());
+                            a.info = None;
+                            a.scroll = None;
+                        }
+                        hay_que_pintar = true;
+                        continue;
+                    }
                     // Sobre una burbuja, el menu del mensaje: el de mantener
                     // pulsado del movil, naciendo donde se pulso. Con varios
                     // elegidos manda la barra de arriba, no este menu.
@@ -1282,7 +1296,9 @@ pub fn abrir(
                             let scroll = a.scroll.unwrap_or_else(|| {
                                 pixpin_ui::historial::scroll_maximo(area, a.alto.get())
                             });
-                            let i = pixpin_ui::historial::mensaje_en(area, &c.puestos, scroll, l)?;
+                            let cual =
+                                pixpin_ui::historial::mensaje_en(area, &c.puestos, scroll, l)?;
+                            let i = c.mensaje(cual)?;
                             Some(menu_de_mensaje(a, i, textos))
                         });
                     if let Some(entradas) = pulsado.filter(|v| !v.is_empty()) {
@@ -1291,6 +1307,40 @@ pub fn abrir(
                     }
                 }
                 EventoOverlay::BotonSoltado(p) => {
+                    // Barrer para marcar termina al levantar el dedo: lo
+                    // marcado ya esta puesto, no hay nada que confirmar.
+                    if let Some(a) = abierto.as_mut().filter(|a| a.barriendo) {
+                        a.barriendo = false;
+                        ventana.soltar_raton();
+                        hay_que_pintar = true;
+                        continue;
+                    }
+                    // Y el gesto de la burbuja se resuelve aqui: un toque la
+                    // abre, un arrastre pasado el gatillo la comenta, y uno
+                    // que se quedo corto no hace nada y la burbuja vuelve.
+                    if let Some((indice, _, corrida)) =
+                        abierto.as_mut().and_then(|a| a.comentando.take())
+                    {
+                        ventana.soltar_raton();
+                        if corrida < ARRASTRE_MINIMO {
+                            tocar_la_burbuja(
+                                indice,
+                                ubicacion,
+                                &mut abierto,
+                                &fichas,
+                                &mut elegida,
+                                &mut borradores,
+                                lienzo,
+                            );
+                            buscando = false;
+                        } else if pixpin_ui::chat::comenta_al_soltar(corrida, escala)
+                            && let Some(a) = abierto.as_mut()
+                        {
+                            a.respondiendo = a.mensajes.get(indice).map(|m| m.id.clone());
+                        }
+                        hay_que_pintar = true;
+                        continue;
+                    }
                     if let Some(v) = abierto
                         .as_mut()
                         .and_then(|a| a.vivo.as_mut())
@@ -1634,6 +1684,45 @@ pub fn abrir(
                     }
                     hay_que_pintar = true;
                 }
+                // Lo que se teclea con la lupa de la conversacion encendida es
+                // para ella y no para la caja de escribir. Va ANTES que el
+                // borrador, que si no lo escrito acabaria en un mensaje.
+                EventoOverlay::Caracter(c)
+                    if abierto.as_ref().is_some_and(|a| a.busqueda.is_some()) =>
+                {
+                    if c >= ' '
+                        && let Some(q) = abierto.as_mut().and_then(|a| a.busqueda.as_mut())
+                    {
+                        q.push(c);
+                        if let Some(a) = abierto.as_mut() {
+                            a.scroll = None;
+                        }
+                    }
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::Tecla { vk, .. }
+                    if vk == VK_RETROCESO
+                        && abierto.as_ref().is_some_and(|a| a.busqueda.is_some()) =>
+                {
+                    if let Some(q) = abierto.as_mut().and_then(|a| a.busqueda.as_mut()) {
+                        q.pop();
+                    }
+                    if let Some(a) = abierto.as_mut() {
+                        a.scroll = None;
+                    }
+                    hay_que_pintar = true;
+                }
+                // Escapar apaga la lupa de la conversacion antes que nada mas.
+                EventoOverlay::Tecla { vk, .. }
+                    if vk == VK_ESCAPE
+                        && abierto.as_ref().is_some_and(|a| a.busqueda.is_some()) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        a.busqueda = None;
+                        a.scroll = None;
+                    }
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::Caracter(c) if buscando => {
                     if c >= ' ' {
                         busqueda.push(c);
@@ -1894,11 +1983,17 @@ pub fn abrir(
         // entonces se espera a la vuelta siguiente, en vez de perder el
         // destino.
         if let Some(a) = abierto.as_mut()
-            && a.colocado.borrow().puestos.len() == a.mensajes.len()
+            && a.colocado.borrow().puestos.len() == cuantas_se_ven(a)
             && let Some(j) = a.ir_a.take()
         {
             let area = disposicion.historial(a.alto_caja.get(), a.fijado.is_some(), escala);
-            let arriba = a.colocado.borrow().puestos.get(j).map(|p| p.arriba());
+            // Con una busqueda puesta, el mensaje al que se iba puede estar
+            // filtrado y no tener sitio: entonces no se salta a ninguna parte.
+            let arriba = {
+                let c = a.colocado.borrow();
+                c.puesto_de(j)
+                    .and_then(|n| c.puestos.get(n).map(|p| p.arriba()))
+            };
             if let Some(arriba) = arriba {
                 let tope = pixpin_ui::historial::scroll_maximo(area, a.alto.get());
                 let quiero = pixpin_ui::historial::scroll_ajustado(
@@ -2164,6 +2259,13 @@ struct Abierto {
     /// La lupa esta encendida. Va aparte de `busqueda_info` porque al
     /// pulsarla la caja aparece vacia, y sin esto no habria donde escribir.
     buscando_info: bool,
+    /// Lo que se busca DENTRO DE LA CONVERSACION, con la lupa de la cabecera.
+    ///
+    /// Tres estados, como en el movil (`var consulta: String?`): `None` es la
+    /// lupa apagada, `Some("")` es la caja abierta y vacia —que no esconde
+    /// ninguna burbuja— y `Some(texto)` es buscando. Con un booleano aparte
+    /// habria que mantener dos cosas a la vez y se descuadran.
+    busqueda: Option<String>,
     /// Lo que ocupa la seccion abierta, que solo se sabe al colocarla.
     alto_info: std::cell::Cell<u32>,
     /// Lo ancho que mide el rotulo de cada pestana. Lo apunta el pintado,
@@ -2203,6 +2305,15 @@ struct Abierto {
     hoja: Option<HojaAbierta>,
     /// El lienzo que esta vivo dentro de su burbuja, si hay alguno.
     vivo: Option<LienzoVivo>,
+    /// La burbuja que se esta arrastrando a la derecha para comentarla: cual
+    /// es, donde se agarro y cuanto lleva corrida.
+    ///
+    /// El gesto se sigue aunque el raton se salga de la burbuja: soltar fuera
+    /// no puede dejarla a medio camino y clavada.
+    comentando: Option<(usize, i32, i32)>,
+    /// Se esta barriendo el historial con el boton pulsado para marcar varias
+    /// burbujas de un tiron. Solo existe con la seleccion ya abierta.
+    barriendo: bool,
 }
 
 /// Una hoja de calculo abierta para escribir en ella.
@@ -2227,9 +2338,31 @@ struct HojaAbierta {
 #[derive(Default)]
 struct Colocado {
     ancho: u32,
+    /// Que mensajes se colocaron, por su posicion en `Abierto::mensajes`.
+    ///
+    /// Buscando NO se colocan todos: el movil FILTRA la conversacion en vez
+    /// de saltar de un resultado a otro, asi que `puestos` y `piezas` van en
+    /// paralelo a ESTO y no a los mensajes. Quien pulse una burbuja tiene que
+    /// traducir por aqui, o acabara abriendo la que no es.
+    visibles: Vec<usize>,
+    /// Con que busqueda se filtro, para no rehacerlo en cada fotograma.
+    busqueda: String,
     puestos: Vec<pixpin_ui::historial::Puesto>,
     /// De que se compone cada burbuja, ya medido, en el mismo orden.
     piezas: Vec<Piezas>,
+}
+
+impl Colocado {
+    /// Que mensaje es la burbuja numero `cual` de las colocadas.
+    fn mensaje(&self, cual: usize) -> Option<usize> {
+        self.visibles.get(cual).copied()
+    }
+
+    /// Y al reves: donde quedo colocado el mensaje `indice`, si se ve. Con
+    /// una busqueda puesta puede no verse, y entonces no hay a donde ir.
+    fn puesto_de(&self, indice: usize) -> Option<usize> {
+        self.visibles.iter().position(|i| *i == indice)
+    }
 }
 
 /// Lo que hace falta para pintar la lista.
@@ -2802,14 +2935,32 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
     // Medir el texto necesita la fuente, asi que se hace aqui; pero solo
     // cuando cambia el ancho, no en cada fotograma.
     let ancho_contenido = h::ancho_contenido(area, escala);
+    let aguja = a.busqueda.clone().unwrap_or_default();
     {
         let mut c = a.colocado.borrow_mut();
-        if c.ancho != ancho_contenido || c.puestos.len() != a.mensajes.len() {
-            let mut entradas = Vec::with_capacity(a.mensajes.len());
-            let mut todas = Vec::with_capacity(a.mensajes.len());
-            for (indice, m) in a.mensajes.iter().enumerate() {
-                let (entrada, piezas) =
-                    medir_mensaje(p, a, indice, m, ancho_contenido, Medir { textos, e, ahora });
+        if c.ancho != ancho_contenido || c.puestos.len() != cuantas_se_ven(a) || c.busqueda != aguja
+        {
+            // Buscando, solo se miden y se colocan las que casan: el movil
+            // FILTRA la conversacion («quien busca "factura enero" quiere las
+            // cinco juntas para compararlas»), no salta de una a otra.
+            let visibles = indices_visibles(a);
+            let mut entradas = Vec::with_capacity(visibles.len());
+            let mut todas = Vec::with_capacity(visibles.len());
+            for indice in &visibles {
+                let m = &a.mensajes[*indice];
+                let (entrada, piezas) = medir_mensaje(
+                    p,
+                    a,
+                    *indice,
+                    m,
+                    ancho_contenido,
+                    Medir {
+                        textos,
+                        e,
+                        ahora,
+                        aguja: &aguja,
+                    },
+                );
                 entradas.push(entrada);
                 todas.push(piezas);
             }
@@ -2817,6 +2968,8 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
             a.alto.set(alto);
             *c = Colocado {
                 ancho: ancho_contenido,
+                visibles,
+                busqueda: aguja.clone(),
                 puestos,
                 piezas: todas,
             };
@@ -2824,6 +2977,20 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
     }
 
     let c = a.colocado.borrow();
+    if c.visibles.is_empty() {
+        // Buscando sin resultados es otra pantalla, no la de bienvenida: ahi
+        // ya se sabe que es esto, lo que falta es decir que no hay nada.
+        let vacio = textos.t("chat-buscar-nada");
+        let (w, alto) = p.medir_texto(&vacio, 13.0 * e);
+        p.texto(
+            &vacio,
+            area.x as f32 + (area.ancho as f32 - w) / 2.0,
+            area.y as f32 + (area.alto as f32 - alto) / 2.0,
+            13.0 * e,
+            tema.apagado,
+        );
+        return;
+    }
     // Sin desplazamiento propio, pegado al final: lo ultimo es lo que importa.
     let scroll = a
         .scroll
@@ -2831,17 +2998,30 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
     p.empujar_recorte(rf(area));
     let (primero, cuantos) = h::visibles(area, &c.puestos, scroll);
     let en_guardados = a.ficha.es_guardados();
-    for i in primero..primero + cuantos {
-        let puesto = c.puestos[i];
-        let piezas = &c.piezas[i];
+    for cual in primero..primero + cuantos {
+        let puesto = c.puestos[cual];
+        let piezas = &c.piezas[cual];
+        let i = c.visibles[cual];
         let m = &a.mensajes[i];
+        // Lo que se ha corrido esta burbuja al arrastrarla a la derecha para
+        // comentarla. Se corre TODO lo suyo, no solo el fondo.
+        let corrida = match a.comentando {
+            Some((j, _, cuanto)) if j == i => cuanto,
+            _ => 0,
+        };
         let mover = |r: Rect| Rect {
+            x: r.x + corrida,
             y: r.y + area.y - scroll,
             ..r
         };
 
         if let Some(sep) = puesto.separador {
-            let sep = mover(sep);
+            // La pildora del dia NO se corre con la burbuja: es del dia, no
+            // del mensaje, y verla escaparse al arrastrar seria raro.
+            let sep = Rect {
+                y: sep.y + area.y - scroll,
+                ..sep
+            };
             let fecha = fecha_larga(pixpin_shell::entorno::a_local(m.cuando), ahora, textos);
             if !fecha.is_empty() {
                 // La pastilla del dia del movil (`SeparadorDeDia`): radio 11,
@@ -3111,13 +3291,17 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
         }
 
         if !piezas.texto.is_empty() {
+            // Buscando, lo encontrado va en negrita dentro de la propia
+            // burbuja. El movil lo tine de fondo; aqui el pintor no sabe
+            // pintar fondos por tramo, y la negrita es lo que ya se usa en el
+            // panel de informacion: lo mismo en los dos sitios.
             p.parrafo(
                 &piezas.texto,
                 dentro.x as f32,
                 y,
                 h::TEXTO_TAM * e,
                 dentro.ancho as f32,
-                &[],
+                &negritas(&piezas.texto, &aguja),
                 color_texto,
             );
         }
@@ -3162,8 +3346,164 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
             x += lado + 3.0 * e;
         }
         p.texto(&hora, x, y_hora, HORA_TAM * e, color_hora);
+        pintar_flecha_de_comentar(p, tema, burbuja, corrida, escala, e);
     }
     p.soltar_recorte();
+}
+
+/// La flecha que asoma a la IZQUIERDA de la burbuja mientras se arrastra a la
+/// derecha para comentarla, cada vez mas opaca hasta el gatillo.
+///
+/// En el movil este aviso es una vibracion; en un ordenador no hay nada que
+/// vibre, asi que lo dice la flecha: entera = soltar comenta.
+fn pintar_flecha_de_comentar(
+    p: &Pintor,
+    tema: &Tema,
+    burbuja: Rect,
+    corrida: i32,
+    escala: u32,
+    e: f32,
+) {
+    if corrida <= 1 {
+        return;
+    }
+    let lado = 20.0 * e;
+    let opacidad = pixpin_ui::chat::opacidad_de_comentar(corrida, escala);
+    p.icono(
+        &mi::REPLY,
+        RectF {
+            x: burbuja.x as f32 - lado - 8.0 * e,
+            y: burbuja.y as f32 + (burbuja.alto as f32 - lado) / 2.0,
+            ancho: lado,
+            alto: lado,
+        },
+        con_alfa(tema.enviar, opacidad),
+    );
+}
+
+/// Lo que hace un toque en una burbuja: abrir lo que lleve dentro.
+///
+/// Vive aqui fuera y no dentro del bucle porque ya no se hace al PULSAR sino
+/// al SOLTAR: pulsar solo apunta el gesto, que puede acabar siendo un
+/// arrastre a la derecha para comentar.
+fn tocar_la_burbuja(
+    indice: usize,
+    ubicacion: &Ubicacion,
+    abierto: &mut Option<Abierto>,
+    fichas: &[pixpin_proyecto::almacen::Ficha],
+    elegida: &mut Option<usize>,
+    borradores: &mut std::collections::HashMap<String, String>,
+    lienzo: OpcionesLienzo,
+) {
+    // Un proyecto adjunto es la puerta a ese proyecto: pulsarlo lo abre.
+    let a_otro = abierto
+        .as_ref()
+        .and_then(|a| a.mensajes.get(indice))
+        .filter(|m| m.clase == Some(pixpin_proyecto::cuaderno::Clase::Proyecto))
+        .and_then(|m| m.referencia.clone())
+        .and_then(|id| fichas.iter().position(|f| f.id == id));
+    if let Some(i) = a_otro {
+        if let Some(a) = abierto.as_mut() {
+            cerrar_hoja(ubicacion, a);
+            apagar_lienzo(ubicacion, a);
+        }
+        if let Some(a) = abierto.take() {
+            borradores.insert(a.ficha.id.clone(), a.borrador);
+        }
+        *elegida = Some(i);
+        let mut nuevo = abrir_proyecto(ubicacion, &fichas[i]);
+        nuevo.borrador = borradores.remove(&fichas[i].id).unwrap_or_default();
+        *abierto = Some(nuevo);
+        return;
+    }
+    // Una tabla se abre para escribir en ella, en el sitio del historial; lo
+    // demas, con su aplicacion.
+    let vista = |f: fn(&Option<Ojeada>) -> bool| {
+        abierto
+            .as_ref()
+            .and_then(|a| a.vistas.get(indice))
+            .is_some_and(f)
+    };
+    let es_tabla = vista(|v| matches!(v, Some(Ojeada::Tabla(_))));
+    let es_foto = vista(|v| matches!(v, Some(Ojeada::Foto { .. })));
+    // Un dibujo del movil trae cientos de trazos: en la burbuja no se lee
+    // ninguno, asi que se abre grande.
+    //
+    // Se mira la CLASE del mensaje y no su ojeada: un lienzo recien creado
+    // esta vacio, no tiene ojeada, y por eso no se abria nunca -ni se podia
+    // empezar a dibujar en el-.
+    let es_dibujo = abierto
+        .as_ref()
+        .and_then(|a| a.mensajes.get(indice))
+        .is_some_and(|m| {
+            m.clase == Some(pixpin_proyecto::cuaderno::Clase::Dibujo)
+                && m.referencia.as_deref().is_some_and(|r| !r.is_empty())
+        });
+    match abierto.as_mut() {
+        Some(a) if es_tabla => abrir_hoja(a, indice),
+        // Una foto se abre en el editor 2D, con la foto de fondo: es donde
+        // estan las herramientas. Dibujar en la propia burbuja sigue estando,
+        // en el menu del boton derecho.
+        Some(a) if es_foto => {
+            if let Some(ruta) = a
+                .mensajes
+                .get(indice)
+                .and_then(|m| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
+            {
+                abrir_foto_en_lienzo(&ruta, lienzo);
+                // Al volver, la burbuja tiene que ensenar lo que se dibujo.
+                if let Some(m) = a.mensajes.get(indice).cloned() {
+                    a.vistas[indice] = leer_vista(ubicacion, &a.ficha.id, &m);
+                }
+                a.colocado.borrow_mut().ancho = 0;
+            }
+        }
+        Some(a) if es_dibujo => {
+            for i in abrir_dibujo(ubicacion, a, indice, lienzo) {
+                if let Some(m) = a.mensajes.get(i).cloned() {
+                    a.vistas[i] = leer_vista(ubicacion, &a.ficha.id, &m);
+                }
+            }
+            a.colocado.borrow_mut().ancho = 0;
+        }
+        Some(a) => abrir_mensaje(ubicacion, a, indice),
+        None => {}
+    }
+}
+
+/// Lo que hay que moverse para que el gesto deje de ser un toque y pase a
+/// ser un arrastre. Sin este margen, un temblor de la mano al pulsar dejaria
+/// la burbuja sin abrir.
+const ARRASTRE_MINIMO: i32 = 4;
+
+/// Cuantas burbujas se ven con la busqueda que haya puesta.
+fn cuantas_se_ven(a: &Abierto) -> usize {
+    match a.busqueda.as_deref().filter(|q| !q.trim().is_empty()) {
+        None => a.mensajes.len(),
+        Some(q) => a
+            .mensajes
+            .iter()
+            .filter(|m| pixpin_ui::chat::casa_la_busqueda(&m.resumen(), &m.nombre, q))
+            .count(),
+    }
+}
+
+/// Que mensajes se ven, por su posicion. Sin busqueda, todos.
+///
+/// Se busca sobre el RESUMEN y no sobre `texto` a secas: en una nota de voz
+/// el texto suele estar vacio y lo que se busca es lo que se dijo, que vive
+/// en la transcripcion (ver `Mensaje::resumen`).
+fn indices_visibles(a: &Abierto) -> Vec<usize> {
+    match a.busqueda.as_deref().filter(|q| !q.trim().is_empty()) {
+        None => (0..a.mensajes.len()).collect(),
+        Some(q) => a
+            .mensajes
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| pixpin_ui::chat::casa_la_busqueda(&m.resumen(), &m.nombre, q))
+            .map(|(i, _)| i)
+            .collect(),
+    }
 }
 
 /// Lo que hace falta para medir un mensaje: los textos, la escala y la hora
@@ -3174,6 +3514,10 @@ struct Medir<'a> {
     textos: &'a Catalogo,
     e: f32,
     ahora: i64,
+    /// Lo que se esta buscando, si se busca. Hace falta al MEDIR y no solo al
+    /// pintar: lo encontrado va en negrita, la negrita ocupa mas, y midiendo
+    /// sin ella la ultima linea se saldria de la burbuja.
+    aguja: &'a str,
 }
 
 /// Mide un mensaje y decide de que piezas se compone, como la `Burbuja` del
@@ -3301,7 +3645,12 @@ fn medir_mensaje(
         }
     }
     if !texto.is_empty() {
-        let (w, alto_texto) = p.medir_texto_ajustado(&texto, h::TEXTO_TAM * e, ancho_max);
+        let tramos = negritas(&texto, cx.aguja);
+        let (w, alto_texto) = if tramos.is_empty() {
+            p.medir_texto_ajustado(&texto, h::TEXTO_TAM * e, ancho_max)
+        } else {
+            p.medir_parrafo(&texto, h::TEXTO_TAM * e, ancho_max, &tramos)
+        };
         sumar(&mut ancho, &mut alto, w, alto_texto);
     }
     // El renglon de abajo: la chapa, la etiqueta, la chincheta y la hora.
@@ -3415,11 +3764,64 @@ fn pintar_cabecera(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     // El universo, la lupa y los tres puntos, en una sola pastilla.
     pildora(p, tema, rf(pil.derecha), e);
     icono_centrado(p, &mi::PUBLIC, pil.universo, 24.0 * e, tema.pildora_texto);
-    icono_centrado(p, &mi::SEARCH, pil.buscar, 24.0 * e, tema.pildora_texto);
+    // La lupa enciende y apaga, como en el movil: el mismo boton, con aspa
+    // mientras se busca.
+    let icono_lupa: &Icono = if a.busqueda.is_some() {
+        &mi::CLOSE
+    } else {
+        &mi::SEARCH
+    };
+    icono_centrado(p, icono_lupa, pil.buscar, 24.0 * e, tema.pildora_texto);
     icono_centrado(p, &mi::MORE_VERT, pil.menu, 24.0 * e, tema.pildora_texto);
     zonas.push((pil.universo, Zona::Universo));
     zonas.push((pil.buscar, Zona::Buscar));
     zonas.push((pil.menu, Zona::Menu));
+
+    // Buscando, la caja de buscar SUSTITUYE al titulo dentro de la pastilla
+    // del centro, como en el movil: una caja debajo empujaria la conversacion
+    // hacia abajo cada vez que se abre la lupa.
+    if let Some(aguja) = a.busqueda.as_deref() {
+        let sitio = Rect {
+            y: cab.y + (2.0 * e) as i32,
+            alto: cab.alto.saturating_sub((4.0 * e) as u32),
+            ..pil.centro
+        };
+        // Se queda con TODO el sitio del centro: se escribe dentro, y una
+        // pastilla medida al texto iria creciendo letra a letra.
+        if sitio.ancho == 0 {
+            return;
+        }
+        pildora(p, tema, rf(sitio), e);
+        let lupa = 18.0 * e;
+        let x0 = sitio.x as f32 + 14.0 * e;
+        p.icono(
+            &mi::SEARCH,
+            RectF {
+                x: x0,
+                y: sitio.y as f32 + (sitio.alto as f32 - lupa) / 2.0,
+                ancho: lupa,
+                alto: lupa,
+            },
+            tema.pildora_sub,
+        );
+        let (escrito, color) = if aguja.is_empty() {
+            (textos.t("chat-buscar-aqui"), tema.pildora_sub)
+        } else {
+            (format!("{aguja}|"), tema.pildora_texto)
+        };
+        let tam = 15.0 * e;
+        let (_, alto_escrito) = p.medir_texto(&escrito, tam);
+        let tx = x0 + lupa + 8.0 * e;
+        p.texto_linea(
+            &escrito,
+            tx,
+            sitio.y as f32 + (sitio.alto as f32 - alto_escrito) / 2.0,
+            tam,
+            (sitio.derecha() as f32 - 14.0 * e - tx).max(0.0),
+            color,
+        );
+        return;
+    }
 
     // El titulo: disco amarillo con la carpeta (el marcador en «Mensajes
     // guardados»), el nombre con su flechita y debajo cuantas cosas guarda y
@@ -3892,6 +4294,9 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         colocado: std::cell::RefCell::new(Colocado::default()),
         hoja: None,
         vivo: None,
+        busqueda: None,
+        comentando: None,
+        barriendo: false,
     }
 }
 
@@ -4353,6 +4758,7 @@ fn fotos_del_historial(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::pa
         .unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
     let (primero, cuantos) = h::visibles(area, &c.puestos, scroll);
     (primero..primero + cuantos)
+        .filter_map(|cual| c.mensaje(cual))
         .filter_map(|i| match a.vistas.get(i) {
             Some(Some(Ojeada::Foto { .. })) => {
                 ruta_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(i)?)
@@ -6350,6 +6756,9 @@ enum Zona {
     VieneDe(usize),
     /// Ir a un mensaje: la cita de una respuesta o la barra del fijado.
     Ir(usize),
+    /// «Ver en contexto»: quita el filtro y lleva al primer resultado, que es
+    /// como se sale de una busqueda sin perder el sitio.
+    EnContexto,
     CerrarRespuesta,
     SelCerrar,
     SelCopiar,
@@ -6663,9 +7072,53 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
     if isla.ancho == 0 || isla.alto == 0 {
         return;
     }
+    // Buscando, la barra de encima de la isla dice cuantos resultados hay y
+    // ofrece verlos en su sitio (`guardados_resultados` y
+    // «Ver en contexto»): sin el recuento, una busqueda que filtra veinte
+    // burbujas parece toda la conversacion.
+    //
+    // Y manda sobre la de responder, que no desaparece: la respuesta que
+    // estuviera a medias sigue colgada y vuelve a verse al cerrar la lupa.
+    // Dos barras encima de la isla se comerian el historial.
+    if let Some(cuantos) = resultados_de_la_busqueda(a) {
+        let barra = d.encima_de_la_isla(alto_texto, escala);
+        let caja = RectF {
+            alto: (barra.alto as f32 - 6.0 * e).max(1.0),
+            ..rf(barra)
+        };
+        p.rellenar_redondeado(caja, 16.0 * e, tema.campo);
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("n", cuantos);
+        let rotulo = textos.t_args("chat-buscar-resultados", &args);
+        let (_, alto_r) = p.medir_texto(&rotulo, 12.0 * e);
+        let contexto = textos.t("chat-buscar-en-contexto");
+        let (w_contexto, _) = p.medir_texto(&contexto, 12.0 * e);
+        let boton = Rect {
+            x: (caja.x + caja.ancho - w_contexto - 24.0 * e) as i32,
+            y: caja.y as i32,
+            ancho: (w_contexto + 24.0 * e) as u32,
+            alto: caja.alto as u32,
+        };
+        p.texto_linea(
+            &rotulo,
+            caja.x + 14.0 * e,
+            caja.y + (caja.alto - alto_r) / 2.0,
+            12.0 * e,
+            (boton.x as f32 - caja.x - 18.0 * e).max(0.0),
+            tema.texto,
+        );
+        p.texto(
+            &contexto,
+            boton.x as f32 + 12.0 * e,
+            caja.y + (caja.alto - alto_r) / 2.0,
+            12.0 * e,
+            tema.enviar,
+        );
+        a.zonas.borrow_mut().push((boton, Zona::EnContexto));
+    }
     // A quien se contesta, encima del campo y con su aspa: sin esta barra
     // uno escribe sin saber si el mensaje sigue enganchado.
-    if let Some(r) = a
+    else if let Some(r) = a
         .respondiendo
         .as_deref()
         .and_then(|id| a.mensajes.iter().find(|m| m.id == id))
@@ -7786,10 +8239,29 @@ mod pruebas_cuaderno {
 /// contestando a algo.
 fn disponer(marco: Rect, escala: u32, ancho_lista: u32, abierto: Option<&Abierto>) -> Disposicion {
     let mut d = Disposicion::calcular(marco.ancho, marco.alto, escala, ancho_lista, Vista::Ambas);
-    if abierto.is_some_and(|a| a.respondiendo.is_some() && a.info.is_none() && a.hoja.is_none()) {
+    let hay_barra = abierto.is_some_and(|a| {
+        (a.respondiendo.is_some() || resultados_de_la_busqueda(a).is_some())
+            && a.info.is_none()
+            && a.hoja.is_none()
+    });
+    if hay_barra {
         d.encima_de_la_isla = BARRA_DE_RESPONDER * escala / 100;
     }
     d
+}
+
+/// Cuantos resultados tiene la busqueda de la conversacion, o `None` si no se
+/// esta buscando de verdad.
+///
+/// Sin nada escrito no hay recuento: la caja recien abierta ensena la
+/// conversacion entera, y decir «312 resultados» ahi no informa de nada.
+/// Tampoco con cero: para eso ya esta el «Nada con eso» del historial.
+fn resultados_de_la_busqueda(a: &Abierto) -> Option<usize> {
+    a.busqueda.as_deref().filter(|q| !q.trim().is_empty())?;
+    match cuantas_se_ven(a) {
+        0 => None,
+        n => Some(n),
+    }
 }
 
 /// Lo que mide la barra de «a quien se contesta», con su aire de abajo.

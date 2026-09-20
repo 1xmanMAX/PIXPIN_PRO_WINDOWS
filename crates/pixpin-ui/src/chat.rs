@@ -1563,6 +1563,204 @@ pub fn ancho_fila_archivo(ancho_texto: u32, escala_por_cien: u32) -> u32 {
     f.abrir.derecha().max(0) as u32
 }
 
+// --- Buscar dentro de la conversacion -------------------------------------
+
+/// Si un mensaje casa con lo que se busca.
+///
+/// Se miran los DOS campos que mira el movil (`Mensajes.buscar`): el texto y
+/// el nombre del fichero. Ni la etiqueta ni el codigo ni la fecha: la
+/// etiqueta se filtra aparte y el codigo se copia, no se teclea.
+///
+/// Una aguja en blanco casa con TODO, y no con nada: esta funcion contesta
+/// «se ve esta burbuja», y con la caja de buscar abierta y vacia se ven
+/// todas. Es lo contrario que `resaltado::hay_coincidencia`, que contesta
+/// «hay algo que pintar de otro color» y con la aguja vacia dice que no.
+pub fn casa_la_busqueda(texto: &str, nombre: &str, aguja: &str) -> bool {
+    if aguja.trim().is_empty() {
+        return true;
+    }
+    crate::resaltado::hay_coincidencia(texto, aguja)
+        || crate::resaltado::hay_coincidencia(nombre, aguja)
+}
+
+/// La barra que dice cuantos resultados hay, encima de la isla de escribir
+/// (`guardados_resultados` del movil). Lo mismo que mide la de responder.
+pub const BARRA_DE_BUSQUEDA: u32 = 46;
+
+// --- Deslizar la burbuja para comentar ------------------------------------
+//
+// Los numeros son los de Telegram (`ChatActivity.java:4963-5000`), que el
+// movil copia tal cual: se arrastra hasta 80, y desde 50 al soltar comenta.
+// Por debajo de 50 el gesto saltaria sin querer al desplazarse en diagonal;
+// por encima, habria que hacer un viaje.
+//
+// En Windows se arrastra a la DERECHA y no a la izquierda: aqui las burbujas
+// van pegadas al borde izquierdo (todas son nuestras), asi que a la derecha
+// es donde hay sitio libre para que la burbuja se mueva y aparezca la flecha.
+
+/// Lo que mas se puede correr una burbuja.
+pub const COMENTAR_TOPE: u32 = 80;
+/// Y desde donde soltar ya comenta.
+pub const COMENTAR_GATILLO: u32 = 50;
+
+/// Lo que se corre la burbuja habiendo arrastrado `dx` desde donde se agarro.
+/// Nunca a la izquierda, y nunca mas alla del tope: pasado el tope deja de
+/// seguir al raton, que es lo que avisa de que ya esta sin mirar nada.
+pub fn corrimiento_de_comentar(dx: i32, escala_por_cien: u32) -> i32 {
+    let tope = (COMENTAR_TOPE * escala_por_cien / 100) as i32;
+    dx.clamp(0, tope)
+}
+
+/// Si soltar aqui comenta el mensaje.
+pub fn comenta_al_soltar(corrimiento: i32, escala_por_cien: u32) -> bool {
+    corrimiento >= (COMENTAR_GATILLO * escala_por_cien / 100) as i32
+}
+
+/// Lo opaca que va la flecha de comentar: de nada al empezar a entera justo
+/// al llegar al gatillo. Es el aviso que en el movil da la vibracion, que en
+/// un ordenador no existe.
+pub fn opacidad_de_comentar(corrimiento: i32, escala_por_cien: u32) -> f32 {
+    let gatillo = (COMENTAR_GATILLO * escala_por_cien / 100).max(1) as f32;
+    (corrimiento as f32 / gatillo).clamp(0.0, 1.0)
+}
+
+// --- La onda de una nota de voz -------------------------------------------
+
+/// Cuantas barras tiene la onda, y cuanto miden (`Onda.kt` del movil, que a
+/// su vez copia `SeekBarWaveform.java:385`): barras de 2 cada 3, sobre una
+/// franja de 14.
+pub const ONDA_BARRAS: usize = 50;
+pub const ONDA_PASO: u32 = 3;
+pub const ONDA_GRUESO: u32 = 2;
+pub const ONDA_ALTO: u32 = 14;
+/// Lo que mide una barra de las mas bajas. Ni las mas calladas desaparecen:
+/// una onda con huecos parece una onda cortada.
+const ONDA_MINIMA: f32 = 2.0 / ONDA_ALTO as f32;
+
+/// La onda de una nota de voz a partir de los picos que el movil anoto al
+/// grabarla: `ONDA_BARRAS` alturas entre 0 y 1, fraccion de `ONDA_ALTO`.
+///
+/// Los picos vienen en el mensaje (campo `picos` del movil) porque sacarlos
+/// del `.m4a` obligaria a descodificarlo entero, y hacer eso por cada nota a
+/// la vista dejaria el desplazamiento a trompicones.
+///
+/// **Sin picos no se devuelve nada**, y quien pinta se queda con la fila de
+/// siempre: una onda inventada mentiria sobre lo que se dijo.
+pub fn barras_de_onda(picos: &[i64]) -> Vec<f32> {
+    if picos.is_empty() {
+        return Vec::new();
+    }
+    // Cada barra se queda con el pico mas alto de su trozo, no con la media:
+    // la media aplana una nota y todas acaban pareciendose.
+    let mut crudas = Vec::with_capacity(ONDA_BARRAS);
+    for barra in 0..ONDA_BARRAS {
+        let desde = barra * picos.len() / ONDA_BARRAS;
+        let hasta = ((barra + 1) * picos.len() / ONDA_BARRAS).max(desde + 1);
+        let alto = picos[desde..hasta.min(picos.len())]
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(0)
+            .max(0);
+        crudas.push(alto as f32);
+    }
+    // Se normaliza por el mas alto de ESTA nota y no por un tope fijo: los
+    // picos del microfono dependen de lo cerca que se hablara, y con un tope
+    // fijo una nota susurrada saldria plana del todo.
+    let techo = crudas.iter().copied().fold(0.0f32, f32::max);
+    crudas
+        .into_iter()
+        .map(|v| {
+            let parte = if techo > 0.0 { v / techo } else { 0.0 };
+            ONDA_MINIMA + parte * (1.0 - ONDA_MINIMA)
+        })
+        .collect()
+}
+
+/// Lo ancho que sale la onda entera.
+pub fn ancho_de_la_onda(cuantas: usize, escala_por_cien: u32) -> u32 {
+    (cuantas as u32 * ONDA_PASO) * escala_por_cien / 100
+}
+
+#[cfg(test)]
+mod pruebas_buscar {
+    use super::*;
+
+    #[test]
+    fn se_busca_en_el_texto_y_en_el_nombre_sin_mirar_mayusculas_ni_tildes() {
+        assert!(casa_la_busqueda("Hay que poner el Cemento", "", "cemento"));
+        assert!(casa_la_busqueda("", "Plano de la araña.pdf", "arana"));
+        // A mitad de palabra tambien: es `contains`, no un prefijo.
+        assert!(casa_la_busqueda("presupuesto", "", "supues"));
+    }
+
+    #[test]
+    fn lo_que_no_esta_no_casa_y_la_caja_vacia_ensena_todo() {
+        assert!(!casa_la_busqueda(
+            "Hay que poner el cemento",
+            "foto.jpg",
+            "ladrillo"
+        ));
+        // Caso negativo del caso negativo: con la caja abierta y vacia no se
+        // esconde nada, que si no el chat parece vacio al abrir la lupa.
+        assert!(casa_la_busqueda("lo que sea", "", ""));
+        assert!(casa_la_busqueda("lo que sea", "", "   "));
+    }
+
+    #[test]
+    fn la_burbuja_sigue_al_raton_hasta_el_tope_y_solo_hacia_la_derecha() {
+        assert_eq!(corrimiento_de_comentar(30, 100), 30);
+        assert_eq!(corrimiento_de_comentar(200, 100), COMENTAR_TOPE as i32);
+        // Caso negativo: hacia la izquierda no se mueve, que ahi no hay gesto.
+        assert_eq!(corrimiento_de_comentar(-40, 100), 0);
+        // Y escala con el DPI.
+        assert_eq!(corrimiento_de_comentar(400, 200), 2 * COMENTAR_TOPE as i32);
+    }
+
+    #[test]
+    fn soltar_comenta_solo_pasado_el_gatillo() {
+        assert!(comenta_al_soltar(COMENTAR_GATILLO as i32, 100));
+        assert!(comenta_al_soltar(70, 100));
+        // Caso negativo: un roce al desplazarse en diagonal no comenta.
+        assert!(!comenta_al_soltar(COMENTAR_GATILLO as i32 - 1, 100));
+        assert!(!comenta_al_soltar(0, 100));
+        // La flecha va apareciendo, y esta entera justo al llegar.
+        assert_eq!(opacidad_de_comentar(0, 100), 0.0);
+        assert_eq!(opacidad_de_comentar(COMENTAR_GATILLO as i32, 100), 1.0);
+        assert_eq!(opacidad_de_comentar(COMENTAR_TOPE as i32, 100), 1.0);
+        assert!(opacidad_de_comentar(25, 100) > 0.4);
+    }
+
+    #[test]
+    fn la_onda_sale_de_los_picos_y_sin_picos_no_hay_onda() {
+        // Caso negativo, y el importante: una nota vieja (o del PC, que no
+        // graba) no tiene picos y NO se le inventa una onda.
+        assert!(barras_de_onda(&[]).is_empty());
+
+        let picos: Vec<i64> = (0..200).map(|i| i as i64).collect();
+        let o = barras_de_onda(&picos);
+        assert_eq!(o.len(), ONDA_BARRAS);
+        assert!(o.iter().all(|v| (0.0..=1.0).contains(v)));
+        // El mas alto llega arriba del todo y va al final, que es donde
+        // estaba el pico mas grande.
+        assert_eq!(o[ONDA_BARRAS - 1], 1.0);
+        assert!(o[0] < o[ONDA_BARRAS - 1]);
+    }
+
+    #[test]
+    fn ni_la_barra_mas_callada_desaparece_y_pocos_picos_dan_la_onda_entera() {
+        // Silencio entero: todas al minimo, ninguna a cero.
+        let o = barras_de_onda(&[0, 0, 0]);
+        assert_eq!(o.len(), ONDA_BARRAS);
+        assert!(o.iter().all(|v| *v > 0.0), "{o:?}");
+        // Con menos picos que barras se estira, no se deja media onda vacia.
+        let o = barras_de_onda(&[1, 9]);
+        assert_eq!(o.len(), ONDA_BARRAS);
+        assert_eq!(o[ONDA_BARRAS - 1], 1.0);
+        assert_eq!(ancho_de_la_onda(ONDA_BARRAS, 100), 150);
+    }
+}
+
 #[cfg(test)]
 mod pruebas_movil {
     use super::*;
