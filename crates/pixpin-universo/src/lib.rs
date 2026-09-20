@@ -39,5 +39,6 @@ pub use jerarquia::{Aterriza, Rechazo};
 pub use operar::Arrastre;
 pub use universo::{Encuadre, Universo, VERSION};
 pub use vista::{
-    RejillaAstros, TOPE_DETALLE, Visto, astro_en, conexiones_visibles, extremos, visibles,
+    RejillaAstros, TOPE_DETALLE, Visto, astro_en, conexion_en, conexiones_visibles, extremos,
+    visibles,
 };

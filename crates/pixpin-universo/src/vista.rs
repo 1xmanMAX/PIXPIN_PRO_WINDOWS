@@ -252,6 +252,40 @@ pub fn astro_en(u: &Universo, vistos: &[Visto], x: f32, y: f32) -> Option<IdAstr
         .map(|a| a.id)
 }
 
+/// La conexion visible que pasa por el punto, dentro de `tolerancia` (en
+/// mundo): la que se pulsa para elegirla y poder borrarla.
+///
+/// Gana la mas cercana, no la primera: dos lineas que se cruzan comparten
+/// ese punto y hay que quedarse con la que el usuario esta senalando.
+pub fn conexion_en(u: &Universo, vistos: &[Visto], x: f32, y: f32, tolerancia: f32) -> Option<u64> {
+    let mut mejor: Option<(u64, f32)> = None;
+    for (id, da, db) in conexiones_visibles(u, vistos) {
+        let (Some(a), Some(b)) = (u.astro(da), u.astro(db)) else {
+            continue;
+        };
+        let ((x0, y0), (x1, y1)) = extremos(a, b);
+        let d = distancia_a_segmento(x, y, x0, y0, x1, y1);
+        if d <= tolerancia && mejor.is_none_or(|(_, m)| d < m) {
+            mejor = Some((id, d));
+        }
+    }
+    mejor.map(|(id, _)| id)
+}
+
+/// Del punto al segmento, no a la recta: fuera de los extremos vale la
+/// distancia al extremo, que es lo que se ve en pantalla.
+fn distancia_a_segmento(x: f32, y: f32, x0: f32, y0: f32, x1: f32, y1: f32) -> f32 {
+    let (dx, dy) = (x1 - x0, y1 - y0);
+    let largo2 = dx * dx + dy * dy;
+    let t = if largo2 == 0.0 {
+        0.0
+    } else {
+        (((x - x0) * dx + (y - y0) * dy) / largo2).clamp(0.0, 1.0)
+    };
+    let (px, py) = (x0 + t * dx, y0 + t * dy);
+    ((x - px) * (x - px) + (y - py) * (y - py)).sqrt()
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -397,5 +431,37 @@ mod pruebas {
         let v = ver(&u, 0.02);
         let c = conexiones_visibles(&u, &v);
         assert_eq!(c, vec![(50, IdAstro(1), g2)]);
+    }
+
+    #[test]
+    fn se_pulsa_la_linea_mas_cercana_y_lejos_de_ella_no_hay_ninguna() {
+        let mut u = galaxia_con_lunas(1);
+        let g2 = u.nuevo_id();
+        u.astros.push(Astro::galaxia(g2, "q", 6000.0, 0.0));
+        let g3 = u.nuevo_id();
+        u.astros.push(Astro::galaxia(g3, "r", 3000.0, 6000.0));
+        u.conexiones.push(Conexion::nueva(50, IdAstro(1), g2));
+        u.conexiones.push(Conexion::nueva(51, IdAstro(1), g3));
+        u.marcar_cambio();
+        let v = ver(&u, 0.02);
+
+        // La linea 50 va de (0,0) a (6000,0): a la mitad y un poco por
+        // encima se pulsa esa, no la que sube hacia g3.
+        assert_eq!(conexion_en(&u, &v, 3000.0, 30.0, 200.0), Some(50));
+        // Caso negativo: lejos de las dos no hay ninguna.
+        assert_eq!(conexion_en(&u, &v, 3000.0, 3000.0, 200.0), None);
+        // Caso negativo: mas alla del extremo tampoco, aunque este en la
+        // recta que prolonga el segmento.
+        assert_eq!(conexion_en(&u, &v, 20_000.0, 0.0, 200.0), None);
+    }
+
+    #[test]
+    fn la_distancia_a_un_segmento_no_es_la_distancia_a_su_recta() {
+        // Dentro del segmento: la perpendicular.
+        assert!((distancia_a_segmento(5.0, 3.0, 0.0, 0.0, 10.0, 0.0) - 3.0).abs() < 1e-5);
+        // Pasado el extremo: la distancia al extremo, no 3.
+        assert!((distancia_a_segmento(14.0, 3.0, 0.0, 0.0, 10.0, 0.0) - 5.0).abs() < 1e-5);
+        // Un segmento de largo cero es un punto y no divide por cero.
+        assert!((distancia_a_segmento(3.0, 4.0, 1.0, 1.0, 1.0, 1.0) - 13f32.sqrt()).abs() < 1e-4);
     }
 }

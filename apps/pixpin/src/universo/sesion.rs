@@ -54,6 +54,9 @@ const REVISAR_CUADERNOS: Duration = Duration::from_secs(2);
 const AVISO: Duration = Duration::from_secs(2);
 /// Cuantas anotaciones dentro de un planeta se borran sin preguntar.
 const BORRAR_SIN_PREGUNTAR: usize = 5;
+/// A cuantos pixeles de una linea cuenta como pulsada. En pixeles y no en
+/// mundo: alejado, una linea sigue siendo igual de fina en pantalla.
+const TOLERANCIA_LINEA: f32 = 8.0;
 /// El lado de un emoji recien puesto, en pixeles logicos de pantalla.
 const LADO_EMOJI: f32 = 64.0;
 /// Una galaxia por debajo de esto ya no ensena nada de dentro: su cuaderno
@@ -118,6 +121,9 @@ pub struct Sesion {
     cuentas_con: Option<u64>,
     nombres: HashMap<String, String>,
     pub seleccion: Vec<IdAstro>,
+    /// La linea pulsada, para poder borrarla: sin esto se podian crear
+    /// conexiones y no habia manera de quitarlas.
+    pub conexion_elegida: Option<u64>,
     pub herramienta: Option<HerramientaUniverso>,
     pub ultimo_tipo: TipoConexion,
     pub emoji_elegido: Option<String>,
@@ -135,6 +141,10 @@ pub struct Sesion {
     guardar_en: Option<Instant>,
     visto: (u64, u64),
     estrellas: Option<Estrellas>,
+    /// A3 fase 2: cuanto colchon lleva la capa de las estrellas por cada
+    /// lado, en pixeles. 0 mientras no se monte su visual, y entonces se
+    /// tesela justo la pantalla, como siempre.
+    margen_estrellas_px: f32,
     cielo: Cielo,
     miniaturas: Miniaturas,
     indice_busqueda: Option<(u64, IndiceBusqueda)>,
@@ -299,6 +309,7 @@ impl Sesion {
             cuentas_con: None,
             nombres,
             seleccion: Vec::new(),
+            conexion_elegida: None,
             herramienta: None,
             ultimo_tipo: TipoConexion::Relacion,
             emoji_elegido: None,
@@ -314,6 +325,7 @@ impl Sesion {
             guardar_en: None,
             visto: (0, 0),
             estrellas: None,
+            margen_estrellas_px: 0.0,
             cielo: Cielo::default(),
             // D238: menos miniaturas en Ligero.
             miniaturas: Miniaturas::con_lado(if ligero { 120 } else { 164 }),
@@ -977,13 +989,21 @@ impl Sesion {
                 self.u.borrar(&ids, escena);
                 hecho
             }
+            // Una linea elegida se borra sola: no arrastra astros consigo.
+            VK_SUPR if self.conexion_elegida.is_some() => {
+                if let Some(id) = self.conexion_elegida.take() {
+                    self.u.borrar_conexion(id);
+                }
+                hecho
+            }
             VK_ESCAPE => {
                 if self.selector_abierto {
                     self.selector_abierto = false;
                 } else if self.enfoque.is_some() {
                     self.enfoque = None;
-                } else if !self.seleccion.is_empty() {
+                } else if !self.seleccion.is_empty() || self.conexion_elegida.is_some() {
                     self.seleccion.clear();
+                    self.conexion_elegida = None;
                 } else if self.herramienta.is_some() {
                     self.herramienta = None;
                 } else {
@@ -1175,9 +1195,22 @@ impl Sesion {
                 Respuesta::Consumido { repintar: true }
             }
             None => {
-                // En el vacio: el editor elige anotaciones con su marquesina.
-                if !self.seleccion.is_empty() {
+                // Antes del vacio, la linea: es lo unico que se pulsa sin
+                // tener area propia, y hay que poder elegirla para borrarla.
+                let cerca = TOLERANCIA_LINEA / camara.zoom.max(f32::MIN_POSITIVE);
+                if let Some(id) =
+                    pixpin_universo::conexion_en(&self.u, &self.vistos, q.x, q.y, cerca)
+                {
+                    self.conexion_elegida = Some(id);
                     self.seleccion.clear();
+                    return Respuesta::Consumido { repintar: true };
+                }
+                // En el vacio: el editor elige anotaciones con su marquesina.
+                let habia = !self.seleccion.is_empty() || self.conexion_elegida.is_some();
+                self.seleccion.clear();
+                self.conexion_elegida = None;
+                if habia {
+                    return Respuesta::Consumido { repintar: true };
                 }
                 Respuesta::Pasa
             }
@@ -1424,7 +1457,10 @@ impl Sesion {
         let s = self
             .estrellas
             .get_or_insert_with(|| Estrellas::nuevas(0x5eed, capas));
-        if let Err(err) = s.preparar(motor, self.tamano.0, self.tamano.1, e) {
+        // A3 fase 2: con las estrellas en su propio visual hay que teselar
+        // tambien su colchon, o al correrlo asomaria el borde vacio.
+        let mf = self.margen_estrellas_px * 2.0;
+        if let Err(err) = s.preparar(motor, self.tamano.0 + mf, self.tamano.1 + mf, e) {
             // Son adorno: sin ellas el cielo es liso. Sin capas no se
             // vuelve a intentar en cada fotograma.
             tracing::warn!(?err, "sin estrellas de fondo");
@@ -1468,6 +1504,61 @@ impl Sesion {
             self.tamano.0,
             self.tamano.1,
         );
+        self.pintar_astros(p, efectiva);
+    }
+
+    /// **A3 fase 2: solo el degradado del cielo**, para su propio visual.
+    ///
+    /// Va aparte porque no se mueve con nada: es fondo de pantalla. Se pinta
+    /// al abrir y al cambiar de tamano la ventana, y ya.
+    pub fn pintar_cielo(&self, p: &Pintor, ancho: f32, alto: f32) {
+        if !self.cielo.pintar(p, ancho, alto) {
+            // Sin bitmap (dispositivo recien perdido): un cielo liso, que es
+            // feo pero no deja la pantalla con basura.
+            p.limpiar(PALETA.espacio);
+        }
+    }
+
+    /// **A3 fase 2: solo las estrellas**, para su propio visual, que se
+    /// mueve a `paralaje()` de lo que se mueve el lienzo.
+    ///
+    /// Aqui se pintan SIEMPRE las tres capas, tambien mientras la camara se
+    /// mueve: `en_movimiento` existia porque moverse obligaba a repintar, y
+    /// con el visual propio moverse ya no repinta nada.
+    pub fn pintar_estrellas(&self, p: &Pintor, efectiva: &Camara) {
+        if let Some(e) = &self.estrellas {
+            e.pintar(
+                p,
+                (efectiva.x * efectiva.zoom, efectiva.y * efectiva.zoom),
+                false,
+            );
+        }
+    }
+
+    /// A que fraccion del lienzo se mueven las estrellas. 0 si no hay
+    /// paralaje (nivel Ligero: una sola capa quieta), y entonces su visual
+    /// no se mueve nunca.
+    pub fn paralaje(&self) -> f32 {
+        match &self.estrellas {
+            Some(e) => e.paralaje(),
+            // Todavia no existen: se crean en el primer `preparar`, que
+            // necesita motor, y el visual se monta antes que eso.
+            None => Estrellas::paralaje_de(if self.ligero { 1 } else { 3 }),
+        }
+    }
+
+    /// Cuanto colchon hay que darle a la capa de las estrellas para que un
+    /// paneo de `margen_escena` pixeles no ensene su borde. Lo pide el
+    /// editor al montar el visual, y se lo devuelve con `fijar_margen`.
+    pub fn margen_estrellas(&mut self, margen_escena: f32) -> u32 {
+        let m = (margen_escena * self.paralaje()).ceil().max(0.0);
+        self.margen_estrellas_px = m;
+        m as u32
+    }
+
+    /// Lo del universo que va CON el lienzo: orbitas, conexiones, astros,
+    /// nebulosas y pulsos. Sin el cielo ni las estrellas.
+    pub fn pintar_astros(&self, p: &Pintor, efectiva: &Camara) {
         self.con_contexto(|c| {
             pintar::orbitas(p, c, efectiva);
             pintar::conexiones(p, c, efectiva);
