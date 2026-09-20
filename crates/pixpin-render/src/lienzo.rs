@@ -94,6 +94,9 @@ impl MotorRender {
     ) -> Result<(), ErrorRender> {
         let c = self.contexto();
         self.fotograma.set(self.fotograma.get() + 1);
+        // Los contadores son POR fotograma: lo que interesa es «cuantos
+        // objetos crea este fotograma», no el acumulado de la sesion.
+        self.creados.set(crate::motor::Contadores::default());
         // SAFETY: protocolo documentado de D2D sobre un contexto vivo; el
         // SetTarget(None) final corre tanto en exito como en error de
         // EndDraw, porque va antes del `?`.
@@ -253,6 +256,7 @@ pub(crate) fn disposicion_cacheada(
     }
     let (disposicion, w, hh) =
         disposicion_dwrite(motor.dwrite(), texto, tam, ancho_max, &[], una_linea)?;
+    motor.conto(|c| c.disposiciones += 1);
     if mapa.len() >= MAX_TEXTOS {
         // Primero lo que no se uso ni en este fotograma ni en el anterior;
         // si aun asi no cabe, todo (un fotograma que pide mas que el tope
@@ -720,6 +724,7 @@ impl Pintor<'_> {
         else {
             return;
         };
+        self.motor.conto(|c| c.disposiciones += 1);
         self.dibujar_disposicion(&disposicion, x, y, color);
     }
 
@@ -731,6 +736,7 @@ impl Pintor<'_> {
         ancho_max: f32,
         tramos: &[Tramo],
     ) -> (f32, f32) {
+        self.motor.conto(|c| c.disposiciones += 1);
         disposicion_dwrite(self.motor.dwrite(), texto, tam, ancho_max, tramos, false)
             .map(|(_, w, h)| (w, h))
             .unwrap_or((0.0, 0.0))
@@ -806,6 +812,7 @@ impl Pintor<'_> {
         // si algo falla a mitad se descarta sin dibujarla.
         unsafe {
             let geometria = self.motor.fabrica().CreatePathGeometry().ok()?;
+            self.motor.conto(|c| c.geometrias += 1);
             let sumidero = geometria.Open().ok()?;
             sumidero.SetFillMode(D2D1_FILL_MODE_WINDING);
             // Las cuadraticas seguidas se mandan en bloque: una llamada COM
@@ -844,68 +851,148 @@ impl Pintor<'_> {
         contorno: &[(f32, f32)],
         color: Color,
     ) {
-        use windows::Win32::Graphics::Direct2D::{
-            D2D1_DEFAULT_FLATTENING_TOLERANCE, ID2D1DeviceContext1,
-        };
         if contorno.len() < 3 {
             return;
         }
-        let Ok(ctx1) = self.motor.contexto().cast::<ID2D1DeviceContext1>() else {
-            return self.tinta(contorno, color);
-        };
-        let (id, version, indice) = clave;
-        if !cache.vale(clave) {
-            let Some(geometria) = self.geometria_tinta(contorno) else {
-                return;
-            };
-            // La tolerancia se divide por la escala: a 200 % hacen falta el
-            // doble de triangulos para que la curva no se vea poligonal.
-            let tolerancia = D2D1_DEFAULT_FLATTENING_TOLERANCE / cache.escala.max(0.01);
-            // SAFETY: geometria recien creada y contexto vivo.
-            let Ok(r) = (unsafe { ctx1.CreateFilledGeometryRealization(&geometria, tolerancia) })
-            else {
-                return self.tinta(contorno, color);
-            };
-            cache.mapa.insert(
-                (id, indice),
-                crate::tinta::Realizada {
-                    version,
-                    realizacion: r,
-                },
-            );
-        }
-        let Some(pincel) = self.pincel(color) else {
+        let Some(geometria) = self.geometria_tinta(contorno) else {
             return;
         };
-        let r = &cache.mapa[&(id, indice)].realizacion;
-        // SAFETY: dentro del fotograma; realizacion y pincel vivos.
-        unsafe { ctx1.DrawGeometryRealization(r, &pincel) };
+        if !self.realizar(cache, clave, &geometria, None) {
+            // Sin D2D 1.1 o sin poder teselar: se pinta la geometria tal
+            // cual. Se ve igual, cuesta mas.
+            if let Some(p) = self.pincel(color) {
+                // SAFETY: dentro del fotograma; geometria y pincel vivos.
+                unsafe { self.motor.contexto().FillGeometry(&geometria, &p, None) };
+            }
+            return;
+        }
+        self.pintar_realizada(cache, clave, color);
     }
 
-    /// Pinta la realizacion ya cacheada de `clave` SIN mirar el contorno:
-    /// para cuando quien llama todavia no lo ha convertido a `Vec<(f32,
-    /// f32)>` y quiere evitar esa reserva si de todos modos hay un acierto
-    /// (`CacheTinta::vale`). Devuelve `false` si no hay nada cacheado -o el
-    /// contexto no da D2D 1.1- para que el llamante caiga entonces a
-    /// `tinta_cacheada` con el contorno construido.
+    /// Como `poligono`, pero guardando la teselacion. Es lo que usan los
+    /// rellenos de rough.js: sin esto cada fotograma de paneo creaba y
+    /// tiraba una `ID2D1PathGeometry` por pasada.
+    pub fn poligono_cacheado(
+        &self,
+        cache: &mut crate::tinta::CacheTinta,
+        clave: (u64, u32, u32),
+        vertices: &[(f32, f32)],
+        color: Color,
+    ) {
+        if vertices.len() < 3 {
+            return;
+        }
+        let Some(geometria) = self.geometria(vertices, true) else {
+            return;
+        };
+        if !self.realizar(cache, clave, &geometria, None) {
+            if let Some(p) = self.pincel(color) {
+                // SAFETY: dentro del fotograma; geometria y pincel vivos.
+                unsafe { self.motor.contexto().FillGeometry(&geometria, &p, None) };
+            }
+            return;
+        }
+        self.pintar_realizada(cache, clave, color);
+    }
+
+    /// Como `polilinea` / `polilinea_discontinua`, pero guardando la
+    /// teselacion del TRAZO (grosor y estilo incluidos). Las rayas son la
+    /// primitiva que la guia de Direct2D llama «very expensive»: realizada,
+    /// se paga una vez.
+    pub fn polilinea_cacheada(
+        &self,
+        cache: &mut crate::tinta::CacheTinta,
+        clave: (u64, u32, u32),
+        vertices: &[(f32, f32)],
+        grosor: f32,
+        discontinua: bool,
+        color: Color,
+    ) {
+        if vertices.len() < 2 {
+            return;
+        }
+        let Some(geometria) = self.geometria(vertices, false) else {
+            return;
+        };
+        let estilo = if discontinua {
+            self.estilo_discontinuo()
+        } else {
+            None
+        };
+        if !self.realizar(cache, clave, &geometria, Some((grosor, estilo.as_ref()))) {
+            if let Some(p) = self.pincel(color) {
+                // SAFETY: dentro del fotograma; geometria, estilo y pincel
+                // vivos.
+                unsafe {
+                    self.motor
+                        .contexto()
+                        .DrawGeometry(&geometria, &p, grosor, estilo.as_ref())
+                };
+            }
+            return;
+        }
+        self.pintar_realizada(cache, clave, color);
+    }
+
+    /// Tesela `geometria` y la guarda en `clave`. `trazo` a `None` la rellena;
+    /// con `Some((grosor, estilo))` realiza el trazo. Devuelve `false` si no
+    /// se pudo (contexto sin D2D 1.1, o la GPU rechazo la realizacion): el
+    /// llamante pinta entonces la geometria a pelo.
+    fn realizar(
+        &self,
+        cache: &mut crate::tinta::CacheTinta,
+        clave: (u64, u32, u32),
+        geometria: &ID2D1PathGeometry1,
+        trazo: Option<(f32, Option<&ID2D1StrokeStyle>)>,
+    ) -> bool {
+        use windows::Win32::Graphics::Direct2D::{
+            D2D1_DEFAULT_FLATTENING_TOLERANCE, ID2D1DeviceContext1,
+        };
+        let Ok(ctx1) = self.motor.contexto().cast::<ID2D1DeviceContext1>() else {
+            return false;
+        };
+        // La tolerancia se divide por la escala: a 200 % hacen falta el
+        // doble de triangulos para que la curva no se vea poligonal.
+        let tolerancia = D2D1_DEFAULT_FLATTENING_TOLERANCE / cache.escala.max(0.01);
+        // SAFETY: geometria recien creada por el llamante y contexto vivo.
+        let hecha = unsafe {
+            match trazo {
+                None => ctx1.CreateFilledGeometryRealization(geometria, tolerancia),
+                Some((grosor, estilo)) => {
+                    ctx1.CreateStrokedGeometryRealization(geometria, tolerancia, grosor, estilo)
+                }
+            }
+        };
+        let Ok(r) = hecha else {
+            return false;
+        };
+        self.motor.conto(|c| c.realizaciones += 1);
+        cache.guardar(clave, self.motor.fotograma.get(), r);
+        true
+    }
+
+    /// Pinta la realizacion ya cacheada de `clave` SIN mirar la geometria:
+    /// para cuando quien llama todavia no la ha convertido a `Vec<(f32,
+    /// f32)>` y quiere evitar esa reserva si de todos modos hay un acierto.
+    /// Devuelve `false` si no hay nada cacheado -o el contexto no da D2D
+    /// 1.1- para que el llamante caiga entonces a la version que la
+    /// construye.
     pub fn pintar_realizada(
         &self,
-        cache: &crate::tinta::CacheTinta,
+        cache: &mut crate::tinta::CacheTinta,
         clave: (u64, u32, u32),
         color: Color,
     ) -> bool {
         use windows::Win32::Graphics::Direct2D::ID2D1DeviceContext1;
-        if !cache.vale(clave) {
-            return false;
-        }
         let Ok(ctx1) = self.motor.contexto().cast::<ID2D1DeviceContext1>() else {
             return false;
         };
-        let (id, _version, indice) = clave;
+        let Some(r) = cache.tomar(clave, self.motor.fotograma.get()) else {
+            return false;
+        };
         if let Some(pincel) = self.pincel(color) {
-            let r = &cache.mapa[&(id, indice)].realizacion;
             // SAFETY: dentro del fotograma; realizacion y pincel vivos.
-            unsafe { ctx1.DrawGeometryRealization(r, &pincel) };
+            unsafe { ctx1.DrawGeometryRealization(&r, &pincel) };
         }
         true
     }
@@ -934,6 +1021,7 @@ impl Pintor<'_> {
             let Ok(geometria) = self.motor.fabrica().CreatePathGeometry() else {
                 return;
             };
+            self.motor.conto(|c| c.geometrias += 1);
             let Ok(sumidero) = geometria.Open() else {
                 return;
             };
@@ -1099,6 +1187,7 @@ impl Pintor<'_> {
         // una geometria sin cerrar reventaria al dibujarla.
         unsafe {
             let geometria = self.motor.fabrica().CreatePathGeometry().ok()?;
+            self.motor.conto(|c| c.geometrias += 1);
             let sumidero = geometria.Open().ok()?;
             sumidero.BeginFigure(
                 Vector2 {

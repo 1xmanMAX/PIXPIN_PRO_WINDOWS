@@ -31,13 +31,32 @@ pub fn retardo_nitido(nivel: pixpin_nivel::Nivel) -> Duration {
 pub(crate) struct Realizada {
     pub(crate) version: u32,
     pub(crate) realizacion: ID2D1GeometryRealization,
+    /// El fotograma en que se pinto por ultima vez: lo que decide a quien se
+    /// echa cuando la cache se pasa de `MAX_REALIZACIONES`.
+    pub(crate) usado: u64,
 }
 
-/// La tinta ya teselada por Direct2D, por elemento y orden.
+/// Cuantas realizaciones se guardan a la vez.
+///
+/// Generoso a proposito: una escena de 2.000 formas de rough.js con relleno
+/// de sombreado puede pedir decenas de miles de ordenes, y echar lo que el
+/// siguiente fotograma va a volver a pedir seria peor que no cachear. El
+/// tope existe solo para que un documento enorme no se coma la memoria de
+/// video de una HD 4000; al pasarse se echa primero lo que no se pinto ni en
+/// este fotograma ni en el anterior.
+const MAX_REALIZACIONES: usize = 60_000;
+
+/// La geometria ya teselada por Direct2D, por elemento y orden.
 ///
 /// Una realizacion es la geometria convertida en triangulos a una escala:
 /// pintarla no recalcula nada en el procesador. Se rehace solo si cambia la
 /// version del elemento o si se fija otra escala.
+///
+/// Empezo guardando solo la tinta (D121) y ahora guarda TODAS las ordenes
+/// de geometria: los poligonos, los rellenos y las polilineas de rough.js
+/// tambien. Sin eso, un fotograma de paneo creaba una `ID2D1PathGeometry`
+/// por cada pasada de cada borde y por cada raya de cada sombreado —de 20 a
+/// 60 por forma rellena— y las tiraba al acabar.
 pub struct CacheTinta {
     pub(crate) mapa: HashMap<(u64, u32), Realizada>,
     pub(crate) escala: f32,
@@ -83,6 +102,47 @@ impl CacheTinta {
         self.mapa
             .get(&(id, indice))
             .is_some_and(|r| r.version == version)
+    }
+
+    /// Guarda una realizacion recien hecha, echando lo viejo si hace falta.
+    /// `fotograma` es el de `MotorRender`, que ya cuenta uno por `dibujar`.
+    pub(crate) fn guardar(
+        &mut self,
+        clave: (u64, u32, u32),
+        fotograma: u64,
+        realizacion: ID2D1GeometryRealization,
+    ) {
+        let (id, version, indice) = clave;
+        if self.mapa.len() >= MAX_REALIZACIONES {
+            self.mapa.retain(|_, r| r.usado + 1 >= fotograma);
+            if self.mapa.len() >= MAX_REALIZACIONES {
+                self.mapa.clear();
+            }
+        }
+        self.mapa.insert(
+            (id, indice),
+            Realizada {
+                version,
+                realizacion,
+                usado: fotograma,
+            },
+        );
+    }
+
+    /// Apunta que `clave` se pinto en `fotograma`, para que la limpieza no
+    /// la eche. Devuelve la realizacion si la hay y es de esa version.
+    pub(crate) fn tomar(
+        &mut self,
+        clave: (u64, u32, u32),
+        fotograma: u64,
+    ) -> Option<ID2D1GeometryRealization> {
+        let (id, version, indice) = clave;
+        let r = self.mapa.get_mut(&(id, indice))?;
+        if r.version != version {
+            return None;
+        }
+        r.usado = fotograma;
+        Some(r.realizacion.clone())
     }
 }
 

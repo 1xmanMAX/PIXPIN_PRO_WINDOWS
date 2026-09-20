@@ -124,6 +124,37 @@ pub fn premultiplicar(rgba: &[u8]) -> Vec<u8> {
     v
 }
 
+/// Cuantos objetos de Direct2D/DirectWrite se han creado en el fotograma en
+/// curso.
+///
+/// La guia de rendimiento de Direct2D dice que crear y destruir recursos es
+/// caro en hardware; el diagnostico del 2026-09-19 sospechaba que un
+/// fotograma de paneo creaba una geometria por cada pasada de rough.js. Sin
+/// un numero eso no se puede ni confirmar ni dar por arreglado, asi que el
+/// motor los cuenta. Son `Cell<u32>` y un incremento: con la medicion
+/// apagada tampoco cuesta nada, no hace falta compilar dos veces.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Contadores {
+    /// `CreatePathGeometry` (formas de rough.js, tinta sin cachear, velo).
+    pub geometrias: u32,
+    /// `CreateFilledGeometryRealization` / `CreateStrokedGeometryRealization`.
+    pub realizaciones: u32,
+    /// `CreateTextFormat` + `CreateTextLayout` de DirectWrite.
+    pub disposiciones: u32,
+    /// `CreateSolidColorBrush`.
+    pub pinceles: u32,
+    /// Bitmaps: subidos, envueltos desde una textura o desde el backbuffer.
+    pub bitmaps: u32,
+}
+
+impl Contadores {
+    /// Cuantos objetos en total. Es el numero que tiene que ser 0 en un
+    /// fotograma de paneo sostenido.
+    pub fn total(self) -> u32 {
+        self.geometrias + self.realizaciones + self.disposiciones + self.pinceles + self.bitmaps
+    }
+}
+
 pub struct MotorRender {
     fabrica: ID2D1Factory1,
     _dispositivo: ID2D1Device,
@@ -164,6 +195,8 @@ pub struct MotorRender {
     /// o no.
     pub(crate) estilos_icono:
         std::cell::RefCell<[Option<windows::Win32::Graphics::Direct2D::ID2D1StrokeStyle>; 4]>,
+    /// Objetos creados en el fotograma en curso (ver `Contadores`).
+    pub(crate) creados: std::cell::Cell<Contadores>,
 }
 
 impl MotorRender {
@@ -193,6 +226,7 @@ impl MotorRender {
             brillos: std::cell::RefCell::new(std::collections::HashMap::new()),
             iconos: std::cell::RefCell::new(std::collections::HashMap::new()),
             estilos_icono: std::cell::RefCell::new([None, None, None, None]),
+            creados: std::cell::Cell::new(Contadores::default()),
         })
     }
 
@@ -206,6 +240,20 @@ impl MotorRender {
 
     pub fn dwrite(&self) -> &IDWriteFactory {
         &self.dwrite
+    }
+
+    /// Objetos de Direct2D/DirectWrite creados desde que empezo el fotograma
+    /// en curso (`MotorRender::dibujar` los pone a cero al abrirlo).
+    pub fn contadores(&self) -> Contadores {
+        self.creados.get()
+    }
+
+    /// Suma uno a un contador. `cambio` recibe la estructura y toca el campo
+    /// que sea: asi los sitios de creacion no tienen que saber de `Cell`.
+    pub(crate) fn conto(&self, cambio: impl FnOnce(&mut Contadores)) {
+        let mut c = self.creados.get();
+        cambio(&mut c);
+        self.creados.set(c);
     }
 
     /// Tope: un pincel son unos cientos de bytes, y el tope evita que un
@@ -231,6 +279,7 @@ impl MotorRender {
                 .CreateSolidColorBrush(&color.a_d2d(), None)
                 .ok()?
         };
+        self.conto(|c| c.pinceles += 1);
         if mapa.len() >= Self::MAX_PINCELES {
             mapa.clear();
         }
@@ -350,6 +399,7 @@ impl MotorRender {
                 &propiedades,
             )?
         };
+        self.conto(|c| c.bitmaps += 1);
         Ok(bitmap)
     }
 
@@ -397,6 +447,7 @@ impl MotorRender {
             self.contexto
                 .CreateBitmapFromDxgiSurface(&superficie, Some(&propiedades))?
         };
+        self.conto(|c| c.bitmaps += 1);
         Ok(bitmap)
     }
 }

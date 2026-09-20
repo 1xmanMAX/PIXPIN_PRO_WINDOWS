@@ -2227,17 +2227,26 @@ fn dibujar_orden(
     zoom: f32,
 ) {
     match orden {
-        Orden::Poligono { puntos, color } | Orden::Relleno { puntos, color } => {
-            p.poligono(&a_tuplas(puntos), a_color(*color));
-        }
+        // Acierto de cache: se pinta con la realizacion ya teselada sin
+        // volver a convertir los puntos en `Vec<(f32, f32)>` -esa reserva es
+        // la que se pagaba cada fotograma sin usarla para nada en cuanto
+        // habia acierto-. Solo si `pintar_realizada` no encuentra nada (o el
+        // contexto no da D2D 1.1) se paga la conversion y se rehace.
+        //
+        // Antes esto solo lo hacia la tinta (D121) y las formas de rough.js
+        // creaban una geometria por pasada y por fotograma: es lo que hacia
+        // que un paneo con formas rellenas costara decenas de veces mas que
+        // uno con trazos a mano.
+        Orden::Poligono { puntos, color } | Orden::Relleno { puntos, color } => match tinta {
+            Some((c, clave)) => {
+                if !p.pintar_realizada(c, clave, a_color(*color)) {
+                    p.poligono_cacheado(c, clave, &a_tuplas(puntos), a_color(*color));
+                }
+            }
+            None => p.poligono(&a_tuplas(puntos), a_color(*color)),
+        },
         Orden::Tinta { contorno, color } => match tinta {
             Some((c, clave)) => {
-                // Acierto: se pinta con la realizacion ya cacheada sin
-                // volver a convertir `contorno` en `Vec<(f32, f32)>` -esa
-                // reserva es la que se pagaba cada fotograma sin usarla
-                // para nada en cuanto habia acierto de cache-. Solo si
-                // `pintar_realizada` no encuentra nada (o falla) se paga la
-                // conversion y se rehace.
                 if !p.pintar_realizada(c, clave, a_color(*color)) {
                     p.tinta_cacheada(c, clave, &a_tuplas(contorno), a_color(*color));
                 }
@@ -2250,14 +2259,30 @@ fn dibujar_orden(
             grosor,
             estilo,
         } => {
-            let v = a_tuplas(puntos);
-            match estilo {
-                EstiloTrazo::Solido => p.polilinea(&v, *grosor, a_color(*color)),
-                // `Pintor` todavia no distingue rayas de puntos (nadie mas
-                // en el proyecto dibuja punteado con Direct2D); a rayas es
-                // la aproximacion mas cercana a lo discontinuo.
-                EstiloTrazo::Discontinuo | EstiloTrazo::Punteado => {
-                    p.polilinea_discontinua(&v, *grosor, a_color(*color))
+            // `Pintor` todavia no distingue rayas de puntos (nadie mas en el
+            // proyecto dibuja punteado con Direct2D); a rayas es la
+            // aproximacion mas cercana a lo discontinuo.
+            let discontinua = !matches!(estilo, EstiloTrazo::Solido);
+            match tinta {
+                Some((c, clave)) => {
+                    if !p.pintar_realizada(c, clave, a_color(*color)) {
+                        p.polilinea_cacheada(
+                            c,
+                            clave,
+                            &a_tuplas(puntos),
+                            *grosor,
+                            discontinua,
+                            a_color(*color),
+                        );
+                    }
+                }
+                None => {
+                    let v = a_tuplas(puntos);
+                    if discontinua {
+                        p.polilinea_discontinua(&v, *grosor, a_color(*color))
+                    } else {
+                        p.polilinea(&v, *grosor, a_color(*color))
+                    }
                 }
             }
         }
@@ -2338,6 +2363,9 @@ fn elegir_herramienta(gesto: &mut Gesto, h: Herramienta) {
     }
     gesto.herramienta = h;
 }
+
+#[cfg(test)]
+mod medir;
 
 #[cfg(test)]
 mod pruebas {
