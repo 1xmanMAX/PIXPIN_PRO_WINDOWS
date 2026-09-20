@@ -51,10 +51,17 @@ pub(super) enum Falla {
 pub(super) enum Estado {
     Pidiendo,
     Buscando(Busca),
-    /// `decide` suelta al hilo que espera: `true` acepta, soltarlo es «no».
+    /// `decide` suelta al hilo que espera: la tabla acepta —y dice, cosa por
+    /// cosa, si se crea como nueva—, y soltarlo sin mandar nada es «no».
     Oferta {
         oferta: Oferta,
-        decide: mpsc::Sender<bool>,
+        /// Lo que aqui ES cada cosa que llega, por su `identidad`: lo que
+        /// hace que aparezcan las dos opciones del movil.
+        sustituye: std::collections::BTreeMap<String, String>,
+        /// Lo elegido. Lo que no esta, «actualizar el que tengo», que es lo
+        /// que viene puesto en el movil.
+        como_nuevo: crate::recibir::ComoNuevo,
+        decide: mpsc::Sender<crate::recibir::ComoNuevo>,
     },
     Recibiendo {
         de: String,
@@ -69,7 +76,7 @@ pub(super) enum Estado {
 }
 
 /// Lo que se pulsa en esta pantalla.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Toque {
     Campo,
     Recibir,
@@ -78,6 +85,8 @@ pub(super) enum Toque {
     Aceptar,
     ProbarOtraVez,
     Cerrar,
+    /// Las dos pastillas de una cosa que ya se tiene, por su `identidad`.
+    Elegir(String, bool),
 }
 
 /// «Que me envien a mi»: el codigo, su QR y donde se espera.
@@ -173,19 +182,28 @@ pub(super) fn tocar(r: &mut Recibir, t: Toque, cx: &Contexto) -> bool {
             }
         }
         Toque::NoGracias => {
-            if let Estado::Oferta { decide, .. } = &r.estado {
-                let _ = decide.send(false);
-            }
+            // Sin mandar nada: soltar el canal es «no, gracias».
             r.estado = Estado::Pidiendo;
         }
         Toque::Aceptar => {
-            if let Estado::Oferta { decide, oferta } = &r.estado {
-                let _ = decide.send(true);
+            if let Estado::Oferta {
+                decide,
+                oferta,
+                como_nuevo,
+                ..
+            } = &r.estado
+            {
+                let _ = decide.send(como_nuevo.clone());
                 r.estado = Estado::Recibiendo {
                     de: oferta.de.clone(),
                     hechos: 0,
                     total: oferta.elementos.iter().map(|e| e.bytes.max(0) as u64).sum(),
                 };
+            }
+        }
+        Toque::Elegir(identidad, nuevo) => {
+            if let Estado::Oferta { como_nuevo, .. } = &mut r.estado {
+                como_nuevo.insert(identidad, nuevo);
             }
         }
         Toque::ProbarOtraVez => r.estado = Estado::Pidiendo,
@@ -314,21 +332,27 @@ fn falla_al_conectar(e: &envio::ErrorEnvio) -> Falla {
 fn tramitar(mut r: Receptor<TcpStream>, cx: &Contexto, turno: u64) -> Estado {
     let (decide, decision) = mpsc::channel();
     let oferta = r.oferta.clone();
+    // **Que de esto ya se tiene**, antes de preguntar: es lo que hace que
+    // salgan «Actualizar el que tengo» y «Crear como nuevo» como en el movil.
+    // Se mira aqui, en el hilo de la red, porque lee el disco entero.
+    let sustituye = crate::recibir::que_sustituye(&cx.raiz, &oferta.elementos);
     if !avisar(
         cx,
         turno,
         Estado::Oferta {
             oferta: oferta.clone(),
+            sustituye,
+            como_nuevo: Default::default(),
             decide,
         },
     ) {
         r.rechazar();
         return Estado::Pidiendo;
     }
-    if decision.recv_timeout(ESPERA_LARGA) != Ok(true) {
+    let Ok(como_nuevo) = decision.recv_timeout(ESPERA_LARGA) else {
         r.rechazar();
         return Estado::Pidiendo;
-    }
+    };
     let carpeta = cx.raiz.join("recibidos");
     let mut ultimo = Instant::now();
     let llegados = r.aceptar(&carpeta, |hechos, total| {
@@ -350,7 +374,7 @@ fn tramitar(mut r: Receptor<TcpStream>, cx: &Contexto, turno: u64) -> Estado {
     match llegados {
         Ok(cosas) => Estado::Hecho {
             de: oferta.de.clone(),
-            guardados: crate::recibir::guardar_lo_recibido(&cx.raiz, &cx.id, &cosas),
+            guardados: crate::recibir::guardar_lo_recibido(&cx.raiz, &cx.id, &cosas, &como_nuevo),
         },
         Err(e) => Estado::Fallo(Falla::Cortado(e.to_string())),
     }
@@ -540,6 +564,50 @@ pub(super) fn tamano(bytes: u64) -> String {
     pixpin_ui::chat::tamano_corto(bytes)
 }
 
+/// «Ya tienes «X» con los mismos códigos».
+fn ya_tienes(textos: &Catalogo, suyo: &str) -> String {
+    con(textos, "rw-ya-tienes", &[("nombre", suyo.to_string())])
+}
+
+/// Que va a pasar con lo elegido, en una linea, como en el movil.
+fn explicacion(textos: &Catalogo, nuevo: bool) -> String {
+    textos.t(if nuevo {
+        "rw-entra-aparte"
+    } else {
+        "rw-encima-de-lo-tuyo"
+    })
+}
+
+/// Una de dos opciones, como pastilla (`Eleccion` de `RecibirActivity.kt`).
+///
+/// Pastilla y no boton redondo del todo: son dos opciones de las que siempre
+/// hay una puesta, no dos acciones que se disparan.
+fn pastilla(l: &mut Lienzo<'_>, r: pixpin_render::RectF, texto: &str, puesta: bool, a: Accion) {
+    let (p, e) = (l.p, l.e);
+    p.rellenar_redondeado(r, 10.0 * e, if puesta { PRIMARIO } else { VARIANTE });
+    let tam = 13.0 * e;
+    let color = if puesta {
+        super::SOBRE_PRIMARIO
+    } else {
+        CONTORNO
+    };
+    let (w, h) = p.medir_texto(texto, tam);
+    let x = if w <= r.ancho - 12.0 * e {
+        r.x + (r.ancho - w) / 2.0
+    } else {
+        r.x + 6.0 * e
+    };
+    p.texto_linea(
+        texto,
+        x,
+        r.y + (r.alto - h) / 2.0,
+        tam,
+        r.ancho - 12.0 * e,
+        color,
+    );
+    l.zonas.push((r, a));
+}
+
 /// Pinta la pantalla desde `y` y devuelve donde acaba.
 pub(super) fn pintar(
     l: &mut Lienzo<'_>,
@@ -619,7 +687,12 @@ pub(super) fn pintar(
             };
             y += l.parrafo_centrado(&texto, x, y, w, 14.0 * e, TEXTO);
         }
-        Estado::Oferta { oferta, .. } => {
+        Estado::Oferta {
+            oferta,
+            sustituye,
+            como_nuevo,
+            ..
+        } => {
             y += 12.0 * e;
             y += l.parrafo_centrado(
                 &con(textos, "rw-quiere", &[("de", oferta.de.clone())]),
@@ -645,8 +718,21 @@ pub(super) fn pintar(
                 y += 18.0 * e;
             }
             y += 12.0 * e;
-            let fila = 30.0 * e;
-            let hc = 16.0 * e + fila * oferta.elementos.len() as f32 + 6.0 * e;
+            // La caja se mide antes de pintarla: lo que ya se tiene lleva
+            // debajo su aviso y sus dos pastillas, y sin medirlo primero el
+            // fondo quedaria mas corto que el contenido.
+            let wi = w - 32.0 * e;
+            let alto_de_uno = |el: &envio::Elemento| {
+                let mut h = 30.0 * e;
+                if let Some(suyo) = sustituye.get(&el.identidad) {
+                    h += l.alto_de(&ya_tienes(textos, suyo), 12.0 * e, wi) + 6.0 * e;
+                    h += 34.0 * e + 6.0 * e;
+                    let nuevo = como_nuevo.get(&el.identidad).copied().unwrap_or(false);
+                    h += l.alto_de(&explicacion(textos, nuevo), 12.0 * e, wi) + 8.0 * e;
+                }
+                h
+            };
+            let hc = 16.0 * e + oferta.elementos.iter().map(alto_de_uno).sum::<f32>() + 6.0 * e;
             caja(p, rect(x, y, w, hc), e);
             let mut yf = y + 16.0 * e;
             for el in &oferta.elementos {
@@ -661,10 +747,50 @@ pub(super) fn pintar(
                     w - 44.0 * e - wp,
                     TEXTO,
                 );
-                yf += fila;
+                yf += 30.0 * e;
+                let Some(suyo) = sustituye.get(&el.identidad) else {
+                    continue;
+                };
+                // **Lo que ya se tiene**: se dice y se elige, cosa por cosa,
+                // como en `RecibirActivity.Oferta` del movil.
+                yf += l.parrafo(
+                    &ya_tienes(textos, suyo),
+                    x + 16.0 * e,
+                    yf,
+                    wi,
+                    12.0 * e,
+                    PRIMARIO,
+                ) + 6.0 * e;
+                let nuevo = como_nuevo.get(&el.identidad).copied().unwrap_or(false);
+                let media = (wi - 8.0 * e) / 2.0;
+                pastilla(
+                    l,
+                    rect(x + 16.0 * e, yf, media, 34.0 * e),
+                    &textos.t("rw-actualizar"),
+                    !nuevo,
+                    t(Toque::Elegir(el.identidad.clone(), false)),
+                );
+                pastilla(
+                    l,
+                    rect(x + 16.0 * e + media + 8.0 * e, yf, media, 34.0 * e),
+                    &textos.t("rw-como-nuevo"),
+                    nuevo,
+                    t(Toque::Elegir(el.identidad.clone(), true)),
+                );
+                yf += 34.0 * e + 6.0 * e;
+                yf += l.parrafo(
+                    &explicacion(textos, nuevo),
+                    x + 16.0 * e,
+                    yf,
+                    wi,
+                    12.0 * e,
+                    SUAVE,
+                ) + 8.0 * e;
             }
             y += hc + 10.0 * e;
-            y += l.parrafo_centrado(&textos.t("rw-nada-coincide"), x, y, w, 12.0 * e, SUAVE);
+            if sustituye.is_empty() {
+                y += l.parrafo_centrado(&textos.t("rw-nada-coincide"), x, y, w, 12.0 * e, SUAVE);
+            }
             y += 20.0 * e;
             let medio = (w - 10.0 * e) / 2.0;
             l.boton(
@@ -739,7 +865,9 @@ pub(super) fn pintar(
             for g in guardados {
                 let clave = match g.donde {
                     Donde::Proyecto => "rw-en-proyectos",
+                    Donde::ProyectoAlDia => "rw-proyecto-al-dia",
                     Donde::Guardados => "rw-en-guardados",
+                    Donde::GuardadosAlDia => "rw-guardados-al-dia",
                     Donde::Carpeta => "rw-en-carpeta",
                 };
                 y += l.parrafo_centrado(

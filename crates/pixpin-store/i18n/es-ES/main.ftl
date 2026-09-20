@@ -482,3 +482,12 @@ ew-malos = Alguien probó con un código equivocado ({ $n } de { $de }).
 ew-esperando = Esperando… Pueden conectarse varios aparatos; a cada uno le das tú al botón. El código deja de valer al cerrar esta pantalla.
 ew-quemado = Alguien probó varias veces con un código equivocado, así que este código ya no vale. Vuelve a enviar para sacar otro.
 ew-cerrar = Cerrar
+
+## «Actualizar el que tengo / Crear como nuevo» al recibir (RecibirActivity.kt)
+rw-ya-tienes = Ya tienes «{ $nombre }» con los mismos códigos
+rw-actualizar = Actualizar el que tengo
+rw-como-nuevo = Crear como nuevo
+rw-encima-de-lo-tuyo = Se escribe encima de lo tuyo. Lo de antes queda en «Copias de seguridad».
+rw-entra-aparte = Entra aparte, con códigos nuevos: desde ahora es otra cosa.
+rw-proyecto-al-dia = «{ $nombre }» puesto al día
+rw-guardados-al-dia = «{ $nombre }» puesto al día en Mensajes guardados

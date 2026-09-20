@@ -481,3 +481,12 @@ ew-malos = Someone tried a wrong code ({ $n } of { $de }).
 ew-esperando = Waiting… Several devices can connect; you press the button for each one. The code stops working when this screen closes.
 ew-quemado = Someone tried a wrong code several times, so this code no longer works. Send again to get another one.
 ew-cerrar = Close
+
+## «Update mine / Create as new» when receiving (RecibirActivity.kt)
+rw-ya-tienes = You already have «{ $nombre }» with the same codes
+rw-actualizar = Update the one I have
+rw-como-nuevo = Create as new
+rw-encima-de-lo-tuyo = It is written over yours. What was there stays in «Backups».
+rw-entra-aparte = It comes in separately, with new codes: from now on it is another thing.
+rw-proyecto-al-dia = «{ $nombre }» brought up to date
+rw-guardados-al-dia = «{ $nombre }» brought up to date in Saved messages

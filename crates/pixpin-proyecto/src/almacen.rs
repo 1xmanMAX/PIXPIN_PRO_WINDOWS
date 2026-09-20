@@ -240,6 +240,15 @@ impl Indice {
         self.proyectos.iter().find(|f| f.id == id)
     }
 
+    /// Lo de aqui que ES lo que llega: los tres codigos iguales.
+    ///
+    /// Es lo que hace falta ANTES de aceptar un envio, para poder preguntar
+    /// «¿actualizar el que tengo o crear como nuevo?» como el movil: sin esto
+    /// solo se sabria despues de haber escrito, que es tarde.
+    pub fn misma(&self, llega: &Ficha) -> Option<&Ficha> {
+        self.proyectos.iter().find(|f| f.misma_que(llega))
+    }
+
     /// Mete lo que llega: pone al dia el que ya esta si coinciden los tres
     /// codigos, y si no lo anade como nuevo, con codigo unico nuevo para que
     /// los dos puedan convivir y volver a viajar sin pisarse.
@@ -388,6 +397,223 @@ pub fn importar_paquete(
     indice.proyectos.push(ficha.clone());
     indice.guardar(raiz)?;
     Ok(ficha)
+}
+
+/// **Crear como nuevo**: el mismo contenido con los tres codigos estrenados.
+///
+/// Puerto de `Recepcion.renovado` de Android. Quien recibe eligio que esto
+/// que llega, aunque sea lo mismo que ya tiene, entre aparte: desde ahora es
+/// otra cosa, y para que las dos puedan convivir y volver a viajar sin
+/// pisarse necesita codigos propios. Si se quedara con los del original, el
+/// siguiente envio de cualquiera de las dos pondria al dia a la otra.
+///
+/// Se renuevan: el codigo unico del proyecto, su fecha de creacion, el
+/// aparato donde nacio (ninguno: nace aqui), el codigo unico de cada hoja y
+/// los tres codigos de cada mensaje de su cuaderno. Los ficheros —lienzos,
+/// adjuntos, el PDF— no se tocan: son el contenido, no la identidad.
+pub fn renovar(paquete: &crate::Paquete, ahora: i64) -> crate::Paquete {
+    let mut proyecto = paquete.proyecto.clone();
+    proyecto.uid = Some(codigos::nuevo());
+    proyecto.creado = ahora;
+    proyecto.aparato = None;
+    // `origen` dice de que proyecto de otro aparato es copia: una cosa nueva
+    // no viene de ninguna.
+    proyecto.resto.remove("origen");
+    for h in &mut proyecto.hojas {
+        h.uid = Some(codigos::nuevo());
+        h.resto.remove("origen");
+    }
+    let mut nuevo = crate::Paquete::nuevo(paquete.manifiesto.clone(), proyecto);
+    for nombre in paquete.nombres() {
+        if nombre == "manifest.json" || nombre == "proyecto.json" {
+            continue;
+        }
+        let Some(bytes) = paquete.entrada(nombre) else {
+            continue;
+        };
+        if nombre == "guardados.jsonl" {
+            nuevo.poner_entrada(nombre, renovar_cuaderno(bytes, ahora).into_bytes());
+            continue;
+        }
+        nuevo.poner_entrada(nombre, bytes.to_vec());
+    }
+    nuevo
+}
+
+/// Los mensajes de un cuaderno con los tres codigos estrenados.
+///
+/// Como en Android (`Codigos.renovar` mas `copy(id, cuando, uid = null)`):
+/// id y hora nuevos —la hora los mantiene en el mismo orden—, y sin codigo
+/// unico, numero, letra, aparato ni origen, que los pone quien los guarde.
+/// Una linea que no se entienda se copia tal cual: reescribir el cuaderno no
+/// puede ser la forma de perder lo que escriba una version mas nueva.
+fn renovar_cuaderno(bytes: &[u8], ahora: i64) -> String {
+    use crate::cuaderno::Mensaje;
+    let texto = String::from_utf8_lossy(bytes);
+    let mut salida = String::with_capacity(texto.len());
+    for (i, linea) in texto.lines().filter(|l| !l.trim().is_empty()).enumerate() {
+        match serde_json::from_str::<Mensaje>(linea) {
+            Ok(m) => {
+                let puesto = Mensaje {
+                    id: (ahora + i as i64).to_string(),
+                    cuando: ahora + i as i64,
+                    uid: None,
+                    numero: 0,
+                    letra: None,
+                    aparato: None,
+                    origen: None,
+                    ..m
+                };
+                match serde_json::to_string(&puesto) {
+                    Ok(t) => salida.push_str(&t),
+                    Err(_) => salida.push_str(linea),
+                }
+            }
+            Err(_) => salida.push_str(linea),
+        }
+        salida.push('\n');
+    }
+    salida
+}
+
+/// **Actualizar el que tengo**: lo que llega, escrito sobre el proyecto `id`.
+///
+/// Es la otra mitad de la pregunta del movil (`Recepcion.guardarProyecto`
+/// cuando `antes != null`). El proyecto de aqui **conserva su `id`**, y con
+/// el su carpeta, sus accesos y lo que el chat ya senalaba; lo que trae el
+/// paquete se escribe encima fichero a fichero.
+///
+/// **Recibir no quita nada** (Android, 15-sep-2026): lo que solo esta aqui
+/// —un lienzo que el otro aparato no tenia, un mensaje escrito despues— se
+/// queda. Por eso el cuaderno se funde por codigo unico en vez de sustituirse
+/// y los ficheros que el paquete no trae no se borran. El usuario perdio
+/// lienzos justamente por lo contrario.
+///
+/// Quien llama tiene que haber hecho antes la copia de seguridad
+/// (`pixpin_sincro::copias::hacer`): aqui se escribe encima.
+pub fn actualizar_paquete(
+    raiz: &Path,
+    id: &str,
+    paquete: &crate::Paquete,
+) -> std::io::Result<Ficha> {
+    let p = &paquete.proyecto;
+    let destino = carpeta(raiz, id);
+    std::fs::create_dir_all(&destino)?;
+    for nombre in paquete.nombres() {
+        let Some(bytes) = paquete.entrada(nombre) else {
+            continue;
+        };
+        // Un nombre con `..` dentro no puede escribir fuera de la carpeta del
+        // proyecto: viene de otro aparato.
+        if nombre.split(['/', '\\']).any(|t| t == "..") {
+            continue;
+        }
+        // `proyecto.json` sale de la estructura, ya con el id de aqui.
+        if nombre == "proyecto.json" {
+            continue;
+        }
+        if nombre == "guardados.jsonl" {
+            let fundido = fundir_cuaderno(&destino.join("guardados.jsonl"), bytes);
+            std::fs::write(destino.join("guardados.jsonl"), fundido)?;
+            continue;
+        }
+        let ruta = destino.join(nombre.replace('\\', "/"));
+        if let Some(padre) = ruta.parent() {
+            std::fs::create_dir_all(padre)?;
+        }
+        std::fs::write(&ruta, bytes)?;
+    }
+    // El `proyecto.json` de aqui: las hojas que llegan mas las que solo tenia
+    // este equipo, detras y sin repetir, y **el id que ya tenia**, que es con
+    // el que este proyecto se sincroniza (`vista::chat_de_ficha` lo saca de
+    // aqui). Cambiarlo partiria en dos la conversacion.
+    let mut puesto = p.clone();
+    if let Ok(texto) = std::fs::read_to_string(destino.join("proyecto.json"))
+        && let Ok(antes) = serde_json::from_str::<crate::Proyecto>(&texto)
+    {
+        if !antes.id.is_empty() {
+            puesto.id = antes.id.clone();
+        }
+        let llegan: std::collections::BTreeSet<String> =
+            puesto.hojas.iter().map(|h| h.codigo_unico()).collect();
+        for h in antes.hojas {
+            if !llegan.contains(&h.codigo_unico()) {
+                puesto.hojas.push(h);
+            }
+        }
+        puesto.archivado = antes.archivado;
+    }
+    std::fs::write(
+        destino.join("proyecto.json"),
+        serde_json::to_vec_pretty(&puesto).map_err(std::io::Error::other)?,
+    )?;
+
+    let mut indice = Indice::leer(raiz);
+    let Some(sitio) = indice.proyectos.iter().position(|f| f.id == id) else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "ese proyecto ya no está en la lista",
+        ));
+    };
+    let antes = indice.proyectos[sitio].clone();
+    let ficha = Ficha {
+        nombre: if p.nombre.is_empty() {
+            antes.nombre.clone()
+        } else {
+            p.nombre.clone()
+        },
+        hojas: puesto.hojas.len() as u32,
+        tocado: p.tocado.max(antes.tocado),
+        ..antes
+    };
+    indice.proyectos[sitio] = ficha.clone();
+    indice.guardar(raiz)?;
+    Ok(ficha)
+}
+
+/// El cuaderno de aqui con lo que llega escrito encima, por codigo unico.
+///
+/// Lo que ya estaba con el mismo codigo se sustituye **en su sitio** (para
+/// que la conversacion no se reordene) y lo que no estaba se anade al final.
+/// Lo que solo tiene este equipo se queda: recibir no borra mensajes.
+fn fundir_cuaderno(fichero: &Path, llegan: &[u8]) -> String {
+    use crate::cuaderno::Mensaje;
+    let mias = std::fs::read_to_string(fichero).unwrap_or_default();
+    let texto = String::from_utf8_lossy(llegan);
+    let mut nuevas: Vec<(String, &str)> = Vec::new();
+    for linea in texto.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<Mensaje>(linea) {
+            Ok(m) => nuevas.push((m.codigo_unico(), linea)),
+            // Sin poder leerla no hay con que compararla: entra al final.
+            Err(_) => nuevas.push((String::new(), linea)),
+        }
+    }
+    let mut salida = String::with_capacity(mias.len() + texto.len());
+    let mut puestas = std::collections::BTreeSet::new();
+    for linea in mias.lines().filter(|l| !l.trim().is_empty()) {
+        let clave = serde_json::from_str::<Mensaje>(linea)
+            .map(|m| m.codigo_unico())
+            .unwrap_or_default();
+        let sustituta = (!clave.is_empty())
+            .then(|| nuevas.iter().find(|(c, _)| *c == clave))
+            .flatten();
+        match sustituta {
+            Some((c, l)) => {
+                salida.push_str(l);
+                puestas.insert(c.clone());
+            }
+            None => salida.push_str(linea),
+        }
+        salida.push('\n');
+    }
+    for (clave, linea) in &nuevas {
+        if !clave.is_empty() && puestas.contains(clave) {
+            continue;
+        }
+        salida.push_str(linea);
+        salida.push('\n');
+    }
+    salida
 }
 
 /// Lo contrario de `importar_paquete`: un proyecto de la lista, entero, como
@@ -720,6 +946,206 @@ mod pruebas {
         let otra = carpeta_temporal("empaquetar-otro");
         let llega = importar_paquete(&otra, &p, "ZZZZ").unwrap();
         assert!(llega.misma_que(&ficha("x", "Casa", 0)));
+    }
+
+    /// Un paquete como el que manda el movil: un proyecto con dos hojas, sus
+    /// lienzos y su cuaderno.
+    fn paquete(nombre: &str, uid: &str, creado: i64) -> crate::Paquete {
+        let hoja = |id: &str, uid: &str, dibujo: &str| crate::Hoja {
+            id: id.into(),
+            nombre: id.into(),
+            dibujo: Some(dibujo.into()),
+            uid: Some(uid.into()),
+            ..Default::default()
+        };
+        let proyecto = crate::Proyecto {
+            id: "p-movil".into(),
+            nombre: nombre.into(),
+            hojas: vec![
+                hoja("h1", "AAAAAAAAAA", "d1"),
+                hoja("h2", "BBBBBBBBBB", "d2"),
+            ],
+            tocado: creado + 5,
+            uid: Some(uid.into()),
+            creado,
+            aparato: Some("K7Q2".into()),
+            ..Default::default()
+        };
+        let mut p = crate::Paquete::nuevo(crate::Manifiesto::default(), proyecto);
+        p.poner_entrada("lienzos/d1.excalidraw", b"{\"uno\":1}".to_vec());
+        p.poner_entrada("lienzos/d2.excalidraw", b"{\"dos\":2}".to_vec());
+        p.poner_entrada(
+            "guardados.jsonl",
+            concat!(
+                "{\"id\":\"m1\",\"cuando\":100,\"uid\":\"MMMMMMMMMM\",\"numero\":1,\"aparato\":\"K7Q2\",\"texto\":\"del movil\"}\n",
+                "{\"id\":\"m2\",\"cuando\":200,\"uid\":\"NNNNNNNNNN\",\"numero\":2,\"aparato\":\"K7Q2\",\"texto\":\"otro\"}\n",
+            )
+            .as_bytes()
+            .to_vec(),
+        );
+        // Ida y vuelta por el ZIP, como el que llega de verdad: asi
+        // `proyecto.json` y el manifiesto estan escritos dentro y no vacios.
+        crate::Paquete::desde_bytes(&p.a_bytes().unwrap()).unwrap()
+    }
+
+    fn lineas(raiz: &Path, id: &str) -> Vec<crate::cuaderno::Mensaje> {
+        crate::cuaderno::Cuaderno::leer_de(&carpeta(raiz, id))
+            .unwrap()
+            .mensajes
+    }
+
+    #[test]
+    fn lo_que_vuelve_con_los_tres_codigos_se_reconoce_y_lo_que_cambia_uno_no() {
+        let raiz = carpeta_temporal("misma");
+        let p = paquete("Tesis", "VVT587BFCA", 1_757_939_357_123);
+        let puesta = importar_paquete(&raiz, &p, "ZZZZ").unwrap();
+        let indice = Indice::leer(&raiz);
+        let llega = Ficha::de_proyecto(&p.proyecto, None);
+        assert_eq!(indice.misma(&llega).map(|f| f.id.clone()), Some(puesta.id));
+        // Casos negativos: con otra fecha de creacion, otro aparato o otro
+        // codigo unico ya no es la misma cosa y no se puede pisar.
+        for otra in [
+            Ficha {
+                creado: 1,
+                ..llega.clone()
+            },
+            Ficha {
+                aparato: Some("OTRO".into()),
+                ..llega.clone()
+            },
+            Ficha {
+                uid: Some("2222222222".into()),
+                ..llega.clone()
+            },
+        ] {
+            assert!(indice.misma(&otra).is_none(), "{otra:?} no es la misma");
+        }
+    }
+
+    #[test]
+    fn actualizar_escribe_encima_y_no_se_lleva_por_delante_lo_que_solo_hay_aqui() {
+        let raiz = carpeta_temporal("actualizar");
+        let p = paquete("Tesis", "VVT587BFCA", 1_757_939_357_123);
+        let ficha = importar_paquete(&raiz, &p, "ZZZZ").unwrap();
+        let dir = carpeta(&raiz, &ficha.id);
+        // Lo que este equipo tiene y el movil no: un lienzo mas y un mensaje.
+        let mut mio: crate::Proyecto =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("proyecto.json")).unwrap())
+                .unwrap();
+        mio.hojas.push(crate::Hoja {
+            id: "h-mia".into(),
+            nombre: "solo aqui".into(),
+            dibujo: Some("d-mia".into()),
+            uid: Some("CCCCCCCCCC".into()),
+            ..Default::default()
+        });
+        std::fs::write(dir.join("proyecto.json"), serde_json::to_vec(&mio).unwrap()).unwrap();
+        crate::cuaderno::anadir(
+            &dir,
+            &crate::cuaderno::Mensaje {
+                id: "m-mio".into(),
+                cuando: 300,
+                uid: Some("PPPPPPPPPP".into()),
+                texto: "escrito aqui".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        // Y ahora vuelve del movil con un lienzo cambiado y un mensaje nuevo.
+        let mut vuelve = paquete("Tesis al día", "VVT587BFCA", 1_757_939_357_123);
+        vuelve.poner_entrada("lienzos/d1.excalidraw", b"{\"uno\":99}".to_vec());
+        vuelve.poner_entrada(
+            "guardados.jsonl",
+            concat!(
+                "{\"id\":\"m1\",\"cuando\":100,\"uid\":\"MMMMMMMMMM\",\"numero\":1,\"aparato\":\"K7Q2\",\"texto\":\"corregido\"}\n",
+                "{\"id\":\"m3\",\"cuando\":400,\"uid\":\"QQQQQQQQQQ\",\"numero\":3,\"aparato\":\"K7Q2\",\"texto\":\"nuevo\"}\n",
+            )
+            .as_bytes()
+            .to_vec(),
+        );
+        let puesta = actualizar_paquete(&raiz, &ficha.id, &vuelve).unwrap();
+
+        assert_eq!(puesta.id, ficha.id, "el id de aqui manda");
+        assert_eq!(puesta.nombre, "Tesis al día");
+        // El id con el que se sincroniza no cambia: si cambiara, la
+        // conversacion se partiria en dos.
+        assert_eq!(
+            crate::vista::chat_de_ficha(&raiz, &ficha.id).as_deref(),
+            Some("p-movil")
+        );
+        assert_eq!(
+            std::fs::read(dir.join("lienzos/d1.excalidraw")).unwrap(),
+            b"{\"uno\":99}"
+        );
+        let p2: crate::Proyecto =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("proyecto.json")).unwrap())
+                .unwrap();
+        assert_eq!(p2.id, "p-movil");
+        assert!(
+            p2.hojas.iter().any(|h| h.id == "h-mia"),
+            "recibir no quita lienzos: {:?}",
+            p2.hojas.iter().map(|h| &h.id).collect::<Vec<_>>()
+        );
+        assert_eq!(p2.hojas.len(), 3, "y no los duplica");
+        let ms = lineas(&raiz, &ficha.id);
+        let textos: Vec<&str> = ms.iter().map(|m| m.texto.as_str()).collect();
+        assert!(textos.contains(&"corregido"), "{textos:?}");
+        assert!(textos.contains(&"escrito aqui"), "{textos:?}");
+        assert!(textos.contains(&"nuevo"), "{textos:?}");
+        assert!(!textos.contains(&"del movil"), "se puso al dia: {textos:?}");
+        assert_eq!(puesta.hojas, 3);
+    }
+
+    #[test]
+    fn actualizar_un_proyecto_que_no_esta_en_la_lista_falla_y_no_lo_inventa() {
+        // Caso negativo: sin ficha no hay a que ponerse al dia, y crear una a
+        // escondidas dejaria dos proyectos con la misma carpeta.
+        let raiz = carpeta_temporal("actualizar-nada");
+        let p = paquete("Tesis", "VVT587BFCA", 1);
+        let e = actualizar_paquete(&raiz, "no-existe", &p).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn crear_como_nuevo_estrena_los_tres_codigos_y_deja_de_ser_la_misma_cosa() {
+        let raiz = carpeta_temporal("renovar");
+        let p = paquete("Tesis", "VVT587BFCA", 1_757_939_357_123);
+        let vieja = importar_paquete(&raiz, &p, "ZZZZ").unwrap();
+
+        let nuevo = renovar(&p, 5_000_000);
+        assert_ne!(nuevo.proyecto.uid, p.proyecto.uid);
+        assert_eq!(nuevo.proyecto.creado, 5_000_000);
+        assert_eq!(nuevo.proyecto.aparato, None);
+        for (a, b) in nuevo.proyecto.hojas.iter().zip(&p.proyecto.hojas) {
+            assert_ne!(a.uid, b.uid, "cada hoja estrena el suyo");
+        }
+        // El contenido es el mismo: solo cambia quien dice que es.
+        assert_eq!(
+            nuevo.entrada("lienzos/d1.excalidraw"),
+            p.entrada("lienzos/d1.excalidraw")
+        );
+
+        let otra = importar_paquete(&raiz, &nuevo, "ZZZZ").unwrap();
+        assert_ne!(otra.id, vieja.id);
+        assert!(!otra.misma_que(&vieja), "conviven sin pisarse");
+        // Y sus mensajes tampoco son los de antes, o el siguiente envio de uno
+        // pondria al dia al otro.
+        let ms = lineas(&raiz, &otra.id);
+        assert_eq!(ms.len(), 2);
+        assert!(ms.iter().all(|m| m.uid.is_none() && m.numero == 0));
+        let viejos: Vec<String> = lineas(&raiz, &vieja.id)
+            .iter()
+            .map(|m| m.codigo_unico())
+            .collect();
+        for m in &ms {
+            assert!(
+                !viejos.contains(&m.codigo_unico()),
+                "{:?}",
+                m.codigo_unico()
+            );
+        }
+        assert_eq!(ms[0].texto, "del movil", "el contenido se conserva");
     }
 
     #[test]
