@@ -26,6 +26,31 @@
 //!    del movil mediria menos de un pixel de pantalla y el mosaico dejaria de
 //!    tapar justo cuando mas lejos se mira. Por eso `lado_en_pantalla` tiene
 //!    suelo.
+//!
+//! # Hasta donde llega el mosaico, y donde NO llega
+//!
+//! **El mosaico tapa en pantalla y en todo lo que sale de pintar la escena**
+//! —la vista previa del chat, las anotaciones del pin, las miniaturas, el
+//! PNG del portapapeles, la lupa—, porque todos esos caminos promedian
+//! pixeles ya compuestos. Lo que **no** hace, y hay que decirlo donde se lea,
+//! es destruir el original: el `.excalidraw` guarda los elementos tal cual
+//! —el texto, la imagen, la pagina del PDF— y **al lado** un elemento
+//! `pixpin-mosaic` que dice que hay que taparlos.
+//!
+//! Eso es deliberado y es lo mismo que hace el movil: el mosaico se puede
+//! mover, cambiar de grano y quitar, y para eso tiene que existir lo de
+//! debajo. El precio es que **cualquier visor que no conozca `pixpin-mosaic`
+//! —excalidraw.com, un editor de terceros, un `jq`— ensena lo tapado**, y ese
+//! fichero es exactamente el que viaja por Wi-Fi y el que queda en disco.
+//!
+//! Se ha decidido **no** escribir la zona ya pixelada: hacerlo convertiria el
+//! mosaico en destructivo, romperia la ida y vuelta con el movil —que espera
+//! el original debajo— y haria que quitar un mosaico por error fuera
+//! irreversible. La alternativa honesta es la otra que queda: **avisar al
+//! exportar o compartir fuera del grupo**, y ofrecer el PNG rasterizado, que
+//! ese si sale tapado opaco (`ordenes_de_escena`). Ese aviso es de quien
+//! ensena la pantalla de compartir, no de este modulo; mientras no exista, lo
+//! que el mosaico promete y lo que el fichero cumple no es lo mismo.
 
 use crate::elemento::{Elemento, Figura};
 

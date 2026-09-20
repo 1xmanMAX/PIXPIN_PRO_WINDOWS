@@ -116,9 +116,9 @@ pub enum Herramienta {
     Rombo,
     /// Un trozo de ovalo: se pone la guia y se repasa (grupo A).
     Arco,
-    /// La flecha de codos, el conector de organigrama (grupo A). Hasta que
-    /// su grupo porte `Elbow.kt` nace como una flecha recta: se ve, se
-    /// mueve y llega al movil como flecha, que es lo peor que puede pasar.
+    /// La flecha de codos, el conector de organigrama. `Elbow.kt` ya esta
+    /// portado en `codo.rs` y esta nace con `codos` puesto: dobla en angulo
+    /// recto desde el primer arrastre, y `elbowed` viaja con ella.
     FlechaCodos,
     /// La flecha a pulso: por dentro ES una flecha, con todos los puntos
     /// del trazo en vez de dos (`Scene.kt:57-64`).
@@ -699,14 +699,17 @@ impl Gesto {
                 punta_fin: TipoPunta::Flecha,
                 codos: false,
             },
-            // La de codos nace recta hasta que el grupo A porte `Elbow.kt`.
-            // Es una flecha de verdad, no un hueco: llega al movil como
-            // flecha y alli se ve; lo que falta es que doble.
+            // **Nace YA doblando.** `codo.rs` es el porte entero de
+            // `Elbow.kt` y `pintado.rs` lo usa cuando `codos` esta puesto,
+            // pero la herramienta seguia poniendolo a `false`: el boton del
+            // conector de organigrama hacia una flecha recta, que es lo mismo
+            // que el boton de al lado. `elbowed` va y vuelve por el fichero,
+            // asi que llega al movil diciendo lo que es.
             Herramienta::FlechaCodos => Figura::Flecha {
                 puntos: vec![p, p],
                 punta_inicio: TipoPunta::Ninguna,
                 punta_fin: TipoPunta::Flecha,
-                codos: false,
+                codos: true,
             },
             // Nace como la GUIA —el ovalo sin repasar—, que es el primer
             // estado de verdad del arco y no un arco a medio hacer.
@@ -3087,6 +3090,33 @@ mod pruebas {
             punta_vuelta, punta_antes,
             "un Ctrl+Z dejo la caja en su sitio viejo y la flecha en el nuevo"
         );
+    }
+
+    #[test]
+    fn el_boton_de_la_flecha_de_codos_hace_una_flecha_que_dobla() {
+        // **El comentario prometia menos de lo que habia, y el boton hacia
+        // menos de lo que prometia el commit.** `codo.rs` es el porte entero
+        // de `Elbow.kt` y `pintado.rs` lo usa cuando `codos` esta puesto,
+        // pero la herramienta lo ponia a `false`: el conector de organigrama
+        // salia recto, o sea igual que el boton de al lado.
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::FlechaCodos;
+        let e = g.nuevo_elemento(Punto2::nuevo(0.0, 0.0));
+        let Figura::Flecha { codos, .. } = &e.figura else {
+            panic!("la de codos tiene que ser una flecha por dentro");
+        };
+        assert!(*codos, "el conector de organigrama nace recto");
+
+        // Caso negativo: la flecha normal y la de pulso siguen sin codos, o
+        // toda flecha del editor doblaria.
+        for h in [Herramienta::Flecha, Herramienta::FlechaLibre] {
+            g.herramienta = h;
+            let Figura::Flecha { codos, .. } = &g.nuevo_elemento(Punto2::nuevo(0.0, 0.0)).figura
+            else {
+                panic!("{h:?} tiene que ser una flecha");
+            };
+            assert!(!*codos, "{h:?} no puede nacer de codos");
+        }
     }
 
     #[test]
