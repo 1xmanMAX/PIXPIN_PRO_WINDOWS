@@ -15,8 +15,11 @@ fn capa(nombre: &str) -> Option<u8> {
         // `pixpin-sincro` es el cable de WiFi: solo criptografia y JSON, sin
         // depender de ningun crate de PixPin, asi que vive abajo del todo
         // con los demas cimientos.
+        // `pixpin-audio` es otro cimiento del mismo estilo: Media
+        // Foundation para oir y WASAPI para grabar, sin depender de ningun
+        // crate de PixPin.
         "pixpin-shell" | "pixpin-render" | "pixpin-gpu" | "pixpin-codec" | "pixpin-motor2d"
-        | "pixpin-sincro" | "pixpin-tinta" => 1,
+        | "pixpin-sincro" | "pixpin-tinta" | "pixpin-audio" => 1,
         "pixpin-capture" | "pixpin-pin" | "pixpin-pdf" | "pixpin-ocr" | "pixpin-record"
         | "pixpin-store" | "pixpin-proyecto" | "pixpin-universo" | "pixpin-docs" => 2,
         "pixpin-ui" | "pixpin-flow" | "pixpin-plugin" => 3,
@@ -52,12 +55,12 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_veintitres_paquetes() {
+fn estan_los_veinticuatro_paquetes() {
     let encontrados = manifiestos();
     assert_eq!(
         encontrados.len(),
-        23,
-        "se esperan 22 crates de libreria mas el ejecutable, encontrados: {:?}",
+        24,
+        "se esperan 23 crates de libreria mas el ejecutable, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }

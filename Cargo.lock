@@ -528,6 +528,7 @@ dependencies = [
  "anyhow",
  "embed-resource",
  "fluent-bundle",
+ "pixpin-audio",
  "pixpin-capture",
  "pixpin-codec",
  "pixpin-docs",
@@ -554,6 +555,16 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "windows",
+]
+
+[[package]]
+name = "pixpin-audio"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "tracing",
+ "windows",
+ "windows-core",
 ]
 
 [[package]]

@@ -21,6 +21,9 @@ pixpin-tinta = { path = "crates/pixpin-tinta" }
 pixpin-render = { path = "crates/pixpin-render" }
 pixpin-gpu = { path = "crates/pixpin-gpu" }
 pixpin-codec = { path = "crates/pixpin-codec" }
+# Oir y grabar notas de voz: Media Foundation para reproducir, WASAPI para
+# el microfono. Sin dependencias de PixPin: vive con los cimientos.
+pixpin-audio = { path = "crates/pixpin-audio" }
 pixpin-capture = { path = "crates/pixpin-capture" }
 pixpin-pin = { path = "crates/pixpin-pin" }
 pixpin-pdf = { path = "crates/pixpin-pdf" }

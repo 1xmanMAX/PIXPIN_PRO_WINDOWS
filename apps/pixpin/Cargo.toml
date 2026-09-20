@@ -12,6 +12,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.104"
 fluent-bundle = "0.16.0"
+pixpin-audio = { version = "0.1.0", path = "../../crates/pixpin-audio" }
 pixpin-capture = { version = "0.1.0", path = "../../crates/pixpin-capture" }
 pixpin-ocr = { version = "0.1.0", path = "../../crates/pixpin-ocr" }
 pixpin-docs = { version = "0.1.0", path = "../../crates/pixpin-docs" }
