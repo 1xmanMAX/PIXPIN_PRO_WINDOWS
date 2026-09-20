@@ -563,3 +563,23 @@ lienzo-flecha-codos = Elbow arrow
 lienzo-flecha-libre = Freehand arrow
 lienzo-arco-guia = Guide oval, not traced yet
 lienzo-luces-fuerza = Light strength
+
+## Build and measure: fill, trim, extend, points and angles (group C)
+lienzo-bote = Fill bucket
+lienzo-bote-ayuda = Click inside a closed gap and it gets filled, even if several different shapes form it.
+lienzo-bote-abierto = This gap is not closed: the paint would leak out through a crack.
+lienzo-recortar = Trim
+lienzo-recortar-ayuda = Click the leftover piece of a stroke and it goes, up to where the others cross it.
+lienzo-extender = Extend
+lienzo-extender-ayuda = Click the end that falls short and it reaches the first thing in its way.
+lienzo-extender-sin-tope = Nothing in its way: a line stretched into the void is not an extended line.
+lienzo-punto = Labelled point
+lienzo-punto-ayuda = Click a crossing, an endpoint or the centre of a circle and the point appears with its letter.
+lienzo-punto-sin-sitio = There is nothing to name there: a point goes on a crossing, an endpoint or a centre.
+lienzo-punto-serie-mayusculas = Capital letters (A, B, C…)
+lienzo-punto-serie-minusculas = Small letters (a, b, c…)
+lienzo-punto-serie-numeros = Numbers (1, 2, 3…)
+lienzo-angulos = Live angles
+lienzo-angulos-ayuda = While you move something, it shows how big the corners you are touching are.
+lienzo-area = Area
+

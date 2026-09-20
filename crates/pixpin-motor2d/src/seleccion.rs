@@ -114,6 +114,118 @@ impl Seleccion {
     }
 }
 
+// -------------------------------------------------------------------------
+// Los atajos de teclado
+// -------------------------------------------------------------------------
+
+/// Una tecla, ya despojada de en que teclado se pulso.
+///
+/// Solo estan las que esta tabla usa. Es a proposito: un enumerado con las
+/// ciento cinco teclas de un teclado obligaria a un `match` gigante por cada
+/// atajo nuevo, y quien anade un atajo lo que quiere es anadir una linea.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tecla {
+    /// Una letra, **siempre en minuscula**: quien la traduce del sistema ya
+    /// ha decidido si habia Mayus o no, y esa decision viaja en `shift`.
+    Letra(char),
+    /// `[`
+    CorcheteAbre,
+    /// `]`
+    CorcheteCierra,
+    /// `'`
+    Apostrofo,
+}
+
+/// Lo que un atajo pide que se haga.
+///
+/// Es **una orden y no una funcion que se llama**: quien tiene la escena, la
+/// seleccion y el historial es la ventana, y esta tabla solo tiene teclas.
+/// Devolviendo la orden, decidir el atajo se prueba sin escritorio y sin
+/// sintetizar una sola pulsacion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrdenEditor {
+    /// Coger la herramienta de lazo.
+    Lazo,
+    /// Coger el cuentagotas de estilo.
+    CopiarEstilo,
+    /// Llevarse el estilo de lo que hay elegido.
+    TomarEstilo,
+    /// Pegar el estilo tomado sobre lo elegido.
+    SoltarEstilo,
+    VoltearHorizontal,
+    VoltearVertical,
+    Agrupar,
+    Desagrupar,
+    AlFrente,
+    AlFondo,
+    Subir,
+    Bajar,
+    /// Encender o apagar el pautado del fondo.
+    AlternarRejilla,
+    /// Encender o apagar el iman entero.
+    AlternarIman,
+}
+
+/// **La tabla de atajos del escritorio.**
+///
+/// Sigue a Excalidraw donde Excalidraw tiene atajo, porque quien llega aqui
+/// llega de ahi y las dos manos ya se saben esos gestos: `Q` el lazo,
+/// `Ctrl+G` agrupar, `Ctrl+[` y `Ctrl+]` el orden de pintado,
+/// `Ctrl+Alt+C`/`Ctrl+Alt+V` el estilo, `Ctrl+'` la rejilla. Los dos que
+/// Excalidraw no tiene —voltear y el iman— van en `Mayus+H`/`Mayus+V` y
+/// `Alt+S`, que son los de Figma.
+///
+/// `alt` entra en la decision aunque hoy solo lo mire un atajo: sin el, un
+/// `Ctrl+Alt+C` de un teclado con AltGr —donde AltGr **es** Ctrl+Alt— se
+/// colaria como el `Ctrl+C` de copiar.
+pub fn atajo_de(tecla: Tecla, ctrl: bool, shift: bool, alt: bool) -> Option<OrdenEditor> {
+    use OrdenEditor::*;
+    match (tecla, ctrl, shift, alt) {
+        // Herramientas: una tecla pelada, como todas las de Excalidraw.
+        (Tecla::Letra('q'), false, false, false) => Some(Lazo),
+        (Tecla::Letra('k'), false, false, false) => Some(CopiarEstilo),
+
+        // El estilo, con la misma pareja que Excalidraw.
+        (Tecla::Letra('c'), true, false, true) => Some(TomarEstilo),
+        (Tecla::Letra('v'), true, false, true) => Some(SoltarEstilo),
+
+        // Voltear. Sin Ctrl a proposito: `Ctrl+Mayus+V` ya es pegar sin
+        // formato en medio mundo y `Ctrl+H` es buscar y reemplazar.
+        (Tecla::Letra('h'), false, true, false) => Some(VoltearHorizontal),
+        (Tecla::Letra('v'), false, true, false) => Some(VoltearVertical),
+
+        (Tecla::Letra('g'), true, false, false) => Some(Agrupar),
+        (Tecla::Letra('g'), true, true, false) => Some(Desagrupar),
+
+        // El orden de pintado. Con Mayus, hasta el final; sin el, un paso.
+        (Tecla::CorcheteCierra, true, true, false) => Some(AlFrente),
+        (Tecla::CorcheteAbre, true, true, false) => Some(AlFondo),
+        (Tecla::CorcheteCierra, true, false, false) => Some(Subir),
+        (Tecla::CorcheteAbre, true, false, false) => Some(Bajar),
+
+        (Tecla::Apostrofo, true, false, false) => Some(AlternarRejilla),
+        (Tecla::Letra('s'), false, false, true) => Some(AlternarIman),
+
+        _ => None,
+    }
+}
+
+impl OrdenEditor {
+    /// Si la orden necesita que haya algo elegido.
+    ///
+    /// Las que no —coger una herramienta, encender la rejilla— tienen que
+    /// funcionar con el lienzo vacio, que es justo cuando se encienden.
+    pub fn necesita_seleccion(self) -> bool {
+        !matches!(
+            self,
+            OrdenEditor::Lazo
+                | OrdenEditor::CopiarEstilo
+                | OrdenEditor::AlternarRejilla
+                | OrdenEditor::AlternarIman
+        )
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -236,5 +348,95 @@ mod pruebas {
         s.limpiar();
         assert!(s.esta_vacia());
         assert_eq!(s.capacidad(), capacidad, "clear() no reasigna");
+    }
+
+    // --- Atajos ---
+
+    #[test]
+    fn los_atajos_de_excalidraw_son_los_mismos_aqui() {
+        // Quien llega aqui llega de ahi y las dos manos ya se saben estos
+        // gestos: cambiarlos seria pedirle que los desaprenda.
+        assert_eq!(
+            atajo_de(Tecla::Letra('q'), false, false, false),
+            Some(OrdenEditor::Lazo)
+        );
+        assert_eq!(
+            atajo_de(Tecla::Letra('g'), true, false, false),
+            Some(OrdenEditor::Agrupar)
+        );
+        assert_eq!(
+            atajo_de(Tecla::Letra('g'), true, true, false),
+            Some(OrdenEditor::Desagrupar)
+        );
+        assert_eq!(
+            atajo_de(Tecla::CorcheteCierra, true, false, false),
+            Some(OrdenEditor::Subir)
+        );
+        assert_eq!(
+            atajo_de(Tecla::CorcheteAbre, true, true, false),
+            Some(OrdenEditor::AlFondo)
+        );
+        assert_eq!(
+            atajo_de(Tecla::Apostrofo, true, false, false),
+            Some(OrdenEditor::AlternarRejilla)
+        );
+    }
+
+    #[test]
+    fn el_estilo_se_toma_y_se_suelta_con_la_pareja_de_siempre() {
+        assert_eq!(
+            atajo_de(Tecla::Letra('c'), true, false, true),
+            Some(OrdenEditor::TomarEstilo)
+        );
+        assert_eq!(
+            atajo_de(Tecla::Letra('v'), true, false, true),
+            Some(OrdenEditor::SoltarEstilo)
+        );
+    }
+
+    #[test]
+    fn un_ctrl_c_pelado_no_se_confunde_con_tomar_el_estilo() {
+        // La razon de que `alt` entre en la decision: en un teclado con
+        // AltGr —donde AltGr ES Ctrl+Alt— mirar solo Ctrl haria que copiar
+        // se llevase ademas el estilo, o al reves.
+        assert_eq!(atajo_de(Tecla::Letra('c'), true, false, false), None);
+        assert_eq!(atajo_de(Tecla::Letra('v'), true, false, false), None);
+    }
+
+    #[test]
+    fn voltear_no_pisa_a_pegar_sin_formato_ni_a_buscar_y_reemplazar() {
+        // `Ctrl+Mayus+V` ya es pegar sin formato en medio mundo y `Ctrl+H`
+        // es buscar y reemplazar: voltear va sin Ctrl.
+        assert_eq!(
+            atajo_de(Tecla::Letra('h'), false, true, false),
+            Some(OrdenEditor::VoltearHorizontal)
+        );
+        assert_eq!(
+            atajo_de(Tecla::Letra('v'), false, true, false),
+            Some(OrdenEditor::VoltearVertical)
+        );
+        assert_eq!(atajo_de(Tecla::Letra('v'), true, true, false), None);
+        assert_eq!(atajo_de(Tecla::Letra('h'), true, false, false), None);
+    }
+
+    #[test]
+    fn una_tecla_suelta_que_no_esta_en_la_tabla_no_hace_nada() {
+        // Caso negativo: escribir una `z` con el lienzo enfocado no puede
+        // disparar media interfaz.
+        assert_eq!(atajo_de(Tecla::Letra('z'), false, false, false), None);
+        assert_eq!(atajo_de(Tecla::CorcheteAbre, false, false, false), None);
+    }
+
+    #[test]
+    fn lo_que_no_toca_el_dibujo_funciona_con_el_lienzo_vacio() {
+        // Encender la rejilla es justo lo que se hace ANTES del primer
+        // trazo: pedirle una seleccion seria pedirle lo que aun no hay.
+        assert!(!OrdenEditor::AlternarRejilla.necesita_seleccion());
+        assert!(!OrdenEditor::Lazo.necesita_seleccion());
+        assert!(OrdenEditor::VoltearHorizontal.necesita_seleccion());
+        assert!(
+            OrdenEditor::SoltarEstilo.necesita_seleccion(),
+            "pegar el estilo sin nada elegido no tiene destino"
+        );
     }
 }

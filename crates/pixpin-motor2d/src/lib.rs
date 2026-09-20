@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 
 pub mod aligerar;
+pub mod angulos;
 pub mod arco;
 pub mod azar;
 pub mod biblioteca;
@@ -43,6 +44,9 @@ pub mod organizar;
 pub mod perimetros;
 pub mod pintado;
 pub mod portapapeles;
+pub mod puntos_etiquetados;
+pub mod recorte;
+pub mod regiones;
 pub mod relleno;
 pub mod seleccion;
 pub mod serie;

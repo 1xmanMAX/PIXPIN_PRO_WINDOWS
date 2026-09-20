@@ -564,3 +564,23 @@ lienzo-flecha-codos = Flecha de codos
 lienzo-flecha-libre = Flecha a mano alzada
 lienzo-arco-guia = Óvalo guía sin repasar
 lienzo-luces-fuerza = Fuerza de las luces
+
+## Construir y medir: bote, recortar, extender, puntos y ángulos (grupo C)
+lienzo-bote = Bote de relleno
+lienzo-bote-ayuda = Pulsa dentro de un hueco cerrado y se rellena, aunque lo formen varias figuras distintas.
+lienzo-bote-abierto = Este hueco no está cerrado: la pintura se escaparía por una rendija.
+lienzo-recortar = Recortar
+lienzo-recortar-ayuda = Pulsa el trozo de trazo que sobra y se va, hasta donde lo cruzan los demás.
+lienzo-extender = Extender
+lienzo-extender-ayuda = Pulsa la punta que se queda corta y llega hasta lo primero que topa.
+lienzo-extender-sin-tope = Nada en su camino: una raya estirada al vacío no es una raya extendida.
+lienzo-punto = Punto con letra
+lienzo-punto-ayuda = Pulsa un cruce, un extremo o el centro de una circunferencia y sale el punto con su letra.
+lienzo-punto-sin-sitio = Ahí no hay nada que nombrar: el punto se pone en un cruce, un extremo o un centro.
+lienzo-punto-serie-mayusculas = Letras mayúsculas (A, B, C…)
+lienzo-punto-serie-minusculas = Letras minúsculas (a, b, c…)
+lienzo-punto-serie-numeros = Números (1, 2, 3…)
+lienzo-angulos = Ángulos en vivo
+lienzo-angulos-ayuda = Mientras mueves algo, enseña cuánto miden las esquinas que estás tocando.
+lienzo-area = Superficie
+

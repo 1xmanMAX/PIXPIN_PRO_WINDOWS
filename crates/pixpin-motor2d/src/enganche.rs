@@ -36,6 +36,39 @@ pub enum TipoAnclaje {
     /// El centro de la caja. En una elipse es el centro de la
     /// circunferencia, que es lo que se busca al trazar un radio.
     Centro,
+
+    /// **El eje de coordenadas**: su origen y sus dos rectas.
+    ///
+    /// No sale de ninguna figura: es la referencia del plano. Sin el, poner
+    /// algo «justo en el eje» o «a la altura del cero» hay que hacerlo a
+    /// ojo, que es lo contrario de para lo que se pone un eje.
+    Eje,
+
+    /// **Donde se cruzan dos figuras cualesquiera.**
+    ///
+    /// Es el que mas se echa de menos y el unico que **no pertenece a
+    /// ninguna figura**: nace de la relacion entre dos. Sin el, cerrar un
+    /// contorno donde dos trazos se cruzan es imposible a pulso, porque el
+    /// punto que buscas no existe como vertice de nada.
+    ///
+    /// Cualesquiera de verdad —una elipse contra un rectangulo, un arco
+    /// contra un garabato, o una figura consigo misma donde su propio trazo
+    /// vuelve a cruzarse—, porque quien saca el perimetro es
+    /// [`crate::perimetros`] y sabe reducir cualquier figura a tramos.
+    Interseccion,
+
+    /// **Cualquier punto del borde de una figura: la escuadra.**
+    ///
+    /// Es el unico enganche que no lleva a un punto notable sino a **todo un
+    /// canto**. Los demas sirven para empezar y acabar un trazo sobre una
+    /// guia; este sirve para **recorrerla**, que es justo lo que no se podia:
+    /// entre esquina y esquina no hay ningun punto al que pegarse, asi que el
+    /// lado salia torcido y la curva de un circulo no habia forma de
+    /// repasarla a pulso.
+    ///
+    /// Va el ultimo en prioridad **y ademas fuera de la puja por cercania**:
+    /// ver la nota de [`sitio_fino`].
+    Borde,
 }
 
 /// Un punto al que merece la pena pegarse.
@@ -121,13 +154,71 @@ const EMPATE: f32 = 0.001;
 /// Menor es mas prioritario.
 fn prioridad(t: TipoAnclaje) -> u8 {
     match t {
-        // Un vertice es lo mas intencionado que hay en un dibujo.
-        TipoAnclaje::Esquina | TipoAnclaje::Extremo => 1,
+        // La interseccion gana a todo: es la mas dificil de acertar a pulso
+        // —no existe como vertice de ninguna figura— y por tanto la que mas
+        // se agradece.
+        TipoAnclaje::Interseccion => 0,
+        // Un vertice es lo mas intencionado que hay en un dibujo. El eje va
+        // con ellos: es igual de intencionado.
+        TipoAnclaje::Esquina | TipoAnclaje::Extremo | TipoAnclaje::Eje => 1,
         TipoAnclaje::Medio => 2,
         // El centro de una caja grande esta lejos de todo, y engancharse a
         // el por sorpresa desconcierta mas de lo que ayuda.
         TipoAnclaje::Centro => 3,
+        // El canto pasa por encima de los vertices de su propia figura: a
+        // igual distancia gana el vertice, o apuntar a una esquina dejaria
+        // el trazo *cerca* de la esquina en vez de *en* la esquina.
+        TipoAnclaje::Borde => 4,
     }
+}
+
+/// Los tres anclajes que el movil tiene y aqui llegan ahora, con su origen
+/// de coordenadas.
+///
+/// # Por que van aparte de [`Ajustes`]
+///
+/// [`Ajustes`] es lo que se guarda en las preferencias del usuario, y lo
+/// construyen **campo a campo** dos sitios fuera de este crate
+/// (`pixpin-store` y la ventana del editor). Anadirle un campo rompe su
+/// compilacion, y esos ficheros son de otro dueno en esta tanda. Cuando esos
+/// dos literales pasen a llevar `..Default::default()`, estos tres se mudan
+/// a `Ajustes` y esto desaparece.
+///
+/// De fabrica los tres estan **encendidos**, que es como se comporta el
+/// movil: quien no los quiera los apaga.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AjustesFinos {
+    /// Los cruces entre figuras, y los de una figura consigo misma.
+    pub intersecciones: bool,
+    /// El canto de las figuras: la escuadra.
+    pub bordes: bool,
+    /// El `(0,0)` del dibujo y sus dos rectas, si el documento tiene uno.
+    ///
+    /// Es un punto y no un booleano porque **el origen no siempre es el cero
+    /// de la escena**: el movil lo guarda en la clave `origenCoordenadas`,
+    /// que aqui viaja intacta dentro de `Lienzo.resto`. Quien la sepa leer
+    /// la pasa por aqui; mientras nadie lo haga, no hay eje y no se ofrece
+    /// ningun ancla que el usuario no vea dibujada.
+    pub origen: Option<Punto2>,
+}
+
+impl Default for AjustesFinos {
+    fn default() -> Self {
+        Self {
+            intersecciones: true,
+            bordes: true,
+            origen: None,
+        }
+    }
+}
+
+impl AjustesFinos {
+    /// Los tres apagados.
+    pub const NINGUNO: Self = Self {
+        intersecciones: false,
+        bordes: false,
+        origen: None,
+    };
 }
 
 /// Los ajustes que tocan para esta faena, partiendo de los del usuario.
@@ -182,15 +273,143 @@ pub fn sitio(
     config: &Ajustes,
     excluir: &[u64],
 ) -> Option<Anclaje> {
+    // **Sin los tres anclajes nuevos, y eso no es un olvido.** Esta funcion
+    // es el camino caliente: corre en cada aviso del raton y tiene
+    // presupuesto de **cero asignaciones**, que `tests/asignaciones.rs`
+    // comprueba. Los cruces y el canto piden el perimetro de las figuras de
+    // alrededor, y sacar un perimetro es montar listas de puntos: veintitres
+    // reservas por movimiento del raton medidas.
+    //
+    // Por eso viven detras de [`sitio_fino`], que es lo que hay que llamar
+    // cuando el usuario los enciende. Quien los quiera paga lo que cuestan,
+    // a sabiendas, y quien no los use no paga nada.
+    sitio_fino(
+        elementos,
+        p,
+        zoom,
+        faena,
+        config,
+        &AjustesFinos::NINGUNO,
+        excluir,
+    )
+}
+
+/// Como [`sitio`], pero diciendo ademas que hacer con los tres anclajes de
+/// [`AjustesFinos`].
+///
+/// # El orden en que se mira, que no es arbitrario
+///
+/// 1. **Las intersecciones primero**, porque son las de mayor prioridad y
+///    conviene que entren en la puja cuanto antes.
+/// 2. **Los puntos notables de cada figura**, con la criba por caja que hace
+///    soportable un plano importado.
+/// 3. **El canto, y solo si no gano nada de lo anterior.** No se decide por
+///    cercania como todo lo demas, y tiene que ser asi: el canto pasa por
+///    encima de los vertices de su propia figura, asi que junto a una esquina
+///    siempre hay un punto del borde mas cerca que la esquina. Por distancia,
+///    la esquina no ganaria jamas y no habria forma de clavar un trazo en
+///    ella. Siendo el ultimo recurso, el canto hace lo que se espera de una
+///    escuadra: manda donde no hay nada mejor, que es a lo largo del lado.
+pub fn sitio_fino(
+    elementos: &[Elemento],
+    p: Punto2,
+    zoom: f32,
+    faena: Faena,
+    config: &Ajustes,
+    finos: &AjustesFinos,
+    excluir: &[u64],
+) -> Option<Anclaje> {
     let ajustes = ajustes_para(faena, config);
     if !ajustes.activo {
         return None;
     }
     // El radio se da en pixeles de pantalla y aqui se trabaja en escena.
     let radio = ajustes.radio_px / zoom.max(0.0001);
+    // A mano alzada no engancha nada, y eso incluye a los tres de aqui: un
+    // trazo que salta a un cruce en mitad del recorrido se rompe igual que
+    // uno que salta a un vertice.
+    //
+    // El canto es la excepcion que el original permite —no es un punto al
+    // que ir, es una superficie sobre la que resbalar— **pero alla solo lo
+    // ofrecen las guias**, y una guia se reconoce por el campo `reference`
+    // del elemento, que aqui todavia no se lee. Encenderlo para todas las
+    // figuras convertiria cada rectangulo del dibujo en un carril del que no
+    // hay forma de despegar el lapiz. Asi que sigue apagado y este `if` es
+    // donde se enciende el dia que exista la guia.
+    let finos = if faena == Faena::AMano {
+        AjustesFinos::NINGUNO
+    } else {
+        *finos
+    };
 
     let mut mejor: Option<Anclaje> = None;
     let mut mejor_d = f32::MAX;
+
+    let considerar = |a: Anclaje, mejor: &mut Option<Anclaje>, mejor_d: &mut f32| {
+        let d = a.punto.distancia(p);
+        if d > radio {
+            return;
+        }
+        let gana = d < *mejor_d - EMPATE
+            || ((d - *mejor_d).abs() <= EMPATE
+                && mejor.is_some_and(|m: Anclaje| prioridad(a.tipo) < prioridad(m.tipo)));
+        if gana {
+            *mejor = Some(a);
+            *mejor_d = d;
+        }
+    };
+
+    // 1. Los cruces. El descarte por cercania vive dentro de
+    //    `intersecciones_cerca` porque es parte de su algoritmo: sin el,
+    //    cruzar dos curvas muestreadas seria cuadratico en cada fotograma.
+    if finos.intersecciones && ajustes.esquinas {
+        // Se piden los cruces de todos contra todos menos los excluidos.
+        //
+        // Hay que copiar porque `intersecciones_cerca` recibe una rebanada y
+        // solo sabe excluir a uno, y aqui se excluye a la seleccion entera.
+        // La criba por caja **antes** de copiar es lo que lo hace asumible:
+        // sin ella, un plano importado se duplicaria en memoria en cada
+        // movimiento del raton; con ella se copian los dos o tres elementos
+        // que de verdad pasan cerca del cursor.
+        let visibles: Vec<Elemento> = elementos
+            .iter()
+            .filter(|e| !excluir.contains(&e.id) && !e.borrado)
+            .filter(|e| {
+                let (x0, y0, x1, y1) = e.caja();
+                p.x >= x0 - radio && p.x <= x1 + radio && p.y >= y0 - radio && p.y <= y1 + radio
+            })
+            .cloned()
+            .collect();
+        for (punto, id) in crate::perimetros::intersecciones_cerca(&visibles, p, radio, None, true)
+        {
+            considerar(
+                Anclaje {
+                    punto,
+                    tipo: TipoAnclaje::Interseccion,
+                    id,
+                },
+                &mut mejor,
+                &mut mejor_d,
+            );
+        }
+    }
+
+    // El eje: su origen, y los dos pies sobre sus rectas. El id es cero
+    // porque no pertenece a ningun elemento, que es justamente lo que lo
+    // hace util.
+    if let Some(o) = finos.origen.filter(|_| ajustes.esquinas) {
+        for punto in [o, Punto2::nuevo(p.x, o.y), Punto2::nuevo(o.x, p.y)] {
+            considerar(
+                Anclaje {
+                    punto,
+                    tipo: TipoAnclaje::Eje,
+                    id: 0,
+                },
+                &mut mejor,
+                &mut mejor_d,
+            );
+        }
+    }
 
     for e in elementos {
         if e.borrado || excluir.contains(&e.id) {
@@ -245,6 +464,43 @@ pub fn sitio(
             }
         });
     }
+
+    // 3. El canto, y **solo si no habia nada notable a mano**. Ver la nota de
+    //    la cabecera de esta funcion sobre por que no puja por cercania.
+    if mejor.is_none() && finos.bordes {
+        for e in elementos {
+            if e.borrado || e.bloqueado || excluir.contains(&e.id) {
+                continue;
+            }
+            // El marco se queda fuera: delimita hasta donde llega el dibujo,
+            // no es algo dibujado, y pegarse a su canto convertiria los
+            // cuatro bordes del papel en carriles.
+            if matches!(e.figura, Figura::Marco { .. }) {
+                continue;
+            }
+            // La caja primero, que es una resta: sacarle el perimetro a una
+            // figura cuesta, y esto corre por CADA elemento en CADA
+            // movimiento del raton. Con un plano importado —miles de
+            // figuras— saltarse esta criba era recorrer y reservar el plano
+            // entero en cada evento.
+            let (x0, y0, x1, y1) = e.caja();
+            if p.x < x0 - radio || p.x > x1 + radio || p.y < y0 - radio || p.y > y1 + radio {
+                continue;
+            }
+            if let Some(q) = crate::perimetros::punto_en_el_perimetro(e, p, radio) {
+                considerar(
+                    Anclaje {
+                        punto: q,
+                        tipo: TipoAnclaje::Borde,
+                        id: e.id,
+                    },
+                    &mut mejor,
+                    &mut mejor_d,
+                );
+            }
+        }
+    }
+
     mejor
 }
 
@@ -355,6 +611,45 @@ pub fn pista(a: &Anclaje, zoom: f32) -> Orden {
             Punto2::nuevo(cx, cy - r),
             Punto2::nuevo(cx + r, cy + r),
             Punto2::nuevo(cx - r, cy + r),
+            Punto2::nuevo(cx, cy - r),
+        ],
+        // La interseccion: **un aspa**, que es como se marca un cruce en un
+        // plano de toda la vida. Tiene que distinguirse del cuadrado del
+        // vertice sin mirar dos veces, porque las dos marcas aparecen a un
+        // par de pixeles una de otra cuando una raya toca una esquina.
+        //
+        // Se pinta de una tirada volviendo por el centro: una polilinea no
+        // puede levantar el lapiz, y dos ordenes por marca obligarian a
+        // cambiar el tipo que devuelve esta funcion.
+        TipoAnclaje::Interseccion => vec![
+            Punto2::nuevo(cx - r, cy - r),
+            Punto2::nuevo(cx + r, cy + r),
+            Punto2::nuevo(cx, cy),
+            Punto2::nuevo(cx + r, cy - r),
+            Punto2::nuevo(cx - r, cy + r),
+            Punto2::nuevo(cx, cy),
+            Punto2::nuevo(cx - r, cy - r),
+        ],
+        // El eje: una cruz recta, la del origen de coordenadas de cualquier
+        // grafica. Mismo truco de volver por el centro.
+        TipoAnclaje::Eje => vec![
+            Punto2::nuevo(cx - r, cy),
+            Punto2::nuevo(cx + r, cy),
+            Punto2::nuevo(cx, cy),
+            Punto2::nuevo(cx, cy - r),
+            Punto2::nuevo(cx, cy + r),
+            Punto2::nuevo(cx, cy),
+            Punto2::nuevo(cx - r, cy),
+        ],
+        // El canto: un rombo, la marca mas discreta de las cinco. Y tiene
+        // que serlo: el canto engancha a lo largo de todo un lado, asi que
+        // su marca aparece constantemente mientras se bordea una figura, y
+        // una marca llamativa ahi parpadearia todo el rato.
+        TipoAnclaje::Borde => vec![
+            Punto2::nuevo(cx, cy - r),
+            Punto2::nuevo(cx + r, cy),
+            Punto2::nuevo(cx, cy + r),
+            Punto2::nuevo(cx - r, cy),
             Punto2::nuevo(cx, cy - r),
         ],
         // El centro: un circulo, porque de lo que suele ser centro -una
@@ -575,13 +870,18 @@ mod pruebas {
             centros: false,
             ..Ajustes::default()
         };
+        // Se pide sin canto: esta prueba es sobre el interruptor de las
+        // esquinas, y el canto de la propia raya pasa justo por su extremo,
+        // asi que con el encendido engancharia ahi por otro motivo y la
+        // prueba no comprobaria lo que dice comprobar.
         assert!(
-            sitio(
+            sitio_fino(
                 &es,
                 Punto2::nuevo(98.0, 0.0),
                 1.0,
                 Faena::Trazando,
                 &solo_medios,
+                &AjustesFinos::NINGUNO,
                 &[]
             )
             .is_none(),
@@ -685,11 +985,26 @@ mod pruebas {
     #[test]
     fn el_radio_es_de_pantalla_asi_que_el_zoom_lo_encoge() {
         let es = [rectangulo(1)];
+        // Sobre el borde de arriba, a diez de la esquina. Se pide sin canto:
+        // el punto esta EN la pared, asi que la escuadra engancharia siempre
+        // y taparia lo que aqui se mide, que es como encoge el radio de un
+        // ancla de punto notable al acercarse.
         let p = Punto2::nuevo(10.0, 0.0);
+        let pedir = |zoom: f32| {
+            sitio_fino(
+                &es,
+                p,
+                zoom,
+                Faena::Trazando,
+                &todo(),
+                &AjustesFinos::NINGUNO,
+                &[],
+            )
+        };
         // A zoom 1 el radio de escena son 14: 10 entra.
-        assert!(sitio(&es, p, 1.0, Faena::Trazando, &todo(), &[]).is_some());
+        assert!(pedir(1.0).is_some());
         // A zoom 4 son 3,5: 10 ya no entra, a la MISMA distancia de escena.
-        assert!(sitio(&es, p, 4.0, Faena::Trazando, &todo(), &[]).is_none());
+        assert!(pedir(4.0).is_none());
     }
 
     #[test]
@@ -874,5 +1189,237 @@ mod pruebas {
         };
         let p = puntos_de(&pista(&a, 1.0));
         assert_eq!(p[0], p[p.len() - 1], "el circulo debe cerrar exacto");
+    }
+
+    // --- Los tres anclajes nuevos ---
+
+    /// Pide sitio **con los tres anclajes nuevos encendidos**.
+    ///
+    /// Es `sitio_fino` y no `sitio` a proposito: `sitio` es el camino
+    /// caliente y los deja fuera por presupuesto de asignaciones. Que estas
+    /// pruebas tengan que pedirlos expresamente es justo lo que documenta
+    /// esa frontera.
+    fn finos(es: &[Elemento], p: Punto2, faena: Faena) -> Option<Anclaje> {
+        sitio_fino(es, p, 1.0, faena, &todo(), &AjustesFinos::default(), &[])
+    }
+
+    #[test]
+    fn el_camino_caliente_no_trae_los_anclajes_que_cuestan_memoria() {
+        // El contrato con `tests/asignaciones.rs`, dicho aqui tambien: si
+        // alguien enciende los cruces dentro de `sitio`, esta prueba lo
+        // caza antes de que lo cace el presupuesto.
+        let es = [horizontal(1, 0.0), vertical(2, 0.0)];
+        let a = sitio(
+            &es,
+            Punto2::nuevo(3.0, 3.0),
+            1.0,
+            Faena::Trazando,
+            &todo(),
+            &[],
+        );
+        assert!(a.is_none_or(|a| a.tipo != TipoAnclaje::Interseccion));
+    }
+
+    /// Una raya de (x0,y) a (x1,y).
+    fn horizontal(id: u64, y: f32) -> Elemento {
+        Elemento {
+            figura: Figura::Linea {
+                puntos: vec![Punto2::nuevo(-500.0, y), Punto2::nuevo(500.0, y)],
+            },
+            x: -500.0,
+            y,
+            ancho: 1000.0,
+            alto: 0.0,
+            ..rectangulo(id)
+        }
+    }
+
+    fn vertical(id: u64, x: f32) -> Elemento {
+        Elemento {
+            figura: Figura::Linea {
+                puntos: vec![Punto2::nuevo(x, -500.0), Punto2::nuevo(x, 500.0)],
+            },
+            x,
+            y: -500.0,
+            ancho: 0.0,
+            alto: 1000.0,
+            ..rectangulo(id)
+        }
+    }
+
+    #[test]
+    fn el_cruce_de_dos_rayas_engancha_y_gana_a_todo_lo_demas() {
+        // Es el ancla de mayor prioridad del movil, y por el mejor motivo:
+        // el punto que buscas no existe como vertice de nada, asi que a
+        // pulso no hay forma de acertarlo.
+        let es = [horizontal(1, 0.0), vertical(2, 0.0)];
+        let a = finos(&es, Punto2::nuevo(3.0, 3.0), Faena::Trazando)
+            .expect("tenia que enganchar al cruce");
+        assert_eq!(a.tipo, TipoAnclaje::Interseccion);
+        assert!(a.punto.distancia(Punto2::nuevo(0.0, 0.0)) < 0.01);
+    }
+
+    #[test]
+    fn el_cruce_gana_al_medio_de_la_raya_aunque_esten_a_la_misma_distancia() {
+        // El medio de cada raya esta en (0,0) tambien —son simetricas—, asi
+        // que este es el empate exacto en el que manda la prioridad.
+        let es = [horizontal(1, 0.0), vertical(2, 0.0)];
+        let a = finos(&es, Punto2::nuevo(0.0, 0.0), Faena::Trazando).unwrap();
+        assert_eq!(a.tipo, TipoAnclaje::Interseccion);
+    }
+
+    #[test]
+    fn apagar_las_intersecciones_devuelve_el_ancla_de_antes() {
+        // Caso negativo: lo que el usuario apaga se queda apagado, tambien
+        // aqui.
+        let es = [horizontal(1, 0.0), vertical(2, 0.0)];
+        let sin_cruces = AjustesFinos {
+            intersecciones: false,
+            ..Default::default()
+        };
+        let a = sitio_fino(
+            &es,
+            Punto2::nuevo(0.0, 0.0),
+            1.0,
+            Faena::Trazando,
+            &todo(),
+            &sin_cruces,
+            &[],
+        )
+        .unwrap();
+        assert_ne!(a.tipo, TipoAnclaje::Interseccion);
+    }
+
+    #[test]
+    fn el_canto_engancha_a_media_pared_pero_nunca_le_gana_a_una_esquina() {
+        // Las dos mitades de la razon de ser del canto, en una prueba: sin
+        // el, entre esquina y esquina no hay a que pegarse; y si pujara por
+        // cercania, junto a una esquina siempre hay un punto del borde mas
+        // cerca que la esquina y no habria forma de clavar un trazo en ella.
+        let es = [rectangulo(1)];
+        // A (25,3): la esquina (0,0) y el medio del lado (50,0) quedan los
+        // dos a mas de veinticinco, o sea fuera del radio. Sin canto, ahi no
+        // hay nada a lo que pegarse, que es justo el hueco que viene a tapar.
+        let en_medio = finos(&es, Punto2::nuevo(25.0, 3.0), Faena::Trazando)
+            .expect("en medio del lado de arriba tiene que haber canto");
+        assert_eq!(en_medio.tipo, TipoAnclaje::Borde);
+        assert_eq!(en_medio.punto, Punto2::nuevo(25.0, 0.0));
+
+        let en_la_esquina = finos(&es, Punto2::nuevo(2.0, 2.0), Faena::Trazando).unwrap();
+        assert_eq!(
+            en_la_esquina.tipo,
+            TipoAnclaje::Esquina,
+            "el canto le robo la esquina"
+        );
+    }
+
+    #[test]
+    fn apagar_el_canto_deja_el_lado_libre_otra_vez() {
+        let es = [rectangulo(1)];
+        assert!(
+            sitio_fino(
+                &es,
+                Punto2::nuevo(25.0, 3.0),
+                1.0,
+                Faena::Trazando,
+                &todo(),
+                &AjustesFinos::NINGUNO,
+                &[]
+            )
+            .is_none(),
+            "sin canto, en medio del lado no hay nada notable"
+        );
+    }
+
+    #[test]
+    fn el_canto_no_convierte_el_papel_en_un_carril() {
+        // Caso negativo: el marco delimita hasta donde llega el dibujo, no es
+        // algo dibujado. Pegarse a sus cuatro bordes seria insufrible.
+        let marco = Elemento {
+            figura: Figura::Marco {
+                nombre: "hoja".into(),
+            },
+            ancho: 400.0,
+            alto: 400.0,
+            ..rectangulo(1)
+        };
+        let a = finos(&[marco], Punto2::nuevo(200.0, 3.0), Faena::Trazando);
+        assert!(a.is_none_or(|a| a.tipo != TipoAnclaje::Borde));
+    }
+
+    #[test]
+    fn a_mano_alzada_no_engancha_ni_a_cruces_ni_al_canto() {
+        // Caso negativo, y el que protege el lapiz de los tres anclajes
+        // nuevos: un trazo que salta a un cruce se rompe igual que uno que
+        // salta a un vertice. El canto SI se permite trazando a pulso en el
+        // original, pero alla solo lo ofrecen las guias —un campo del
+        // elemento que aqui no se lee— y encenderlo para todas las figuras
+        // convertiria cada rectangulo en un carril.
+        let es = [horizontal(1, 0.0), vertical(2, 0.0), rectangulo(3)];
+        for p in [Punto2::nuevo(1.0, 1.0), Punto2::nuevo(40.0, 3.0)] {
+            assert!(
+                finos(&es, p, Faena::AMano).is_none(),
+                "el lapiz pego un tiron en {p:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sin_origen_de_coordenadas_no_hay_ancla_de_eje() {
+        // Caso negativo, y el que evita un ancla fantasma: mientras nadie sepa
+        // leer `origenCoordenadas`, no se puede ofrecer un eje que el usuario
+        // no ve dibujado en ninguna parte.
+        assert!(AjustesFinos::default().origen.is_none());
+        assert!(finos(&[], Punto2::nuevo(0.0, 0.0), Faena::Trazando).is_none());
+    }
+
+    #[test]
+    fn con_origen_se_engancha_al_cero_y_a_sus_dos_rectas() {
+        let con_eje = AjustesFinos {
+            origen: Some(Punto2::nuevo(0.0, 0.0)),
+            ..Default::default()
+        };
+        let pedir = |p: Punto2| sitio_fino(&[], p, 1.0, Faena::Trazando, &todo(), &con_eje, &[]);
+        // Justo en el cero, el cero. Cerca de el manda la recta y no el
+        // punto, y tiene que ser asi: el pie sobre el eje siempre esta mas
+        // cerca que el origen, porque es su proyeccion.
+        let origen = pedir(Punto2::nuevo(0.0, 0.0)).expect("el cero engancha");
+        assert_eq!(origen.tipo, TipoAnclaje::Eje);
+        assert_eq!(origen.punto, Punto2::nuevo(0.0, 0.0));
+
+        // A la altura del cero, lejos del origen: se cae sobre la recta.
+        let sobre_la_recta = pedir(Punto2::nuevo(300.0, 3.0)).expect("la recta engancha");
+        assert_eq!(sobre_la_recta.punto, Punto2::nuevo(300.0, 0.0));
+
+        // Y lejos de las dos rectas, nada.
+        assert!(pedir(Punto2::nuevo(300.0, 300.0)).is_none());
+    }
+
+    #[test]
+    fn las_cinco_marcas_se_distinguen_y_todas_cierran() {
+        // Las marcas aparecen a un par de pixeles unas de otras cuando una
+        // raya toca una esquina: si dos se pintaran igual, la queja «engancha
+        // donde no quiero» no se podria ni diagnosticar.
+        let formas: Vec<usize> = [
+            TipoAnclaje::Esquina,
+            TipoAnclaje::Medio,
+            TipoAnclaje::Centro,
+            TipoAnclaje::Interseccion,
+            TipoAnclaje::Eje,
+            TipoAnclaje::Borde,
+        ]
+        .into_iter()
+        .map(|t| {
+            let p = puntos_de(&pista(&ancla(t), 1.0));
+            assert_eq!(p[0], p[p.len() - 1], "la marca de {t:?} queda abierta");
+            p.len()
+        })
+        .collect();
+        // El aspa y la cruz tienen los dos siete puntos, pero no los mismos:
+        // se comparan las formas de verdad.
+        let aspa = puntos_de(&pista(&ancla(TipoAnclaje::Interseccion), 1.0));
+        let cruz = puntos_de(&pista(&ancla(TipoAnclaje::Eje), 1.0));
+        assert_ne!(aspa, cruz, "el cruce y el eje se pintan igual");
+        assert!(formas.iter().all(|n| *n >= 4));
     }
 }
