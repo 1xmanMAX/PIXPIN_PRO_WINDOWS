@@ -668,3 +668,6 @@ chat-recordatorio-puesto = I will remind you at { $cuando }
 chat-recordatorio-quitar = Remove the reminder
 chat-recordatorio-quitado = Reminder removed
 chat-recordatorio-titulo = Reminder
+
+# A message menu entry: send the attachment to someone over Wi-Fi.
+chat-enviar-wifi = Send over Wi-Fi

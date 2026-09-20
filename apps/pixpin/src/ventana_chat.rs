@@ -9227,6 +9227,9 @@ enum Accion {
     Copiar(usize),
     Fijar(usize),
     Compartir(usize),
+    /// Mandar el adjunto a otra persona por la wifi: abre Sincronizar ya en
+    /// «Enviar por Wi-Fi» con el fichero puesto.
+    EnviarWifi(usize),
     AbrirCon(usize),
     /// Abrirlo en el visor de PixPin, sin salir a otra aplicacion.
     AbrirAqui(usize),
@@ -9625,6 +9628,15 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
     ));
     let ruta = ruta_del_mensaje(&a.raiz, &a.ficha.id, m).filter(|r| r.is_file());
     if let Some(ruta) = &ruta {
+        // Va pegada a «Compartir» porque es lo mismo visto de otra manera:
+        // alli el fichero se deja en el portapapeles de ESTE equipo, y aqui
+        // se manda al aparato de otra persona. Solo con un fichero detras:
+        // el envio manda archivos, no el texto de una nota.
+        v.push(entrada(
+            Some(&mi::WIFI),
+            textos.t("chat-enviar-wifi"),
+            Accion::EnviarWifi(i),
+        ));
         // «Abrir aqui» va DELANTE de «Abrir con otra app» y solo cuando el
         // visor sabe leer eso: ofrecerse para un `.zip` abriria una ventana
         // en blanco, que es peor que mandarlo a Windows.
@@ -9921,6 +9933,15 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                 Err(e) => fallo(&e),
             }
         }
+        // Sincronizar vive en su propio hilo: el chat se queda abierto
+        // detras mientras el otro aparato recibe.
+        Accion::EnviarWifi(i) => match ruta_de(a, i) {
+            Some(ruta) => {
+                crate::sincronizar::enviar_por_wifi(cx.idioma, cx.ubicacion.clone(), vec![ruta]);
+                Efecto::Nada
+            }
+            None => Efecto::Aviso(cx.textos.t("chat-sin-archivo")),
+        },
         // En su propio hilo, como el universo: el chat sigue abierto detras
         // y se puede seguir escribiendo mientras se lee el documento.
         Accion::AbrirAqui(i) => match ruta_de(a, i) {

@@ -24,7 +24,7 @@
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
@@ -88,14 +88,69 @@ const ROJO: Color = hex(0xe0453a);
 
 /// Solo una ventana de sincronizar a la vez: dos escuchando en el mismo
 /// puerto y escribiendo la misma identidad se pisarian.
-static ABIERTA: AtomicBool = AtomicBool::new(false);
+///
+/// Es el `HWND` de la ventana abierta (> 0), -1 mientras nace y 0 si no hay,
+/// como el del chat y el del universo. Un booleano bastaba para NO abrir dos,
+/// pero no para despertar a la que ya esta: sin el handle, un pedido que
+/// llegara con la ventana delante se quedaria en la cola hasta que el usuario
+/// moviera el raton por encima.
+static ABIERTA: AtomicIsize = AtomicIsize::new(0);
+
+/// Lo que se le pide a la ventana de Sincronizar desde fuera (hoy, mandar
+/// unos ficheros por Wi-Fi desde el menu de un mensaje del chat).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pedido {
+    /// Entrar directo en «Enviar por Wi-Fi» con estos ficheros ya puestos,
+    /// sin pasar por «¿Que mandar?».
+    Enviar(Vec<PathBuf>),
+}
+
+/// El pedido que espera a que la ventana lo recoja. Solo cabe uno: si se
+/// piden dos seguidos gana el ultimo, que es el que el usuario acaba de
+/// pulsar (mismo trato que `universo::PEDIDO`).
+static PEDIDO: std::sync::Mutex<Option<Pedido>> = std::sync::Mutex::new(None);
+
+fn dejar_pedido(p: Pedido) {
+    if let Ok(mut g) = PEDIDO.lock() {
+        *g = Some(p);
+    }
+}
+
+fn tomar_pedido() -> Option<Pedido> {
+    PEDIDO.lock().ok().and_then(|mut g| g.take())
+}
 
 /// Abre la ventana en su propio hilo, como el chat y recibir: el hilo
 /// principal sigue atendiendo atajos y gestos.
 pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion) {
-    if ABIERTA.swap(true, Ordering::SeqCst) {
+    con_pedido(idioma, ubicacion, None)
+}
+
+/// Manda estos ficheros por Wi-Fi: abre Sincronizar YA en la pantalla de
+/// enviar con ellos puestos, o se lo pide a la que ya esta abierta.
+pub fn enviar_por_wifi(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, rutas: Vec<PathBuf>) {
+    if rutas.is_empty() {
         return;
     }
+    con_pedido(idioma, ubicacion, Some(Pedido::Enviar(rutas)))
+}
+
+fn con_pedido(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, pedido: Option<Pedido>) {
+    if let Some(p) = pedido {
+        dejar_pedido(p);
+    }
+    let ya = ABIERTA.load(Ordering::SeqCst);
+    if ya != 0 {
+        if ya > 0 {
+            VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(ya as *mut _));
+            pixpin_shell::overlay::despertar(ya);
+        }
+        // Naciendo (-1): su bucle recoge el pedido en la primera vuelta.
+        return;
+    }
+    // Se marca antes de que exista la ventana: dos peticiones seguidas no
+    // pueden abrir dos Sincronizar. El hilo pone el HWND de verdad al crearla.
+    ABIERTA.store(-1, Ordering::SeqCst);
     let lanzado = std::thread::Builder::new()
         .name("sincronizar".into())
         .spawn(move || {
@@ -105,10 +160,10 @@ pub fn lanzar(idioma: pixpin_store::Idioma, ubicacion: Ubicacion) {
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir la ventana de sincronizar");
             }
-            ABIERTA.store(false, Ordering::SeqCst);
+            ABIERTA.store(0, Ordering::SeqCst);
         });
     if let Err(e) = lanzado {
-        ABIERTA.store(false, Ordering::SeqCst);
+        ABIERTA.store(0, Ordering::SeqCst);
         tracing::warn!(?e, "no se pudo lanzar el hilo de sincronizar");
     }
 }
@@ -336,6 +391,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     };
     let mut ventana = VentanaOverlay::nueva_normal(marco, &textos.t("sinc-titulo"))
         .context("no se pudo abrir la ventana de sincronizar")?;
+    ABIERTA.store(ventana.handle().0 as isize, Ordering::SeqCst);
     let motor = recursos.motor();
     let superficie = Superficie::nueva(
         &motor,
@@ -383,6 +439,25 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     let mut arrastre: Option<(Punto, Rect)> = None;
     let mut hay_que_pintar = true;
     'bucle: loop {
+        // Lo que pidieron desde fuera (hoy: «Enviar por Wi-Fi» desde el menu
+        // de un mensaje del chat). Se mira en CADA vuelta y no solo al nacer:
+        // con la ventana ya abierta, quien lo deja la despierta y el pedido se
+        // recoge aqui sin que el usuario tenga que tocar nada.
+        if let Some(pedido) = tomar_pedido() {
+            match pedido {
+                Pedido::Enviar(rutas) => {
+                    let cx = pantalla.contexto();
+                    // Lo de encima estorba a lo que se acaba de pedir.
+                    pantalla.fase = Fase::Nada;
+                    pantalla.campo = None;
+                    pantalla.saliendo = false;
+                    pantalla.entrar(|t| {
+                        Sub::Enviar(Box::new(enviar_wifi::Enviar::con_archivos(t, rutas, &cx)))
+                    });
+                }
+            }
+            hay_que_pintar = true;
+        }
         pixpin_shell::overlay::bombear_pendientes();
         for (hwnd, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if hwnd != ventana.handle() {
@@ -2661,6 +2736,39 @@ fn dialogo(l: &mut Lienzo<'_>, ancho: f32, alto: f32, textos: &Catalogo, s: &Pan
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    /// Los tres casos de la cola de pedidos, en una sola prueba porque
+    /// comparten el estatico y correr a la vez se pisarian.
+    #[test]
+    fn el_pedido_se_recoge_una_sola_vez_y_gana_el_ultimo() {
+        PEDIDO.lock().unwrap().take();
+        // Caso negativo: sin nadie que pida nada, no hay que entrar en nada.
+        assert_eq!(tomar_pedido(), None);
+        dejar_pedido(Pedido::Enviar(vec![PathBuf::from("uno.png")]));
+        dejar_pedido(Pedido::Enviar(vec![PathBuf::from("dos.png")]));
+        assert_eq!(
+            tomar_pedido(),
+            Some(Pedido::Enviar(vec![PathBuf::from("dos.png")]))
+        );
+        // Y recogido no vuelve: si no, cada vuelta del bucle volveria a
+        // entrar en «Enviar» y no se podria salir de esa pantalla.
+        assert_eq!(tomar_pedido(), None);
+    }
+
+    /// Sin ficheros no se abre nada: un mensaje sin adjunto no tiene que
+    /// sacar la ventana de Sincronizar a la cara.
+    #[test]
+    fn enviar_por_wifi_sin_rutas_no_deja_pedido() {
+        PEDIDO.lock().unwrap().take();
+        enviar_por_wifi(
+            pixpin_store::Idioma::Espanol,
+            Ubicacion::Portable {
+                raiz: PathBuf::from("."),
+            },
+            Vec::new(),
+        );
+        assert_eq!(tomar_pedido(), None);
+    }
 
     #[test]
     fn una_direccion_con_puerto_se_parte_y_sin_puerto_va_el_de_siempre() {

@@ -669,3 +669,6 @@ chat-recordatorio-puesto = Te aviso a las { $cuando }
 chat-recordatorio-quitar = Quitar el recordatorio
 chat-recordatorio-quitado = Recordatorio quitado
 chat-recordatorio-titulo = Recordatorio
+
+# El menu de un mensaje con adjunto: mandarlo a otra persona por la wifi.
+chat-enviar-wifi = Enviar por Wi-Fi

@@ -167,6 +167,17 @@ impl Enviar {
         }
     }
 
+    /// Entrar con los ficheros ya elegidos, que es como llega «Enviar por
+    /// Wi-Fi» desde el menu de un mensaje del chat: alli el fichero ya se
+    /// sabe, y volver a preguntar «¿Que mandar?» seria preguntar dos veces.
+    /// De aqui en adelante todo es igual que tras el dialogo de Windows.
+    pub(super) fn con_archivos(turno: u64, rutas: Vec<PathBuf>, cx: &Contexto) -> Enviar {
+        let mut s = Enviar::nuevo(turno);
+        s.fase = Fase::Preparando;
+        preparar(cx, turno, Que::Archivos(rutas));
+        s
+    }
+
     pub(super) fn animando(&self) -> bool {
         matches!(self.fase, Fase::Preparando | Fase::Esperando { .. })
     }
