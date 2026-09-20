@@ -950,6 +950,37 @@ pub fn abrir(
                                     a.marcados.clear();
                                     Efecto::Nada
                                 }
+                                // La barra del reproductor. Ninguna de estas
+                                // toca el disco ni el cuaderno: son ordenes al
+                                // motor de sonido, que vive aparte.
+                                Zona::VozTocar => {
+                                    if crate::audio::estado().sonando {
+                                        crate::audio::pausar();
+                                    } else if let Err(e) = crate::audio::seguir() {
+                                        tracing::warn!(?e, "no se pudo seguir");
+                                    }
+                                    Efecto::Nada
+                                }
+                                Zona::VozAtras => {
+                                    crate::audio::atras();
+                                    Efecto::Nada
+                                }
+                                Zona::VozAdelante => {
+                                    crate::audio::adelante();
+                                    Efecto::Nada
+                                }
+                                Zona::VozVelocidad => {
+                                    crate::audio::otra_velocidad();
+                                    Efecto::Nada
+                                }
+                                Zona::VozCerrar => {
+                                    crate::audio::parar();
+                                    Efecto::Nada
+                                }
+                                Zona::VozIrA(milesimas) => {
+                                    crate::audio::ir_a(milesimas as f32 / 1000.0);
+                                    Efecto::Nada
+                                }
                                 Zona::SelCopiar => copiar_marcados(a, textos),
                                 Zona::SelFijar => fijar_marcados(ubicacion, a, textos),
                                 Zona::SelReenviar => {
@@ -1032,6 +1063,15 @@ pub fn abrir(
                                 // conversacion, que es donde se ve de verdad.
                                 a.info = None;
                                 a.renombrando = true;
+                            }
+                            hay_que_pintar = true;
+                        }
+                    } else if abierto.as_ref().is_some_and(|a| a.biblioteca.is_some()) {
+                        if let Some(a) = abierto.as_mut() {
+                            if disposicion.cabecera_chat.contiene(l) {
+                                a.biblioteca = None;
+                            } else if let Some(b) = a.biblioteca.as_ref() {
+                                pulsar_biblioteca(b, l, &disposicion, escala);
                             }
                             hay_que_pintar = true;
                         }
@@ -1491,6 +1531,30 @@ pub fn abrir(
                         ventana.soltar_raton();
                     }
                     arrastre = None;
+                }
+                EventoOverlay::Rueda(delta)
+                    if abierto.as_ref().is_some_and(|a| a.biblioteca.is_some()) =>
+                {
+                    if let Some(b) = abierto.as_mut().and_then(|a| a.biblioteca.as_mut()) {
+                        let t = pixpin_ui::mini::Disposicion::calcular(
+                            hueco_hoja(&disposicion),
+                            escala,
+                            reparto_de_biblioteca(),
+                        );
+                        let paso = 3 * (pixpin_ui::mini::FILA_ALTO * escala / 100) as i32;
+                        b.scroll = (b.scroll - delta.signum() * paso)
+                            .clamp(0, t.tope_scroll(b.filas.len(), escala));
+                    }
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::Tecla { vk, .. }
+                    if vk == VK_ESCAPE
+                        && abierto.as_ref().is_some_and(|a| a.biblioteca.is_some()) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        a.biblioteca = None;
+                    }
+                    hay_que_pintar = true;
                 }
                 EventoOverlay::Rueda(delta)
                     if abierto.as_ref().is_some_and(|a| a.mini.is_some()) =>
@@ -2338,6 +2402,13 @@ pub fn abrir(
                             // Con una hoja abierta, la conversacion deja su sitio:
                             // una tabla necesita todo el ancho y el alto que
                             // haya, y el historial vuelve al cerrarla.
+                            None if a.biblioteca.is_some() => {
+                                if let Some(b) = a.biblioteca.as_ref() {
+                                    pintar_biblioteca(p, &disposicion, &c, b);
+                                }
+                                pintar_cabecera(p, &disposicion, &c, a);
+                                a.zonas.borrow_mut().clear();
+                            }
                             // Y con una mini-app, lo mismo: su panel ocupa el
                             // sitio del historial hasta que se cierre.
                             None if a.mini.is_some() => {
@@ -2423,10 +2494,24 @@ pub fn abrir(
             .and_then(|m| m.vista(textos))
             .and_then(|v| v.late_cada_ms)
             .map(|ms| ms as u32);
-        let dormir = [hasta_el_aviso, hasta_el_resalte, hasta_el_latido]
-            .into_iter()
-            .flatten()
-            .min();
+        // El latido del reproductor: recoge la duracion en cuanto Media
+        // Foundation la sabe, mueve la posicion y rebobina al acabar. Va aqui
+        // y no en un hilo porque el motor es del hilo que lo creo, que es
+        // este. Cada `MS_ENTRE_LATIDOS` (250 ms), como en el movil.
+        let hay_audio = crate::audio::hay_algo();
+        if hay_audio && crate::audio::latido() {
+            hay_que_pintar = true;
+        }
+        let hasta_el_reproductor = hay_audio.then_some(pixpin_audio::MS_ENTRE_LATIDOS as u32);
+        let dormir = [
+            hasta_el_aviso,
+            hasta_el_resalte,
+            hasta_el_latido,
+            hasta_el_reproductor,
+        ]
+        .into_iter()
+        .flatten()
+        .min();
         pixpin_shell::overlay::esperar_eventos(if hay_que_pintar { Some(0) } else { dormir });
     }
 
@@ -2565,6 +2650,9 @@ struct Abierto {
     /// la hoja de calculo y por el mismo motivo: es del proyecto, no de la
     /// aplicacion.
     mini: Option<MiniAbierta>,
+    /// La biblioteca de audio, si esta abierta. Ocupa el mismo sitio que las
+    /// otras dos, y por eso las tres se cierran por `cerrar_panel`.
+    biblioteca: Option<BibliotecaAbierta>,
     /// El lienzo que esta vivo dentro de su burbuja, si hay alguno.
     vivo: Option<LienzoVivo>,
     /// La burbuja que se esta arrastrando a la derecha para comentarla: cual
@@ -3581,7 +3669,16 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             // inventa ninguna: una onda de mentira mentiria sobre lo que se
             // dijo, y se queda la fila de siempre con el nombre y el tiempo.
             if !f.onda.is_empty() {
-                pintar_onda(p, &f.onda, fila.texto, tema, &f.detalle, color_hora, e);
+                // Si esta nota es la que suena, la onda avanza con ella.
+                let avance = a
+                    .mensajes
+                    .get(i)
+                    .and_then(|m| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
+                    .filter(|r| crate::audio::cargado().as_deref() == Some(r.as_path()))
+                    .map(|_| crate::audio::estado().fraccion());
+                pintar_onda(
+                    p, &f.onda, fila.texto, tema, &f.detalle, color_hora, e, avance,
+                );
             } else {
                 let nombre = match &a.renombrando_mensaje {
                     Some((n, escrito)) if *n == i => format!("{escrito}|"),
@@ -3700,10 +3797,13 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
 /// La onda de una nota de voz, en el sitio del nombre de su fila: las barras
 /// arriba y la duracion debajo, como en el movil.
 ///
-/// Se pinta barra a barra y no de un trazado cacheado como en el movil: aqui
-/// no se reproduce nada, asi que no hay un borde de avance que pudiera saltar
-/// de tres en tres; y cincuenta rectangulos por nota de voz a la vista no se
-/// notan al lado de una foto.
+/// Se pinta barra a barra y no de un trazado cacheado como en el movil: son
+/// cincuenta rectangulos por nota de voz a la vista, que no se notan al lado
+/// de una foto, y asi el borde de avance cae donde de verdad va la pista en
+/// vez de saltar de tres en tres.
+///
+/// `avance` es por donde va lo que suena, de 0 a 1, o `None` si esta nota no
+/// es la que esta sonando. Lo ya oido se pinta entero y lo que queda, apagado.
 #[allow(clippy::too_many_arguments)] // las barras, donde van, los dos colores y la escala
 fn pintar_onda(
     p: &Pintor,
@@ -3713,6 +3813,7 @@ fn pintar_onda(
     duracion: &str,
     color_duracion: Color,
     e: f32,
+    avance: Option<f32>,
 ) {
     let paso = pixpin_ui::chat::ONDA_PASO as f32 * e;
     let grueso = (pixpin_ui::chat::ONDA_GRUESO as f32 * e).max(1.0);
@@ -3729,6 +3830,12 @@ fn pintar_onda(
             break;
         }
         let medio = (alto_max * valor.clamp(0.0, 1.0) / 2.0).max(0.5);
+        // Una barra cuenta como oida cuando su CENTRO ya paso: con el borde
+        // izquierdo, la primera saldria encendida antes de empezar a sonar.
+        let oida = avance.is_none_or(|f| {
+            let cuantas = onda.len().max(1) as f32;
+            (n as f32 + 0.5) / cuantas <= f.clamp(0.0, 1.0)
+        });
         p.rellenar_redondeado(
             RectF {
                 x,
@@ -3737,7 +3844,11 @@ fn pintar_onda(
                 alto: medio * 2.0,
             },
             grueso / 2.0,
-            tema.enviar,
+            if oida {
+                tema.enviar
+            } else {
+                con_alfa(tema.enviar, 0.35)
+            },
         );
     }
     if !duracion.is_empty() {
@@ -4925,6 +5036,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         colocado: std::cell::RefCell::new(Colocado::default()),
         hoja: None,
         mini: None,
+        biblioteca: None,
         vivo: None,
         busqueda: None,
         por_etiqueta: None,
@@ -5978,6 +6090,21 @@ fn abrir_mensaje(ubicacion: &Ubicacion, a: &Abierto, indice: usize) {
         );
         return;
     }
+    // Una nota de voz **suena aqui**, no se manda al reproductor de Windows:
+    // es lo que hace el movil al tocar la burbuja, y lo que permite pausarla,
+    // adelantarla y cambiarle la velocidad desde la barra de abajo.
+    if m.clase == Some(pixpin_proyecto::cuaderno::Clase::Voz) {
+        let titulo = crate::biblioteca_audio::titulo_de_audio(m);
+        if let Err(e) = crate::audio::alternar(&ruta, &titulo) {
+            // Un fichero que Media Foundation no sabe abrir no se queda en
+            // silencio: se manda a Windows, que a lo mejor si sabe.
+            tracing::warn!(?e, ruta = %ruta.display(), "no se pudo reproducir aqui");
+            if let Err(e) = pixpin_shell::abrir::abrir(&ruta) {
+                tracing::warn!(?e, "y tampoco se pudo abrir fuera");
+            }
+        }
+        return;
+    }
     if let Err(e) = pixpin_shell::abrir::abrir(&ruta) {
         tracing::warn!(?e, ruta = %ruta.display(), "no se pudo abrir");
     }
@@ -6535,6 +6662,8 @@ fn abrir_hoja(a: &mut Abierto, indice: usize) {
 fn cerrar_panel(ubicacion: &Ubicacion, a: &mut Abierto) {
     cerrar_hoja(ubicacion, a);
     cerrar_mini(ubicacion, a);
+    // La biblioteca no guarda nada: es una vista sobre los cuadernos.
+    a.biblioteca = None;
 }
 
 /// Cierra la hoja, guardandola si se toco.
@@ -6904,6 +7033,224 @@ struct MiniAbierta {
     /// (`mini/Contador.kt:68-91` no tiene donde ponerlo): vive mientras el
     /// panel esta abierto y se pierde al cerrarlo.
     elegido: Option<String>,
+}
+
+/// La biblioteca de audio abierta: todas las notas de voz y toda la musica,
+/// de todas las conversaciones.
+///
+/// **No es un almacen**, igual que en el movil
+/// (`BibliotecaDeAudioActivity.kt:47-56`): es una vista sobre los cuadernos.
+/// Se lee entera al abrirla y no se guarda nada al cerrarla.
+struct BibliotecaAbierta {
+    filas: Vec<crate::biblioteca_audio::Fila>,
+    /// La ruta de verdad de cada fila, ya resuelta. Se resuelve al abrir y
+    /// no al pintar porque la del mensaje es relativa a la carpeta de SU
+    /// conversacion, que no tiene por que ser la que esta abierta, y quien
+    /// pinta no tiene la `Ubicacion` a mano. `None` es «el fichero no esta en
+    /// este equipo»: la fila se ve, pero no suena.
+    rutas: Vec<Option<std::path::PathBuf>>,
+    /// Lo que se pinta, con las cabeceras de grupo ya intercaladas.
+    lineas: Vec<LineaDeBiblioteca>,
+    scroll: i32,
+}
+
+/// Una linea de la biblioteca: o el rotulo de un grupo, o un audio.
+enum LineaDeBiblioteca {
+    /// La clave del rotulo del grupo.
+    Grupo(&'static str),
+    Audio(usize),
+}
+
+/// El reparto que usa la biblioteca: una lista y nada mas.
+fn reparto_de_biblioteca() -> pixpin_ui::mini::Reparto {
+    pixpin_ui::mini::Reparto {
+        con_tablero: false,
+        filas_de_botones: 0,
+        con_lista: true,
+        con_anadir: false,
+    }
+}
+
+/// Lee los cuadernos de todas las conversaciones y arma la lista.
+///
+/// Se leen todos y no solo el abierto porque la biblioteca del movil es de
+/// la aplicacion entera: una nota grabada en la obra y otra en «Mensajes
+/// guardados» salen en la misma lista.
+fn abrir_biblioteca(
+    ubicacion: &Ubicacion,
+    fichas: &[pixpin_proyecto::almacen::Ficha],
+) -> BibliotecaAbierta {
+    use crate::biblioteca_audio::{Grupo, del_grupo};
+    let mut sueltas = Vec::new();
+    for ficha in fichas {
+        let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &ficha.id);
+        let Ok(cuaderno) = pixpin_proyecto::cuaderno::Cuaderno::leer_de(&carpeta) else {
+            continue;
+        };
+        for fila in crate::biblioteca_audio::biblioteca(&cuaderno.mensajes) {
+            let ruta = pixpin_proyecto::vista::ruta_real(ubicacion.raiz(), &ficha.id, &fila.ruta)
+                .filter(|r| r.is_file());
+            sueltas.push((fila, ruta));
+        }
+    }
+    // `biblioteca` ya ordena dentro de cada conversacion; aqui hay varias, y
+    // el orden de las dos manda: la musica primero y lo mas nuevo arriba.
+    sueltas.sort_by(|(a, _), (b, _)| {
+        let grupo = (a.grupo == Grupo::Notas).cmp(&(b.grupo == Grupo::Notas));
+        grupo.then(b.cuando.cmp(&a.cuando))
+    });
+    let (filas, rutas): (Vec<_>, Vec<_>) = sueltas.into_iter().unzip();
+
+    // Los dos rotulos solo salen cuando hay de las dos cosas: con un solo
+    // grupo, la cabecera no diria nada que la lista no diga ya.
+    let musica = del_grupo(&filas, Grupo::Musica).len();
+    let con_grupos = musica > 0 && musica < filas.len();
+    let mut lineas = Vec::new();
+    let mut anterior: Option<Grupo> = None;
+    for (n, f) in filas.iter().enumerate() {
+        if con_grupos && anterior != Some(f.grupo) {
+            lineas.push(LineaDeBiblioteca::Grupo(match f.grupo {
+                Grupo::Musica => "chat-biblioteca-musica",
+                Grupo::Notas => "chat-biblioteca-notas",
+            }));
+            anterior = Some(f.grupo);
+        }
+        lineas.push(LineaDeBiblioteca::Audio(n));
+    }
+    BibliotecaAbierta {
+        filas,
+        rutas,
+        lineas,
+        scroll: 0,
+    }
+}
+
+/// La biblioteca en el sitio del historial.
+fn pintar_biblioteca(p: &Pintor, d: &Disposicion, c: &Pinta, b: &BibliotecaAbierta) {
+    use pixpin_ui::mini as ui;
+    let (tema, escala) = (c.tema, c.escala);
+    let e = escala as f32 / 100.0;
+    let t = ui::Disposicion::calcular(hueco_hoja(d), escala, reparto_de_biblioteca());
+    p.rellenar(rf(t.panel), tema.papel);
+
+    let tam_titulo = ui::TITULO_TAM * e;
+    let margen = ui::MARGEN as f32 * e;
+    let (_, alto_titulo) = p.medir_texto("Ag", tam_titulo);
+    let y_titulo = t.cabecera.y as f32 + (t.cabecera.alto as f32 - alto_titulo) / 2.0;
+    let volver = c.textos.t("hoja-volver");
+    let (ancho_volver, _) = p.medir_texto(&volver, tam_titulo);
+    p.texto(
+        &c.textos.t("chat-biblioteca-audio"),
+        t.cabecera.x as f32 + margen,
+        y_titulo,
+        tam_titulo,
+        tema.texto_papel,
+    );
+    p.texto(
+        &volver,
+        t.cabecera.derecha() as f32 - ancho_volver - margen,
+        y_titulo,
+        tam_titulo,
+        tema.apagado,
+    );
+
+    let tam = ui::FILA_TAM * e;
+    if b.lineas.is_empty() {
+        let vacio = c.textos.t("chat-biblioteca-vacia");
+        let (ancho, _) = p.medir_texto(&vacio, tam);
+        p.texto(
+            &vacio,
+            t.lista.x as f32 + (t.lista.ancho as f32 - ancho) / 2.0,
+            t.lista.y as f32 + 40.0 * e,
+            tam,
+            tema.apagado,
+        );
+        return;
+    }
+
+    p.empujar_recorte(rf(t.lista));
+    for (n, linea) in b.lineas.iter().enumerate() {
+        let caja = t.fila(n, b.scroll, escala);
+        // Lo que queda fuera no se mide siquiera: una biblioteca de mil notas
+        // no puede costar mil medidas de texto por fotograma.
+        if caja.abajo() < t.lista.y || caja.y > t.lista.abajo() {
+            continue;
+        }
+        let caja_f = rf(caja);
+        let (_, alto) = p.medir_texto("Ag", tam);
+        let y = caja_f.y + (caja_f.alto - alto) / 2.0;
+        let derecha = caja_f.x + caja_f.ancho;
+        match linea {
+            LineaDeBiblioteca::Grupo(clave) => {
+                p.texto(&c.textos.t(clave), caja_f.x, y, tam, tema.apagado);
+                continue;
+            }
+            LineaDeBiblioteca::Audio(i) => {
+                let f = &b.filas[*i];
+                let aqui = b.rutas[*i].as_deref();
+                let suena = aqui.is_some_and(crate::audio::suena);
+                let lado = 18.0 * e;
+                p.icono(
+                    &mi::PLAY_ARROW,
+                    RectF {
+                        x: caja_f.x,
+                        y: caja_f.y + (caja_f.alto - lado) / 2.0,
+                        ancho: lado,
+                        alto: lado,
+                    },
+                    if suena { tema.enviar } else { tema.apagado },
+                );
+                let duracion = pixpin_audio::duracion_legible(f.duracion_ms);
+                let (ancho_d, _) = p.medir_texto(&duracion, tam);
+                p.texto(&duracion, derecha - ancho_d, y, tam, tema.apagado);
+                // En color cuando ya tiene letra o transcripcion, como el
+                // movil (`BibliotecaDeAudioActivity.kt:138`); apagado cuando
+                // el fichero no esta en este equipo, porque no va a sonar.
+                let color = match (aqui.is_some(), f.tiene_letra) {
+                    (false, _) => tema.apagado,
+                    (true, true) => tema.enviar,
+                    (true, false) => tema.texto_papel,
+                };
+                let x = caja_f.x + 26.0 * e;
+                p.texto_linea(
+                    &f.titulo,
+                    x,
+                    y,
+                    tam,
+                    (derecha - ancho_d - 12.0 * e - x).max(0.0),
+                    color,
+                );
+            }
+        }
+        p.rellenar(
+            RectF {
+                x: caja_f.x,
+                y: caja_f.y + caja_f.alto - 1.0,
+                ancho: caja_f.ancho,
+                alto: 1.0,
+            },
+            tema.separador,
+        );
+    }
+    p.soltar_recorte();
+}
+
+/// Atiende un clic en la biblioteca: pulsar una fila la reproduce.
+fn pulsar_biblioteca(b: &BibliotecaAbierta, l: Punto, d: &Disposicion, escala: u32) {
+    let t = pixpin_ui::mini::Disposicion::calcular(hueco_hoja(d), escala, reparto_de_biblioteca());
+    let Some(n) = t.cual_fila(l, b.lineas.len(), b.scroll, escala) else {
+        return;
+    };
+    // Un rotulo de grupo no es un audio: pulsarlo no hace nada.
+    let LineaDeBiblioteca::Audio(i) = b.lineas[n] else {
+        return;
+    };
+    let Some(ruta) = b.rutas[i].as_deref() else {
+        return;
+    };
+    if let Err(e) = crate::audio::alternar(ruta, &b.filas[i].titulo) {
+        tracing::warn!(?e, ruta = %ruta.display(), "no se pudo reproducir");
+    }
 }
 
 /// La moneda con la que nace una hoja de gastos.
@@ -7884,6 +8231,15 @@ enum Zona {
     SelFijar,
     SelReenviar,
     SelBorrar,
+    // La barra del reproductor, encima de la caja de escribir.
+    VozTocar,
+    VozAtras,
+    VozAdelante,
+    VozVelocidad,
+    VozCerrar,
+    /// Llevar la pista a esa fraccion, de 0 a 1. En milesimas y no en `f32`
+    /// porque `Zona` se compara por igualdad y un flotante no se compara.
+    VozIrA(u32),
 }
 
 /// La fila de un archivo ya medida.
@@ -8220,6 +8576,131 @@ mod pruebas_vista {
 
 /// La caja de escribir: la isla flotante del movil, con el campo en
 /// pastilla, el clip dentro y el microfono (o enviar) fuera.
+/// La barra del reproductor, encima de la caja de escribir.
+///
+/// Es `BarraDelReproductor.kt:46-106`. Lo que se ensena sale del estado del
+/// reproductor y no de la burbuja que se pulso: la nota sigue sonando
+/// aunque se baje por la conversacion o se cambie de proyecto, que es la
+/// razon de que el reproductor sea uno para toda la aplicacion.
+fn pintar_barra_del_reproductor(p: &Pintor, barra: Rect, c: &Pinta, a: &Abierto) {
+    use pixpin_ui::reproductor as ui;
+    let (tema, escala) = (c.tema, c.escala);
+    let e = escala as f32 / 100.0;
+    if barra.ancho == 0 || barra.alto == 0 {
+        return;
+    }
+    let estado = crate::audio::estado();
+    let t = ui::Disposicion::calcular(barra, escala);
+    let caja = RectF {
+        alto: (barra.alto as f32 - 6.0 * e).max(1.0),
+        ..rf(barra)
+    };
+    p.rellenar_redondeado(caja, 16.0 * e, tema.campo);
+
+    // **Primero los tramos de avance y luego los botones**: el buscador de
+    // zonas se queda con la ULTIMA que contiene el punto, asi que lo que se
+    // apunta despues tapa a lo de antes. Al reves, pulsar pausa saltaria al
+    // minuto donde cayo el raton.
+    //
+    // En diez tramos y no pixel a pixel porque `Zona` se guarda por valor:
+    // diez bastan para ir al trozo que se quiere de una nota de voz.
+    for n in 0..10u32 {
+        let ancho = t.barra.ancho / 10;
+        a.zonas.borrow_mut().push((
+            Rect {
+                x: t.barra.x + (n * ancho) as i32,
+                y: t.barra.y,
+                ancho,
+                alto: t.barra.alto,
+            },
+            // El centro del tramo, en milesimas.
+            Zona::VozIrA(n * 100 + 50),
+        ));
+    }
+
+    let icono_boton = 20.0 * e;
+    // Los diez segundos van con las flechas corrientes: este juego de iconos
+    // no trae las de «10 s» del movil, y una flecha con un rotulo al lado
+    // ocuparia el hueco del titulo. La pausa se dibuja a mano —dos barras—
+    // porque tampoco hay icono de pausa y «Stop» diria otra cosa.
+    for (icono, r, zona) in [
+        (&mi::ARROW_BACK, t.atras, Zona::VozAtras),
+        (&mi::ARROW_FORWARD, t.adelante, Zona::VozAdelante),
+        (&mi::CLOSE, t.cerrar, Zona::VozCerrar),
+    ] {
+        icono_centrado(p, icono, r, icono_boton, tema.texto);
+        a.zonas.borrow_mut().push((r, zona));
+    }
+    if estado.sonando {
+        let barra_alto = 14.0 * e;
+        let barra_ancho = 4.0 * e;
+        let centro_x = t.tocar.x as f32 + t.tocar.ancho as f32 / 2.0;
+        let arriba = t.tocar.y as f32 + (t.tocar.alto as f32 - barra_alto) / 2.0;
+        for lado in [-1.0f32, 1.0] {
+            p.rellenar_redondeado(
+                RectF {
+                    x: centro_x + lado * 3.0 * e - if lado < 0.0 { barra_ancho } else { 0.0 },
+                    y: arriba,
+                    ancho: barra_ancho,
+                    alto: barra_alto,
+                },
+                1.0 * e,
+                tema.texto,
+            );
+        }
+    } else {
+        icono_centrado(p, &mi::PLAY_ARROW, t.tocar, icono_boton, tema.texto);
+    }
+    a.zonas.borrow_mut().push((t.tocar, Zona::VozTocar));
+
+    // La velocidad se escribe, no se dibuja: «1,5×» dice mas que cualquier
+    // icono, y es lo que hace el movil (`velocidadLegible` :113-114).
+    let vel = pixpin_audio::velocidad_legible(estado.velocidad);
+    let tam = ui::TEXTO_TAM * e;
+    let (ancho_vel, alto_vel) = p.medir_texto(&vel, tam);
+    p.texto(
+        &vel,
+        t.velocidad.x as f32 + (t.velocidad.ancho as f32 - ancho_vel) / 2.0,
+        t.velocidad.y as f32 + (t.velocidad.alto as f32 - alto_vel) / 2.0,
+        tam,
+        tema.enviar,
+    );
+    a.zonas.borrow_mut().push((t.velocidad, Zona::VozVelocidad));
+
+    // El titulo y el tiempo. El tiempo a la derecha del hueco, que es donde
+    // no lo tapa un titulo largo.
+    if t.texto.ancho > 0 {
+        let tiempo = format!(
+            "{} / {}",
+            pixpin_audio::duracion_legible(estado.posicion_ms),
+            pixpin_audio::duracion_legible(estado.duracion_ms)
+        );
+        let (ancho_tiempo, alto_t) = p.medir_texto(&tiempo, tam);
+        let y = t.texto.y as f32 + (t.texto.alto as f32 - alto_t) / 2.0;
+        p.texto(
+            &tiempo,
+            t.texto.derecha() as f32 - ancho_tiempo,
+            y,
+            tam,
+            tema.campo_apagado,
+        );
+        p.texto_linea(
+            &estado.titulo,
+            t.texto.x as f32,
+            y,
+            tam,
+            (t.texto.ancho as f32 - ancho_tiempo - 10.0 * e).max(0.0),
+            tema.texto,
+        );
+    }
+
+    // La linea de avance. Sin duracion todavia no se pinta: una barra llena
+    // al empezar seria mentira mientras Media Foundation la averigua.
+    if estado.duracion_ms > 0 {
+        p.rellenar_redondeado(rf(t.avance(estado.fraccion())), 1.5 * e, tema.enviar);
+    }
+}
+
 fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_texto: u32) {
     let (tema, escala, textos) = (c.tema, c.escala, c.textos);
     let e = escala as f32 / 100.0;
@@ -8235,7 +8716,12 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
     // Y manda sobre la de responder, que no desaparece: la respuesta que
     // estuviera a medias sigue colgada y vuelve a verse al cerrar la lupa.
     // Dos barras encima de la isla se comerian el historial.
-    if let Some(cuantos) = resultados_de_la_busqueda(a) {
+    // La barra del reproductor manda sobre las otras dos: mientras algo
+    // suena es lo unico que puede pararlo, y esconderla por estar buscando o
+    // contestando dejaria una voz sonando sin boton de pausa a la vista.
+    if crate::audio::hay_algo() {
+        pintar_barra_del_reproductor(p, d.encima_de_la_isla(alto_texto, escala), c, a);
+    } else if let Some(cuantos) = resultados_de_la_busqueda(a) {
         let barra = d.encima_de_la_isla(alto_texto, escala);
         let caja = RectF {
             alto: (barra.alto as f32 - 6.0 * e).max(1.0),
@@ -8461,6 +8947,8 @@ enum Accion {
     /// Una de las siete del movil, por su palabra de `Mensaje.miniapp`. La
     /// palabra es el dato guardado y no se renombra (`MiniApps.kt:94-99`).
     AdjMini(&'static str),
+    /// Todas las notas de voz y toda la musica, de todas las conversaciones.
+    Biblioteca,
     // Un mensaje, por su posicion.
     Responder(usize),
     Copiar(usize),
@@ -8716,7 +9204,7 @@ fn menu_de_cabecera(textos: &Catalogo, en_guardados: bool, proyecto: &str) -> Ve
         v.push(entrada(
             Some(&mi::LIBRARY_MUSIC),
             textos.t("chat-biblioteca-audio"),
-            Accion::Aviso("chat-no-hay-biblioteca"),
+            Accion::Biblioteca,
         ));
         v.push(entrada(
             None,
@@ -9231,6 +9719,10 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             }
         }
         Accion::MiniApps => Efecto::Menu(menu_de_miniapps(cx.textos)),
+        Accion::Biblioteca => {
+            a.biblioteca = Some(abrir_biblioteca(cx.ubicacion, cx.fichas));
+            Efecto::Cambio
+        }
         Accion::AdjMini(cual) => {
             match crear_miniapp(cx.ubicacion, a, cx.identidad, cual, cx.textos) {
                 Ok(()) => {
@@ -9603,7 +10095,11 @@ mod pruebas_cuaderno {
 fn disponer(marco: Rect, escala: u32, ancho_lista: u32, abierto: Option<&Abierto>) -> Disposicion {
     let mut d = Disposicion::calcular(marco.ancho, marco.alto, escala, ancho_lista, Vista::Ambas);
     let hay_barra = abierto.is_some_and(|a| {
-        (a.respondiendo.is_some() || resultados_de_la_busqueda(a).is_some())
+        // Y la del reproductor, que sale con solo haber algo cargado aunque
+        // no se este ni buscando ni contestando.
+        (a.respondiendo.is_some()
+            || resultados_de_la_busqueda(a).is_some()
+            || crate::audio::hay_algo())
             && a.info.is_none()
             && a.hoja.is_none()
             && a.mini.is_none()

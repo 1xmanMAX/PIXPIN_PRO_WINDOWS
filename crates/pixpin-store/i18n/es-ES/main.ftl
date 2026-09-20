@@ -636,3 +636,6 @@ mini-reiniciar = Reiniciar
 mini-sortear = Sortear
 mini-alarma-encender = Activar
 mini-alarma-apagar = Desactivar
+chat-biblioteca-vacia = Todavía no hay ninguna nota de voz ni ninguna canción.
+chat-biblioteca-musica = Música
+chat-biblioteca-notas = Notas de voz

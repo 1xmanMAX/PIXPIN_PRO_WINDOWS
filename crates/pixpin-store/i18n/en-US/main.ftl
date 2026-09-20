@@ -635,3 +635,6 @@ mini-reiniciar = Reset
 mini-sortear = Spin
 mini-alarma-encender = Turn on
 mini-alarma-apagar = Turn off
+chat-biblioteca-vacia = No voice notes or songs yet.
+chat-biblioteca-musica = Music
+chat-biblioteca-notas = Voice notes

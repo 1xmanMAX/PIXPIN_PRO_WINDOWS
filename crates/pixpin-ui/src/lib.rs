@@ -22,6 +22,7 @@ pub mod overlay;
 pub mod panel;
 pub mod panel_lateral;
 pub mod propiedades;
+pub mod reproductor;
 pub mod resaltado;
 pub mod tabla;
 pub mod universo;

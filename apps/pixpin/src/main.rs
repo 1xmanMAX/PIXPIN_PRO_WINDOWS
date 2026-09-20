@@ -49,6 +49,8 @@
 // atributo es la unica guarda que lo habria detectado.
 #![forbid(unsafe_code)]
 
+mod audio;
+mod biblioteca_audio;
 mod caja_dibujo;
 mod capa;
 mod cuenta_atras;
