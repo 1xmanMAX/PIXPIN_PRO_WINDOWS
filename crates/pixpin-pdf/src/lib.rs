@@ -16,6 +16,8 @@
 //! dirigido a equipos con pocos recursos.
 #![deny(clippy::undocumented_unsafe_blocks)]
 
+pub mod aligerar;
+
 use pixpin_codec::imagen::ImagenRgba;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
