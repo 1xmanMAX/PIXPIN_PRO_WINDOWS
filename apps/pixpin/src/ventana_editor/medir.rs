@@ -19,7 +19,7 @@ use std::time::Instant;
 use pixpin_motor2d::escena::Escena;
 use pixpin_motor2d::indice::Rejilla;
 use pixpin_motor2d::tinta::OpcionesTinta;
-use pixpin_motor2d::{ColorRgba, Elemento, EstiloRelleno, EstiloTrazo, Figura};
+use pixpin_motor2d::{ColorRgba, Elemento, EstiloRelleno, EstiloTrazo, Figura, TipoPunta};
 use pixpin_render::fuera_de_pantalla::FueraDePantalla;
 
 use super::*;
@@ -355,8 +355,9 @@ fn escena_sintetica(cuantos: usize) -> Escena {
                     let mut e = base(id, Figura::Rectangulo, x, y, 220.0, 120.0);
                     e.figura = Figura::Flecha {
                         puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(220.0, 120.0)],
-                        punta_inicio: false,
-                        punta_fin: true,
+                        punta_inicio: TipoPunta::Ninguna,
+                        punta_fin: TipoPunta::Flecha,
+                        codos: false,
                     };
                     e
                 }

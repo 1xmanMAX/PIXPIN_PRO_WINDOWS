@@ -416,6 +416,7 @@ fn cambiaria(e: &crate::elemento::Elemento, c: &EstiloCopiado) -> bool {
 mod pruebas {
     use super::*;
     use crate::elemento::Elemento;
+    use crate::formas::TipoPunta;
 
     fn rect(escena: &mut Escena) -> u64 {
         escena.anadir(Elemento {
@@ -755,8 +756,9 @@ mod pruebas {
         assert!(
             !propiedades_de(&Figura::Flecha {
                 puntos: vec![],
-                punta_inicio: false,
-                punta_fin: true
+                punta_inicio: TipoPunta::Ninguna,
+                punta_fin: TipoPunta::Flecha,
+                codos: false,
             })
             .contains(&Fondo),
             "la flecha no encierra nada"

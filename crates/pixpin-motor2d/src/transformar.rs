@@ -450,6 +450,7 @@ fn caja_comun(elementos: &[Elemento]) -> Option<(f32, f32, f32, f32)> {
 mod pruebas {
     use super::*;
     use crate::elemento::{ColorRgba, EstiloTrazo, Figura};
+    use crate::formas::TipoPunta;
     use std::f32::consts::{FRAC_PI_2, FRAC_PI_6, PI};
 
     /// Un rectangulo de 100x50 con la esquina en el origen.
@@ -1149,8 +1150,9 @@ mod pruebas {
         let mut f = rect();
         f.figura = Figura::Flecha {
             puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
-            punta_inicio: false,
-            punta_fin: true,
+            punta_inicio: TipoPunta::Ninguna,
+            punta_fin: TipoPunta::Flecha,
+            codos: false,
         };
         let mut es = [f];
         voltear(&mut es, EjeVolteo::Horizontal);
@@ -1162,7 +1164,12 @@ mod pruebas {
         else {
             unreachable!()
         };
-        assert!(*punta_inicio && !*punta_fin);
+        assert_eq!(
+            *punta_inicio,
+            TipoPunta::Flecha,
+            "la punta paso al principio"
+        );
+        assert_eq!(*punta_fin, TipoPunta::Ninguna);
     }
 
     #[test]
@@ -1172,8 +1179,9 @@ mod pruebas {
         let mut f = rect();
         f.figura = Figura::Flecha {
             puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
-            punta_inicio: false,
-            punta_fin: true,
+            punta_inicio: TipoPunta::Ninguna,
+            punta_fin: TipoPunta::Flecha,
+            codos: false,
         };
         let mut es = [f];
         voltear(&mut es, EjeVolteo::Vertical);
@@ -1185,7 +1193,8 @@ mod pruebas {
         else {
             unreachable!()
         };
-        assert!(!*punta_inicio && *punta_fin);
+        assert_eq!(*punta_inicio, TipoPunta::Ninguna);
+        assert_eq!(*punta_fin, TipoPunta::Flecha, "la punta sigue al final");
     }
 
     #[test]

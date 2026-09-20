@@ -14,6 +14,8 @@
 //! dibuja igual siempre: es lo que permite guardar un documento y reabrirlo
 //! sin que cambie de aspecto.
 
+use serde::{Deserialize, Serialize};
+
 use crate::azar::Azar;
 use crate::vector::Punto2;
 
@@ -175,37 +177,6 @@ pub fn elipse(
         .collect()
 }
 
-/// La punta de una flecha: dos lineas cortas desde el extremo.
-///
-/// Se abre 25 grados a cada lado y mide una fraccion del tramo final, con un
-/// tope: una flecha larguisima no puede tener una punta de doscientos pixeles.
-pub fn punta_flecha(
-    desde: Punto2,
-    hasta: Punto2,
-    rugosidad: f32,
-    azar: &mut Azar,
-) -> Vec<Vec<Punto2>> {
-    let largo = (desde.distancia(hasta) * 0.3).clamp(8.0, 40.0);
-    let direccion = desde.restar(hasta).unitario();
-    let apertura = 25.0f32.to_radians();
-
-    let mut salida = Vec::with_capacity(4);
-    for signo in [1.0f32, -1.0] {
-        let (s, c) = (apertura * signo).sin_cos();
-        let girado = Punto2::nuevo(
-            direccion.x * c - direccion.y * s,
-            direccion.x * s + direccion.y * c,
-        );
-        salida.extend(linea(
-            hasta,
-            hasta.proyectar(girado, largo),
-            rugosidad,
-            azar,
-        ));
-    }
-    salida
-}
-
 /// **Las ocho puntas de flecha de Excalidraw**, con sus palabras del fichero.
 ///
 /// Son las mismas ocho del movil (`Arrowhead` en `Element.kt:487-496`) y las
@@ -213,7 +184,14 @@ pub fn punta_flecha(
 /// (`Figura::Flecha{punta_inicio, punta_fin}`), asi que un diagrama entidad-
 /// relacion del movil —donde la punta DICE la cardinalidad— se abria con ocho
 /// flechas iguales y dejaba de decir nada.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+///
+/// Se serializa **por su nombre en minuscula** y no por la palabra del
+/// `.excalidraw`: esto es el formato NUESTRO (`.pixpin2d`), y mezclar los dos
+/// vocabularios en un mismo enum obligaria a elegir cual de los dos gana. La
+/// traduccion al fichero del movil la hacen [`TipoPunta::palabra`] y
+/// [`TipoPunta::desde_palabra`], que es donde tiene que estar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum TipoPunta {
     /// Sin punta: es `null` en el fichero, no una palabra.
     #[default]
@@ -673,24 +651,6 @@ mod pruebas {
             y0 < 10.0 && y1 > 90.0,
             "no llega arriba y abajo: {y0}..{y1}"
         );
-    }
-
-    #[test]
-    fn la_punta_de_la_flecha_esta_en_el_extremo_y_apunta_hacia_atras() {
-        let mut a = Azar::nuevo(11);
-        let desde = Punto2::nuevo(0.0, 0.0);
-        let hasta = Punto2::nuevo(100.0, 0.0);
-        let t = punta_flecha(desde, hasta, 0.0, &mut a);
-        assert_eq!(t.len(), 2, "la punta son dos lineas");
-        for pasada in &t {
-            // Cada linea empieza en la punta...
-            assert!(pasada[0].distancia(hasta) < 0.001);
-            // ...y termina hacia atras, nunca mas alla del extremo.
-            assert!(
-                pasada.last().unwrap().x < hasta.x,
-                "la punta apunta al reves"
-            );
-        }
     }
 
     /// Una flecha recta de cien pixeles hacia la derecha.

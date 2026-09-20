@@ -272,6 +272,7 @@ pub fn atar(
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    use crate::formas::TipoPunta;
 
     /// Un medidor de prueba: cada caracter mide diez. No hace falta
     /// DirectWrite para comprobar donde se parte una linea.
@@ -299,8 +300,9 @@ mod pruebas {
         // nombre por fuera.
         assert!(!admite_texto_dentro(&Figura::Flecha {
             puntos: Vec::new(),
-            punta_inicio: false,
-            punta_fin: true,
+            punta_inicio: TipoPunta::Ninguna,
+            punta_fin: TipoPunta::Flecha,
+            codos: false,
         }));
         assert!(!admite_texto_dentro(&Figura::Marco {
             nombre: String::new()

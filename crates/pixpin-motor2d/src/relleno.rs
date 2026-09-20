@@ -52,6 +52,12 @@ pub enum EstiloRelleno {
     #[default]
     Rayado,
     Cruzado,
+    /// Galones encadenados (`zigzag` de Excalidraw): ver [`lineas_de_zigzag`].
+    Zigzag,
+    /// El rayado limpio, sin temblor (`pixpin-lines`, propio de PixPin): ver
+    /// [`lineas_a_tiralineas`].
+    #[serde(rename = "lineaspixpin")]
+    LineasPixpin,
 }
 
 /// El angulo del rayado, en grados. El `hachureAngle` de rough.js.
@@ -83,6 +89,16 @@ pub fn grosor_de_rayado(grosor: f32) -> f32 {
 ///
 /// Un estilo solido no tiene rayas y devuelve la lista vacia: el relleno
 /// plano lo sigue haciendo `Orden::Relleno`, aqui no hay nada que hacer.
+///
+/// **Es la unica puerta**: las cinco tramas se reparten aqui dentro, y no en
+/// quien pinta. Con el reparto en `pintado.rs`, una trama nueva compilaria sin
+/// tocar nada —el `match` de alla tiene brazo comodin para el grosor y la
+/// separacion— y saldria como un rayado normal sin que nadie se enterara. Con
+/// el reparto aqui, el `match` es exhaustivo y el compilador pregunta.
+///
+/// `lineas_a_tiralineas` no gasta ni un numero de `azar` y eso se conserva al
+/// pasar por aqui: lo que decide si el garabato del contorno sale igual es
+/// cuantos numeros se consumieron antes, no quien los pidio.
 pub fn lineas_de_rayado(
     caja: (f32, f32, f32, f32),
     elipse: bool,
@@ -94,6 +110,11 @@ pub fn lineas_de_rayado(
     let (_, _, ancho, alto) = caja;
     if estilo == EstiloRelleno::Solido || ancho.abs() < 1e-3 || alto.abs() < 1e-3 {
         return Vec::new();
+    }
+    match estilo {
+        EstiloRelleno::Zigzag => return lineas_de_zigzag(caja, elipse, grosor, rugosidad, azar),
+        EstiloRelleno::LineasPixpin => return lineas_a_tiralineas(caja, elipse, grosor),
+        EstiloRelleno::Solido | EstiloRelleno::Rayado | EstiloRelleno::Cruzado => {}
     }
     let contorno = contorno(caja, elipse);
     let sep = separacion(grosor);
@@ -121,10 +142,9 @@ pub fn lineas_de_rayado(
 /// mismo punto. Lo que sale son galones encadenados: el relleno de «a mano»
 /// que no se confunde con un rayado tecnico.
 ///
-/// Va aparte de [`lineas_de_rayado`] y no como una variante de
-/// [`EstiloRelleno`] porque ese enumerado lo traduce el puente
-/// (`excalidraw.rs`), que en esta tanda no se toca. Ver el informe del grupo
-/// A: falta la variante y su brazo, y son dos lineas.
+/// Se llega aqui por [`EstiloRelleno::Zigzag`] y por [`lineas_de_rayado`],
+/// que es quien reparte; sigue siendo publica porque una prueba quiere
+/// medir los galones sin montar un elemento entero.
 pub fn lineas_de_zigzag(
     caja: (f32, f32, f32, f32),
     elipse: bool,

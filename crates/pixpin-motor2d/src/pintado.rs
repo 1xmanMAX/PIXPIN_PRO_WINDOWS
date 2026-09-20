@@ -395,8 +395,24 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             puntos,
             punta_inicio,
             punta_fin,
+            codos,
         } => {
-            for par in puntos.windows(2) {
+            // El camino de verdad. Con codos no es la lista de puntos: es la
+            // escalera ortogonal que sale de ellos, y las puntas tienen que
+            // mirar ESA -si miraran la lista, la punta saldria apuntando a la
+            // diagonal que el conector no llega a dibujar-.
+            //
+            // Sin codos se trabaja sobre la lista tal cual, sin copiarla: una
+            // flecha normal es el caso de siempre y no tiene por que pagar la
+            // reserva de la de codos.
+            let escalera;
+            let trazado: &[Punto2] = if *codos {
+                escalera = crate::codo::trazado_de_flecha(puntos, true);
+                &escalera
+            } else {
+                puntos
+            };
+            for par in trazado.windows(2) {
                 for pasada in formas::linea(par[0], par[1], e.rugosidad, &mut azar) {
                     salida.push(Orden::Polilinea {
                         puntos: pasada,
@@ -406,32 +422,34 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
                     });
                 }
             }
-            if puntos.len() >= 2 {
-                if *punta_fin {
-                    let n = puntos.len();
-                    for p in
-                        formas::punta_flecha(puntos[n - 2], puntos[n - 1], e.rugosidad, &mut azar)
-                    {
-                        salida.push(Orden::Polilinea {
-                            puntos: p,
-                            color,
-                            grosor: e.grosor,
-                            // La punta siempre solida: una punta punteada no
-                            // se lee como punta.
-                            estilo: EstiloTrazo::Solido,
-                        });
-                    }
+            // Las dos puntas, cada una del tipo que le toque. El principio
+            // primero y el final despues, que es el orden en el que estan en
+            // el fichero.
+            for (al_final, tipo) in [(false, *punta_inicio), (true, *punta_fin)] {
+                let Some(forma) = formas::forma_de_punta(trazado, al_final, tipo, e.grosor) else {
+                    continue;
+                };
+                let contorno = formas::contorno_de_punta(&forma);
+                if contorno.len() < 2 {
+                    continue;
                 }
-                if *punta_inicio {
-                    for p in formas::punta_flecha(puntos[1], puntos[0], e.rugosidad, &mut azar) {
-                        salida.push(Orden::Polilinea {
-                            puntos: p,
-                            color,
-                            grosor: e.grosor,
-                            estilo: EstiloTrazo::Solido,
-                        });
-                    }
+                // Las macizas van rellenas Y trazadas: solo rellenas, una
+                // punta pequena se queda mas fina que la raya que remata y
+                // parece que la flecha no llega.
+                if tipo.es_maciza() {
+                    salida.push(Orden::Relleno {
+                        puntos: contorno.clone(),
+                        color,
+                    });
                 }
+                salida.push(Orden::Polilinea {
+                    puntos: contorno,
+                    color,
+                    grosor: e.grosor,
+                    // La punta siempre solida: una punta punteada no se lee
+                    // como punta.
+                    estilo: EstiloTrazo::Solido,
+                });
             }
         }
 
@@ -892,11 +910,13 @@ pub fn ordenes_a_distancia(e: &Elemento, zoom: f32) -> Vec<Orden> {
             puntos,
             punta_inicio,
             punta_fin,
+            codos,
         } => ordenes(&Elemento {
             figura: Figura::Flecha {
                 puntos: flacos(puntos),
                 punta_inicio: *punta_inicio,
                 punta_fin: *punta_fin,
+                codos: *codos,
             },
             ..e.clone()
         }),
@@ -1094,6 +1114,7 @@ fn barra(e: &Elemento, escala: Option<&Escala>, coma: char) -> Vec<Orden> {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    use crate::formas::TipoPunta;
 
     #[test]
     fn el_marco_de_seleccion_rodea_la_caja_con_holgura() {
@@ -1327,16 +1348,18 @@ mod pruebas {
         let con_una = Elemento {
             figura: Figura::Flecha {
                 puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
-                punta_inicio: false,
-                punta_fin: true,
+                punta_inicio: TipoPunta::Ninguna,
+                punta_fin: TipoPunta::Flecha,
+                codos: false,
             },
             ..base()
         };
         let con_dos = Elemento {
             figura: Figura::Flecha {
                 puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
-                punta_inicio: true,
-                punta_fin: true,
+                punta_inicio: TipoPunta::Flecha,
+                punta_fin: TipoPunta::Flecha,
+                codos: false,
             },
             ..base()
         };

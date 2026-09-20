@@ -144,6 +144,7 @@ pub fn con_punta(e: &Elemento, origen: Option<Punto2>, q: Punto2) -> Option<Elem
 #[cfg(test)]
 mod pruebas {
     use crate::elemento::{ColorRgba, EstiloTrazo};
+    use crate::formas::TipoPunta;
 
     fn elemento(figura: Figura) -> Elemento {
         Elemento {
@@ -191,8 +192,9 @@ mod pruebas {
     fn la_flecha_mueve_su_extremo_y_el_lapiz_gana_un_punto() {
         let f = elemento(Figura::Flecha {
             puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(5.0, 5.0)],
-            punta_inicio: false,
-            punta_fin: true,
+            punta_inicio: TipoPunta::Ninguna,
+            punta_fin: TipoPunta::Flecha,
+            codos: false,
         });
         let c = con_punta(&f, None, Punto2::nuevo(9.0, 9.0)).unwrap();
         match c.figura {

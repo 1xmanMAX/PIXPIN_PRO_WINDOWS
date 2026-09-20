@@ -3387,6 +3387,7 @@ mod medir;
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    use pixpin_motor2d::TipoPunta;
 
     /// Un trazo a mano de `n` puntos en linea recta.
     fn trazo_de(n: usize) -> Elemento {
@@ -3462,8 +3463,9 @@ mod pruebas {
         let mut flecha = elemento_de_prueba();
         flecha.figura = Figura::Flecha {
             puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(1.0, 1.0)],
-            punta_inicio: false,
-            punta_fin: true,
+            punta_inicio: TipoPunta::Ninguna,
+            punta_fin: TipoPunta::Flecha,
+            codos: false,
         };
         assert!(punta_de_tinta(&flecha, q).is_none());
         // Y un trazo de dos puntos tampoco: no hay cola de la que tirar.

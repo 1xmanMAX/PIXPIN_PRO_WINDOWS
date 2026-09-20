@@ -34,6 +34,7 @@ use crate::elemento::{
     Atado, ColorRgba, Elemento, Enganche, EstiloTrazo, Extras, Figura, ModoEnganche, PautaHoja,
     TamanoPapel,
 };
+use crate::formas::TipoPunta;
 use crate::medida::Escala;
 use crate::relleno::EstiloRelleno;
 use crate::tinta::MaterialTinta;
@@ -468,7 +469,7 @@ fn puntos_son_objetos(v: &Value) -> bool {
         .is_some_and(Value::is_object)
 }
 
-/// El `fillStyle` de Excalidraw, con sus tres palabras exactas.
+/// El `fillStyle` de Excalidraw, con sus cinco palabras exactas.
 ///
 /// Cualquier otra cosa —que no venga, que venga vacia, o que sea un estilo de
 /// una version futura del movil— cae en el de por omision. No se rechaza el
@@ -478,6 +479,8 @@ fn estilo_relleno_desde(v: Option<&Value>) -> EstiloRelleno {
     match v.and_then(Value::as_str) {
         Some("solid") => EstiloRelleno::Solido,
         Some("cross-hatch") => EstiloRelleno::Cruzado,
+        Some("zigzag") => EstiloRelleno::Zigzag,
+        Some("pixpin-lines") => EstiloRelleno::LineasPixpin,
         _ => EstiloRelleno::Rayado,
     }
 }
@@ -487,7 +490,65 @@ fn estilo_relleno_hacia(e: EstiloRelleno) -> &'static str {
         EstiloRelleno::Solido => "solid",
         EstiloRelleno::Rayado => "hachure",
         EstiloRelleno::Cruzado => "cross-hatch",
+        EstiloRelleno::Zigzag => "zigzag",
+        EstiloRelleno::LineasPixpin => "pixpin-lines",
     }
+}
+
+/// Escribe una punta en su clave, **sin pisar la que no entendimos**.
+///
+/// Misma regla que el `fillStyle` y que el `material`: una punta de una
+/// version futura del movil entra aqui como ninguna, asi que escribir `null`
+/// encima la borraria para siempre. Mientras siga sin punta —o sea, mientras
+/// aqui no se haya elegido otra— se devuelve el original tal cual.
+fn punta_hacia_el_mapa(mapa: &mut Map<String, Value>, clave: &str, p: TipoPunta) {
+    let ajena = mapa
+        .get(clave)
+        .and_then(Value::as_str)
+        .is_some_and(|s| TipoPunta::desde_palabra(s).is_none());
+    if ajena && p == TipoPunta::Ninguna {
+        return;
+    }
+    mapa.insert(
+        clave.into(),
+        match p.palabra() {
+            Some(s) => Value::String(s.into()),
+            None => Value::Null,
+        },
+    );
+}
+
+/// Una punta de flecha del fichero. `ausente` es lo que vale cuando el campo
+/// no esta —distinto en cada extremo: el principio no lleva punta y el final
+/// si—; un `null` explicito es «sin punta» en los dos, y una palabra que no
+/// conocemos tambien, porque no hay nada mejor que dibujar.
+///
+/// Que una punta futura se lea como ninguna NO la borra del fichero: el
+/// elemento se escribe partiendo de su JSON original y `startArrowhead` solo
+/// se pisa si aqui se entendio (ver `punta_hacia_el_mapa`).
+fn punta_desde(v: Option<&Value>, ausente: TipoPunta) -> TipoPunta {
+    match v {
+        None => ausente,
+        Some(Value::String(s)) => TipoPunta::desde_palabra(s).unwrap_or(TipoPunta::Ninguna),
+        Some(_) => TipoPunta::Ninguna,
+    }
+}
+
+/// Las palabras de `fillStyle` que este lado sabe leer. Es la lista que usa
+/// la proteccion del estilo ajeno al escribir, y sale de
+/// [`estilo_relleno_hacia`] para que no pueda quedarse corta: el dia que
+/// entre una trama nueva, el `match` de alla obliga a nombrarla y esta lista
+/// la hereda.
+fn palabra_de_relleno_conocida(s: &str) -> bool {
+    [
+        EstiloRelleno::Solido,
+        EstiloRelleno::Rayado,
+        EstiloRelleno::Cruzado,
+        EstiloRelleno::Zigzag,
+        EstiloRelleno::LineasPixpin,
+    ]
+    .into_iter()
+    .any(|e| estilo_relleno_hacia(e) == s)
 }
 
 /// Traduce un elemento de Excalidraw al nuestro. `None` si no sabemos que es.
@@ -535,8 +596,13 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
         },
         "arrow" => Figura::Flecha {
             puntos: puntos_desde(v, x, y),
-            punta_inicio: v.get("startArrowhead").is_some_and(|a| !a.is_null()),
-            punta_fin: v.get("endArrowhead").map(|a| !a.is_null()).unwrap_or(true),
+            punta_inicio: punta_desde(v.get("startArrowhead"), TipoPunta::Ninguna),
+            // Una flecha sin `endArrowhead` es una flecha con punta: es lo que
+            // significa el campo ausente en Excalidraw, y el campo puesto a
+            // `null` es lo contrario —una flecha a la que le quitaron la
+            // punta—. Los dos casos existen en ficheros reales.
+            punta_fin: punta_desde(v.get("endArrowhead"), TipoPunta::Flecha),
+            codos: v.get("elbowed").and_then(Value::as_bool) == Some(true),
         },
         "freedraw" => {
             // `simulatePressure: true` manda sobre `pressures`: Excalidraw las
@@ -578,7 +644,15 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
         "text" => Figura::Texto {
             texto: v.get("text").and_then(|t| t.as_str()).unwrap_or("").into(),
             tam: num_o(v, "fontSize", 20.0),
-            familia: "Segoe UI".into(),
+            // `fontFamily` ni se leia: todo texto del movil entraba aqui con
+            // «Segoe UI» dijera lo que dijera el fichero, y salia con ese
+            // nombre escrito donde el movil espera un numero.
+            familia: crate::texto::nombre_de_familia(
+                v.get("fontFamily")
+                    .and_then(Value::as_u64)
+                    .map(|n| n.min(u8::MAX as u64) as u8),
+            )
+            .into(),
         },
         "pixpin-measure" => {
             let puntos = puntos_desde(v, x, y);
@@ -928,7 +1002,7 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
     let sin_entender = mapa
         .get("fillStyle")
         .and_then(Value::as_str)
-        .is_some_and(|s| !matches!(s, "solid" | "hachure" | "cross-hatch"));
+        .is_some_and(|s| !palabra_de_relleno_conocida(s));
     if !(sin_entender && e.estilo_relleno == EstiloRelleno::default()) {
         mapa.insert(
             "fillStyle".into(),
@@ -1038,12 +1112,38 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
         Figura::Resaltador { puntos } | Figura::Linea { puntos } => {
             mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y, objetos));
         }
-        Figura::Flecha { puntos, .. } => {
+        Figura::Flecha {
+            puntos,
+            punta_inicio,
+            punta_fin,
+            codos,
+        } => {
             mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y, objetos));
+            // **Las puntas no se escribian.** Una flecha nacida aqui llegaba
+            // al movil sin `endArrowhead`, y alli eso significa «con punta»
+            // por omision: acertaba de casualidad en el caso normal y mentia
+            // en todos los demas —una flecha sin punta salia con punta, y las
+            // siete puntas que no son la de siempre se perdian en el viaje—.
+            punta_hacia_el_mapa(&mut mapa, "startArrowhead", *punta_inicio);
+            punta_hacia_el_mapa(&mut mapa, "endArrowhead", *punta_fin);
+            mapa.insert("elbowed".into(), Value::Bool(*codos));
         }
-        Figura::Texto { texto, tam, .. } => {
+        Figura::Texto {
+            texto,
+            tam,
+            familia,
+        } => {
             mapa.insert("text".into(), Value::String(texto.clone()));
             mapa.insert("fontSize".into(), Value::from(*tam as f64));
+            // **`fontFamily` es un numero alli y un nombre aqui.** Sin
+            // escribirlo, el movil reabria todo texto del PC con la letra que
+            // tuviera puesta de fabrica, que no es la que se ve en esta
+            // pantalla. Se traduce con la tabla de `texto.rs`, que conoce los
+            // tres numeros del fichero y los tres alias viejos.
+            mapa.insert(
+                "fontFamily".into(),
+                Value::from(crate::texto::numero_de_familia(familia)),
+            );
         }
         Figura::Emoji { caracter } => {
             // Un texto normal para los demas, con una marca para que aqui
@@ -1717,8 +1817,193 @@ mod pruebas {
         else {
             panic!("deberia ser flecha");
         };
-        assert!(!punta_inicio, "no llevaba punta al principio");
-        assert!(punta_fin);
+        assert_eq!(
+            *punta_inicio,
+            TipoPunta::Ninguna,
+            "un `startArrowhead` nulo es no llevar punta al principio"
+        );
+        assert_eq!(*punta_fin, TipoPunta::Flecha);
+    }
+
+    /// **Toca el primer elemento para que se vuelva a escribir de verdad.**
+    ///
+    /// Sin esto, una prueba de ida y vuelta no prueba nada: lo que nadie toco
+    /// sale TAL CUAL entro (ver `escribir`), asi que el campo que se mira lo
+    /// habria escrito el fichero de entrada y no nosotros. Un pixel a la
+    /// derecha es el cambio mas pequeno que obliga a pasar por
+    /// `elemento_hacia`.
+    fn movido(l: &mut Lienzo) {
+        primero_mut(l).x += 1.0;
+    }
+
+    /// **Las ocho puntas, de ida y de vuelta, una por una.**
+    ///
+    /// Es la prueba que faltaba: las puntas se leian a medias —«lleva o no
+    /// lleva»— y **no se escribian nunca**, asi que una flecha del PC llegaba
+    /// al movil sin `endArrowhead` declarado. Alli eso significa «con punta»,
+    /// con lo que una flecha a la que se le habia quitado la punta la
+    /// recuperaba sola, y las siete que no son la de siempre se perdian.
+    #[test]
+    fn las_ocho_puntas_van_y_vuelven_con_su_palabra() {
+        for punta in crate::formas::PUNTAS {
+            let palabra = punta.palabra().expect("las ocho tienen palabra");
+            let json = format!(
+                r#"{{"elements":[
+                  {{"id":"f","type":"arrow","x":0,"y":0,"width":10,"height":0,
+                   "points":[[0,0],[10,0]],
+                   "startArrowhead":"{palabra}","endArrowhead":"{palabra}"}}
+                ]}}"#
+            );
+            let l = leer(&json).unwrap();
+            let Figura::Flecha {
+                punta_inicio,
+                punta_fin,
+                ..
+            } = &l.elementos()[0].figura
+            else {
+                panic!("deberia ser flecha");
+            };
+            assert_eq!((*punta_inicio, *punta_fin), (punta, punta), "al leer");
+
+            let mut l = l;
+            movido(&mut l);
+            let vuelta: Value = serde_json::from_str(&escribir(&l)).unwrap();
+            let e = &vuelta["elements"][0];
+            assert_eq!(e["startArrowhead"], Value::String(palabra.into()));
+            assert_eq!(e["endArrowhead"], Value::String(palabra.into()));
+        }
+    }
+
+    #[test]
+    fn una_flecha_sin_punta_se_escribe_con_la_punta_a_nulo_y_no_ausente() {
+        // Caso negativo, y el que mas se nota: dejar el campo fuera NO es
+        // decir «sin punta». En Excalidraw el campo ausente significa lo
+        // contrario, asi que la punta volveria sola.
+        let json = r#"{"elements":[
+          {"id":"f","type":"arrow","x":0,"y":0,"width":10,"height":0,
+           "points":[[0,0],[10,0]],"endArrowhead":null}
+        ]}"#;
+        let l = leer(json).unwrap();
+        let mut l = l;
+        movido(&mut l);
+        let vuelta: Value = serde_json::from_str(&escribir(&l)).unwrap();
+        assert_eq!(vuelta["elements"][0]["endArrowhead"], Value::Null);
+        assert_eq!(vuelta["elements"][0]["startArrowhead"], Value::Null);
+    }
+
+    #[test]
+    fn una_punta_que_no_conocemos_no_se_borra_al_guardar() {
+        // La misma regla del `fillStyle` y del `material`: entra como
+        // ninguna, y como aqui nadie la toco, sale como entro.
+        let json = r#"{"elements":[
+          {"id":"f","type":"arrow","x":0,"y":0,"width":10,"height":0,
+           "points":[[0,0],[10,0]],"endArrowhead":"punta-del-futuro"}
+        ]}"#;
+        let l = leer(json).unwrap();
+        let mut l = l;
+        movido(&mut l);
+        let vuelta: Value = serde_json::from_str(&escribir(&l)).unwrap();
+        assert_eq!(
+            vuelta["elements"][0]["endArrowhead"], "punta-del-futuro",
+            "una punta de una version futura se perdio en el viaje"
+        );
+    }
+
+    #[test]
+    fn la_flecha_de_codos_va_y_vuelve() {
+        let json = r#"{"elements":[
+          {"id":"f","type":"arrow","x":0,"y":0,"width":10,"height":10,
+           "points":[[0,0],[10,10]],"elbowed":true}
+        ]}"#;
+        let l = leer(json).unwrap();
+        let Figura::Flecha { codos, .. } = &l.elementos()[0].figura else {
+            panic!("deberia ser flecha");
+        };
+        assert!(*codos, "el conector ortogonal entro como flecha recta");
+        let mut l = l;
+        movido(&mut l);
+        let vuelta: Value = serde_json::from_str(&escribir(&l)).unwrap();
+        assert_eq!(vuelta["elements"][0]["elbowed"], true);
+        // Caso negativo: una flecha normal sale diciendo que NO es de codos,
+        // y no callandose.
+        let mut recta = leer(
+            r#"{"elements":[{"id":"g","type":"arrow","x":0,"y":0,"width":10,"height":0,
+                "points":[[0,0],[10,0]]}]}"#,
+        )
+        .unwrap();
+        movido(&mut recta);
+        let vuelta: Value = serde_json::from_str(&escribir(&recta)).unwrap();
+        assert_eq!(vuelta["elements"][0]["elbowed"], false);
+    }
+
+    /// **`fontFamily` ni se leia ni se escribia.**
+    ///
+    /// Todo texto del movil entraba aqui como «Segoe UI» dijera lo que dijera
+    /// el fichero, y salia con ese nombre escrito donde el movil espera uno de
+    /// sus tres numeros: al reabrirlo alla, la letra habia cambiado.
+    #[test]
+    fn la_letra_de_un_texto_va_y_vuelve_por_su_numero() {
+        for (numero, nombre) in [
+            (crate::texto::FUENTE_EXCALIFONT, "Excalifont"),
+            (crate::texto::FUENTE_NUNITO, "Nunito"),
+            (crate::texto::FUENTE_COMIC_SHANNS, "Comic Shanns"),
+        ] {
+            let json = format!(
+                r#"{{"elements":[
+                  {{"id":"t","type":"text","x":0,"y":0,"width":50,"height":20,
+                   "text":"hola","fontSize":20,"fontFamily":{numero}}}
+                ]}}"#
+            );
+            let l = leer(&json).unwrap();
+            let Figura::Texto { familia, .. } = &l.elementos()[0].figura else {
+                panic!("deberia ser texto");
+            };
+            assert_eq!(familia, nombre, "al leer la familia {numero}");
+            let mut l = l;
+            movido(&mut l);
+            let vuelta: Value = serde_json::from_str(&escribir(&l)).unwrap();
+            assert_eq!(vuelta["elements"][0]["fontFamily"], numero);
+        }
+    }
+
+    #[test]
+    fn los_numeros_de_letra_viejos_no_caen_a_la_de_fabrica() {
+        // Caso negativo: 1, 2 y 3 son los alias de los dibujos de antes. Un
+        // croquis guardado con ellos tiene que seguir viendose con SU letra,
+        // no con la de por omision.
+        let de = |n: u32| {
+            let json = format!(
+                r#"{{"elements":[{{"id":"t","type":"text","x":0,"y":0,"width":50,"height":20,
+                   "text":"hola","fontFamily":{n}}}]}}"#
+            );
+            match &leer(&json).unwrap().elementos()[0].figura {
+                Figura::Texto { familia, .. } => familia.clone(),
+                f => panic!("deberia ser texto: {f:?}"),
+            }
+        };
+        assert_eq!(de(2), "Nunito", "el alias viejo de la normal");
+        assert_eq!(de(3), "Comic Shanns", "el alias viejo de la monoespaciada");
+    }
+
+    #[test]
+    fn las_dos_tramas_nuevas_van_y_vuelven_con_su_palabra() {
+        for (palabra, estilo) in [
+            ("zigzag", EstiloRelleno::Zigzag),
+            ("pixpin-lines", EstiloRelleno::LineasPixpin),
+        ] {
+            let json = format!(
+                r##"{{"elements":[
+                  {{"id":"r","type":"rectangle","x":0,"y":0,"width":10,"height":10,
+                   "backgroundColor":"#ffcc00","fillStyle":"{palabra}","seed":1}}
+                ]}}"##
+            );
+            let l = leer(&json).unwrap();
+            assert_eq!(l.elementos()[0].estilo_relleno, estilo, "al leer {palabra}");
+            let mut l = l;
+            movido(&mut l);
+            let vuelta: Value = serde_json::from_str(&escribir(&l)).unwrap();
+            assert_eq!(vuelta["elements"][0]["fillStyle"], palabra);
+        }
     }
 
     /// El primer elemento nuestro del lienzo, para poder tocarlo.

@@ -465,6 +465,7 @@ pub fn desatar(flecha: &mut Elemento, extremo: Extremo) {
 mod pruebas {
     use super::*;
     use crate::elemento::ColorRgba;
+    use crate::formas::TipoPunta;
 
     fn caja(id: u64, figura: Figura, x: f32, y: f32, ancho: f32, alto: f32) -> Elemento {
         Elemento {
@@ -483,8 +484,9 @@ mod pruebas {
         let mut e = caja(id, Figura::Rectangulo, a.x, a.y, b.x - a.x, b.y - a.y);
         e.figura = Figura::Flecha {
             puntos: vec![a, b],
-            punta_inicio: false,
-            punta_fin: true,
+            punta_inicio: TipoPunta::Ninguna,
+            punta_fin: TipoPunta::Flecha,
+            codos: false,
         };
         e
     }

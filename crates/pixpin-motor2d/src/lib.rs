@@ -66,7 +66,7 @@ pub use camara::{Camara, cuantos_se_ven, recortar};
 pub use elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
 pub use escalabarra::Barra;
 pub use escena::Escena;
-pub use formas::{elipse, linea, punta_flecha, rectangulo};
+pub use formas::{PUNTAS, TipoPunta, elipse, linea, rectangulo};
 pub use formato::{EXTENSION, ErrorFormato, cargar, guardar};
 pub use impacto::{TOLERANCIA, dentro_de, elemento_en, elementos_en, esquinas_giradas, toca};
 pub use medida::{

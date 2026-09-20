@@ -62,12 +62,23 @@ pub enum Figura {
     Linea {
         puntos: Vec<Punto2>,
     },
+    /// Una flecha. **Sus puntas son un tipo y no un `bool`**: las ocho de
+    /// Excalidraw viajan en `startArrowhead`/`endArrowhead`, y con «lleva
+    /// punta o no» un diagrama entidad-relacion del movil —donde la punta DICE
+    /// la cardinalidad— se abria con ocho flechas iguales y dejaba de decir
+    /// nada. Ver `formas::TipoPunta`.
+    ///
+    /// `codos` es el `elbowed` del movil: el conector ortogonal del
+    /// organigrama, que no traza la recta entre los dos puntos sino el camino
+    /// en angulo recto de `codo::trazado_de_flecha`.
     Flecha {
         puntos: Vec<Punto2>,
         #[serde(default)]
-        punta_inicio: bool,
-        #[serde(default = "verdadero")]
-        punta_fin: bool,
+        punta_inicio: crate::formas::TipoPunta,
+        #[serde(default = "punta_de_flecha")]
+        punta_fin: crate::formas::TipoPunta,
+        #[serde(default)]
+        codos: bool,
     },
     /// **Un mosaico de censura** (`pixpin-mosaic` del movil): tapa su caja
     /// para que no se lea lo que hay debajo.
@@ -413,8 +424,12 @@ impl Extras {
     }
 }
 
-fn verdadero() -> bool {
-    true
+/// Lo que lleva una flecha en el extremo final cuando el dato falta: las dos
+/// rayas de siempre. Es lo mismo que decia el viejo `punta_fin: bool` con su
+/// `default = "verdadero"`, asi que un `.pixpin2d` guardado antes de las ocho
+/// puntas se reabre con la flecha que tenia.
+fn punta_de_flecha() -> crate::formas::TipoPunta {
+    crate::formas::TipoPunta::Flecha
 }
 
 fn familia_por_defecto() -> String {

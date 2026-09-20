@@ -165,6 +165,7 @@ pub fn comunes(elementos: &[&Elemento]) -> Vec<Propiedad> {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    use pixpin_motor2d::TipoPunta;
 
     fn elem(figura: Figura) -> Elemento {
         Elemento {
@@ -243,8 +244,9 @@ mod pruebas {
     fn una_flecha_tiene_puntas() {
         let p = de_figura(&Figura::Flecha {
             puntos: Vec::new(),
-            punta_inicio: false,
-            punta_fin: true,
+            punta_inicio: TipoPunta::Ninguna,
+            punta_fin: TipoPunta::Flecha,
+            codos: false,
         });
         assert!(p.contains(&Propiedad::PuntaFlecha));
     }

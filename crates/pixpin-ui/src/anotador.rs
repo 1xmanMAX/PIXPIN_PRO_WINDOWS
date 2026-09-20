@@ -11,6 +11,7 @@
 //! luego estorba al seleccionar.
 
 use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+use pixpin_motor2d::formas::TipoPunta;
 use pixpin_motor2d::relleno::EstiloRelleno;
 use pixpin_motor2d::vector::Punto2;
 
@@ -589,8 +590,9 @@ impl Anotador {
             },
             Herramienta::Flecha => Figura::Flecha {
                 puntos: vec![g.inicio, ultimo],
-                punta_inicio: false,
-                punta_fin: true,
+                punta_inicio: TipoPunta::Ninguna,
+                punta_fin: TipoPunta::Flecha,
+                codos: false,
             },
             Herramienta::Rectangulo => Figura::Rectangulo,
             Herramienta::Foco => Figura::Foco { elipse: false },

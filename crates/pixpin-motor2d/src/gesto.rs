@@ -32,6 +32,7 @@ use pixpin_geom::Tirador;
 
 use crate::elemento::{Elemento, Figura};
 use crate::escena::Escena;
+use crate::formas::TipoPunta;
 use crate::impacto::{dentro_de, elemento_en};
 use crate::medida::Escala;
 use crate::seleccion::Seleccion;
@@ -664,8 +665,9 @@ impl Gesto {
             Herramienta::Linea => Figura::Linea { puntos: vec![p, p] },
             Herramienta::Flecha => Figura::Flecha {
                 puntos: vec![p, p],
-                punta_inicio: false,
-                punta_fin: true,
+                punta_inicio: TipoPunta::Ninguna,
+                punta_fin: TipoPunta::Flecha,
+                codos: false,
             },
             Herramienta::Elipse => Figura::Elipse,
             Herramienta::Rombo => Figura::Rombo,
@@ -674,16 +676,18 @@ impl Gesto {
             // exporta y viaja por el mismo camino que la recta.
             Herramienta::FlechaLibre => Figura::Flecha {
                 puntos: reservados(),
-                punta_inicio: false,
-                punta_fin: true,
+                punta_inicio: TipoPunta::Ninguna,
+                punta_fin: TipoPunta::Flecha,
+                codos: false,
             },
             // La de codos nace recta hasta que el grupo A porte `Elbow.kt`.
             // Es una flecha de verdad, no un hueco: llega al movil como
             // flecha y alli se ve; lo que falta es que doble.
             Herramienta::FlechaCodos => Figura::Flecha {
                 puntos: vec![p, p],
-                punta_inicio: false,
-                punta_fin: true,
+                punta_inicio: TipoPunta::Ninguna,
+                punta_fin: TipoPunta::Flecha,
+                codos: false,
             },
             // Nace como la GUIA —el ovalo sin repasar—, que es el primer
             // estado de verdad del arco y no un arco a medio hacer.

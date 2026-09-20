@@ -638,6 +638,7 @@ fn sin_id(mut e: Elemento) -> Elemento {
 mod pruebas {
     use super::*;
     use crate::elemento::ColorRgba;
+    use crate::formas::TipoPunta;
 
     fn raya(id: u64, a: (f32, f32), b: (f32, f32)) -> Elemento {
         let puntos = vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)];
@@ -864,8 +865,9 @@ mod pruebas {
         let mut flecha = raya(1, (0.0, 50.0), (300.0, 50.0));
         flecha.figura = Figura::Flecha {
             puntos: puntos_de(&flecha),
-            punta_inicio: false,
-            punta_fin: true,
+            punta_inicio: TipoPunta::Ninguna,
+            punta_fin: TipoPunta::Flecha,
+            codos: false,
         };
         flecha.extras.enganche_fin = Some(crate::elemento::Enganche {
             elemento: "otro".into(),
