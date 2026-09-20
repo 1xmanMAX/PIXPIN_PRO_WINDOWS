@@ -206,6 +206,332 @@ pub fn punta_flecha(
     salida
 }
 
+/// **Las ocho puntas de flecha de Excalidraw**, con sus palabras del fichero.
+///
+/// Son las mismas ocho del movil (`Arrowhead` en `Element.kt:487-496`) y las
+/// mismas de Excalidraw. Aqui solo habia «lleva punta o no»
+/// (`Figura::Flecha{punta_inicio, punta_fin}`), asi que un diagrama entidad-
+/// relacion del movil —donde la punta DICE la cardinalidad— se abria con ocho
+/// flechas iguales y dejaba de decir nada.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TipoPunta {
+    /// Sin punta: es `null` en el fichero, no una palabra.
+    #[default]
+    Ninguna,
+    /// Las dos rayas de siempre, abiertas.
+    Flecha,
+    /// Un travesano perpendicular.
+    Barra,
+    Circulo,
+    CirculoHueco,
+    Triangulo,
+    TrianguloHueco,
+    Rombo,
+    RomboHueco,
+}
+
+/// Las ocho de la barra, en el orden del enum del movil. Sin `Ninguna`: no es
+/// una punta, es no tener ninguna.
+pub const PUNTAS: [TipoPunta; 8] = [
+    TipoPunta::Flecha,
+    TipoPunta::Barra,
+    TipoPunta::Circulo,
+    TipoPunta::CirculoHueco,
+    TipoPunta::Triangulo,
+    TipoPunta::TrianguloHueco,
+    TipoPunta::Rombo,
+    TipoPunta::RomboHueco,
+];
+
+impl TipoPunta {
+    /// La palabra del `.excalidraw`. `None` es la ausencia de punta, que en el
+    /// fichero se escribe `null` y no una cadena vacia.
+    pub fn palabra(self) -> Option<&'static str> {
+        Some(match self {
+            TipoPunta::Ninguna => return None,
+            TipoPunta::Flecha => "arrow",
+            TipoPunta::Barra => "bar",
+            TipoPunta::Circulo => "circle",
+            TipoPunta::CirculoHueco => "circle_outline",
+            TipoPunta::Triangulo => "triangle",
+            TipoPunta::TrianguloHueco => "triangle_outline",
+            TipoPunta::Rombo => "diamond",
+            TipoPunta::RomboHueco => "diamond_outline",
+        })
+    }
+
+    /// La punta de una palabra del fichero.
+    ///
+    /// Una palabra que no conocemos NO es «sin punta»: es una punta de una
+    /// version futura, y leerla como ninguna la borraria al guardar. Devuelve
+    /// `None` para que quien lee decida conservarla, la misma regla del
+    /// `fillStyle` y del `material`.
+    pub fn desde_palabra(s: &str) -> Option<TipoPunta> {
+        PUNTAS.into_iter().find(|p| p.palabra() == Some(s))
+    }
+
+    /// Si se pinta maciza. Las «huecas» (`*_outline`) llevan solo el borde:
+    /// es lo que distingue en un diagrama la herencia de la composicion.
+    pub fn es_maciza(self) -> bool {
+        matches!(
+            self,
+            TipoPunta::Circulo | TipoPunta::Triangulo | TipoPunta::Rombo
+        )
+    }
+
+    /// Lo que mide la punta, en pixeles del documento (`arrowheadSize`).
+    pub fn tamano(self) -> f32 {
+        match self {
+            TipoPunta::Flecha => 25.0,
+            TipoPunta::Rombo | TipoPunta::RomboHueco => 12.0,
+            _ => 15.0,
+        }
+    }
+
+    /// Apertura de la punta, en grados (`getArrowheadAngle`). La barra se abre
+    /// noventa: por eso sale perpendicular al trazo y no en pico.
+    pub fn apertura(self) -> f32 {
+        match self {
+            TipoPunta::Barra => 90.0,
+            TipoPunta::Flecha => 20.0,
+            _ => 25.0,
+        }
+    }
+}
+
+/// La geometria de una punta, ya resuelta para dibujar (`ArrowheadShape`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FormaDePunta {
+    pub tipo: TipoPunta,
+    /// El extremo del trazo, donde se posa la punta.
+    pub punta: Punto2,
+    /// Los dos puntos de las alas, o los extremos del travesano de la barra.
+    pub alas: (Punto2, Punto2),
+    /// El cuarto vertice: solo el rombo lo usa.
+    pub opuesto: Option<Punto2>,
+    /// Solo el circulo: su diametro.
+    pub diametro: f32,
+}
+
+/// El punto desde el que se mira la direccion de la punta.
+///
+/// **No es el de al lado.** Con dos puntos da igual, pero una flecha trazada a
+/// pulso tiene los puntos a un pixel unos de otros: mirando solo al anterior
+/// sale una direccion temblorosa y, peor, una punta del tamano de ese pixel
+/// —el tamano se acota a la mitad de esa distancia—, o sea invisible. Se
+/// retrocede por el trazo hasta separarse lo que mide la punta, y asi apunta a
+/// donde iba la mano y sale del tamano que le toca. Es lo que hace usable la
+/// **flecha a mano alzada**, que por dentro es una flecha con todos los puntos
+/// del trazo en vez de dos.
+fn de_donde_viene(puntos: &[Punto2], al_final: bool, cuanto: f32) -> Punto2 {
+    let n = puntos.len();
+    let extremo = if al_final { puntos[n - 1] } else { puntos[0] };
+    let mut ultimo = if al_final { puntos[n - 2] } else { puntos[1] };
+    let recorrido: Box<dyn Iterator<Item = usize>> = if al_final {
+        Box::new((0..n).rev())
+    } else {
+        Box::new(0..n)
+    };
+    for i in recorrido {
+        let p = puntos[i];
+        ultimo = p;
+        if extremo.distancia(p) >= cuanto {
+            return p;
+        }
+    }
+    ultimo
+}
+
+/// Los puntos de la punta de `tipo` en un extremo del trazo
+/// (`getArrowheadPoints`).
+///
+/// `al_final` elige el extremo: falso es el principio (`startArrowhead`).
+/// `grosor` es el del trazo, y solo lo usa el circulo para su diametro.
+///
+/// `None` cuando no hay punta que dibujar: sin dos puntos, con los dos
+/// extremos encima, o sin tipo.
+pub fn forma_de_punta(
+    puntos: &[Punto2],
+    al_final: bool,
+    tipo: TipoPunta,
+    grosor: f32,
+) -> Option<FormaDePunta> {
+    if tipo == TipoPunta::Ninguna || puntos.len() < 2 {
+        return None;
+    }
+    let extremo = if al_final {
+        puntos[puntos.len() - 1]
+    } else {
+        puntos[0]
+    };
+    let previo = de_donde_viene(puntos, al_final, tipo.tamano());
+    let distancia = extremo.distancia(previo);
+    if distancia == 0.0 {
+        return None;
+    }
+    let direccion = extremo.restar(previo).escalar(1.0 / distancia);
+
+    // La punta se encoge en flechas cortas: una punta de 25 px en un trazo de
+    // 20 es toda la flecha y se ve como un borron.
+    let fraccion = if matches!(tipo, TipoPunta::Rombo | TipoPunta::RomboHueco) {
+        0.25
+    } else {
+        0.5
+    };
+    let medida = tipo.tamano().min(distancia * fraccion);
+    let atras = extremo.restar(direccion.escalar(medida));
+
+    if matches!(tipo, TipoPunta::Circulo | TipoPunta::CirculoHueco) {
+        // El circulo no tiene alas: se centra en la punta y lo unico que hace
+        // falta es lo gordo que es. El `-2` es del original: compensa que el
+        // trazo ya ocupa su propio ancho.
+        return Some(FormaDePunta {
+            tipo,
+            punta: extremo,
+            alas: (extremo, extremo),
+            opuesto: None,
+            diametro: atras.distancia(extremo) + grosor - 2.0,
+        });
+    }
+
+    let apertura = tipo.apertura().to_radians();
+    let alas = (
+        atras.girar(extremo, -apertura),
+        atras.girar(extremo, apertura),
+    );
+    let opuesto = matches!(tipo, TipoPunta::Rombo | TipoPunta::RomboHueco).then(|| {
+        let dir = (extremo.y - previo.y).atan2(extremo.x - previo.x);
+        Punto2::nuevo(extremo.x - medida * 2.0, extremo.y).girar(extremo, dir)
+    });
+    Some(FormaDePunta {
+        tipo,
+        punta: extremo,
+        alas,
+        opuesto,
+        diametro: 0.0,
+    })
+}
+
+/// El contorno CERRADO de una punta, para rellenarla o para recorrerlo.
+///
+/// La flecha y la barra no cierran nada —son dos rayas y un travesano— y
+/// devuelven la lista abierta que hay que trazar; el triangulo y el rombo
+/// devuelven su poligono, y el circulo, su borde muestreado. Quien pinta mira
+/// [`TipoPunta::es_maciza`] para decidir si lo rellena o solo lo traza.
+pub fn contorno_de_punta(f: &FormaDePunta) -> Vec<Punto2> {
+    match f.tipo {
+        TipoPunta::Ninguna => Vec::new(),
+        // Las dos rayas de siempre: del ala a la punta y de la punta a la
+        // otra ala. Abierta a proposito: cerrarla la convertiria en un
+        // triangulo, que es otra punta distinta.
+        TipoPunta::Flecha => vec![f.alas.0, f.punta, f.alas.1],
+        // El travesano: de ala a ala, pasando de largo de la punta.
+        TipoPunta::Barra => vec![f.alas.0, f.alas.1],
+        TipoPunta::Triangulo | TipoPunta::TrianguloHueco => {
+            vec![f.alas.0, f.punta, f.alas.1, f.alas.0]
+        }
+        TipoPunta::Rombo | TipoPunta::RomboHueco => {
+            let opuesto = f.opuesto.unwrap_or(f.punta);
+            vec![f.alas.0, f.punta, f.alas.1, opuesto, f.alas.0]
+        }
+        TipoPunta::Circulo | TipoPunta::CirculoHueco => {
+            const LADOS: usize = 24;
+            let r = (f.diametro / 2.0).max(0.5);
+            (0..=LADOS)
+                .map(|i| {
+                    let t = std::f32::consts::TAU * i as f32 / LADOS as f32;
+                    Punto2::nuevo(f.punta.x + r * t.cos(), f.punta.y + r * t.sin())
+                })
+                .collect()
+        }
+    }
+}
+
+/// Un rombo con las puntas redondeadas.
+///
+/// **Faltaba entero.** El estilo de fabrica trae `roundness`, asi que el rombo
+/// pide puntas redondeadas desde el primer dia y aqui se dibuja en pico igual
+/// que los demas; en un rombo la diferencia canta, porque sus cuatro vertices
+/// son angulos agudos.
+///
+/// La clave esta en **como recorta**: no avanza por la arista una distancia,
+/// sino que se desplaza `vr` en horizontal y `hr` en vertical, con **un radio
+/// distinto por eje** —el de la media anchura y el de la media altura—. Por
+/// eso un rombo aplastado no se redondea igual arriba que a los lados, que es
+/// como tiene que ser: con un radio unico las puntas laterales quedarian romas
+/// y las de arriba en pico.
+pub fn rombo_redondo(x: f32, y: f32, ancho: f32, alto: f32) -> Vec<Punto2> {
+    let v = vertices_de_rombo(x, y, ancho, alto);
+    let (arriba, derecha, abajo, izquierda) = (v[0], v[1], v[2], v[3]);
+    let (media_ancho, media_alto) = (ancho / 2.0, alto / 2.0);
+    if media_ancho <= 0.0 || media_alto <= 0.0 {
+        return v.to_vec();
+    }
+    let vr = radio_de_esquina(media_ancho);
+    let hr = radio_de_esquina(media_alto);
+    if vr <= 0.0 && hr <= 0.0 {
+        return v.to_vec();
+    }
+
+    // Seis tramos por punta, el mismo criterio que el rectangulo redondeado y
+    // que el codo: es un cuarto de vuelta corto.
+    const TRAMOS_PUNTA: usize = 6;
+    let mut salida: Vec<Punto2> = Vec::with_capacity(4 * (TRAMOS_PUNTA + 2) + 1);
+    // La costura queda justo despues de la punta de arriba y sobre el tramo
+    // recto que baja a la derecha, como en el original: partirla en mitad de
+    // una curva dejaria el empalme a la vista.
+    salida.push(Punto2::nuevo(arriba.x + vr, arriba.y + hr));
+    for (vertice, entrada, salida_p) in [
+        (
+            derecha,
+            Punto2::nuevo(derecha.x - vr, derecha.y - hr),
+            Punto2::nuevo(derecha.x - vr, derecha.y + hr),
+        ),
+        (
+            abajo,
+            Punto2::nuevo(abajo.x + vr, abajo.y - hr),
+            Punto2::nuevo(abajo.x - vr, abajo.y - hr),
+        ),
+        (
+            izquierda,
+            Punto2::nuevo(izquierda.x + vr, izquierda.y + hr),
+            Punto2::nuevo(izquierda.x + vr, izquierda.y - hr),
+        ),
+        (
+            arriba,
+            Punto2::nuevo(arriba.x - vr, arriba.y + hr),
+            Punto2::nuevo(arriba.x + vr, arriba.y + hr),
+        ),
+    ] {
+        salida.push(entrada);
+        // Cuadratica con el vertice de tirador: la misma que redondea el codo.
+        for s in 1..=TRAMOS_PUNTA {
+            let t = s as f32 / TRAMOS_PUNTA as f32;
+            let u = 1.0 - t;
+            salida.push(Punto2::nuevo(
+                u * u * entrada.x + 2.0 * u * t * vertice.x + t * t * salida_p.x,
+                u * u * entrada.y + 2.0 * u * t * vertice.y + t * t * salida_p.y,
+            ));
+        }
+    }
+    salida
+}
+
+/// El radio de una esquina redondeada para un lado de `corto` (el
+/// `getCornerRadius` del movil con `ADAPTIVE_RADIUS`, que es el que escribe
+/// Excalidraw hoy: proporcional en formas pequenas y fijo a partir de cierto
+/// tamano, o un rectangulo enorme quedaria con unas curvas desmedidas).
+pub fn radio_de_esquina(corto: f32) -> f32 {
+    const PROPORCIONAL: f32 = 0.25;
+    const FIJO: f32 = 32.0;
+    let corte = FIJO / PROPORCIONAL;
+    if corto <= corte {
+        (corto * PROPORCIONAL).max(0.0)
+    } else {
+        FIJO
+    }
+}
+
 /// Un rectangulo de esquinas redondeadas, en una sola pasada.
 ///
 /// El `roundness` de Excalidraw con radio proporcional, como el movil: un
@@ -364,6 +690,182 @@ mod pruebas {
                 pasada.last().unwrap().x < hasta.x,
                 "la punta apunta al reves"
             );
+        }
+    }
+
+    /// Una flecha recta de cien pixeles hacia la derecha.
+    fn recta() -> Vec<Punto2> {
+        vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)]
+    }
+
+    #[test]
+    fn las_ocho_puntas_llevan_las_palabras_del_fichero_una_por_una() {
+        // Si una sola deja de coincidir, un diagrama entidad-relacion del
+        // movil se abre aqui con otra cardinalidad: la punta DICE algo.
+        let esperadas = [
+            "arrow",
+            "bar",
+            "circle",
+            "circle_outline",
+            "triangle",
+            "triangle_outline",
+            "diamond",
+            "diamond_outline",
+        ];
+        let nuestras: Vec<&str> = PUNTAS.iter().filter_map(|p| p.palabra()).collect();
+        assert_eq!(nuestras, esperadas);
+        for p in PUNTAS {
+            assert_eq!(TipoPunta::desde_palabra(p.palabra().unwrap()), Some(p));
+        }
+    }
+
+    #[test]
+    fn sin_punta_no_hay_palabra_y_una_palabra_rara_no_se_lee_como_sin_punta() {
+        // Caso negativo, y el que protege el fichero: leer una punta de una
+        // version futura como «ninguna» la borraria al guardar.
+        assert_eq!(TipoPunta::Ninguna.palabra(), None);
+        assert_eq!(TipoPunta::desde_palabra("crowfoot-del-futuro"), None);
+        assert_eq!(TipoPunta::desde_palabra(""), None);
+    }
+
+    #[test]
+    fn solo_las_tres_macizas_se_rellenan() {
+        // Es lo que distingue en un diagrama la herencia de la composicion:
+        // el mismo triangulo, uno relleno y otro hueco.
+        for p in [TipoPunta::Circulo, TipoPunta::Triangulo, TipoPunta::Rombo] {
+            assert!(p.es_maciza(), "{p:?}");
+        }
+        for p in [
+            TipoPunta::Flecha,
+            TipoPunta::Barra,
+            TipoPunta::CirculoHueco,
+            TipoPunta::TrianguloHueco,
+            TipoPunta::RomboHueco,
+        ] {
+            assert!(!p.es_maciza(), "{p:?}");
+        }
+    }
+
+    #[test]
+    fn cada_punta_se_posa_en_el_extremo_y_ninguna_se_pasa_de_largo() {
+        for tipo in PUNTAS {
+            let f = forma_de_punta(&recta(), true, tipo, 2.0).expect("{tipo:?}");
+            assert_eq!(f.punta, Punto2::nuevo(100.0, 0.0), "{tipo:?}");
+            for p in contorno_de_punta(&f) {
+                assert!(p.x <= 100.01 + f.diametro / 2.0, "{tipo:?} se pasa: {p:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn la_punta_del_principio_apunta_al_reves_que_la_del_final() {
+        // Caso negativo del extremo: si las dos miraran al mismo lado, una
+        // flecha de doble punta saldria con las dos en el mismo sentido.
+        let fin = forma_de_punta(&recta(), true, TipoPunta::Flecha, 2.0).unwrap();
+        let ini = forma_de_punta(&recta(), false, TipoPunta::Flecha, 2.0).unwrap();
+        assert!(fin.alas.0.x < fin.punta.x, "la del final no mira atras");
+        assert!(ini.alas.0.x > ini.punta.x, "la del principio no mira atras");
+    }
+
+    #[test]
+    fn la_barra_sale_perpendicular_al_trazo_y_la_flecha_no() {
+        // Los noventa grados de apertura: es lo unico que separa una barra de
+        // una punta abierta.
+        let barra = forma_de_punta(&recta(), true, TipoPunta::Barra, 2.0).unwrap();
+        assert!(
+            (barra.alas.0.x - barra.punta.x).abs() < 0.01
+                && (barra.alas.1.x - barra.punta.x).abs() < 0.01,
+            "la barra no es perpendicular: {barra:?}"
+        );
+        let flecha = forma_de_punta(&recta(), true, TipoPunta::Flecha, 2.0).unwrap();
+        assert!((flecha.alas.0.x - flecha.punta.x).abs() > 1.0);
+    }
+
+    #[test]
+    fn el_rombo_lleva_su_cuarto_vertice_y_las_demas_puntas_no() {
+        let rombo = forma_de_punta(&recta(), true, TipoPunta::Rombo, 2.0).unwrap();
+        let opuesto = rombo.opuesto.expect("el rombo necesita cuatro vertices");
+        assert!(opuesto.x < rombo.punta.x, "el cuarto vertice va detras");
+        assert!(
+            forma_de_punta(&recta(), true, TipoPunta::Flecha, 2.0)
+                .unwrap()
+                .opuesto
+                .is_none()
+        );
+        assert_eq!(contorno_de_punta(&rombo).len(), 5, "rombo cerrado");
+    }
+
+    #[test]
+    fn en_un_trazo_a_pulso_la_punta_mira_hacia_donde_iba_la_mano() {
+        // El fallo que esto viene a impedir: con los puntos a un pixel unos de
+        // otros, mirando solo al anterior la punta salia del tamano de ese
+        // pixel —invisible— y temblorosa. Es lo que hace usable la flecha a
+        // mano alzada, que por dentro es una flecha con todos sus puntos.
+        let mut pulso: Vec<Punto2> = (0..200)
+            .map(|i| Punto2::nuevo(i as f32 * 0.5, (i as f32 * 0.3).sin()))
+            .collect();
+        pulso.push(Punto2::nuevo(100.0, 0.0));
+        let f = forma_de_punta(&pulso, true, TipoPunta::Flecha, 2.0).unwrap();
+        let ala = f.punta.distancia(f.alas.0);
+        assert!(ala > 5.0, "la punta salio del tamano de un pixel: {ala}");
+    }
+
+    #[test]
+    fn una_flecha_corta_no_se_queda_en_pura_punta() {
+        // El acotado a la mitad del trazo: una punta de 25 px en una flecha de
+        // 20 es toda la flecha y se ve como un borron.
+        let corta = vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(20.0, 0.0)];
+        let f = forma_de_punta(&corta, true, TipoPunta::Flecha, 2.0).unwrap();
+        assert!(f.punta.distancia(f.alas.0) <= 12.0, "{f:?}");
+    }
+
+    #[test]
+    fn sin_punta_o_sin_dos_puntos_no_hay_nada_que_dibujar() {
+        assert!(forma_de_punta(&recta(), true, TipoPunta::Ninguna, 2.0).is_none());
+        assert!(forma_de_punta(&[Punto2::nuevo(0.0, 0.0)], true, TipoPunta::Flecha, 2.0).is_none());
+        // Caso negativo del cero: los dos extremos encima no tienen direccion,
+        // y normalizarla daria NaN, que borra la geometria entera.
+        let pegados = vec![Punto2::nuevo(5.0, 5.0), Punto2::nuevo(5.0, 5.0)];
+        assert!(forma_de_punta(&pegados, true, TipoPunta::Flecha, 2.0).is_none());
+    }
+
+    #[test]
+    fn el_rombo_redondo_no_se_sale_de_su_caja_y_ya_no_tiene_picos() {
+        let r = rombo_redondo(0.0, 0.0, 200.0, 100.0);
+        assert!(r.len() > 4, "no se redondeo nada");
+        for p in &r {
+            assert!((-0.01..=200.01).contains(&p.x), "{p:?}");
+            assert!((-0.01..=100.01).contains(&p.y), "{p:?}");
+        }
+        // Y los cuatro vertices en pico ya no estan: si siguieran, seria el
+        // mismo rombo de antes con mas puntos.
+        for v in vertices_de_rombo(0.0, 0.0, 200.0, 100.0) {
+            assert!(
+                !r.iter().any(|p| p.distancia(v) < 1e-4),
+                "la punta {v:?} sigue en pico"
+            );
+        }
+    }
+
+    #[test]
+    fn un_rombo_aplastado_se_redondea_distinto_por_cada_eje() {
+        // Con un radio unico las puntas laterales quedarian romas y las de
+        // arriba en pico. Con 400x40 el radio horizontal se topa en el fijo y
+        // el vertical se queda proporcional.
+        assert_eq!(radio_de_esquina(200.0), 32.0, "el radio se topa");
+        assert_eq!(radio_de_esquina(20.0), 5.0, "y por debajo es proporcional");
+        let r = rombo_redondo(0.0, 0.0, 400.0, 40.0);
+        for p in &r {
+            assert!((-0.01..=400.01).contains(&p.x) && (-0.01..=40.01).contains(&p.y));
+        }
+    }
+
+    #[test]
+    fn un_rombo_sin_tamano_devuelve_sus_cuatro_vertices_y_no_entra_en_panico() {
+        let r = rombo_redondo(10.0, 10.0, 0.0, 0.0);
+        assert_eq!(r.len(), 4);
+        for p in &r {
+            assert!(p.x.is_finite() && p.y.is_finite());
         }
     }
 

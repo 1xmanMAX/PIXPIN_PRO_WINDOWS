@@ -129,6 +129,60 @@ pub fn contorno_de_lapiz(
     }
 }
 
+/// **`presionFirme` del movil**: trazo de ancho constante, para escribir.
+///
+/// Sin el, lo escrito a mano adelgaza en las curvas —la pluma variable quita
+/// tinta donde el trazo gira despacio— y la letra se rompe: una «e» pequena se
+/// queda en un garabato con agujeros. Es la razon de que el campo exista.
+///
+/// Se resuelve **con la pluma que ya hay** y no con una tercera: ancho
+/// constante es exactamente `Variabilidad::Constante`, o sea el contorno de
+/// `laser.rs`, el mismo que Excalidraw usa para su lapiz de ancho fijo. Lo que
+/// hace esta funcion es traducir el campo del movil a esa opcion, en un solo
+/// sitio, para que quien pinta no tenga que saberlo.
+///
+/// **No inventa opciones donde no las habia.** Un trazo legado —sin
+/// `strokeOptions`— con la presion firme puesta pasa a tener las de fabrica
+/// con la pluma constante, que es lo que el campo pide; sin la presion firme
+/// se queda como estaba, `None`, que es lo que le dice a
+/// [`contorno_de_lapiz`] que su grosor son pixeles y no un `strokeWidth`.
+pub fn opciones_con_presion_firme(
+    opciones: Option<OpcionesTinta>,
+    presion_firme: bool,
+) -> Option<OpcionesTinta> {
+    if !presion_firme {
+        return opciones;
+    }
+    Some(OpcionesTinta {
+        variabilidad: Variabilidad::Constante,
+        ..opciones.unwrap_or_default()
+    })
+}
+
+/// El contorno de un trazo de lapiz teniendo en cuenta la presion firme.
+///
+/// Es [`contorno_de_lapiz`] con el campo del movil ya aplicado. Existe para
+/// que quien pinta llame a una sola funcion y no pueda olvidarse del campo en
+/// uno de los dos sitios donde se pinta un lapiz —el de la escena y el del
+/// trazo en curso—, que es como se veia el fallo: la letra salia firme
+/// mientras se escribia y adelgazaba al soltar.
+pub fn contorno_de_lapiz_firme(
+    puntos: &[Punto2],
+    presiones: &[f32],
+    grosor: f32,
+    opciones: Option<OpcionesTinta>,
+    presion_firme: bool,
+) -> Vec<Punto2> {
+    // Con la presion firme las presiones sobran: la pluma constante no las
+    // mira. Se pasan igual para no tener dos caminos que puedan discrepar.
+    contorno_de_lapiz(
+        puntos,
+        presiones,
+        grosor,
+        opciones_con_presion_firme(opciones, presion_firme),
+    )
+}
+
 /// El resaltador (D45): grueso, sin adelgazar y translucido. No existe en
 /// Excalidraw; se hace con la misma maquina con `thinning = 0`, que da
 /// grosor constante y tapas redondas. `grosor * 3` conserva su tamano de
@@ -208,6 +262,65 @@ mod pruebas {
             alto(&contorno_de_lapiz(&recta(), &[], GROSOR_GRUESO, o))
                 > alto(&contorno_de_lapiz(&recta(), &[], GROSOR_FINO, o))
         );
+    }
+
+    /// Lo que mas y lo que menos engorda un contorno a lo largo del trazo:
+    /// con la pluma variable el trazo adelgaza y con la firme, no.
+    fn cuanto_adelgaza(c: &[Punto2]) -> f32 {
+        // Se mide el alto del contorno en dos franjas, una del principio y
+        // otra del medio: con adelgazamiento la del principio es mas fina.
+        let franja = |x0: f32, x1: f32| {
+            let dentro: Vec<f32> = c
+                .iter()
+                .filter(|p| p.x >= x0 && p.x <= x1)
+                .map(|p| p.y)
+                .collect();
+            if dentro.len() < 2 {
+                return 0.0;
+            }
+            dentro.iter().fold(f32::MIN, |a, b| a.max(*b))
+                - dentro.iter().fold(f32::MAX, |a, b| a.min(*b))
+        };
+        franja(90.0, 110.0) - franja(0.0, 20.0)
+    }
+
+    #[test]
+    fn la_presion_firme_deja_el_trazo_del_mismo_ancho_de_punta_a_punta() {
+        // La razon de que el campo exista: sin el, lo escrito adelgaza en las
+        // curvas y la letra se rompe.
+        let p = recta();
+        let variable = contorno_de_lapiz_firme(&p, &[], 2.0, None, false);
+        let firme = contorno_de_lapiz_firme(&p, &[], 2.0, None, true);
+        assert_ne!(variable, firme, "la presion firme no cambio nada");
+        assert!(
+            cuanto_adelgaza(&firme).abs() < cuanto_adelgaza(&variable).abs(),
+            "la firme adelgaza tanto como la variable"
+        );
+    }
+
+    #[test]
+    fn la_presion_firme_es_exactamente_la_pluma_constante() {
+        // Y no una tercera pluma: ancho constante ya lo sabe hacer `laser.rs`.
+        let o = opciones_con_presion_firme(Some(OpcionesTinta::default()), true).unwrap();
+        assert_eq!(o.variabilidad, Variabilidad::Constante);
+        assert_eq!(o.streamline, OpcionesTinta::default().streamline);
+    }
+
+    #[test]
+    fn sin_presion_firme_no_se_inventan_opciones_donde_no_las_habia() {
+        // Caso negativo, y el que protege los dibujos viejos: un trazo legado
+        // al que se le pusieran opciones de la nada se abriria cuatro veces
+        // mas gordo, porque su grosor son pixeles y no un strokeWidth.
+        assert_eq!(opciones_con_presion_firme(None, false), None);
+        let suyas = OpcionesTinta {
+            variabilidad: Variabilidad::Variable,
+            streamline: 0.2,
+        };
+        assert_eq!(opciones_con_presion_firme(Some(suyas), false), Some(suyas));
+        // Y con la presion firme puesta, un legado conserva su streamline de
+        // fabrica y solo cambia de pluma.
+        let legado = opciones_con_presion_firme(None, true).unwrap();
+        assert_eq!(legado.variabilidad, Variabilidad::Constante);
     }
 
     #[test]

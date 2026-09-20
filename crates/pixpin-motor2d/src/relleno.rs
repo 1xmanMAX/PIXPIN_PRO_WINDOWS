@@ -113,6 +113,73 @@ pub fn lineas_de_rayado(
     salida
 }
 
+/// **El relleno en zigzag** (`zigzag` de Excalidraw, `renderZigzag` de
+/// `Rough.kt:464-478`).
+///
+/// Es el mismo barrido del rayado, pero cada raya se dibuja **dos veces
+/// desplazada media separacion a un lado y al otro**, las dos acabando en el
+/// mismo punto. Lo que sale son galones encadenados: el relleno de «a mano»
+/// que no se confunde con un rayado tecnico.
+///
+/// Va aparte de [`lineas_de_rayado`] y no como una variante de
+/// [`EstiloRelleno`] porque ese enumerado lo traduce el puente
+/// (`excalidraw.rs`), que en esta tanda no se toca. Ver el informe del grupo
+/// A: falta la variante y su brazo, y son dos lineas.
+pub fn lineas_de_zigzag(
+    caja: (f32, f32, f32, f32),
+    elipse: bool,
+    grosor: f32,
+    rugosidad: f32,
+    azar: &mut Azar,
+) -> Vec<(Punto2, Punto2)> {
+    let (_, _, ancho, alto) = caja;
+    if ancho.abs() < 1e-3 || alto.abs() < 1e-3 {
+        return Vec::new();
+    }
+    let sep = separacion(grosor);
+    let angulo = ANGULO_RAYADO.to_radians();
+    // Medio hueco a cada lado: con el entero los galones se pegarian al de la
+    // fila de al lado y el relleno se leeria como un rayado doble.
+    let (dx, dy) = (sep * 0.5 * angulo.cos(), sep * 0.5 * angulo.sin());
+
+    let mut salida = Vec::new();
+    for (a, b) in barrido(&contorno(caja, elipse), ANGULO_RAYADO, sep) {
+        if a.distancia(b) <= f32::EPSILON {
+            continue;
+        }
+        // La ida y la vuelta del galon: las dos ramas nacen separadas y se
+        // juntan en el mismo extremo.
+        let ida = Punto2::nuevo(a.x - dx, a.y + dy);
+        let vuelta = Punto2::nuevo(a.x + dx, a.y - dy);
+        salida.push(temblar(ida, b, rugosidad, azar));
+        salida.push(temblar(vuelta, b, rugosidad, azar));
+    }
+    salida
+}
+
+/// **El rayado a tiralineas** (`pixpin-lines`, propio de PixPin).
+///
+/// Las mismas rayas del barrido **sin pasar por el generador de ruido**. No
+/// esta en Excalidraw y por eso lleva prefijo: el rayado del original imita el
+/// rotulador, y eso es lo que se quiere en un esquema; pero rellenando la
+/// seccion de un plano o el hueco entre dos piezas, un rayado tembloroso «se
+/// lee como suciedad» (`Element.kt:383-392`).
+///
+/// No toma `azar` a proposito: **no gasta ni un numero del generador**. Es lo
+/// que garantiza que sea reproducible y, de paso, lo que hace que el garabato
+/// del contorno salga como si la figura no tuviera relleno.
+pub fn lineas_a_tiralineas(
+    caja: (f32, f32, f32, f32),
+    elipse: bool,
+    grosor: f32,
+) -> Vec<(Punto2, Punto2)> {
+    let (_, _, ancho, alto) = caja;
+    if ancho.abs() < 1e-3 || alto.abs() < 1e-3 {
+        return Vec::new();
+    }
+    barrido(&contorno(caja, elipse), ANGULO_RAYADO, separacion(grosor))
+}
+
 /// El contorno cerrado de la figura inscrita en la caja.
 fn contorno((x, y, ancho, alto): (f32, f32, f32, f32), elipse: bool) -> Vec<Punto2> {
     if !elipse {
@@ -461,6 +528,87 @@ mod pruebas {
         let sin = rayas(EstiloRelleno::Rayado, false);
         assert_eq!(con.len(), sin.len(), "el temblor no cambia cuantas son");
         assert_ne!(con, sin, "con rugosidad las rayas tienen que desviarse");
+    }
+
+    #[test]
+    fn el_zigzag_dibuja_dos_ramas_por_raya_y_las_dos_acaban_en_el_mismo_sitio() {
+        // Es lo que hace un galon: dos ramas que nacen separadas media
+        // separacion y se juntan. Si fuera una sola, seria un rayado normal.
+        let mut azar = Azar::nuevo(7);
+        let z = lineas_de_zigzag((0.0, 0.0, 200.0, 100.0), false, 2.0, 0.0, &mut azar);
+        let mut azar = Azar::nuevo(7);
+        let r = lineas_de_rayado(
+            (0.0, 0.0, 200.0, 100.0),
+            false,
+            EstiloRelleno::Rayado,
+            2.0,
+            0.0,
+            &mut azar,
+        );
+        assert_eq!(z.len(), r.len() * 2, "cada raya son dos ramas");
+        for par in z.chunks_exact(2) {
+            assert_eq!(par[0].1, par[1].1, "las dos ramas no se juntan");
+            assert_ne!(par[0].0, par[1].0, "las dos ramas nacen en el mismo sitio");
+        }
+    }
+
+    #[test]
+    fn el_zigzag_no_se_sale_de_la_elipse_mas_de_medio_hueco() {
+        // Los galones nacen desplazados, asi que pueden asomar media
+        // separacion —y solo eso—: mas seria el relleno saliendose de la
+        // figura, que es el fallo que ya tenia el rayado de la elipse.
+        let mut azar = Azar::nuevo(3);
+        let z = lineas_de_zigzag((0.0, 0.0, 200.0, 100.0), true, 2.0, 0.0, &mut azar);
+        assert!(!z.is_empty());
+        let margen = separacion(2.0);
+        for (a, b) in z {
+            for p in [a, b] {
+                let d = ((p.x - 100.0) / (100.0 + margen)).powi(2)
+                    + ((p.y - 50.0) / (50.0 + margen)).powi(2);
+                assert!(d <= 1.05, "el galon acaba en {p:?} ({d})");
+            }
+        }
+    }
+
+    #[test]
+    fn el_tiralineas_no_tiembla_ni_gasta_un_numero_del_azar() {
+        // Las dos mitades de lo que promete: rectas de verdad —un plano con el
+        // rayado tembloroso «se lee como suciedad»— y sin tocar el generador,
+        // para que el garabato del contorno no dependa del relleno.
+        let caja = (0.0, 0.0, 200.0, 100.0);
+        let rectas = lineas_a_tiralineas(caja, false, 2.0);
+        assert!(rectas.len() > 5, "solo salieron {}", rectas.len());
+        for (a, b) in &rectas {
+            let grados = ((b.y - a.y) / (b.x - a.x)).atan().to_degrees();
+            assert!(
+                (grados - ANGULO_RAYADO).abs() < 1e-3,
+                "la raya va a {grados} y no a {ANGULO_RAYADO}: esta temblando"
+            );
+        }
+        // Y llamarlo dos veces da exactamente lo mismo, sin generador de por
+        // medio: es puro.
+        assert_eq!(rectas, lineas_a_tiralineas(caja, false, 2.0));
+    }
+
+    #[test]
+    fn el_tiralineas_y_el_rayado_ponen_las_mismas_rayas_y_solo_cambia_el_pulso() {
+        // Caso negativo del anterior: si el tiralineas pusiera OTRAS rayas,
+        // cambiar de trama en el panel movería el relleno de sitio.
+        let caja = (0.0, 0.0, 200.0, 100.0);
+        let mut azar = Azar::nuevo(1);
+        let rayado = lineas_de_rayado(caja, false, EstiloRelleno::Rayado, 2.0, 0.0, &mut azar);
+        let rectas = lineas_a_tiralineas(caja, false, 2.0);
+        assert_eq!(rayado.len(), rectas.len());
+        assert_eq!(rayado, rectas, "sin rugosidad tienen que ser las mismas");
+    }
+
+    #[test]
+    fn una_figura_sin_tamano_no_da_galones_ni_tiralineas() {
+        // Caso negativo: sin interior no hay nada que rellenar, y sin el corte
+        // el barrido daria vueltas sobre una separacion inutil.
+        let mut azar = Azar::nuevo(1);
+        assert!(lineas_de_zigzag((0.0, 0.0, 0.0, 50.0), false, 2.0, 1.0, &mut azar).is_empty());
+        assert!(lineas_a_tiralineas((0.0, 0.0, 50.0, 0.0), false, 2.0).is_empty());
     }
 
     #[test]

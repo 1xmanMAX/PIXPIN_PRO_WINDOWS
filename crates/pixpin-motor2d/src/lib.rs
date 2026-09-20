@@ -16,9 +16,11 @@
 #![forbid(unsafe_code)]
 
 pub mod aligerar;
+pub mod arco;
 pub mod azar;
 pub mod cache;
 pub mod camara;
+pub mod codo;
 pub mod elemento;
 pub mod enganche;
 pub mod escalabarra;
@@ -40,6 +42,7 @@ pub mod portapapeles;
 pub mod relleno;
 pub mod seleccion;
 pub mod texto;
+pub mod texto_en_figuras;
 pub mod tinta;
 pub mod tiradores;
 pub mod transformar;

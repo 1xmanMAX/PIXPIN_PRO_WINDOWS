@@ -196,6 +196,169 @@ impl MaterialTinta {
     }
 }
 
+// -------------------------------------------------------------------------
+// Las dos encendidas
+// -------------------------------------------------------------------------
+
+/// **Hasta donde llega la llave de las luces** (`LO_MAS_QUE_ALUMBRAN`).
+///
+/// Hasta uno, la luz **se enciende**: el color se va hacia su tono vivo y el
+/// centro hacia el blanco. De uno para arriba ya no queda color al que ir, y
+/// lo que sube es cuanto se sale del blanco de la pantalla.
+pub const LO_MAS_QUE_ALUMBRAN: f32 = 2.0;
+
+/// Cuanto se va hacia el blanco una tinta encendida a tope.
+///
+/// No hasta el blanco del todo: una luz que llega a blanco puro pierde su
+/// color, y lo que distingue una luz azul de una roja es justo eso. Tres
+/// cuartos de camino dejan el tono a la vista y el trazo deslumbrando.
+pub const HACIA_EL_BLANCO: f32 = 0.75;
+
+/// Cuantas veces el blanco de la interfaz llega a valer la HDR a tope.
+pub const VECES_EL_BLANCO: f32 = 2.0;
+
+/// **La llave de paso de las luces del dibujo** (`LucesDelDibujo` del movil,
+/// la clave `luces` de la escena).
+///
+/// Es una sola para todo el dibujo porque es lo que uno quiere tocar: lo que
+/// se hace con las luces de un plano es subirlas todas o apagarlas todas —se
+/// ensena el dibujo, se apagan; se mira de noche, se suben— y con un mando por
+/// trazo eso son veinte gestos para una decision.
+///
+/// Hoy el PC **conserva** esta clave sin entenderla, dentro de `Lienzo.resto`.
+/// Este tipo es lo que hace falta para leerla; el brazo del puente es del
+/// grupo que herede `excalidraw.rs`. Ver el informe del grupo A.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LucesDelDibujo {
+    pub encendidas: bool,
+    /// Cuanto alumbran, de cero a dos. Uno es como se dibujo cada trazo.
+    pub fuerza: f32,
+}
+
+impl Default for LucesDelDibujo {
+    fn default() -> Self {
+        Self {
+            encendidas: true,
+            fuerza: 1.0,
+        }
+    }
+}
+
+impl LucesDelDibujo {
+    /// Lo que multiplica a la luz de cada trazo. Cero es apagado, y **apagado
+    /// es tinta lisa**: no es un caso raro, es lo que promete el mando. En
+    /// cero sale el color que se eligio, ni mas ni menos. Sin esto, una tinta
+    /// de luz apagada seguia siendo una raya lavada que no era el color de
+    /// nadie.
+    pub fn cuanto(self) -> f32 {
+        if self.encendidas {
+            self.fuerza.clamp(0.0, LO_MAS_QUE_ALUMBRAN)
+        } else {
+            0.0
+        }
+    }
+}
+
+/// Un color llevado a su tono vivo: el mismo tinte, subido hasta que el canal
+/// mas alto toca el tope (`aTodoBrillo`).
+fn a_todo_brillo(c: crate::elemento::ColorRgba) -> crate::elemento::ColorRgba {
+    let techo = c.r.max(c.g).max(c.b);
+    // El negro no tiene tono al que ir: su version encendida es el blanco.
+    if techo <= 0.0 {
+        return crate::elemento::ColorRgba {
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+            a: c.a,
+        };
+    }
+    let k = 1.0 / techo;
+    crate::elemento::ColorRgba {
+        r: (c.r * k).clamp(0.0, 1.0),
+        g: (c.g * k).clamp(0.0, 1.0),
+        b: (c.b * k).clamp(0.0, 1.0),
+        a: c.a,
+    }
+}
+
+/// **El color con el que se pinta una tinta encendida.**
+///
+/// Porte de `comoUnTubo` (`Renderer.kt:2159-2187`), y de aqui sale lo que mas
+/// se acerca `luz`/`hdr` a lo del movil **sin inventar nada**:
+///
+/// El movil **ya no pinta un tubo de neon**. Lo pintaba —una escalera de
+/// pasadas cada vez mas anchas alrededor del trazo— y lo quitó: la raya
+/// cambiaba de grosor al subir la luz, se veian las capas alrededor, y lo
+/// dibujado dejaba de medir lo que decia medir («una cota de un milimetro con
+/// la luz alta ocupaba tres»). Hoy la tinta encendida **ocupa exactamente lo
+/// mismo que apagada**: la misma ruta, el mismo grueso, el mismo contorno.
+/// **Lo unico que cambia es el color.**
+///
+/// O sea que lo que aqui faltaba no era un resplandor: era esta cuenta. Con
+/// ella, `luz` deja de pintarse «como pluma» y pasa a verse como en el
+/// telefono, sin una sola pasada de mas.
+///
+/// `cuanta_luz` es [`LucesDelDibujo::cuanto`]. `margen_hdr` dice si la ventana
+/// puede escribir por encima del blanco; sin el, la HDR se pinta como la luz
+/// normal, acotada a lo que la pantalla sabe dar, que es lo que hace el movil.
+///
+/// Lo que **no** se puede portar tal cual es el rango extendido: el movil
+/// empaqueta el color en `EXTENDED_SRGB`, donde uno es el blanco de la
+/// interfaz y de ahi para arriba se sigue. Aqui el color sale con los canales
+/// ya multiplicados y **sin acotar** cuando hay margen, para que quien pinte
+/// decida si su destino los admite; con `margen_hdr` en falso sale acotado.
+pub fn color_encendido(
+    tinta: crate::elemento::ColorRgba,
+    material: MaterialTinta,
+    cuanta_luz: f32,
+    margen_hdr: bool,
+) -> crate::elemento::ColorRgba {
+    if !material.alumbra() {
+        return tinta;
+    }
+    let mando = cuanta_luz.max(0.0);
+    // Apagada, la luz es tinta lisa. Ni una capa encima: el color que se
+    // eligio.
+    if mando <= 0.005 {
+        return tinta;
+    }
+    let cuanta = mando.min(1.0);
+    // Hacia su tono vivo...
+    let techo = a_todo_brillo(tinta);
+    let hacia = |a: f32, b: f32| a + (b - a) * cuanta;
+    let vivo = crate::elemento::ColorRgba {
+        r: hacia(tinta.r, techo.r),
+        g: hacia(tinta.g, techo.g),
+        b: hacia(tinta.b, techo.b),
+        a: tinta.a,
+    };
+    // ...y de ahi hacia el blanco por dentro.
+    let k = cuanta * HACIA_EL_BLANCO;
+    let aclarar = |v: f32| (v + (1.0 - v) * k).clamp(0.0, 1.0);
+    let encendida = crate::elemento::ColorRgba {
+        r: aclarar(vivo.r),
+        g: aclarar(vivo.g),
+        b: aclarar(vivo.b),
+        a: tinta.a,
+    };
+    // **Solo la HDR se sale del blanco**, y solo si hay donde.
+    let de_mas = if material == MaterialTinta::Hdr {
+        mando
+    } else {
+        0.0
+    };
+    if de_mas <= 0.005 || !margen_hdr {
+        return encendida;
+    }
+    let sube = 1.0 + (VECES_EL_BLANCO - 1.0) * de_mas.clamp(0.0, 1.0);
+    crate::elemento::ColorRgba {
+        r: encendida.r * sube,
+        g: encendida.g * sube,
+        b: encendida.b * sube,
+        a: tinta.a,
+    }
+}
+
 /// El paso de la tela para un trazo de `gordo` de ancho.
 ///
 /// Del ancho y no en pixeles: una trama es **una proporcion** —tantas rayas
@@ -630,6 +793,90 @@ mod pruebas {
         ] {
             assert!(!m.se_inclina(), "{m:?}");
         }
+    }
+
+    use crate::elemento::ColorRgba;
+
+    const AZUL: ColorRgba = ColorRgba::opaco(0.1, 0.2, 0.5);
+
+    #[test]
+    fn una_tinta_que_no_alumbra_no_cambia_de_color_por_mucha_luz_que_haya() {
+        // Caso negativo, y el mas importante: la llave de las luces no puede
+        // aclarar un plano entero. Solo mira a las dos encendidas.
+        for m in MATERIALES.into_iter().filter(|m| !m.alumbra()) {
+            assert_eq!(color_encendido(AZUL, m, 2.0, true), AZUL, "{m:?}");
+        }
+    }
+
+    #[test]
+    fn con_las_luces_apagadas_la_tinta_de_luz_es_tinta_lisa() {
+        // No es un caso raro: es lo que promete el mando. Sin esto, una tinta
+        // de luz apagada seguia siendo una raya lavada que no era el color de
+        // nadie.
+        let apagadas = LucesDelDibujo {
+            encendidas: false,
+            fuerza: 2.0,
+        };
+        assert_eq!(apagadas.cuanto(), 0.0);
+        assert_eq!(
+            color_encendido(AZUL, MaterialTinta::Luz, apagadas.cuanto(), true),
+            AZUL
+        );
+    }
+
+    #[test]
+    fn encendida_la_tinta_se_va_hacia_su_tono_vivo_y_hacia_el_blanco_sin_perderlo() {
+        // Las dos mitades: sube de brillo Y conserva que es azul. Una luz que
+        // llegara a blanco puro dejaria de distinguirse de una roja.
+        let c = color_encendido(AZUL, MaterialTinta::Luz, 1.0, false);
+        assert!(c.r > AZUL.r && c.g > AZUL.g && c.b > AZUL.b, "{c:?}");
+        assert!(c.b > c.g && c.g > c.r, "perdio el tono: {c:?}");
+        assert!(c.r < 1.0 && c.g < 1.0, "llego al blanco puro: {c:?}");
+        assert_eq!(c.a, AZUL.a, "la luz no toca la opacidad");
+    }
+
+    #[test]
+    fn solo_la_hdr_se_sale_del_blanco_y_solo_si_hay_margen() {
+        // La luz normal es la de siempre, acotada a lo que la pantalla sabe
+        // dar; la HDR escribe por encima del uno.
+        let luz = color_encendido(AZUL, MaterialTinta::Luz, 2.0, true);
+        assert!(luz.r <= 1.0 && luz.g <= 1.0 && luz.b <= 1.0, "{luz:?}");
+        let hdr = color_encendido(AZUL, MaterialTinta::Hdr, 2.0, true);
+        assert!(hdr.b > 1.0, "la hdr no deslumbra: {hdr:?}");
+        // Caso negativo: sin margen, la HDR se pinta como la luz normal. Ni se
+        // intenta, que es lo que hace el movil.
+        assert_eq!(color_encendido(AZUL, MaterialTinta::Hdr, 2.0, false), luz);
+    }
+
+    #[test]
+    fn la_llave_se_topa_en_el_doble_y_no_baja_de_cero() {
+        assert_eq!(
+            LucesDelDibujo {
+                encendidas: true,
+                fuerza: 9.0
+            }
+            .cuanto(),
+            LO_MAS_QUE_ALUMBRAN
+        );
+        assert_eq!(
+            LucesDelDibujo {
+                encendidas: true,
+                fuerza: -3.0
+            }
+            .cuanto(),
+            0.0
+        );
+        assert_eq!(LucesDelDibujo::default().cuanto(), 1.0);
+    }
+
+    #[test]
+    fn una_tinta_negra_encendida_se_va_al_blanco_y_no_se_queda_negra() {
+        // El caso que rompe la cuenta del tono vivo: el negro no tiene canal
+        // al que subir, asi que dividir por su maximo seria dividir por cero.
+        let negro = ColorRgba::opaco(0.0, 0.0, 0.0);
+        let c = color_encendido(negro, MaterialTinta::Luz, 1.0, false);
+        assert!(c.r > 0.9 && c.g > 0.9 && c.b > 0.9, "{c:?}");
+        assert!(c.r.is_finite(), "{c:?}");
     }
 
     #[test]

@@ -40,6 +40,158 @@ pub const TAM_POR_DEFECTO: f32 = 20.0;
 /// por defecto al leer un fichero sin `familia`.
 pub const FAMILIA_POR_DEFECTO: &str = "Segoe UI";
 
+/// Cuanto se inclina la cursiva, en unidades de sesgo horizontal por unidad de
+/// alto (`SESGO_DE_LA_CURSIVA` del movil).
+///
+/// Un cuarto es lo que usa el propio Android para su italica falsa: mas se lee
+/// como un error de pintado y menos no se distingue de la letra recta. Es
+/// italica **falsa** en los dos aparatos y a proposito: las tres fuentes de
+/// Excalidraw no traen corte italico, asi que o se sesga o no hay cursiva.
+pub const SESGO_DE_LA_CURSIVA: f32 = -0.25;
+
+/// A que altura del renglon va la raya del tachado, en multiplos del tamano de
+/// letra medidos desde la linea de base hacia arriba.
+///
+/// Por la mitad de la equis, que es donde la pone cualquier tipografia: mas
+/// arriba parece un subrayado del renglon de encima y mas abajo se confunde
+/// con la linea de base.
+pub const ALTURA_DEL_TACHADO: f32 = 0.30;
+
+/// Lo gorda que va la raya del tachado, en multiplos del tamano de letra.
+pub const GROSOR_DEL_TACHADO: f32 = 0.06;
+
+/// **Como va escrito un texto**: negrita, cursiva y tachado.
+///
+/// Son los tres campos propios de PixPin (`Element.kt:686-688`) y el propio
+/// codigo del movil avisa de que se pierden al exportar a `.excalidraw`
+/// —Excalidraw no los tiene—, pero **dentro del puente PixPin tienen que
+/// viajar**: sin ellos, el titulo en negrita de un esquema vuelve del PC en
+/// redonda y lo tachado deja de estar tachado.
+///
+/// Va como tipo y no como tres booleanos sueltos porque los tres se piden, se
+/// pintan y se guardan juntos: quien pinta un texto necesita los tres o
+/// ninguno.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct EstiloDeTexto {
+    pub negrita: bool,
+    pub cursiva: bool,
+    pub tachado: bool,
+}
+
+impl EstiloDeTexto {
+    /// Si no hay nada que aplicar: el texto se pinta tal cual.
+    pub fn liso(self) -> bool {
+        self == EstiloDeTexto::default()
+    }
+
+    /// El sesgo horizontal que hay que aplicar al pintar, o cero.
+    pub fn sesgo(self) -> f32 {
+        if self.cursiva {
+            SESGO_DE_LA_CURSIVA
+        } else {
+            0.0
+        }
+    }
+}
+
+/// La raya que cruza un renglon tachado: de donde a donde, y lo gorda que va.
+pub type RayaDeTachado = ((f32, f32), (f32, f32), f32);
+
+/// La raya del tachado de un renglon.
+///
+/// `x`/`y` son la esquina de arriba a la izquierda del renglon, como en
+/// `Orden::Texto`. `None` cuando no hay nada que tachar —sin la marca, o un
+/// renglon vacio—: una raya suelta en el aire se lee como un guion largo.
+///
+/// Se calcula aqui y no en quien pinta porque es la misma cuenta para el
+/// editor, para la exportacion y para la miniatura, y tres copias acabarian
+/// poniendo la raya a tres alturas.
+pub fn raya_del_tachado(
+    texto: &str,
+    x: f32,
+    y: f32,
+    tam: f32,
+    estilo: EstiloDeTexto,
+) -> Option<RayaDeTachado> {
+    if !estilo.tachado || texto.trim().is_empty() || tam <= 0.0 {
+        return None;
+    }
+    // Sin la holgura de `medida_estimada`: esa existe para dejar sitio a la
+    // barra del cursor, y una raya de tachado que sobresale un caracter por la
+    // derecha se lee como un guion pegado a la palabra.
+    let ancho = texto.trim_end().chars().count() as f32 * tam * ANCHO_POR_CARACTER;
+    if ancho <= 0.0 {
+        return None;
+    }
+    // La base del renglon esta a un alto de letra de su borde de arriba; de
+    // ahi se sube la altura del tachado.
+    let alto_raya = y + tam - tam * ALTURA_DEL_TACHADO;
+    Some((
+        (x, alto_raya),
+        (x + ancho, alto_raya),
+        (tam * GROSOR_DEL_TACHADO).max(1.0),
+    ))
+}
+
+// -------------------------------------------------------------------------
+// Las tres letras de Excalidraw, por su numero
+// -------------------------------------------------------------------------
+
+/// Excalifont, la de a mano. La de por omision.
+pub const FUENTE_EXCALIFONT: u8 = 5;
+/// Nunito, la «normal», para cuando hace falta que se lea limpio.
+pub const FUENTE_NUNITO: u8 = 6;
+/// Comic Shanns, la monoespaciada.
+pub const FUENTE_COMIC_SHANNS: u8 = 8;
+
+/// La familia con la que hay que pintar, **resolviendo los alias viejos**.
+///
+/// Los numeros no son correlativos y **van en el fichero**: 5, 6 y 8, con 1
+/// (Virgil), 2 (Helvetica) y 3 (Cascadia) como alias de los dibujos de antes.
+/// Un dibujo guardado con aquellos numeros tiene que seguir viendose con la
+/// letra que le toca, no caer al valor por omision.
+pub fn familia_resuelta(id: Option<u8>) -> u8 {
+    match id {
+        None | Some(1) | Some(FUENTE_EXCALIFONT) => FUENTE_EXCALIFONT,
+        Some(2) | Some(FUENTE_NUNITO) => FUENTE_NUNITO,
+        Some(3) | Some(FUENTE_COMIC_SHANNS) => FUENTE_COMIC_SHANNS,
+        _ => FUENTE_EXCALIFONT,
+    }
+}
+
+/// El numero de familia que le corresponde a un nombre de fuente de Windows.
+///
+/// **Esto es lo que impide que el movil reabra el texto con otra letra.** Aqui
+/// `Figura::Texto` guarda el nombre de una fuente del sistema («Segoe UI») y
+/// el fichero espera uno de esos tres numeros: escribir el nombre haria que el
+/// movil no reconociera la familia y cayera a la de por omision.
+///
+/// No adivina: lo que no es ninguna de las tres cae en Excalifont, que es lo
+/// que hace el movil con un numero que no conoce.
+pub fn numero_de_familia(nombre: &str) -> u8 {
+    let n = nombre.trim();
+    if n.eq_ignore_ascii_case("Nunito") {
+        FUENTE_NUNITO
+    } else if n.eq_ignore_ascii_case("Comic Shanns") || n.eq_ignore_ascii_case("Comic Shanns 2") {
+        FUENTE_COMIC_SHANNS
+    } else {
+        FUENTE_EXCALIFONT
+    }
+}
+
+/// Y al reves: el nombre con el que pedirle esa letra a Windows.
+///
+/// Si la fuente no esta instalada, quien pinta se queda con la del sistema: es
+/// preferible a que no se vea el texto, que es lo que decide el movil con la
+/// misma disyuntiva.
+pub fn nombre_de_familia(id: Option<u8>) -> &'static str {
+    match familia_resuelta(id) {
+        FUENTE_NUNITO => "Nunito",
+        FUENTE_COMIC_SHANNS => "Comic Shanns",
+        _ => "Excalifont",
+    }
+}
+
 /// Una tecla de las que mueven o borran mientras se escribe.
 ///
 /// No incluye las letras: esas llegan ya compuestas (con su IME y su
@@ -238,6 +390,93 @@ pub fn medida_estimada(texto: &str, tam: f32) -> (f32, f32) {
         (mas_largo + 1) as f32 * tam * ANCHO_POR_CARACTER,
         renglones as f32 * tam * INTERLINEADO,
     )
+}
+
+#[cfg(test)]
+mod pruebas_de_estilo {
+    use super::*;
+
+    #[test]
+    fn un_texto_sin_marcas_se_pinta_tal_cual() {
+        let liso = EstiloDeTexto::default();
+        assert!(liso.liso());
+        assert_eq!(liso.sesgo(), 0.0);
+        assert!(raya_del_tachado("hola", 0.0, 0.0, 20.0, liso).is_none());
+    }
+
+    #[test]
+    fn la_cursiva_inclina_y_la_negrita_no() {
+        // Caso negativo: si la negrita tocara el sesgo, un titulo en negrita
+        // saldria ademas torcido.
+        let cursiva = EstiloDeTexto {
+            cursiva: true,
+            ..Default::default()
+        };
+        assert_eq!(cursiva.sesgo(), SESGO_DE_LA_CURSIVA);
+        let negrita = EstiloDeTexto {
+            negrita: true,
+            ..Default::default()
+        };
+        assert_eq!(negrita.sesgo(), 0.0);
+        assert!(!negrita.liso());
+    }
+
+    #[test]
+    fn la_raya_del_tachado_cruza_la_palabra_por_la_mitad_de_la_equis() {
+        let t = EstiloDeTexto {
+            tachado: true,
+            ..Default::default()
+        };
+        let ((x0, y0), (x1, y1), grosor) =
+            raya_del_tachado("hola", 10.0, 100.0, 20.0, t).expect("hay que tachar");
+        assert_eq!(x0, 10.0, "la raya empieza donde el texto");
+        assert!(x1 > x0, "la raya no tiene largo");
+        assert_eq!(y0, y1, "la raya sale torcida");
+        // Ni pegada al borde de arriba del renglon ni en la linea de base.
+        assert!(y0 > 100.0 && y0 < 120.0, "la raya cae en {y0}");
+        assert!(grosor >= 1.0, "una raya de menos de un pixel no se ve");
+    }
+
+    #[test]
+    fn un_renglon_en_blanco_no_lleva_raya_suelta_en_el_aire() {
+        // Caso negativo: una raya sin texto debajo se lee como un guion largo.
+        let t = EstiloDeTexto {
+            tachado: true,
+            ..Default::default()
+        };
+        assert!(raya_del_tachado("", 0.0, 0.0, 20.0, t).is_none());
+        assert!(raya_del_tachado("   ", 0.0, 0.0, 20.0, t).is_none());
+        assert!(raya_del_tachado("hola", 0.0, 0.0, 0.0, t).is_none());
+    }
+
+    #[test]
+    fn los_numeros_de_fuente_son_los_del_fichero_y_los_alias_viejos_se_resuelven() {
+        // Si esto se pierde, un dibujo guardado con la numeracion vieja se
+        // reabre con otra letra.
+        assert_eq!(familia_resuelta(None), FUENTE_EXCALIFONT);
+        assert_eq!(familia_resuelta(Some(1)), FUENTE_EXCALIFONT, "Virgil");
+        assert_eq!(familia_resuelta(Some(2)), FUENTE_NUNITO, "Helvetica");
+        assert_eq!(familia_resuelta(Some(3)), FUENTE_COMIC_SHANNS, "Cascadia");
+        assert_eq!(familia_resuelta(Some(5)), FUENTE_EXCALIFONT);
+        assert_eq!(familia_resuelta(Some(6)), FUENTE_NUNITO);
+        assert_eq!(familia_resuelta(Some(8)), FUENTE_COMIC_SHANNS);
+        // Caso negativo: un numero que no es de nadie cae en la de por
+        // omision, no en un panico ni en un hueco.
+        assert_eq!(familia_resuelta(Some(99)), FUENTE_EXCALIFONT);
+    }
+
+    #[test]
+    fn una_fuente_de_windows_no_viaja_al_fichero_con_su_nombre() {
+        // **Esto es lo que impide que el movil reabra el texto con otra
+        // letra**: el fichero espera 5, 6 u 8, no «Segoe UI».
+        assert_eq!(numero_de_familia("Segoe UI"), FUENTE_EXCALIFONT);
+        assert_eq!(numero_de_familia("Nunito"), FUENTE_NUNITO);
+        assert_eq!(numero_de_familia("comic shanns"), FUENTE_COMIC_SHANNS);
+        // Y la ida y vuelta es estable para las tres de verdad.
+        for id in [FUENTE_EXCALIFONT, FUENTE_NUNITO, FUENTE_COMIC_SHANNS] {
+            assert_eq!(numero_de_familia(nombre_de_familia(Some(id))), id);
+        }
+    }
 }
 
 #[cfg(test)]
