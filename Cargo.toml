@@ -24,6 +24,8 @@ pixpin-codec = { path = "crates/pixpin-codec" }
 pixpin-capture = { path = "crates/pixpin-capture" }
 pixpin-pin = { path = "crates/pixpin-pin" }
 pixpin-pdf = { path = "crates/pixpin-pdf" }
+# Word, libros y paginas leidos dentro (visor de documentos, tanda 2.1).
+pixpin-docs = { path = "crates/pixpin-docs" }
 pixpin-ocr = { path = "crates/pixpin-ocr" }
 pixpin-record = { path = "crates/pixpin-record" }
 pixpin-store = { path = "crates/pixpin-store" }

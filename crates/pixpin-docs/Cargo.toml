@@ -1,0 +1,13 @@
+[package]
+name = "pixpin-docs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# Un `.docx` y un `.epub` son ZIP con XML dentro. Es el mismo lector que ya
+# usa `pixpin-proyecto` para el `.pixpin`, con la misma version y los mismos
+# metodos: solo `deflate`, que es lo unico que Word y los libros usan.
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+thiserror = "2.0"

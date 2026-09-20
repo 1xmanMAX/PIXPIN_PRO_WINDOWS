@@ -575,6 +575,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pixpin-docs"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "zip",
+]
+
+[[package]]
 name = "pixpin-flow"
 version = "0.1.0"
 
