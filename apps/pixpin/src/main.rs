@@ -72,11 +72,13 @@ mod recordatorios;
 mod reproductor;
 mod scroll;
 mod sincronizar;
+mod teleprompter;
 mod universo;
 mod ventana_ajustes;
 mod ventana_chat;
 mod ventana_editor;
 mod visor;
+mod voz;
 
 use anyhow::{Context, Result};
 use overlay::{AccionFinal, ModoConfirmacion, Recursos, TextosBarra, ejecutar_overlay};

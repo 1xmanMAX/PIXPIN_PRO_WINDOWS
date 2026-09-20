@@ -230,7 +230,6 @@ chat-ya-en-marcha = PixPin is already running on Windows: pins come out with its
 chat-ajustes-bandeja = Settings open from the PixPin icon in the tray
 chat-proyectos-lista = Projects are the list on the left
 chat-no-hay-voz = Recording voice notes does not exist on Windows yet
-chat-no-hay-transcripcion = Converting audio to text does not exist on Windows yet
 chat-no-hay-letra = Audio lyrics do not exist on Windows yet
 chat-no-hay-aligerar = Making a PDF lighter does not exist on Windows yet
 chat-no-hay-unir = On Windows every chat is already a project: use Forward to take it to another
@@ -652,6 +651,7 @@ pdf-aligerar-objetos-comprimidos = This PDF keeps its objects compressed, and re
 pdf-aligerar-sin-trailer = The PDF has no readable trailer.
 pdf-aligerar-sin-objetos = No object inside the PDF was recognised.
 pdf-aligerar-largo-indirecto = A stream in the PDF doesn't state its length.
+pdf-aligerar-objetos-sin-entender = There are parts of the PDF this reader does not understand; rewriting it could drop them.
 pdf-aligerar-sin-fotos = It has no photos to lower: the weight is text or vectors.
 pdf-aligerar-ya-al-minimo = The photos are already at the minimum.
 pdf-aligerar-no-compensa = It would only drop from { $antes } to { $despues }: not worth it.
@@ -671,3 +671,36 @@ chat-recordatorio-titulo = Reminder
 
 # A message menu entry: send the attachment to someone over Wi-Fi.
 chat-enviar-wifi = Send over Wi-Fi
+
+# Turning a voice note into text with Vosk. What is missing is named with its
+# file and link: PixPin never downloads anything on its own.
+chat-transcribiendo = Converting to text… { $pct }%
+chat-transcribir-hecha = Voice note converted to text
+chat-transcribir-en-marcha = Another note is already being converted; wait for it to finish
+chat-transcribir-sin-mensaje = The note is no longer in the conversation: the text has nowhere to go
+chat-transcribir-cancelada = Text conversion was cancelled
+chat-voz-sin-motor = The speech recogniser is missing: copy { $motor } into { $donde }
+chat-voz-sin-modelo = The { $modelo } speech model is missing: download it from { $enlace } and unzip it inside { $donde }
+chat-voz-idioma-sin-modelo = Vosk has no speech model for this language
+chat-voz-ruta-imposible = The model folder ({ $donde }) has characters the recogniser cannot open; move it to a path without accents
+chat-voz-modelo-ilegible = The model in { $donde } is incomplete or could not be loaded
+chat-voz-no-es-audio = This note's audio could not be read
+chat-voz-audio-vacio = The audio is empty: there is nothing to convert
+chat-voz-no-se-entiende = Nothing said in the note could be understood
+
+# The teleprompter: the text scrolls by and you read it aloud while it
+# records. There is no synthetic voice anywhere, same as on the phone.
+telepronter-titulo = Read aloud
+telepronter-ensayar = Rehearse
+telepronter-parar = Stop
+telepronter-grabar = Record
+telepronter-terminar = Finish
+telepronter-tirar = Discard
+telepronter-velocidad = speed and size
+telepronter-preparate = Get ready
+telepronter-muy-corta = That reading was too short
+telepronter-sin-micro = No microphone available
+chat-telepronter-borrador = What is typed in the box
+chat-telepronter-sin-texto = There is no text to read: type something in the box or attach a .txt or .md
+chat-telepronter-abierto = The teleprompter is already open
+chat-telepronter-hecha = Reading saved as a voice note

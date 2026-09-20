@@ -250,7 +250,6 @@ chat-ya-en-marcha = PixPin ya está en marcha en Windows: los pines salen con su
 chat-ajustes-bandeja = Los ajustes se abren desde el icono de PixPin en la bandeja
 chat-proyectos-lista = Los proyectos son la lista de la izquierda
 chat-no-hay-voz = Grabar notas de voz todavía no existe en Windows
-chat-no-hay-transcripcion = Pasar audio a texto todavía no existe en Windows
 chat-no-hay-letra = La letra de un audio todavía no existe en Windows
 chat-no-hay-aligerar = Aligerar un PDF todavía no existe en Windows
 chat-no-hay-unir = En Windows cada chat ya es un proyecto: usa Reenviar para llevarlo a otro
@@ -653,6 +652,7 @@ pdf-aligerar-objetos-comprimidos = Este PDF guarda sus objetos comprimidos, y aq
 pdf-aligerar-sin-trailer = El PDF no tiene un tráiler legible.
 pdf-aligerar-sin-objetos = No se reconoció ningún objeto dentro del PDF.
 pdf-aligerar-largo-indirecto = Un flujo del PDF no dice cuánto mide.
+pdf-aligerar-objetos-sin-entender = Hay partes del PDF que este lector no entiende; tocarlo podría tirarlas.
 pdf-aligerar-sin-fotos = No lleva fotos que se puedan bajar: lo que pesa es el texto o los vectores.
 pdf-aligerar-ya-al-minimo = Las fotos ya están al mínimo.
 pdf-aligerar-no-compensa = Solo bajaría de { $antes } a { $despues }: no compensa.
@@ -672,3 +672,36 @@ chat-recordatorio-titulo = Recordatorio
 
 # El menu de un mensaje con adjunto: mandarlo a otra persona por la wifi.
 chat-enviar-wifi = Enviar por Wi-Fi
+
+# Pasar una nota de voz a texto con Vosk. Lo que falta se dice con el nombre
+# del fichero y el enlace: PixPin no descarga nada por su cuenta.
+chat-transcribiendo = Pasando a texto… { $pct } %
+chat-transcribir-hecha = Nota pasada a texto
+chat-transcribir-en-marcha = Ya se está pasando otra nota a texto; espera a que acabe
+chat-transcribir-sin-mensaje = La nota ya no está en la conversación: el texto no tiene dónde ir
+chat-transcribir-cancelada = Se canceló el paso a texto
+chat-voz-sin-motor = Falta el reconocedor de voz: copia { $motor } en { $donde }
+chat-voz-sin-modelo = Falta el modelo de voz { $modelo }: descárgalo de { $enlace } y descomprímelo dentro de { $donde }
+chat-voz-idioma-sin-modelo = Vosk no tiene modelo de voz para este idioma
+chat-voz-ruta-imposible = La carpeta del modelo ({ $donde }) lleva caracteres que el reconocedor no sabe abrir; muévela a una ruta sin tildes
+chat-voz-modelo-ilegible = El modelo de { $donde } está incompleto o no se pudo cargar
+chat-voz-no-es-audio = No se pudo leer el audio de esta nota
+chat-voz-audio-vacio = El audio está vacío: no hay nada que pasar a texto
+chat-voz-no-se-entiende = No se entendió nada de lo que se dice en la nota
+
+# El teleprónter: el texto baja solo y uno lo lee en voz alta, grabándose.
+# No hay voz sintética en ninguna parte, igual que en el móvil.
+telepronter-titulo = Leer en voz alta
+telepronter-ensayar = Ensayar
+telepronter-parar = Parar
+telepronter-grabar = Grabar
+telepronter-terminar = Terminar
+telepronter-tirar = Tirar
+telepronter-velocidad = velocidad y letra
+telepronter-preparate = Prepárate
+telepronter-muy-corta = La lectura salió demasiado corta
+telepronter-sin-micro = No hay micrófono disponible
+chat-telepronter-borrador = Lo escrito en la caja
+chat-telepronter-sin-texto = No hay ningún texto que leer: escribe algo en la caja o adjunta un .txt o un .md
+chat-telepronter-abierto = El teleprónter ya está abierto
+chat-telepronter-hecha = Lectura guardada como nota de voz

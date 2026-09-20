@@ -24,7 +24,7 @@ use pixpin_geom::Rect;
 use pixpin_proyecto::cuaderno::{Clase, Mensaje};
 use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
-use pixpin_store::Idioma;
+use pixpin_store::{Catalogo, Idioma};
 use pixpin_voz::telepronter::{
     self, CUENTA_ATRAS, Desfile, Medida, TAMANO_POR_DEFECTO, VELOCIDAD_POR_DEFECTO,
 };
@@ -195,6 +195,10 @@ fn abrir(
     destino: &Path,
     enviar: &Sender<Lectura>,
 ) -> Result<()> {
+    // El catalogo se carga **aqui dentro** y no se recibe hecho: `Catalogo`
+    // no cruza hilos, y esta ventana vive en el suyo.
+    let textos = Catalogo::nuevo(idioma);
+    let textos = &textos;
     let parrafos = telepronter::parrafos_de(texto);
     if parrafos.is_empty() {
         // Sin texto no hay telepronter. Quien llama elige la fuente; abrir
@@ -210,7 +214,7 @@ fn abrir(
     let escala = monitor.escala_por_cien as f32 / 100.0;
     let marco: Rect = monitor.area;
 
-    let ventana = VentanaOverlay::nueva_normal(marco, t(idioma, Texto::Titulo))
+    let ventana = VentanaOverlay::nueva_normal(marco, &t(textos, Texto::Titulo))
         .context("no se pudo abrir la ventana del telepronter")?;
     let motor = recursos.motor();
     let superficie = Superficie::nueva(
@@ -256,7 +260,7 @@ fn abrir(
                 EventoOverlay::BotonPulsado(p) => {
                     e.raton = ((p.x - marco.x) as f32, (p.y - marco.y) as f32);
                     if let Some(que) = bajo_el_raton(&e) {
-                        hacer(&mut e, que, idioma, enviar, &mut vivo);
+                        hacer(&mut e, que, textos, enviar, &mut vivo);
                     }
                 }
                 EventoOverlay::Rueda(muescas) => {
@@ -266,26 +270,26 @@ fn abrir(
                         .empujar(-(muescas as f32) * e.tamano * 3.0 * escala);
                 }
                 EventoOverlay::Tecla { vk, .. } => match vk {
-                    VK_ESCAPE => hacer(&mut e, Accion::Cerrar, idioma, enviar, &mut vivo),
+                    VK_ESCAPE => hacer(&mut e, Accion::Cerrar, textos, enviar, &mut vivo),
                     // Espacio: ensayar o parar de ensayar, que es el mismo
                     // boton en el movil.
-                    VK_ESPACIO => hacer(&mut e, Accion::Ensayar, idioma, enviar, &mut vivo),
+                    VK_ESPACIO => hacer(&mut e, Accion::Ensayar, textos, enviar, &mut vivo),
                     VK_INTRO => {
                         let que = if e.fase == Fase::Grabando {
                             Accion::Terminar
                         } else {
                             Accion::Grabar
                         };
-                        hacer(&mut e, que, idioma, enviar, &mut vivo);
+                        hacer(&mut e, que, textos, enviar, &mut vivo);
                     }
                     VK_ARRIBA | VK_DERECHA => {
-                        hacer(&mut e, Accion::MasVelocidad, idioma, enviar, &mut vivo)
+                        hacer(&mut e, Accion::MasVelocidad, textos, enviar, &mut vivo)
                     }
                     VK_ABAJO | VK_IZQUIERDA => {
-                        hacer(&mut e, Accion::MenosVelocidad, idioma, enviar, &mut vivo)
+                        hacer(&mut e, Accion::MenosVelocidad, textos, enviar, &mut vivo)
                     }
-                    VK_MAS => hacer(&mut e, Accion::MasLetra, idioma, enviar, &mut vivo),
-                    VK_MENOS => hacer(&mut e, Accion::MenosLetra, idioma, enviar, &mut vivo),
+                    VK_MAS => hacer(&mut e, Accion::MasLetra, textos, enviar, &mut vivo),
+                    VK_MENOS => hacer(&mut e, Accion::MenosLetra, textos, enviar, &mut vivo),
                     VK_NEXT => e.desfile.empujar(marco.alto as f32 * 0.5),
                     VK_PRIOR => e.desfile.empujar(-(marco.alto as f32) * 0.5),
                     _ => {}
@@ -308,7 +312,7 @@ fn abrir(
                 e.cuenta_hasta = ahora + MS_POR_NUMERO;
             } else {
                 e.cuenta = 0;
-                grabar_ya(&mut e, idioma, destino, ahora);
+                grabar_ya(&mut e, textos, destino, ahora);
             }
         }
 
@@ -329,7 +333,7 @@ fn abrir(
         if let Ok(destino_sup) = superficie.empezar(&motor) {
             let _ = motor.dibujar(&destino_sup, |p: &Pintor| {
                 medir(&mut e, p, marco, escala);
-                pintar(&mut e, p, marco, escala, idioma, ahora);
+                pintar(&mut e, p, marco, escala, textos, ahora);
             });
             let _ = superficie.presentar();
         }
@@ -387,7 +391,7 @@ fn medir(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32) {
     e.medido_con = (tam, ancho as u32);
 }
 
-fn pintar(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, idioma: Idioma, ahora: u64) {
+fn pintar(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, textos: &Catalogo, ahora: u64) {
     let ancho = marco.ancho as f32;
     let alto = marco.alto as f32;
     p.limpiar(FONDO);
@@ -442,7 +446,7 @@ fn pintar(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, idioma: Idioma, 
             reloj::duracion_legible(ahora.saturating_sub(e.inicio) as i64)
         )
     } else {
-        t(idioma, Texto::Titulo).to_string()
+        t(textos, Texto::Titulo)
     };
     let color_rotulo = if e.fase == Fase::Grabando {
         ROJO
@@ -503,7 +507,7 @@ fn pintar(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, idioma: Idioma, 
         x += (ancho_b + 6.0) * escala;
     }
     p.texto(
-        t(idioma, Texto::Velocidad),
+        &t(textos, Texto::Velocidad),
         x + 8.0 * escala,
         y_boton + 10.0 * escala,
         14.0 * escala,
@@ -513,8 +517,8 @@ fn pintar(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, idioma: Idioma, 
     // A la derecha, los dos grandes.
     let ancho_grande = 150.0 * escala;
     let (que, rotulo) = match e.fase {
-        Fase::Grabando => (Accion::Terminar, t(idioma, Texto::Terminar)),
-        _ => (Accion::Grabar, t(idioma, Texto::Grabar)),
+        Fase::Grabando => (Accion::Terminar, t(textos, Texto::Terminar)),
+        _ => (Accion::Grabar, t(textos, Texto::Grabar)),
     };
     boton(
         e,
@@ -526,16 +530,16 @@ fn pintar(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, idioma: Idioma, 
             alto: alto_boton,
         },
         que,
-        rotulo,
+        &rotulo,
         true,
         escala,
     );
     let (que2, rotulo2) = if e.fase == Fase::Grabando {
-        (Accion::Tirar, t(idioma, Texto::Tirar))
+        (Accion::Tirar, t(textos, Texto::Tirar))
     } else if e.fase == Fase::Ensayando {
-        (Accion::Ensayar, t(idioma, Texto::Parar))
+        (Accion::Ensayar, t(textos, Texto::Parar))
     } else {
-        (Accion::Ensayar, t(idioma, Texto::Ensayar))
+        (Accion::Ensayar, t(textos, Texto::Ensayar))
     };
     boton(
         e,
@@ -547,7 +551,7 @@ fn pintar(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, idioma: Idioma, 
             alto: alto_boton,
         },
         que2,
-        rotulo2,
+        &rotulo2,
         false,
         escala,
     );
@@ -584,7 +588,8 @@ fn pintar(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, idioma: Idioma, 
             tam_numero,
             TEXTO,
         );
-        let listo = t(idioma, Texto::Preparate);
+        let listo = t(textos, Texto::Preparate);
+        let listo = listo.as_str();
         let (w2, _) = p.medir_texto(listo, 20.0 * escala);
         p.texto(
             listo,
@@ -642,7 +647,13 @@ fn bajo_el_raton(e: &Estado) -> Option<Accion> {
         .map(|b| b.que)
 }
 
-fn hacer(e: &mut Estado, que: Accion, idioma: Idioma, enviar: &Sender<Lectura>, vivo: &mut bool) {
+fn hacer(
+    e: &mut Estado,
+    que: Accion,
+    textos: &Catalogo,
+    enviar: &Sender<Lectura>,
+    vivo: &mut bool,
+) {
     let ahora = pixpin_shell::entorno::ahora_utc_ms() as u64;
     match que {
         Accion::Cerrar => *vivo = false,
@@ -669,7 +680,7 @@ fn hacer(e: &mut Estado, que: Accion, idioma: Idioma, enviar: &Sender<Lectura>, 
             e.fase = Fase::Parado;
             e.desfile.reiniciar();
         }
-        Accion::Terminar => terminar(e, idioma, enviar, vivo),
+        Accion::Terminar => terminar(e, textos, enviar, vivo),
         Accion::MasVelocidad => e.velocidad = telepronter::acotar_velocidad(e.velocidad + 5.0),
         Accion::MenosVelocidad => e.velocidad = telepronter::acotar_velocidad(e.velocidad - 5.0),
         Accion::MasLetra => {
@@ -684,7 +695,7 @@ fn hacer(e: &mut Estado, que: Accion, idioma: Idioma, enviar: &Sender<Lectura>, 
 }
 
 /// Arranca la grabacion de verdad, cuando la cuenta llega a cero.
-fn grabar_ya(e: &mut Estado, idioma: Idioma, destino: &Path, ahora: u64) {
+fn grabar_ya(e: &mut Estado, textos: &Catalogo, destino: &Path, ahora: u64) {
     let fichero = destino.join(format!("lectura-{ahora}.m4a"));
     match Grabadora::empezar(&fichero) {
         Ok(g) => {
@@ -699,12 +710,12 @@ fn grabar_ya(e: &mut Estado, idioma: Idioma, destino: &Path, ahora: u64) {
             // el acto en vez de fingir que se graba.
             tracing::info!(?err, "no se pudo grabar la lectura");
             e.fase = Fase::Parado;
-            e.aviso = Some((t(idioma, Texto::SinMicro).to_string(), ahora + 4_000));
+            e.aviso = Some((t(textos, Texto::SinMicro), ahora + 4_000));
         }
     }
 }
 
-fn terminar(e: &mut Estado, idioma: Idioma, enviar: &Sender<Lectura>, vivo: &mut bool) {
+fn terminar(e: &mut Estado, textos: &Catalogo, enviar: &Sender<Lectura>, vivo: &mut bool) {
     e.fase = Fase::Parado;
     let Some(g) = e.grabadora.take() else {
         return;
@@ -714,13 +725,13 @@ fn terminar(e: &mut Estado, idioma: Idioma, enviar: &Sender<Lectura>, vivo: &mut
         Ok(g) => g,
         Err(err) => {
             tracing::info!(?err, "la lectura no se pudo cerrar");
-            e.aviso = Some((t(idioma, Texto::MuyCorta).to_string(), ahora + 4_000));
+            e.aviso = Some((t(textos, Texto::MuyCorta), ahora + 4_000));
             return;
         }
     };
     if grabacion.duracion_ms < MINIMO_MS {
         let _ = std::fs::remove_file(&grabacion.ruta);
-        e.aviso = Some((t(idioma, Texto::MuyCorta).to_string(), ahora + 4_000));
+        e.aviso = Some((t(textos, Texto::MuyCorta), ahora + 4_000));
         return;
     }
 
@@ -736,11 +747,12 @@ fn terminar(e: &mut Estado, idioma: Idioma, enviar: &Sender<Lectura>, vivo: &mut
     *vivo = false;
 }
 
-/// Los rotulos de esta ventana.
+/// Los rotulos de esta ventana, ya en el catalogo de `pixpin-store`.
 ///
-/// Van aqui y no en el catalogo de `pixpin-store` a proposito **por ahora**:
-/// el fichero de textos lo esta tocando otra tanda y meter siete claves
-/// nuevas seria pisarse. Son siete cadenas y mudarlas es un rato.
+/// El enum se queda —y no se llama a `textos.t("...")` a pelo— porque una
+/// clave mal escrita en Fluent no deja de compilar: devuelve la propia clave
+/// y el boton sale rotulado `telepronter-grabar`. Con el enum, inventarse un
+/// rotulo es un error del compilador.
 #[derive(Debug, Clone, Copy)]
 enum Texto {
     Titulo,
@@ -755,29 +767,19 @@ enum Texto {
     SinMicro,
 }
 
-fn t(idioma: Idioma, que: Texto) -> &'static str {
-    match (idioma, que) {
-        (Idioma::Espanol, Texto::Titulo) => "Leer en voz alta",
-        (Idioma::Espanol, Texto::Ensayar) => "Ensayar",
-        (Idioma::Espanol, Texto::Parar) => "Parar",
-        (Idioma::Espanol, Texto::Grabar) => "Grabar",
-        (Idioma::Espanol, Texto::Terminar) => "Terminar",
-        (Idioma::Espanol, Texto::Tirar) => "Tirar",
-        (Idioma::Espanol, Texto::Velocidad) => "velocidad y letra",
-        (Idioma::Espanol, Texto::Preparate) => "Preparate",
-        (Idioma::Espanol, Texto::MuyCorta) => "La lectura salio demasiado corta",
-        (Idioma::Espanol, Texto::SinMicro) => "No hay microfono disponible",
-        (Idioma::Ingles, Texto::Titulo) => "Read aloud",
-        (Idioma::Ingles, Texto::Ensayar) => "Rehearse",
-        (Idioma::Ingles, Texto::Parar) => "Stop",
-        (Idioma::Ingles, Texto::Grabar) => "Record",
-        (Idioma::Ingles, Texto::Terminar) => "Finish",
-        (Idioma::Ingles, Texto::Tirar) => "Discard",
-        (Idioma::Ingles, Texto::Velocidad) => "speed and size",
-        (Idioma::Ingles, Texto::Preparate) => "Get ready",
-        (Idioma::Ingles, Texto::MuyCorta) => "That reading was too short",
-        (Idioma::Ingles, Texto::SinMicro) => "No microphone available",
-    }
+fn t(textos: &Catalogo, que: Texto) -> String {
+    textos.t(match que {
+        Texto::Titulo => "telepronter-titulo",
+        Texto::Ensayar => "telepronter-ensayar",
+        Texto::Parar => "telepronter-parar",
+        Texto::Grabar => "telepronter-grabar",
+        Texto::Terminar => "telepronter-terminar",
+        Texto::Tirar => "telepronter-tirar",
+        Texto::Velocidad => "telepronter-velocidad",
+        Texto::Preparate => "telepronter-preparate",
+        Texto::MuyCorta => "telepronter-muy-corta",
+        Texto::SinMicro => "telepronter-sin-micro",
+    })
 }
 
 #[cfg(test)]
@@ -842,7 +844,36 @@ mod pruebas {
 
     #[test]
     fn los_rotulos_estan_en_los_dos_idiomas() {
-        assert_eq!(t(Idioma::Espanol, Texto::Grabar), "Grabar");
-        assert_eq!(t(Idioma::Ingles, Texto::Grabar), "Record");
+        let es = Catalogo::nuevo(Idioma::Espanol);
+        let en = Catalogo::nuevo(Idioma::Ingles);
+        assert_eq!(t(&es, Texto::Grabar), "Grabar");
+        assert_eq!(t(&en, Texto::Grabar), "Record");
+    }
+
+    /// Un rotulo que falte en el catalogo sale como su propia clave, y eso
+    /// no deja de compilar: lo tiene que cazar una prueba.
+    #[test]
+    fn ningun_rotulo_del_telepronter_sale_como_su_clave() {
+        for idioma in [Idioma::Espanol, Idioma::Ingles] {
+            let c = Catalogo::nuevo(idioma);
+            for que in [
+                Texto::Titulo,
+                Texto::Ensayar,
+                Texto::Parar,
+                Texto::Grabar,
+                Texto::Terminar,
+                Texto::Tirar,
+                Texto::Velocidad,
+                Texto::Preparate,
+                Texto::MuyCorta,
+                Texto::SinMicro,
+            ] {
+                let rotulo = t(&c, que);
+                assert!(
+                    !rotulo.starts_with("telepronter-"),
+                    "falta {rotulo} en el catalogo de {idioma:?}"
+                );
+            }
+        }
     }
 }

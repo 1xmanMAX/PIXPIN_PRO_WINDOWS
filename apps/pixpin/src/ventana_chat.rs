@@ -2541,12 +2541,39 @@ pub fn abrir(
             .as_ref()
             .and_then(|a| a.grabando.as_ref())
             .map(|_| 100u32);
+        // La transcripcion, igual: el hilo deja el texto cuando le toca y
+        // nadie va a mover el raton para enterarse. Se mira aqui —una vez
+        // por vuelta— y no al pintar, porque escribe en el cuaderno.
+        if let Some(a) = abierto.as_mut() {
+            let dicho = latido_de_transcribir(ubicacion, a, textos)
+                // Y la lectura del telepronter, que llega por otro canal
+                // pero acaba igual: escrita en el cuaderno.
+                .or_else(|| latido_del_telepronter(ubicacion, a, &identidad, textos));
+            if let Some(dicho) = dicho {
+                aviso = Some((dicho, std::time::Instant::now()));
+                hay_que_pintar = true;
+            }
+        }
+        // Cuatro repintados por segundo bastan para una barra que tarda
+        // diez: mas es gastar procesador que le hace falta al reconocedor.
+        let hasta_la_transcripcion = abierto
+            .as_ref()
+            .and_then(|a| a.transcribiendo.as_ref())
+            .map(|_| 250u32);
+        // Y con el telepronter abierto hay que volver a mirar su canal: la
+        // lectura llega de otro hilo y aqui no entra ningun evento por ella.
+        let hasta_la_lectura = abierto
+            .as_ref()
+            .and_then(|a| a.leyendo.as_ref())
+            .map(|_| 400u32);
         let dormir = [
             hasta_el_aviso,
             hasta_el_resalte,
             hasta_el_latido,
             hasta_el_reproductor,
             hasta_el_nivel,
+            hasta_la_transcripcion,
+            hasta_la_lectura,
         ]
         .into_iter()
         .flatten()
@@ -2694,6 +2721,19 @@ struct Abierto {
     biblioteca: Option<BibliotecaAbierta>,
     /// La nota de voz que se esta grabando, si hay alguna.
     grabando: Option<Grabando>,
+    /// La nota de voz que se esta pasando a texto, si hay alguna.
+    ///
+    /// **Una sola a la vez**, y a proposito: cada transcripcion carga un
+    /// modelo de Vosk de 40 MB y pone un hilo a moler: dos a la par tardan
+    /// mas que las dos seguidas y nadie mira dos barras de avance. Va en
+    /// `Abierto` y no en el bucle porque cambiar de conversacion tiene que
+    /// cortarla (`EnMarcha` cancela al tirarse).
+    transcribiendo: Option<crate::voz::EnMarcha>,
+    /// El telepronter abierto, si hay uno: por aqui llega la lectura cuando
+    /// el usuario termina de leer. Se guarda el extremo del canal y no un
+    /// manejador de la ventana porque **la ventana vive en su propio hilo**
+    /// y el chat no manda sobre ella: solo espera lo que salga.
+    leyendo: Option<std::sync::mpsc::Receiver<crate::teleprompter::Lectura>>,
     /// El lienzo que esta vivo dentro de su burbuja, si hay alguno.
     vivo: Option<LienzoVivo>,
     /// La burbuja que se esta arrastrando a la derecha para comentarla: cual
@@ -3717,8 +3757,25 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                     .and_then(|m| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
                     .filter(|r| crate::audio::cargado().as_deref() == Some(r.as_path()))
                     .map(|_| crate::audio::estado().fraccion());
+                // Mientras se pasa a texto, el renglon de la duracion cuenta
+                // por donde va. Ahi y no sobre la onda: la onda es lo que
+                // dice DE QUE nota se trata, y pisarla con una barra de
+                // avance dejaria la burbuja sin senas mientras mas falta
+                // hacen (hay varias notas seguidas y todas se parecen).
+                let detalle = match a
+                    .transcribiendo
+                    .as_ref()
+                    .filter(|t| a.mensajes.get(i).is_some_and(|m| m.id == t.id()))
+                {
+                    Some(t) => {
+                        let mut args = fluent_bundle::FluentArgs::new();
+                        args.set("pct", (t.avance() * 100.0).round() as i64);
+                        textos.t_args("chat-transcribiendo", &args)
+                    }
+                    None => f.detalle.clone(),
+                };
                 pintar_onda(
-                    p, &f.onda, fila.texto, tema, &f.detalle, color_hora, e, avance,
+                    p, &f.onda, fila.texto, tema, &detalle, color_hora, e, avance,
                 );
             } else {
                 let nombre = match &a.renombrando_mensaje {
@@ -5102,6 +5159,8 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         mini: None,
         biblioteca: None,
         grabando: None,
+        transcribiendo: None,
+        leyendo: None,
         vivo: None,
         busqueda: None,
         por_etiqueta: None,
@@ -7198,6 +7257,290 @@ fn terminar_de_grabar(
     Ok(())
 }
 
+/// **Arranca «Pasar a texto» sobre una nota de voz**, o dice que falta.
+///
+/// Lo que falta se dice **con nombre y enlace**, no con un «todavia no»: el
+/// reconocedor y los modelos son descargas ajenas que PixPin no baja sola
+/// (ver `pixpin_voz::idiomas`), asi que el aviso tiene que ser una
+/// instruccion —este fichero, en esta carpeta— y no una disculpa.
+fn empezar_a_transcribir(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    i: usize,
+    textos: &Catalogo,
+    idioma: pixpin_store::Idioma,
+) -> Efecto {
+    // Una a la vez: ver el campo `transcribiendo`. Se avisa en vez de
+    // encolarla porque encolar sin ensenar la cola es perderla.
+    if a.transcribiendo.as_ref().is_some_and(|t| !t.acabada()) {
+        return Efecto::Aviso(textos.t("chat-transcribir-en-marcha"));
+    }
+    if let Some(aviso) = falta_para_transcribir(ubicacion, textos, idioma) {
+        return Efecto::Aviso(aviso);
+    }
+    let Some(m) = a.mensajes.get(i) else {
+        return Efecto::Nada;
+    };
+    let Some(ruta) = ruta_del_mensaje(&a.raiz, &a.ficha.id, m).filter(|r| r.is_file()) else {
+        // El adjunto no esta en el disco: la nota llego por sincronizacion y
+        // su fichero todavia no, o alguien lo borro por fuera.
+        return Efecto::Aviso(textos.t("chat-voz-no-es-audio"));
+    };
+    a.transcribiendo = Some(crate::voz::pasar_a_texto(&m.id, &ruta, ubicacion, idioma));
+    Efecto::Cambio
+}
+
+/// Lo que hay que instalar antes de poder transcribir, ya redactado; `None`
+/// si no falta nada.
+///
+/// Se mira **antes** de lanzar el hilo: cargar un modelo que no existe para
+/// contarlo diez segundos despues no le sirve a nadie.
+fn falta_para_transcribir(
+    ubicacion: &Ubicacion,
+    textos: &Catalogo,
+    idioma: pixpin_store::Idioma,
+) -> Option<String> {
+    use pixpin_voz::Disponibilidad;
+    let donde = pixpin_voz::carpeta_de_modelos(ubicacion.raiz())
+        .display()
+        .to_string();
+    match crate::voz::disponibilidad(ubicacion, idioma) {
+        Disponibilidad::Listo(_) => None,
+        Disponibilidad::SinMotor => {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("motor", pixpin_voz::idiomas::NOMBRE_DEL_MOTOR);
+            args.set("donde", donde);
+            Some(textos.t_args("chat-voz-sin-motor", &args))
+        }
+        Disponibilidad::SinModelo { modelo, enlace } => {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("modelo", modelo);
+            args.set("enlace", enlace);
+            args.set("donde", donde);
+            Some(textos.t_args("chat-voz-sin-modelo", &args))
+        }
+        Disponibilidad::IdiomaSinModelo => Some(textos.t("chat-voz-idioma-sin-modelo")),
+    }
+}
+
+/// Por que no salio la transcripcion, dicho en el idioma del usuario.
+///
+/// Se traduce **del enum** y no del `Display` de `ErrorVoz`: aquellas frases
+/// estan en castellano sin tildes y son para el registro. Anadir una
+/// variante alli deja de compilar esto, que es justo lo que hay que saber.
+fn razon_de_voz(e: &pixpin_voz::ErrorVoz, textos: &Catalogo) -> String {
+    use pixpin_voz::ErrorVoz as E;
+    let arg = |clave, nombre, valor: String| {
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set(nombre, valor);
+        textos.t_args(clave, &args)
+    };
+    match e {
+        E::SinMotor { donde } => {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("motor", pixpin_voz::idiomas::NOMBRE_DEL_MOTOR);
+            args.set("donde", donde.clone());
+            textos.t_args("chat-voz-sin-motor", &args)
+        }
+        E::SinModelo { modelo, donde, .. } => {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("modelo", modelo.clone());
+            args.set(
+                "enlace",
+                format!("{}{modelo}.zip", pixpin_voz::idiomas::DESCARGAS),
+            );
+            args.set("donde", donde.clone());
+            textos.t_args("chat-voz-sin-modelo", &args)
+        }
+        E::IdiomaSinModelo { .. } => textos.t("chat-voz-idioma-sin-modelo"),
+        E::RutaImposible { donde } => arg("chat-voz-ruta-imposible", "donde", donde.clone()),
+        E::ModeloIlegible { donde } => arg("chat-voz-modelo-ilegible", "donde", donde.clone()),
+        E::NoEsAudio { .. } => textos.t("chat-voz-no-es-audio"),
+        E::AudioVacio => textos.t("chat-voz-audio-vacio"),
+        E::NoSeEntiendeNada => textos.t("chat-voz-no-se-entiende"),
+        E::Cancelada => textos.t("chat-transcribir-cancelada"),
+        E::Windows { .. } => textos.t("chat-voz-fallo"),
+    }
+}
+
+/// **Recoge la transcripcion cuando acaba** y la deja escrita en el cuaderno.
+///
+/// Se llama en cada vuelta del bucle y **no bloquea**: `recoger` solo mira
+/// si el hilo ya dejo algo. Devuelve el aviso que hay que ensenar, o `None`
+/// si todavia esta trabajando (o si no hay ninguna).
+///
+/// El texto se busca por **id** y no por la posicion que tenia al empezar:
+/// una sincronizacion puede meter mensajes en medio mientras el hilo muele,
+/// y el numero de antes apuntaria a otra burbuja.
+fn latido_de_transcribir(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    textos: &Catalogo,
+) -> Option<String> {
+    let t = a.transcribiendo.as_mut()?;
+    let salida = t.recoger()?;
+    let id = t.id().to_string();
+    a.transcribiendo = None;
+    let hecha = match salida {
+        Ok(hecha) => hecha,
+        Err(e) => {
+            tracing::info!(?e, "no salio la transcripcion");
+            return Some(razon_de_voz(&e, textos));
+        }
+    };
+    let Some(i) = a.mensajes.iter().position(|m| m.id == id) else {
+        return Some(textos.t("chat-transcribir-sin-mensaje"));
+    };
+    let mut m = a.mensajes[i].clone();
+    crate::voz::aplicar(&mut m, &hecha);
+    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
+    match pixpin_proyecto::cuaderno::reemplazar(&carpeta, &m) {
+        Ok(_) => {
+            a.mensajes[i] = m;
+            // La burbuja crece: ahora ensena el texto bajo la onda.
+            a.colocado.borrow_mut().ancho = 0;
+            Some(textos.t("chat-transcribir-hecha"))
+        }
+        Err(e) => {
+            tracing::warn!(?e, "la transcripcion no se pudo guardar");
+            Some(textos.t("chat-no-se-pudo"))
+        }
+    }
+}
+
+/// El texto de un mensaje para leerlo en el telepronter: el de una nota
+/// escrita, o el contenido de su `.txt`/`.md`.
+///
+/// Se lee del disco **al elegirlo** y no al abrir el menu: leer una docena
+/// de ficheros para pintar una docena de rotulos seria ir al disco para
+/// nada, porque solo uno se va a leer en voz alta.
+fn texto_para_leer(a: &Abierto, i: usize) -> Option<String> {
+    let m = a.mensajes.get(i)?;
+    if m.ruta.is_none() {
+        let texto = m.texto.trim();
+        return (!texto.is_empty()).then(|| texto.to_string());
+    }
+    if !es_texto_leible(&m.nombre) {
+        return None;
+    }
+    let ruta = ruta_del_mensaje(&a.raiz, &a.ficha.id, m)?;
+    // Con `from_utf8_lossy` y no exigiendo UTF-8: un `.txt` viejo de Windows
+    // viene en la pagina de codigos de siempre, y negarse a leerlo en voz
+    // alta por una tilde mal codificada no le sirve a nadie.
+    let bytes = std::fs::read(&ruta).ok()?;
+    let texto = String::from_utf8_lossy(&bytes).trim().to_string();
+    (!texto.is_empty()).then_some(texto)
+}
+
+/// **Abre el telepronter con ese texto**, en su hilo.
+///
+/// El `.m4a` se graba en `<datos>/voz/` (ver `voz::carpeta_de_audios`) y no
+/// dentro del proyecto: el telepronter no sabe a que conversacion pertenece
+/// —ni tiene por que—, y quien recoge la lectura ya lo mete donde va.
+fn abrir_telepronter(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    texto: String,
+    textos: &Catalogo,
+    idioma: pixpin_store::Idioma,
+) -> Efecto {
+    if a.leyendo.is_some() {
+        return Efecto::Aviso(textos.t("chat-telepronter-abierto"));
+    }
+    if texto.trim().is_empty() {
+        return Efecto::Aviso(textos.t("chat-telepronter-sin-texto"));
+    }
+    let destino = crate::voz::carpeta_de_audios(ubicacion);
+    if let Err(e) = std::fs::create_dir_all(&destino) {
+        tracing::warn!(?e, "no se pudo preparar la carpeta de los audios");
+        return Efecto::Aviso(textos.t("chat-no-se-pudo"));
+    }
+    a.leyendo = Some(crate::teleprompter::lanzar(idioma, texto, destino));
+    Efecto::Nada
+}
+
+/// **Recoge la lectura del telepronter** y la mete como nota de voz.
+///
+/// Se llama en cada vuelta del bucle y no bloquea. Devuelve el aviso que hay
+/// que ensenar, o `None` mientras no haya nada (o si no hay telepronter).
+fn latido_del_telepronter(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    aparato: &str,
+    textos: &Catalogo,
+) -> Option<String> {
+    use std::sync::mpsc::TryRecvError;
+    let lectura = match a.leyendo.as_ref()?.try_recv() {
+        Ok(l) => l,
+        Err(TryRecvError::Empty) => return None,
+        // Se cerro sin grabar nada: ni aviso ni nota, que es lo que el
+        // usuario acaba de pedir al darle a la flecha.
+        Err(TryRecvError::Disconnected) => {
+            a.leyendo = None;
+            return None;
+        }
+    };
+    a.leyendo = None;
+    match meter_la_lectura(ubicacion, a, aparato, &lectura) {
+        Ok(()) => Some(textos.t("chat-telepronter-hecha")),
+        Err(e) => {
+            tracing::warn!(?e, "la lectura no se pudo meter en la conversacion");
+            Some(textos.t("chat-no-se-pudo"))
+        }
+    }
+}
+
+/// Copia el `.m4a` de la lectura al proyecto y escribe su mensaje.
+///
+/// Se copia al proyecto —y no se deja donde lo grabo el telepronter— porque
+/// es lo que hace que la nota **viaje por la sincronizacion**: lo que se
+/// manda al movil son los adjuntos del proyecto. Es el mismo camino que
+/// `terminar_de_grabar`.
+fn meter_la_lectura(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    aparato: &str,
+    lectura: &crate::teleprompter::Lectura,
+) -> std::io::Result<()> {
+    let bytes = std::fs::read(&lectura.ruta)?;
+    let nombre = lectura
+        .ruta
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| format!("lectura-{}.m4a", pixpin_shell::entorno::ahora_utc_ms()));
+    let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let mut mensaje = adjuntar_en_proyecto(
+        ubicacion.raiz(),
+        &a.ficha.id,
+        aparato,
+        &nombre,
+        &bytes,
+        numero,
+    )?;
+    // `aplicar` pone las senas de donde grabo el telepronter; el fichero ya
+    // esta copiado dentro del proyecto, asi que las buenas son las del
+    // adjunto y se vuelven a poner encima. Lo demas —duracion, picos, el
+    // texto con sus minutos y su estado— solo lo sabe la lectura.
+    let (ruta, nombre_adjunto) = (mensaje.ruta.clone(), mensaje.nombre.clone());
+    crate::teleprompter::aplicar(&mut mensaje, lectura);
+    mensaje.ruta = ruta;
+    mensaje.nombre = nombre_adjunto;
+    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
+    if let Err(e) = pixpin_proyecto::cuaderno::reemplazar(&carpeta, &mensaje) {
+        tracing::warn!(?e, "la lectura quedo sin duracion, picos ni texto");
+    }
+    // Ya esta en el proyecto: el original de `<datos>/voz/` sobra, y
+    // dejarlo seria guardar cada lectura dos veces.
+    let _ = std::fs::remove_file(&lectura.ruta);
+    a.vistas.push(None);
+    a.ficha.tocado = mensaje.cuando;
+    a.ficha.resumen = nombre;
+    a.mensajes.push(mensaje);
+    a.colocado.borrow_mut().ancho = 0;
+    a.scroll = None;
+    Ok(())
+}
+
 /// Por que no se pudo aligerar, dicho en el idioma del usuario.
 ///
 /// La razon se traduce **aqui** y no en `pixpin-pdf`: aquel crate no conoce
@@ -7214,6 +7557,7 @@ fn razon_en_palabras(razon: &pixpin_pdf::aligerar::Razon, textos: &Catalogo) -> 
             Estorbo::SinTrailer => "pdf-aligerar-sin-trailer",
             Estorbo::SinObjetos => "pdf-aligerar-sin-objetos",
             Estorbo::LargoIndirecto => "pdf-aligerar-largo-indirecto",
+            Estorbo::ObjetosSinEntender => "pdf-aligerar-objetos-sin-entender",
         }),
         Razon::SinFotosQueBajar => textos.t("pdf-aligerar-sin-fotos"),
         Razon::YaEstaAlMinimo => textos.t("pdf-aligerar-ya-al-minimo"),
@@ -9254,6 +9598,14 @@ enum Accion {
     /// quito (`UnirAlProyecto` del movil).
     Unir(usize),
     Devolver(usize),
+    /// Pasar a texto la nota de voz de esa burbuja, con Vosk y en su hilo.
+    Transcribir(usize),
+    /// Abrir el telepronter: antes hay que elegir QUE se lee.
+    Telepronter,
+    /// Leer lo que hay escrito en la caja de abajo.
+    TelepronterBorrador,
+    /// Leer ese mensaje: una nota escrita, o un `.txt`/`.md` adjunto.
+    TelepronterMensaje(usize),
     Borrar(Vec<usize>),
     FotoEnLienzo(usize),
     FotoAqui(usize),
@@ -9383,7 +9735,7 @@ fn menu_del_clip(textos: &Catalogo) -> Vec<EntradaMenu> {
         entrada(
             Some(&mi::SUBTITLES),
             textos.t("chat-adj-telepronter"),
-            Accion::Aviso("chat-no-hay-telepronter"),
+            Accion::Telepronter,
         ),
         entrada(
             Some(&mi::HEARING),
@@ -9411,6 +9763,75 @@ fn menu_del_clip(textos: &Catalogo) -> Vec<EntradaMenu> {
             Accion::AdjDelMovil,
         ),
     ]
+}
+
+/// **Que texto se lee en el telepronter.**
+///
+/// El movil llega al telepronter desde un texto que ya esta abierto, asi que
+/// no tiene que preguntar. Aqui se entra por el clip, sin nada elegido, y
+/// hay que ofrecer de donde sacarlo: lo escrito en la caja, las notas de la
+/// conversacion y los `.txt`/`.md` adjuntos. Los mas nuevos primero, que son
+/// los que se buscan.
+fn menu_del_telepronter(a: &Abierto, textos: &Catalogo) -> Vec<EntradaMenu> {
+    /// Cuantos se ofrecen. Un menu de cien lineas no se lee: se cierra.
+    const CUANTOS: usize = 12;
+    let mut v = Vec::new();
+    if !a.borrador.trim().is_empty() {
+        v.push(entrada(
+            Some(&mi::DESCRIPTION),
+            textos.t("chat-telepronter-borrador"),
+            Accion::TelepronterBorrador,
+        ));
+    }
+    for (i, m) in a.mensajes.iter().enumerate().rev() {
+        if v.len() >= CUANTOS {
+            break;
+        }
+        let Some(rotulo) = rotulo_para_leer(m) else {
+            continue;
+        };
+        v.push(entrada(
+            Some(&mi::SUBTITLES),
+            rotulo,
+            Accion::TelepronterMensaje(i),
+        ));
+    }
+    if v.is_empty() {
+        v.push(entrada(
+            None,
+            textos.t("chat-telepronter-sin-texto"),
+            Accion::Aviso("chat-telepronter-sin-texto"),
+        ));
+    }
+    v
+}
+
+/// Como se llama en el menu del telepronter un mensaje que se puede leer, o
+/// `None` si ese mensaje no lleva texto ninguno.
+///
+/// Una nota escrita se ensena por su primera linea recortada —el nombre de
+/// una nota es su principio— y un adjunto por su nombre de fichero.
+fn rotulo_para_leer(m: &pixpin_proyecto::cuaderno::Mensaje) -> Option<String> {
+    /// Lo que cabe en una linea de menu sin estirarlo a media pantalla.
+    const CORTE: usize = 48;
+    if m.ruta.is_none() {
+        let linea = m.texto.lines().find(|l| !l.trim().is_empty())?.trim();
+        let mut corto: String = linea.chars().take(CORTE).collect();
+        if linea.chars().count() > CORTE {
+            corto.push('…');
+        }
+        return Some(corto);
+    }
+    es_texto_leible(&m.nombre).then(|| m.nombre.clone())
+}
+
+/// Si ese nombre de fichero es de los que el telepronter sabe leer.
+///
+/// Solo texto plano: un `.docx` o un PDF no son una cadena de caracteres y
+/// abrirlos aqui pintaria su ZIP en la pantalla.
+fn es_texto_leible(nombre: &str) -> bool {
+    let n = nombre.to_lowercase();
+    n.ends_with(".txt") || n.ends_with(".md")
 }
 
 /// La palabra de `Mensaje.miniapp` de una mini-app, y la clave de su nombre.
@@ -9783,7 +10204,7 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
         v.push(entrada(
             Some(&mi::SUBTITLES),
             textos.t("chat-transcribir"),
-            Accion::Aviso("chat-no-hay-transcripcion"),
+            Accion::Transcribir(i),
         ));
         v.push(entrada(
             Some(&mi::LYRICS),
@@ -10090,6 +10511,16 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         }
         Accion::MiniApps => Efecto::Menu(menu_de_miniapps(cx.textos)),
         Accion::Aligerar(i) => aligerar_el_pdf(cx.ubicacion, a, i, cx.textos),
+        Accion::Transcribir(i) => empezar_a_transcribir(cx.ubicacion, a, i, cx.textos, cx.idioma),
+        Accion::Telepronter => Efecto::Menu(menu_del_telepronter(a, cx.textos)),
+        Accion::TelepronterBorrador => {
+            let texto = a.borrador.clone();
+            abrir_telepronter(cx.ubicacion, a, texto, cx.textos, cx.idioma)
+        }
+        Accion::TelepronterMensaje(i) => match texto_para_leer(a, i) {
+            Some(texto) => abrir_telepronter(cx.ubicacion, a, texto, cx.textos, cx.idioma),
+            None => Efecto::Aviso(cx.textos.t("chat-telepronter-sin-texto")),
+        },
         Accion::Biblioteca => {
             a.biblioteca = Some(abrir_biblioteca(cx.ubicacion, cx.fichas));
             Efecto::Cambio
@@ -10322,6 +10753,151 @@ fn papel_de(cual: usize, claro: bool) -> (Color, Color) {
         (hex(f.0), hex(f.1))
     } else {
         (hex(f.2), hex(f.3))
+    }
+}
+
+#[cfg(test)]
+mod pruebas_voz {
+    use super::*;
+    use pixpin_proyecto::cuaderno::Mensaje;
+    use pixpin_store::Idioma;
+
+    fn nota(texto: &str) -> Mensaje {
+        Mensaje {
+            texto: texto.into(),
+            ..Default::default()
+        }
+    }
+
+    fn adjunto(nombre: &str) -> Mensaje {
+        Mensaje {
+            nombre: nombre.into(),
+            ruta: Some(format!("adjuntos/{nombre}")),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn el_telepronter_solo_lee_texto_plano() {
+        assert!(es_texto_leible("guion.txt"));
+        assert!(es_texto_leible("GUION.TXT"));
+        assert!(es_texto_leible("apuntes.md"));
+        // Casos negativos: lo que parece texto pero no lo es. Pintar el ZIP
+        // de un .docx en la pantalla de leer seria peor que no ofrecerlo.
+        assert!(!es_texto_leible("contrato.docx"));
+        assert!(!es_texto_leible("plano.pdf"));
+        assert!(!es_texto_leible("voz_1.m4a"));
+        assert!(!es_texto_leible("txt"));
+    }
+
+    #[test]
+    fn una_nota_se_ofrece_por_su_primera_linea_y_no_por_las_vacias() {
+        assert_eq!(
+            rotulo_para_leer(&nota("\n\n  hay que picar la pared  \ny luego")).as_deref(),
+            Some("hay que picar la pared")
+        );
+    }
+
+    #[test]
+    fn una_nota_larga_se_recorta_con_puntos_suspensivos() {
+        let largo = "a".repeat(80);
+        let rotulo = rotulo_para_leer(&nota(&largo)).expect("una nota larga se ofrece");
+        assert!(rotulo.ends_with('…'), "{rotulo}");
+        assert_eq!(rotulo.chars().count(), 49, "48 caracteres y los puntos");
+    }
+
+    #[test]
+    fn lo_que_no_lleva_texto_no_se_ofrece_para_leer() {
+        // Casos negativos: una nota en blanco, una en solo espacios y un
+        // adjunto que no es texto. Ofrecer cualquiera de los tres abriria
+        // una pantalla negra sin nada que leer.
+        assert_eq!(rotulo_para_leer(&nota("")), None);
+        assert_eq!(rotulo_para_leer(&nota("   \n  ")), None);
+        assert_eq!(rotulo_para_leer(&adjunto("foto.jpg")), None);
+        assert_eq!(
+            rotulo_para_leer(&adjunto("guion.txt")).as_deref(),
+            Some("guion.txt")
+        );
+    }
+
+    /// Una carpeta de datos vacia: ni `libvosk.dll` ni modelos, que es como
+    /// esta cualquier PixPin recien instalado.
+    fn sin_nada() -> Ubicacion {
+        Ubicacion::Portable {
+            raiz: std::env::temp_dir().join(format!(
+                "pixpin-chat-voz-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            )),
+        }
+    }
+
+    #[test]
+    fn sin_el_reconocedor_se_dice_que_fichero_falta_y_donde_va() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let dicho = falta_para_transcribir(&sin_nada(), &textos, Idioma::Espanol)
+            .expect("sin libvosk.dll no se puede transcribir");
+        assert!(dicho.contains("libvosk.dll"), "{dicho}");
+        assert!(dicho.contains("vosk"), "falta la carpeta: {dicho}");
+        assert!(
+            !dicho.starts_with("chat-"),
+            "el aviso salio como su clave: {dicho}"
+        );
+    }
+
+    #[test]
+    fn cuando_falta_el_modelo_el_aviso_trae_su_nombre_y_su_enlace() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let dicho = razon_de_voz(
+            &pixpin_voz::ErrorVoz::SinModelo {
+                idioma: "es".into(),
+                modelo: "vosk-model-small-es-0.42".into(),
+                donde: "C:/datos/vosk".into(),
+            },
+            &textos,
+        );
+        assert!(dicho.contains("vosk-model-small-es-0.42"), "{dicho}");
+        assert!(
+            dicho.contains("https://alphacephei.com/vosk/models/"),
+            "{dicho}"
+        );
+    }
+
+    #[test]
+    fn ningun_aviso_de_voz_sale_como_su_propia_clave() {
+        use pixpin_voz::ErrorVoz as E;
+        for idioma in [Idioma::Espanol, Idioma::Ingles] {
+            let textos = Catalogo::nuevo(idioma);
+            let todos = [
+                E::SinMotor {
+                    donde: "C:/datos/vosk".into(),
+                },
+                E::SinModelo {
+                    idioma: "es".into(),
+                    modelo: "m".into(),
+                    donde: "C:/datos/vosk".into(),
+                },
+                E::IdiomaSinModelo {
+                    idioma: "ja".into(),
+                },
+                E::RutaImposible {
+                    donde: "C:/ñ".into(),
+                },
+                E::ModeloIlegible {
+                    donde: "C:/datos/vosk/m".into(),
+                },
+                E::NoEsAudio {
+                    ruta: "voz_1.m4a".into(),
+                },
+                E::AudioVacio,
+                E::NoSeEntiendeNada,
+                E::Cancelada,
+            ];
+            for e in &todos {
+                let dicho = razon_de_voz(e, &textos);
+                assert!(!dicho.starts_with("chat-"), "falta una clave: {dicho}");
+            }
+        }
     }
 }
 
