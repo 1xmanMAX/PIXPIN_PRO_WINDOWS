@@ -886,6 +886,12 @@ pub fn abrir(
                                         None => Some(String::new()),
                                         Some(_) => None,
                                     };
+                                    // Y con la lupa se va el chip de
+                                    // etiqueta: sin la fila a la vista, un
+                                    // filtro de emoji puesto dejaria la
+                                    // conversacion medio vacia sin decir por
+                                    // que (el movil se lo deja puesto).
+                                    a.por_etiqueta = None;
                                     a.scroll = None;
                                     Efecto::Nada
                                 }
@@ -895,6 +901,7 @@ pub fn abrir(
                                     // saber donde estaba lo que encontro.
                                     let primero = indices_visibles(a).first().copied();
                                     a.busqueda = None;
+                                    a.por_etiqueta = None;
                                     if let Some(j) = primero {
                                         a.ir_a = Some(j);
                                         a.resaltado = Some((j, std::time::Instant::now()));
@@ -913,6 +920,23 @@ pub fn abrir(
                                     a,
                                     &cx,
                                 ),
+                                // El chip filtra por su emoji; pulsado otra
+                                // vez, lo quita. Es un interruptor y no una
+                                // eleccion de uno entre varios: con solo el
+                                // chip no habria por donde volver a verlo
+                                // todo sin apagar la lupa entera.
+                                Zona::Chip(i) => {
+                                    let cual = chips_de(a).get(i).cloned();
+                                    a.por_etiqueta = match (&a.por_etiqueta, cual) {
+                                        (Some(puesto), Some(nuevo)) if *puesto == nuevo => None,
+                                        (_, cual) => cual,
+                                    };
+                                    // Arriba del todo: lo que se ve ahora es
+                                    // otra conversacion, y dejar el scroll de
+                                    // antes la deja por la mitad.
+                                    a.scroll = None;
+                                    Efecto::Nada
+                                }
                                 Zona::Abrir(i) => ejecutar(Accion::Pinear(i), a, &cx),
                                 Zona::VieneDe(i) => {
                                     abrir_el_origen(ubicacion, a, i, lienzo, textos)
@@ -1038,8 +1062,7 @@ pub fn abrir(
                         // cabecera son sus tres pastillas, como en el movil.
                         hay_que_pintar = true;
                     } else if let Some((_, indice)) = abierto.as_ref().and_then(|a| {
-                        let area =
-                            disposicion.historial(a.alto_caja.get(), a.fijado.is_some(), escala);
+                        let area = area_del_historial(&disposicion, a, escala);
                         let c = a.colocado.borrow();
                         let scroll = a.scroll.unwrap_or_else(|| {
                             pixpin_ui::historial::scroll_maximo(area, a.alto.get())
@@ -1236,11 +1259,7 @@ pub fn abrir(
                     // barrer tiene que anadir.
                     if abierto.as_ref().is_some_and(|a| a.barriendo) {
                         let bajo_el_raton = abierto.as_ref().and_then(|a| {
-                            let area = disposicion.historial(
-                                a.alto_caja.get(),
-                                a.fijado.is_some(),
-                                escala,
-                            );
+                            let area = area_del_historial(&disposicion, a, escala);
                             let c = a.colocado.borrow();
                             let scroll = a.scroll.unwrap_or_else(|| {
                                 pixpin_ui::historial::scroll_maximo(area, a.alto.get())
@@ -1381,11 +1400,7 @@ pub fn abrir(
                         .as_ref()
                         .filter(|a| a.hoja.is_none() && a.info.is_none() && a.marcados.is_empty())
                         .and_then(|a| {
-                            let area = disposicion.historial(
-                                a.alto_caja.get(),
-                                a.fijado.is_some(),
-                                escala,
-                            );
+                            let area = area_del_historial(&disposicion, a, escala);
                             let c = a.colocado.borrow();
                             let scroll = a.scroll.unwrap_or_else(|| {
                                 pixpin_ui::historial::scroll_maximo(area, a.alto.get())
@@ -1485,8 +1500,7 @@ pub fn abrir(
                     // que se pincho la ultima vez: es lo que espera la mano.
                     let aqui = local(pixpin_shell::entorno::posicion_del_cursor());
                     if let Some(a) = abierto.as_mut().filter(|_| disposicion.chat.contiene(aqui)) {
-                        let area =
-                            disposicion.historial(a.alto_caja.get(), a.fijado.is_some(), escala);
+                        let area = area_del_historial(&disposicion, a, escala);
                         let tope = pixpin_ui::historial::scroll_maximo(area, a.alto.get());
                         let paso = 3 * (chat::FILA * escala / 100) as i32;
                         let ahora_en = a.scroll.unwrap_or(tope);
@@ -1813,6 +1827,7 @@ pub fn abrir(
                 {
                     if let Some(a) = abierto.as_mut() {
                         a.busqueda = None;
+                        a.por_etiqueta = None;
                         a.scroll = None;
                     }
                     hay_que_pintar = true;
@@ -2102,7 +2117,7 @@ pub fn abrir(
             && a.colocado.borrow().puestos.len() == cuantas_se_ven(a)
             && let Some(j) = a.ir_a.take()
         {
-            let area = disposicion.historial(a.alto_caja.get(), a.fijado.is_some(), escala);
+            let area = area_del_historial(&disposicion, a, escala);
             // Con una busqueda puesta, el mensaje al que se iba puede estar
             // filtrado y no tener sitio: entonces no se salta a ninguna parte.
             let arriba = {
@@ -2233,7 +2248,7 @@ pub fn abrir(
                                 a.zonas.borrow_mut().clear();
                             }
                             None => {
-                                pintar_historial(p, &disposicion, &c, a, alto_texto);
+                                pintar_historial(p, &disposicion, &c, a);
                                 pintar_redaccion(p, &disposicion, &c, a, alto_texto);
                             }
                         }
@@ -2382,6 +2397,14 @@ struct Abierto {
     /// ninguna burbuja— y `Some(texto)` es buscando. Con un booleano aparte
     /// habria que mantener dos cosas a la vez y se descuadran.
     busqueda: Option<String>,
+    /// La etiqueta por la que se filtra, de los chips que salen bajo la
+    /// cabecera mientras se busca (`porEtiqueta` del movil).
+    ///
+    /// **Se limpia al apagar la lupa**, que es lo que el movil NO hace: alli
+    /// `consulta = null` deja `porEtiqueta` puesto y la conversacion se
+    /// queda medio vacia sin que nada diga por que. Un filtro que no se ve
+    /// no existe para quien mira.
+    por_etiqueta: Option<String>,
     /// Lo que ocupa la seccion abierta, que solo se sabe al colocarla.
     alto_info: std::cell::Cell<u32>,
     /// Lo ancho que mide el rotulo de cada pestana. Lo apunta el pintado,
@@ -2463,6 +2486,10 @@ struct Colocado {
     visibles: Vec<usize>,
     /// Con que busqueda se filtro, para no rehacerlo en cada fotograma.
     busqueda: String,
+    /// Y con que chip de etiqueta. Va en la llave del cache igual que la
+    /// busqueda: sin esto, pulsar un chip no rehace la colocacion y las
+    /// burbujas se quedan como estaban.
+    por_etiqueta: Option<String>,
     puestos: Vec<pixpin_ui::historial::Puesto>,
     /// De que se compone cada burbuja, ya medido, en el mismo orden.
     piezas: Vec<Piezas>,
@@ -2975,7 +3002,7 @@ struct Pinta<'a> {
     previas: &'a crate::miniaturas::Miniaturas,
 }
 
-fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_caja: u32) {
+fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     let (tema, escala, textos, ahora) = (c.tema, c.escala, c.textos, c.ahora);
     // Aparte, porque mas abajo `c` pasa a ser la colocacion.
     let previas = c.previas;
@@ -3033,8 +3060,51 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
         a.zonas.borrow_mut().push((barra, Zona::Ir(indice_fijado)));
     }
 
+    // La fila de chips de etiqueta, solo mientras se busca: cuelga de la
+    // cabecera (o del fijado) y le roba alto al historial. Se pinta ANTES
+    // que las burbujas porque su alto es el que decide donde empiezan.
+    let chips = chips_de(a);
+    if !chips.is_empty() {
+        let fila = d.chips(chips.len(), a.fijado.is_some(), escala);
+        p.rellenar(rf(fila), tema.cabecera);
+        p.rellenar(
+            RectF {
+                x: fila.x as f32,
+                y: fila.abajo() as f32 - (1.0 * e).max(1.0),
+                ancho: fila.ancho as f32,
+                alto: (1.0 * e).max(1.0),
+            },
+            tema.separador,
+        );
+        for (i, (caja, emoji)) in chat::fila_de_chips(fila, chips.len(), escala)
+            .into_iter()
+            .zip(&chips)
+            .enumerate()
+        {
+            let puesto = a.por_etiqueta.as_deref() == Some(emoji.as_str());
+            let fondo = if puesto { tema.enviar } else { tema.pildora };
+            p.rellenar_redondeado(rf(caja), caja.alto as f32 / 2.0, fondo);
+            // El emoji, centrado: es todo lo que lleva el chip, asi que si
+            // se descentra se nota mas que en un rotulo.
+            let tam = 17.0 * e;
+            let (w, alto) = p.medir_texto(emoji, tam);
+            p.texto(
+                emoji,
+                caja.x as f32 + (caja.ancho as f32 - w) / 2.0,
+                caja.y as f32 + (caja.alto as f32 - alto) / 2.0,
+                tam,
+                if puesto {
+                    tema.texto_elegido
+                } else {
+                    tema.pildora_texto
+                },
+            );
+            a.zonas.borrow_mut().push((caja, Zona::Chip(i)));
+        }
+    }
+
     // El area de los mensajes: entre la cabecera (o el fijado) y la caja.
-    let area = d.historial(alto_caja, a.fijado.is_some(), escala);
+    let area = area_del_historial(d, a, escala);
     if a.mensajes.is_empty() {
         let vacio = textos.t("chat-sin-mensajes");
         let (w, alto) = p.medir_texto(&vacio, 13.0 * e);
@@ -3054,7 +3124,10 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
     let aguja = a.busqueda.clone().unwrap_or_default();
     {
         let mut c = a.colocado.borrow_mut();
-        if c.ancho != ancho_contenido || c.puestos.len() != cuantas_se_ven(a) || c.busqueda != aguja
+        if c.ancho != ancho_contenido
+            || c.puestos.len() != cuantas_se_ven(a)
+            || c.busqueda != aguja
+            || c.por_etiqueta != a.por_etiqueta
         {
             // Buscando, solo se miden y se colocan las que casan: el movil
             // FILTRA la conversacion («quien busca "factura enero" quiere las
@@ -3086,6 +3159,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_ca
                 ancho: ancho_contenido,
                 visibles,
                 busqueda: aguja.clone(),
+                por_etiqueta: a.por_etiqueta.clone(),
                 puestos,
                 piezas: todas,
             };
@@ -3853,32 +3927,56 @@ const ARRASTRE_MINIMO: i32 = 4;
 
 /// Cuantas burbujas se ven con la busqueda que haya puesta.
 fn cuantas_se_ven(a: &Abierto) -> usize {
-    match a.busqueda.as_deref().filter(|q| !q.trim().is_empty()) {
-        None => a.mensajes.len(),
-        Some(q) => a
-            .mensajes
-            .iter()
-            .filter(|m| pixpin_ui::chat::casa_la_busqueda(&m.resumen(), &m.nombre, q))
-            .count(),
-    }
+    a.mensajes.iter().filter(|m| se_ve(a, m)).count()
 }
 
-/// Que mensajes se ven, por su posicion. Sin busqueda, todos.
+/// Que mensajes se ven, por su posicion. Sin busqueda ni chip, todos.
 ///
 /// Se busca sobre el RESUMEN y no sobre `texto` a secas: en una nota de voz
 /// el texto suele estar vacio y lo que se busca es lo que se dijo, que vive
 /// en la transcripcion (ver `Mensaje::resumen`).
 fn indices_visibles(a: &Abierto) -> Vec<usize> {
-    match a.busqueda.as_deref().filter(|q| !q.trim().is_empty()) {
-        None => (0..a.mensajes.len()).collect(),
-        Some(q) => a
-            .mensajes
-            .iter()
-            .enumerate()
-            .filter(|(_, m)| pixpin_ui::chat::casa_la_busqueda(&m.resumen(), &m.nombre, q))
-            .map(|(i, _)| i)
-            .collect(),
+    a.mensajes
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| se_ve(a, m))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Si una burbuja pasa los dos filtros: la palabra de la lupa y el chip de
+/// etiqueta. Los dos a la vez, como en el movil (`porEmoji(buscados, …)`):
+/// primero lo escrito y luego el emoji, que es lo que espera quien pulsa un
+/// chip teniendo ya media palabra escrita.
+fn se_ve(a: &Abierto, m: &pixpin_proyecto::cuaderno::Mensaje) -> bool {
+    if let Some(q) = a.busqueda.as_deref().filter(|q| !q.trim().is_empty())
+        && !pixpin_ui::chat::casa_la_busqueda(&m.resumen(), &m.nombre, q)
+    {
+        return false;
     }
+    match a.por_etiqueta.as_deref() {
+        None => true,
+        Some(e) => m.emoji.as_deref() == Some(e),
+    }
+}
+
+/// Los chips de etiqueta que toca ensenar: solo con la lupa encendida, y
+/// solo los que de verdad filtran algo.
+fn chips_de(a: &Abierto) -> Vec<String> {
+    if a.busqueda.is_none() {
+        return Vec::new();
+    }
+    pixpin_ui::chat::emojis_usados(a.mensajes.iter().filter_map(|m| m.emoji.as_deref()))
+}
+
+/// El area de las burbujas, ya descontada la fila de chips si la hay.
+fn area_del_historial(d: &Disposicion, a: &Abierto, escala: u32) -> Rect {
+    d.historial(
+        a.alto_caja.get(),
+        a.fijado.is_some(),
+        chips_de(a).len(),
+        escala,
+    )
 }
 
 /// Lo que hace falta para medir un mensaje: los textos, la escala y la hora
@@ -4686,6 +4784,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         hoja: None,
         vivo: None,
         busqueda: None,
+        por_etiqueta: None,
         comentando: None,
         barriendo: false,
     }
@@ -5142,7 +5241,7 @@ fn ruta_del_mensaje(
 /// Antes del primero no hay ninguna, y la vuelta de despues las pide.
 fn fotos_del_historial(a: &Abierto, d: &Disposicion, escala: u32) -> Vec<std::path::PathBuf> {
     use pixpin_ui::historial as h;
-    let area = d.historial(a.alto_caja.get(), a.fijado.is_some(), escala);
+    let area = area_del_historial(d, a, escala);
     let c = a.colocado.borrow();
     let scroll = a
         .scroll
@@ -7166,6 +7265,9 @@ enum Zona {
     /// «Ver en contexto»: quita el filtro y lleva al primer resultado, que es
     /// como se sale de una busqueda sin perder el sitio.
     EnContexto,
+    /// Un chip de etiqueta de la fila de buscar, por su sitio en `chips_de`:
+    /// filtra por ese emoji, y volver a pulsarlo quita el filtro.
+    Chip(usize),
     CerrarRespuesta,
     SelCerrar,
     SelCopiar,

@@ -615,10 +615,38 @@ impl Disposicion {
         }
     }
 
+    /// La fila de chips de etiqueta, bajo la cabecera (o bajo la barra del
+    /// fijado). Sin chips no ocupa nada y no hay donde pulsar.
+    pub fn chips(&self, cuantos: usize, hay_fijado: bool, escala_por_cien: u32) -> Rect {
+        let alto = alto_de_chips(cuantos, escala_por_cien).min(self.chat.alto);
+        if self.chat.ancho == 0 || alto == 0 {
+            return vacio();
+        }
+        let y = if hay_fijado {
+            self.fijado(escala_por_cien).abajo()
+        } else {
+            self.cabecera_chat.abajo()
+        };
+        Rect {
+            x: self.chat.x,
+            y,
+            ancho: self.chat.ancho,
+            alto,
+        }
+    }
+
     /// El historial: lo que queda entre la cabecera (o la barra del mensaje
-    /// fijado, si la hay) y la caja de escribir.
-    pub fn historial(&self, alto_texto: u32, hay_fijado: bool, escala_por_cien: u32) -> Rect {
-        let arriba = if hay_fijado {
+    /// fijado y la fila de chips, si las hay) y la caja de escribir.
+    pub fn historial(
+        &self,
+        alto_texto: u32,
+        hay_fijado: bool,
+        chips: usize,
+        escala_por_cien: u32,
+    ) -> Rect {
+        let arriba = if chips > 0 {
+            self.chips(chips, hay_fijado, escala_por_cien).abajo()
+        } else if hay_fijado {
             self.fijado(escala_por_cien).abajo()
         } else {
             self.cabecera_chat.abajo()
@@ -1236,7 +1264,7 @@ mod pruebas_hora {
         // Y el historial siempre queda entre la cabecera y la caja.
         for alto_texto in [18, 90, 10_000] {
             let caja = d.redaccion(alto_texto, 100);
-            let hist = d.historial(alto_texto, false, 100);
+            let hist = d.historial(alto_texto, false, 0, 100);
             assert_eq!(caja.abajo(), d.chat.abajo(), "pegada abajo");
             assert_eq!(hist.y, d.cabecera_chat.abajo());
             assert_eq!(hist.abajo(), caja.y, "sin hueco ni solape");
@@ -1261,7 +1289,7 @@ mod pruebas_hora {
             caja.alto,
             d.chat.alto
         );
-        assert!(d.historial(10_000, false, 100).alto > 0);
+        assert!(d.historial(10_000, false, 0, 100).alto > 0);
     }
 }
 
@@ -1957,11 +1985,210 @@ mod pruebas_movil {
             "la barra va encima, sin pisarla"
         );
         assert_eq!(
-            con.historial(18, false, 100).abajo(),
+            con.historial(18, false, 0, 100).abajo(),
             con.redaccion(18, 100).y,
             "el historial se aparta"
         );
         // Caso negativo: sin barra no se reserva nada.
         assert_eq!(sin.encima_de_la_isla(18, 100).alto, 0);
+    }
+}
+
+// --- Los chips de etiqueta, solo mientras se busca -------------------------
+//
+// Telegram los saca bajo la barra de arriba unicamente mientras se busca
+// (`ChatActivity.java:8890`) y el movil hace lo mismo (la `LazyRow` de
+// `etiquetas` de `MensajesActivity.kt`): el resto del tiempo es una fila de
+// colores que nadie toca, y en la pantalla manda el contenido. Buscando, en
+// cambio, es media busqueda hecha, porque casi nunca se recuerda la palabra
+// pero si que se recuerda haberlo marcado.
+//
+// Copiado a proposito AL REVES que el movil en una cosa: alli, al cerrar la
+// lupa se pone `consulta = null` y NO se limpia `porEtiqueta`, asi que el
+// filtro de emoji se queda puesto sin que nada lo ensene y la conversacion
+// parece medio vacia. Aqui apagar la lupa limpia las dos cosas; ver
+// `Abierto::por_etiqueta` en `ventana_chat.rs`.
+
+/// Lo alto de un chip: los 38 de Telegram (`ALTO_DE_LA_FICHA` del movil).
+pub const CHIP_ALTO: u32 = 38;
+/// El aire entre un chip y el siguiente.
+pub const CHIP_AIRE: u32 = 6;
+/// El margen de la fila de chips, a los lados y arriba y abajo.
+pub const CHIP_MARGEN_X: u32 = 8;
+pub const CHIP_MARGEN_Y: u32 = 4;
+/// Lo ancho de un chip de un solo emoji: redondo y comodo de pulsar.
+pub const CHIP_ANCHO: u32 = 44;
+
+/// Lo que ocupa la fila de chips, o nada si no hay ninguno.
+///
+/// Sin chips la fila NO reserva sitio: una franja vacia bajo la cabecera
+/// empujaria la conversacion hacia abajo cada vez que se abre la lupa.
+pub fn alto_de_chips(cuantos: usize, escala_por_cien: u32) -> u32 {
+    if cuantos == 0 {
+        return 0;
+    }
+    (CHIP_ALTO + 2 * CHIP_MARGEN_Y) * escala_por_cien / 100
+}
+
+/// Donde cae cada chip dentro de `sitio`, de izquierda a derecha.
+///
+/// Los que no caben NO se devuelven: si se devolviesen, el raton tendria
+/// donde pulsar en un chip que no se ve. Es una sola fila y no varias: en el
+/// movil es una `LazyRow` que se arrastra, y aqui la columna del chat es
+/// ancha de sobra para las seis etiquetas.
+pub fn fila_de_chips(sitio: Rect, cuantos: usize, escala_por_cien: u32) -> Vec<Rect> {
+    let e = |v: u32| v * escala_por_cien / 100;
+    let alto = e(CHIP_ALTO).min(sitio.alto);
+    let ancho = e(CHIP_ANCHO);
+    let aire = e(CHIP_AIRE) as i32;
+    let y = sitio.y + (sitio.alto as i32 - alto as i32) / 2;
+    let tope = sitio.derecha() - e(CHIP_MARGEN_X) as i32;
+    let mut v = Vec::new();
+    let mut x = sitio.x + e(CHIP_MARGEN_X) as i32;
+    for _ in 0..cuantos {
+        if ancho == 0 || x + ancho as i32 > tope {
+            break;
+        }
+        v.push(Rect { x, y, ancho, alto });
+        x += ancho as i32 + aire;
+    }
+    v
+}
+
+/// Las etiquetas que de verdad hay puestas en la conversacion
+/// (`emojisUsados` del movil): las de `ETIQUETAS` en su orden y, detras, las
+/// que llegaron del movil y aqui no se conocen, en el orden en que salen.
+///
+/// Se ensenan solo las usadas y no las seis siempre: un chip que no filtra
+/// nada es un boton que miente.
+pub fn emojis_usados<'a>(puestas: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut vistas: Vec<String> = Vec::new();
+    for e in puestas {
+        let e = e.trim();
+        if e.is_empty() || vistas.iter().any(|v| v == e) {
+            continue;
+        }
+        vistas.push(e.to_string());
+    }
+    let mut v: Vec<String> = ETIQUETAS
+        .iter()
+        .filter(|e| vistas.iter().any(|v| v == *e))
+        .map(|e| (*e).to_string())
+        .collect();
+    for e in vistas {
+        if !v.contains(&e) {
+            v.push(e);
+        }
+    }
+    v
+}
+
+#[cfg(test)]
+mod pruebas_chips {
+    use super::*;
+
+    #[test]
+    fn la_fila_de_chips_no_devuelve_los_que_no_caben() {
+        let sitio = Rect {
+            x: 0,
+            y: 0,
+            ancho: 8 + 44 + 6 + 44 + 8,
+            alto: 46,
+        };
+        assert_eq!(fila_de_chips(sitio, 2, 100).len(), 2);
+        // Caso negativo: el tercero no cabe y no se devuelve, para que el
+        // raton no tenga donde pulsar algo que no se ve.
+        assert_eq!(fila_de_chips(sitio, 3, 100).len(), 2);
+        // Y en una columna en la que no cabe ninguno, ninguno.
+        let angosto = Rect { ancho: 20, ..sitio };
+        assert!(fila_de_chips(angosto, 6, 100).is_empty());
+    }
+
+    #[test]
+    fn los_chips_van_en_fila_sin_pisarse_y_dentro_del_sitio() {
+        let sitio = Rect {
+            x: 10,
+            y: 100,
+            ancho: 600,
+            alto: 46,
+        };
+        let v = fila_de_chips(sitio, 4, 100);
+        assert_eq!(v.len(), 4);
+        for par in v.windows(2) {
+            assert!(par[0].derecha() <= par[1].x, "no se pisan");
+            assert_eq!(par[1].x - par[0].derecha(), CHIP_AIRE as i32);
+        }
+        assert!(v[0].x >= sitio.x && v[3].derecha() <= sitio.derecha());
+        assert!(v[0].y >= sitio.y && v[0].abajo() <= sitio.abajo());
+    }
+
+    #[test]
+    fn sin_chips_la_fila_no_roba_alto() {
+        assert_eq!(alto_de_chips(0, 100), 0);
+        assert_eq!(alto_de_chips(0, 200), 0);
+        assert!(alto_de_chips(1, 100) > 0);
+        assert_eq!(alto_de_chips(1, 200), 2 * alto_de_chips(1, 100));
+    }
+
+    #[test]
+    fn las_etiquetas_usadas_salen_en_el_orden_del_movil_y_sin_repetir() {
+        let puestas = ["\u{1f4a1}", "\u{2b50}", "\u{1f4a1}"];
+        assert_eq!(
+            emojis_usados(puestas),
+            vec!["\u{2b50}".to_string(), "\u{1f4a1}".to_string()],
+            "el orden es el de ETIQUETAS, no el de aparicion"
+        );
+        // Casos negativos: sin ninguna puesta no hay chips que ensenar.
+        assert!(emojis_usados(Vec::<&str>::new()).is_empty());
+        assert!(emojis_usados(["", "  "]).is_empty());
+        // Una etiqueta que puso el movil y aqui no se conoce no se pierde:
+        // va detras, o su chip no filtraria mensajes que existen.
+        let con_ajena = emojis_usados(["\u{1f984}", "\u{2705}"]);
+        assert_eq!(
+            con_ajena,
+            vec!["\u{2705}".to_string(), "\u{1f984}".to_string()]
+        );
+    }
+}
+
+#[cfg(test)]
+mod pruebas_fila_de_chips {
+    use super::*;
+
+    fn disposicion() -> Disposicion {
+        Disposicion::calcular(1024, 768, 100, 300, Vista::Ambas)
+    }
+
+    #[test]
+    fn la_fila_de_chips_se_mete_entre_la_cabecera_y_las_burbujas() {
+        let d = disposicion();
+        let sin = d.historial(18, false, 0, 100);
+        let con = d.historial(18, false, 3, 100);
+        let fila = d.chips(3, false, 100);
+        assert_eq!(fila.y, d.cabecera_chat.abajo(), "cuelga de la cabecera");
+        assert_eq!(con.y, fila.abajo(), "las burbujas empiezan debajo");
+        assert!(con.alto < sin.alto, "la fila roba alto al historial");
+        assert_eq!(sin.alto - con.alto, fila.alto);
+    }
+
+    #[test]
+    fn sin_chips_el_historial_es_el_de_siempre() {
+        let d = disposicion();
+        // Caso negativo: con la lupa apagada no hay fila, y el historial no
+        // puede encoger ni un pixel por algo que no se ve.
+        assert_eq!(d.chips(0, false, 100).alto, 0);
+        assert_eq!(
+            d.historial(18, false, 0, 100),
+            d.historial(18, false, 0, 100)
+        );
+        assert_eq!(d.historial(18, true, 0, 100).y, d.fijado(100).abajo());
+    }
+
+    #[test]
+    fn con_el_fijado_puesto_los_chips_van_debajo_de_su_barra() {
+        let d = disposicion();
+        let fila = d.chips(2, true, 100);
+        assert_eq!(fila.y, d.fijado(100).abajo());
+        assert_eq!(d.historial(18, true, 2, 100).y, fila.abajo());
     }
 }
