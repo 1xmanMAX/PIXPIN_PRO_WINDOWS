@@ -1,9 +1,10 @@
 //! Las mini-aplicaciones del cuaderno: documentos que viajan como texto.
 //!
 //! En Android son siete (`mini/MiniApps.kt`): tareas, gastos, cronometro,
-//! temporizador, contador, ruleta y alarma. Aqui se empieza por **tareas**,
-//! que es la que se usa a diario en una obra, y se anaden las demas segun
-//! hagan falta.
+//! temporizador, contador, ruleta y alarma. Aqui estan las siete, cada una
+//! con su documento escrito **letra por letra como lo escribe el movil**,
+//! porque ese texto viaja por la sincronizacion y el movil tiene que poder
+//! abrirlo.
 //!
 //! **El documento ES el texto del mensaje.** No hay fichero aparte: un
 //! mensaje de clase `MINIAPP` lleva el documento entero en `texto` y la
@@ -14,8 +15,111 @@
 //! GitHub—, y eso no es casualidad: un aparato que no conozca la mini-app
 //! ensena el texto tal cual y se entiende igual.
 
+pub mod contador;
+pub mod gastos;
+pub mod ruleta;
+pub mod tiempos;
+
 /// La palabra que va en `Mensaje.miniapp` para una lista de tareas.
 pub const TAREAS: &str = "tareas";
+
+/// Conceptos con importe y su total. Ver [`gastos`].
+pub const GASTOS: &str = "gastos";
+
+/// Tiempo que sube. Ver [`tiempos::Cronometro`].
+pub const CRONOMETRO: &str = "cronometro";
+
+/// Tiempo que baja. Ver [`tiempos::Temporizador`].
+pub const TEMPORIZADOR: &str = "temporizador";
+
+/// Un numero que sube y baja. Ver [`contador`].
+pub const CONTADOR: &str = "contador";
+
+/// Nombres y un sorteo. Ver [`ruleta`].
+pub const RULETA: &str = "ruleta";
+
+/// Una hora a la que avisar. Ver [`tiempos::Alarma`].
+pub const ALARMA: &str = "alarma";
+
+/// Las siete palabras, en el orden en que Android las ofrece
+/// (`MiniApps.kt:100-190`). El orden es parte de la pantalla, no del
+/// documento, pero se copia igual para que las dos aplicaciones ensenen el
+/// mismo menu.
+pub const TODAS: [&str; 7] = [
+    TAREAS,
+    GASTOS,
+    CRONOMETRO,
+    TEMPORIZADOR,
+    CONTADOR,
+    RULETA,
+    ALARMA,
+];
+
+/// Lo que la burbuja ensena de una mini-app **sin abrirla**.
+///
+/// Es el `ResumenMini` de `MiniApps.kt:79-89`. El texto viene ya compuesto
+/// —«3 de 7», «60,50 €»— porque componerlo necesita saber de tareas o de
+/// monedas, que es justo lo que sabe este nucleo y no sabe la ventana. Los
+/// numeros van aparte por si una pantalla quiere decirlo de otra forma sin
+/// volver a contar.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Resumen {
+    pub texto: String,
+    /// Cuantas van, cuando la mini-app cuenta cosas.
+    pub hechas: usize,
+    /// Cuantas hay en total.
+    pub de: usize,
+    /// De 0 a 1, para una barrita de avance. `None` cuando no hay avance que
+    /// ensenar: 0 de 0 no es «nada hecho», es «nada que hacer».
+    pub avance: Option<f32>,
+    /// Todavia no tiene nada dentro: recien creada y sin tocar.
+    pub vacia: bool,
+}
+
+/// El documento con el que **nace** una mini-app, o `None` si esa palabra no
+/// la conocemos.
+///
+/// `None` y no un fallo: un mensaje guardado por una version posterior, con
+/// una mini-app que aqui todavia no existe, tiene que poder seguir en la
+/// lista como lo que es —un texto— en vez de tumbar la conversacion
+/// (`MiniApp.de`, `MiniApps.kt:206-213`).
+///
+/// Nace con su cabecera y sin ninguna fila: un ejemplo dentro habria que
+/// borrarlo antes de empezar.
+pub fn documento_nuevo(miniapp: &str, titulo: &str, moneda: &gastos::Moneda) -> Option<String> {
+    Some(match miniapp {
+        TAREAS => escribir_tareas(titulo, &[]),
+        GASTOS => gastos::escribir(&gastos::Libro {
+            titulo: titulo.to_string(),
+            moneda: moneda.clone(),
+            gastos: Vec::new(),
+        }),
+        CRONOMETRO => tiempos::escribir_cronometro(titulo, &tiempos::Cronometro::default()),
+        TEMPORIZADOR => tiempos::escribir_temporizador(titulo, &tiempos::Temporizador::default()),
+        CONTADOR => contador::escribir(titulo, &contador::Cuenta::default()),
+        RULETA => ruleta::escribir(titulo, &[]),
+        ALARMA => tiempos::escribir_alarma(titulo, &tiempos::Alarma::default()),
+        _ => return None,
+    })
+}
+
+/// Lo que ensena la burbuja de esa mini-app, o `None` si no la conocemos.
+///
+/// La moneda solo se usa para los gastos, y solo cuando el documento no dice
+/// la suya: es la del aparato al crear, no al leer, para que unos gastos
+/// apuntados en un viaje no cambien de moneda al volver a casa.
+pub fn resumen(miniapp: &str, documento: &str, moneda: &gastos::Moneda) -> Option<Resumen> {
+    Some(match miniapp {
+        TAREAS => resumen_tareas(documento),
+        GASTOS => gastos::resumen(documento, moneda),
+        CRONOMETRO => tiempos::resumen_cronometro(documento),
+        TEMPORIZADOR => tiempos::resumen_temporizador(documento),
+        CONTADOR => contador::resumen(documento),
+        RULETA => ruleta::resumen(documento),
+        ALARMA => tiempos::resumen_alarma(documento),
+        _ => return None,
+    })
+}
 
 /// Una linea de la lista: lo que hay que hacer, y si ya esta.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +137,24 @@ pub fn titulo(documento: &str) -> String {
         return String::new();
     }
     sin.trim().to_string()
+}
+
+/// El documento **sin** su linea de titulo, que es lo que leen las mini-apps
+/// de clave y valor.
+///
+/// Sin esto, un titulo como `# valor: 3` se leeria como un dato y el contador
+/// arrancaria en tres. Es `Cabecera.cuerpo` (`MiniApps.kt:236-239`): si no hay
+/// titulo se devuelve el documento entero, y si lo hay se corta **solo** la
+/// primera linea —el renglon en blanco se queda, porque quitarlo cambiaria la
+/// cuenta de lineas de todo lo demas.
+pub fn cuerpo(documento: &str) -> &str {
+    if titulo(documento).is_empty() {
+        return documento;
+    }
+    match documento.split_once('\n') {
+        Some((_, resto)) => resto,
+        None => "",
+    }
 }
 
 /// Las tareas de un documento.
@@ -155,6 +277,97 @@ pub fn cuenta(tareas: &[Tarea]) -> (usize, usize) {
     (tareas.iter().filter(|t| t.hecha).count(), tareas.len())
 }
 
+/// «3 de 7», sin abrir la lista (`Tareas.kt:165-179`).
+///
+/// Se cuenta sobre el documento guardado y no sobre un contador aparte,
+/// porque un contador se desincroniza en cuanto alguien edita el texto por
+/// otro camino y entonces la burbuja miente, que es peor que no decir nada.
+pub fn resumen_tareas(documento: &str) -> Resumen {
+    let tareas = leer_tareas(documento);
+    let (hechas, de) = cuenta(&tareas);
+    Resumen {
+        texto: format!("{hechas} de {de}"),
+        hechas,
+        de,
+        avance: if de == 0 {
+            None
+        } else {
+            Some(hechas as f32 / de as f32)
+        },
+        vacia: de == 0,
+    }
+}
+
+/// Las lineas `- clave: valor` del cuerpo, en el orden en que estan.
+///
+/// Es `valores()` de `Tiempos.kt:78-86` y de `Contador.kt:32-39`, que son la
+/// misma funcion escrita dos veces: se quita **un** guion de delante, se corta
+/// en el primer `:` y la clave se baja a minusculas. Una linea sin `:`, o que
+/// empiece por `:`, no es un dato y se salta.
+///
+/// Se devuelve una lista y no un mapa a proposito: hace falta saber que claves
+/// NO se entendieron para volver a escribirlas, que es lo que impide que
+/// marcar una casilla se lleve por delante un dato de una version mas nueva
+/// del movil.
+pub(crate) fn valores(documento: &str) -> Vec<(String, String)> {
+    cuerpo(documento)
+        .lines()
+        .filter_map(|linea| {
+            let limpia = linea.trim();
+            let limpia = limpia.strip_prefix('-').unwrap_or(limpia).trim();
+            let corte = limpia.find(':')?;
+            if corte == 0 {
+                return None;
+            }
+            Some((
+                limpia[..corte].trim().to_lowercase(),
+                limpia[corte + 1..].trim().to_string(),
+            ))
+        })
+        .collect()
+}
+
+/// El valor de esa clave, el **ultimo** si esta repetida.
+///
+/// El ultimo porque en Kotlin estas lineas acaban en un `toMap()`, y ahi la
+/// repetida pisa a la anterior. Un documento con dos `- valor:` tiene que
+/// decir lo mismo en los dos aparatos.
+pub(crate) fn valor<'a>(valores: &'a [(String, String)], clave: &str) -> Option<&'a str> {
+    valores
+        .iter()
+        .rev()
+        .find(|(c, _)| c == clave)
+        .map(|(_, v)| v.as_str())
+}
+
+/// Las claves que esta mini-app no entiende, tal cual venian.
+///
+/// Android las tira al guardar; aqui se conservan y se vuelven a escribir
+/// detras de las conocidas. Cuesta nada y evita que un PC con una version
+/// vieja borre, con solo tocar un boton, un dato que escribio un movil mas
+/// nuevo. Para el movil no cambia nada: su lector se salta lo que no conoce.
+pub(crate) fn otras_claves(
+    valores: &[(String, String)],
+    conocidas: &[&str],
+) -> Vec<(String, String)> {
+    valores
+        .iter()
+        .filter(|(c, _)| !conocidas.contains(&c.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// Un documento de `- clave: valor`, con su titulo delante
+/// (`Tiempos.kt:88-89`).
+pub(crate) fn documento_de_claves(titulo: &str, pares: &[(String, String)]) -> String {
+    let cuerpo = pares
+        .iter()
+        .map(|(c, v)| format!("- {c}: {v}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("{}{cuerpo}", linea_de_titulo(titulo))
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -229,6 +442,56 @@ mod pruebas {
         assert!(!t[0].hecha && t[1].hecha);
         // Caso negativo: una que no existe deja el documento igual.
         assert_eq!(alternar(&d, 9), d);
+    }
+
+    #[test]
+    fn las_siete_nacen_con_su_documento_y_se_leen_a_la_vuelta() {
+        let moneda = gastos::Moneda::euro();
+        for palabra in TODAS {
+            let d = documento_nuevo(palabra, "Prueba", &moneda)
+                .unwrap_or_else(|| panic!("{palabra} tiene que nacer"));
+            assert!(
+                d.starts_with("# Prueba\n\n"),
+                "{palabra} nace con su titulo: {d:?}"
+            );
+            assert_eq!(titulo(&d), "Prueba", "{palabra}");
+            let r = resumen(palabra, &d, &moneda).unwrap_or_else(|| panic!("{palabra}"));
+            assert!(r.vacia, "{palabra} nace vacia: {r:?}");
+        }
+    }
+
+    #[test]
+    fn una_mini_app_de_una_version_futura_no_tumba_nada() {
+        // `None` y no un fallo: un mensaje escrito por un movil mas nuevo
+        // tiene que seguir en la lista como texto, no reventar la ventana.
+        let moneda = gastos::Moneda::euro();
+        assert_eq!(documento_nuevo("horoscopo", "X", &moneda), None);
+        assert_eq!(resumen("horoscopo", "lo que sea", &moneda), None);
+        assert_eq!(resumen("", "", &moneda), None);
+        // Y la hoja de calculo del PC, que Android no conoce, tampoco entra
+        // aqui: la suya la lleva `tabla.rs`.
+        assert_eq!(resumen("tabla", "{}", &moneda), None);
+    }
+
+    #[test]
+    fn el_cuerpo_deja_fuera_el_titulo_y_nada_mas() {
+        assert_eq!(cuerpo("# T\n\n- valor: 3"), "\n- valor: 3");
+        assert_eq!(cuerpo("- valor: 3"), "- valor: 3", "sin titulo, todo");
+        assert_eq!(cuerpo("# T"), "", "solo el titulo no deja cuerpo");
+        assert_eq!(cuerpo(""), "");
+    }
+
+    #[test]
+    fn el_resumen_de_tareas_no_ensena_avance_cuando_no_hay_nada_que_hacer() {
+        let r = resumen_tareas("# L\n\n- [x] a\n- [ ] b\n- [ ] c");
+        assert_eq!(r.texto, "1 de 3");
+        assert_eq!((r.hechas, r.de), (1, 3));
+        assert_eq!(r.avance, Some(1.0 / 3.0));
+        assert!(!r.vacia);
+        let vacio = resumen_tareas("# L\n\n");
+        assert_eq!(vacio.texto, "0 de 0");
+        assert_eq!(vacio.avance, None, "0 de 0 no es «nada hecho»");
+        assert!(vacio.vacia);
     }
 
     #[test]
