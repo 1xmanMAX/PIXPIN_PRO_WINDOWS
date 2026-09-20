@@ -259,6 +259,35 @@ pub struct Ajustes {
     /// un ajuste que se guarda y no se lee-. La regla de capas lo permite:
     /// store es capa 2 y motor2d es capa 1.
     pub enganche: pixpin_motor2d::enganche::Ajustes,
+    /// Sincronizar con el movil.
+    ///
+    /// Es una tabla (`[sincro]`) y por eso va al final, detras de las claves
+    /// sueltas: en TOML, lo que sigue a una cabecera de tabla es suyo.
+    pub sincro: Sincro,
+}
+
+/// Lo de sincronizar que se puede tocar a mano.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Sincro {
+    /// Dejarse encontrar por el grupo mientras PixPin esta abierto.
+    ///
+    /// Encendido, PixPin escucha en el puerto de sincronizar y se anuncia en
+    /// la red local desde que arranca, como hace `Presencia` en el movil: es
+    /// lo que hace que el movil vea el ordenador sin esperar uno o dos
+    /// minutos. Apagado, no se abre ninguna puerta ni se anuncia nada —desde
+    /// aqui se puede seguir llamando al movil, pero el movil no podra llamar.
+    ///
+    /// Viene encendido porque es lo que el usuario espera de «Sincronizar»;
+    /// tiene interruptor porque una puerta abierta en la red local es algo
+    /// que cada uno tiene derecho a no querer.
+    pub presencia: bool,
+}
+
+impl Default for Sincro {
+    fn default() -> Self {
+        Self { presencia: true }
+    }
 }
 
 impl Default for Ajustes {
@@ -279,6 +308,7 @@ impl Default for Ajustes {
             regiones: Vec::new(),
             abrir_con: true,
             enganche: pixpin_motor2d::enganche::Ajustes::default(),
+            sincro: Sincro::default(),
         }
     }
 }

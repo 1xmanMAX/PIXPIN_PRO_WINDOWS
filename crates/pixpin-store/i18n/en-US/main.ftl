@@ -505,3 +505,20 @@ chat-unir-nada = Nothing here can be added: only photos, drawings, notes and PDF
 chat-devolver = Add back to the project
 chat-devuelto = Back in "{ $nombre }"
 chat-devolver-no = Could not add it back
+
+## Backups (copy of sincro/CopiasActivity.kt from the phone)
+cop-titulo = Backups
+cop-portada-como = How each conversation was before receiving something over Wi-Fi and before each sync.
+cop-ver = See the backups
+cop-versiones = Earlier versions
+cop-como-estaba = How the project was before each received transfer and each sync. Going back to one does not delete what you did afterwards.
+cop-todavia-nada = No backups yet. They are made on their own before receiving something over Wi-Fi and before syncing.
+cop-como-se-hacen = The last 30 of each conversation are kept. Files over 40 MB are not in the backup: there is no going back for those.
+cop-hojas-mensajes = { $hojas } sheets · { $mensajes } messages
+cop-sin-grandes =  · without the PDF (too large)
+cop-volver = Go back
+cop-cancelar = Cancel
+cop-volver-titulo = Go back to this backup?
+cop-volver-texto = «{ $nombre }» goes back to how it was on { $cuando } ({ $motivo }): { $hojas } sheets. The canvases you added afterwards stay. A backup of how it is now is saved first, so you can undo this.
+cop-ha-vuelto = «{ $nombre }» has gone back to the backup
+cop-no-se-pudo = Could not go back to the backup: { $motivo }

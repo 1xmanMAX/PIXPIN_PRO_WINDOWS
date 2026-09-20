@@ -506,3 +506,20 @@ chat-unir-nada = No hay nada que se pueda unir: solo fotos, dibujos, notas y PDF
 chat-devolver = Volver a añadir al proyecto
 chat-devuelto = De vuelta en «{ $nombre }»
 chat-devolver-no = No se pudo volver a añadir
+
+## Copias de seguridad (copia de sincro/CopiasActivity.kt del movil)
+cop-titulo = Copias de seguridad
+cop-portada-como = Cómo estaba cada conversación antes de recibir algo por Wi-Fi y antes de cada sincronización.
+cop-ver = Ver las copias
+cop-versiones = Versiones anteriores
+cop-como-estaba = Cómo estaba el proyecto antes de cada envío recibido y de cada sincronización. Volver a una no borra lo que hiciste después.
+cop-todavia-nada = Aún no hay copias. Se hacen solas antes de recibir algo por Wi-Fi y antes de sincronizar.
+cop-como-se-hacen = Se guardan las 30 últimas de cada conversación. Los archivos de más de 40 MB no entran en la copia: de esos no se puede volver atrás.
+cop-hojas-mensajes = { $hojas } hojas · { $mensajes } mensajes
+cop-sin-grandes =  · sin el PDF (demasiado grande)
+cop-volver = Volver
+cop-cancelar = Cancelar
+cop-volver-titulo = ¿Volver a esta copia?
+cop-volver-texto = «{ $nombre }» vuelve a como estaba el { $cuando } ({ $motivo }): { $hojas } hojas. Los lienzos que añadiste después se quedan. Antes se guarda una copia de cómo está ahora, así que puedes deshacerlo.
+cop-ha-vuelto = «{ $nombre }» ha vuelto a la copia
+cop-no-se-pudo = No se pudo volver a la copia: { $motivo }

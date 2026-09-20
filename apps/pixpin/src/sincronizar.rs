@@ -45,8 +45,10 @@ use pixpin_store::{Catalogo, Ubicacion};
 use crate::caja_dibujo::hex;
 use crate::overlay::Recursos;
 
+mod copias_ui;
 mod elegir;
 mod enviar_wifi;
+pub(crate) mod presencia;
 mod recibir_wifi;
 
 const ANCHO_LOGICO: u32 = 480;
@@ -71,6 +73,14 @@ const CONTORNO: Color = hex(0x7f8e93);
 const ERROR: Color = hex(0xffb4ab);
 /// `surfaceContainer`: el fondo de los dialogos.
 const DIALOGO: Color = hex(0x192123);
+/// Lo que se pone sobre la pantalla cuando hay un dialogo: se sigue viendo lo
+/// de debajo, pero deja de tocarse.
+const VELO: Color = Color {
+    r: 0.0,
+    g: 0.0,
+    b: 0.0,
+    a: 0.55,
+};
 /// `VERDE` de `SincronizarActivity.kt`.
 const VERDE: Color = hex(0x2e9e4f);
 /// `ROJO` de `SincronizarActivity.kt`: lo que solo esta en un aparato.
@@ -168,6 +178,9 @@ enum Sub {
     Recibir(Box<recibir_wifi::Recibir>),
     Enviar(Box<enviar_wifi::Enviar>),
     Elegir(Box<elegir::Eligiendo>),
+    /// «Copias de seguridad»: volver a como estaba antes de un envio o de
+    /// una sincronizacion (`sincro/CopiasActivity.kt`).
+    Copias(Box<copias_ui::Copias>),
 }
 
 /// Que se esta escribiendo.
@@ -220,6 +233,9 @@ enum Accion {
     /// Los dos botones de «Pasar algo a otra persona».
     AbrirRecibir,
     AbrirEnviar,
+    /// «Copias de seguridad», desde la portada.
+    AbrirCopias,
+    Copias(copias_ui::Toque),
     Enviar(enviar_wifi::Toque),
     /// La flecha de una sub-pantalla: a la portada.
     Volver,
@@ -282,7 +298,7 @@ impl Pantalla {
             return true;
         }
         match &self.sub {
-            Sub::Portada | Sub::Elegir(_) => false,
+            Sub::Portada | Sub::Elegir(_) | Sub::Copias(_) => false,
             Sub::Recibir(r) => r.animando(),
             Sub::Enviar(e) => e.animando(),
         }
@@ -291,7 +307,7 @@ impl Pantalla {
     fn tecla(&mut self, t: Tecla) -> bool {
         let cx = self.contexto();
         match &mut self.sub {
-            Sub::Portada | Sub::Elegir(_) => false,
+            Sub::Portada | Sub::Elegir(_) | Sub::Copias(_) => false,
             Sub::Recibir(r) => recibir_wifi::tecla(r, t, &cx),
             Sub::Enviar(e) => enviar_wifi::tecla(e, t, &cx),
         }
@@ -332,17 +348,14 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
     ventana.mostrar();
     ventana.enfocar();
 
-    // Mientras la ventana esta abierta, este equipo se deja encontrar y
-    // atiende a quien se une o pregunta si esta. En el movil lo hace
-    // `Presencia` mientras PixPin esta abierto; aqui, de momento, mientras
-    // esta abierta esta ventana, y «Actividad» lo dice.
+    // Dejarse encontrar y atender a quien llama **no es de esta ventana**:
+    // vive con la aplicacion (`presencia`, puerto de `Presencia.kt` del
+    // movil). Aqui solo se pregunta por donde se escucha y se pide que
+    // cuenten lo que pase mientras la ventana este delante.
     let (tx, rx) = mpsc::channel::<Aviso>();
-    let vivo = Arc::new(AtomicBool::new(true));
-    let puerto = escuchar(raiz.clone(), tx.clone(), vivo.clone());
-    sondear(raiz.clone(), tx.clone(), vivo.clone());
-    if let Some(p) = puerto {
-        anunciarse(raiz.clone(), p, vivo.clone());
-    }
+    let (tx_novedad, rx_novedad) = mpsc::channel::<presencia::Novedad>();
+    let _mirando = presencia::suscribir(tx_novedad);
+    let puerto = presencia::puerto();
 
     let mut pantalla = Pantalla {
         raiz: raiz.clone(),
@@ -495,6 +508,14 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
             }
         }
 
+        // Lo que cuenta el servicio de presencia, traducido a lo de aqui.
+        while let Ok(n) = rx_novedad.try_recv() {
+            let _ = tx.send(match n {
+                presencia::Novedad::Identidad => Aviso::Identidad,
+                presencia::Novedad::Responde(id, si) => Aviso::Responde(id, si),
+                presencia::Novedad::Registro(t) => Aviso::Registro(t),
+            });
+        }
         while let Ok(aviso) = rx.try_recv() {
             match aviso {
                 Aviso::Fase(f) => pantalla.fase = f,
@@ -560,7 +581,9 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
         // diez veces por segundo, como en recibir.
         pixpin_shell::overlay::esperar_eventos(Some(100));
     }
-    vivo.store(false, Ordering::SeqCst);
+    // La presencia sigue viva: cerrar esta ventana no es cerrar PixPin, y el
+    // movil tiene que poder seguir encontrando este equipo. Lo unico que se
+    // suelta es la suscripcion (`_mirando`), y con ella la sonda se espacia.
     Ok(())
 }
 
@@ -652,6 +675,17 @@ fn atender(
             }
         }
         Accion::AbrirEnviar => s.entrar(|t| Sub::Enviar(Box::new(enviar_wifi::Enviar::nuevo(t)))),
+        Accion::AbrirCopias => {
+            let raiz = s.raiz.clone();
+            s.entrar(|_| Sub::Copias(Box::new(copias_ui::Copias::nuevo(raiz))));
+        }
+        Accion::Copias(toque) => {
+            if let Sub::Copias(c) = &mut s.sub
+                && copias_ui::tocar(c, toque)
+            {
+                s.volver();
+            }
+        }
         Accion::Enviar(toque) => {
             let cx = s.contexto();
             if let Sub::Enviar(e) = &mut s.sub
@@ -988,9 +1022,11 @@ fn sondear_uno(host: &str, puerto: u16) -> bool {
     s.read_exact(&mut b).is_ok() && &b == pixpin_sincro::SONDA_RESPUESTA
 }
 
-/// Los recordados, comprobados cada cuatro segundos, como en el movil: asi
-/// un aparato conocido aparece al momento.
-fn sondear(raiz: PathBuf, tx: mpsc::Sender<Aviso>, vivo: Arc<AtomicBool>) {
+/// Los recordados, comprobados cada cuatro segundos mientras alguien mira la
+/// ventana, como en el movil: asi un aparato conocido aparece al momento. Sin
+/// nadie delante se espacia (ver `presencia::espera_de_la_sonda`): buscar por
+/// la red cuesta, y el movil tampoco busca con la pantalla cerrada.
+fn sondear(raiz: PathBuf, vivo: Arc<AtomicBool>) {
     let _ = std::thread::Builder::new()
         .name("sincro-sonda".into())
         .spawn(move || {
@@ -1016,21 +1052,24 @@ fn sondear(raiz: PathBuf, tx: mpsc::Sender<Aviso>, vivo: Arc<AtomicBool>) {
                                 apuntar_direccion(&raiz, otro, &v.host.to_string(), v.puerto);
                             }
                         }
-                        if tx.send(Aviso::Identidad).is_err() {
-                            return;
-                        }
+                        presencia::difundir(presencia::Novedad::Identidad);
                     }
                     let dirs = leer_direcciones(&raiz);
                     for miembro in id.miembros.iter().filter(|x| x.id != id.yo.id) {
                         if let Some((_, h, p)) = dirs.iter().find(|(i, _, _)| *i == miembro.id) {
                             let si = sondear_uno(h, *p);
-                            if tx.send(Aviso::Responde(miembro.id.clone(), si)).is_err() {
-                                return;
-                            }
+                            presencia::difundir(presencia::Novedad::Responde(
+                                miembro.id.clone(),
+                                si,
+                            ));
                         }
                     }
                 }
-                for _ in 0..40 {
+                // A cachitos de 100 ms para que cerrar la aplicacion no tenga
+                // que esperar a que pase la espera entera.
+                let espera = presencia::espera_de_la_sonda();
+                let trozos = (espera.as_millis() / 100).max(1);
+                for _ in 0..trozos {
                     if !vivo.load(Ordering::SeqCst) {
                         return;
                     }
@@ -1042,7 +1081,7 @@ fn sondear(raiz: PathBuf, tx: mpsc::Sender<Aviso>, vivo: Arc<AtomicBool>) {
 
 /// Escucha en el puerto de siempre, o en cualquiera si esta tomado. Devuelve
 /// el puerto, que es lo que se ensena en «La de este aparato».
-fn escuchar(raiz: PathBuf, tx: mpsc::Sender<Aviso>, vivo: Arc<AtomicBool>) -> Option<u16> {
+fn escuchar(raiz: PathBuf, vivo: Arc<AtomicBool>) -> Option<u16> {
     let escucha = TcpListener::bind(("0.0.0.0", pixpin_sincro::PUERTO))
         .or_else(|_| TcpListener::bind(("0.0.0.0", 0)))
         .ok()?;
@@ -1061,13 +1100,15 @@ fn escuchar(raiz: PathBuf, tx: mpsc::Sender<Aviso>, vivo: Arc<AtomicBool>) -> Op
                         // Cada conexion en su hilo: mientras se junta un chat
                         // largo, la sonda del movil tiene que seguir teniendo
                         // respuesta, y un segundo que llame, oir «ocupado».
-                        let (raiz, tx) = (raiz.clone(), tx.clone());
+                        let raiz = raiz.clone();
                         let _ = std::thread::Builder::new()
                             .name("sincro-atiende".into())
                             .spawn(move || {
-                                if let Err(e) = responder(flujo, &raiz, &tx, puerto) {
+                                if let Err(e) = responder(flujo, &raiz, puerto) {
                                     tracing::info!(%de, ?e, "una conexion de sincronizar termino mal");
-                                    let _ = tx.send(Aviso::Registro(format!("{de}: {e}")));
+                                    presencia::difundir(presencia::Novedad::Registro(format!(
+                                        "{de}: {e}"
+                                    )));
                                 }
                             });
                     }
@@ -1088,12 +1129,7 @@ fn escuchar(raiz: PathBuf, tx: mpsc::Sender<Aviso>, vivo: Arc<AtomicBool>) -> Op
 /// quien se une) y despues todo lo que pida quien dirige —inventario,
 /// mensajes, proyecto, archivos, parches, lo acordado, lapidas— sobre el
 /// almacen de este equipo visto como el del movil (`vista::DiscoPc`).
-fn responder(
-    mut flujo: TcpStream,
-    raiz: &Path,
-    tx: &mpsc::Sender<Aviso>,
-    mi_puerto: u16,
-) -> Result<()> {
+fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
     let mut cuatro = [0u8; 4];
     let n = flujo.peek(&mut cuatro)?;
     if n == 4 && &cuatro == pixpin_sincro::SONDA {
@@ -1106,16 +1142,15 @@ fn responder(
     // tiraria la vuelta.
     flujo.set_read_timeout(Some(Duration::from_secs(30 * 60)))?;
     let de = flujo.peer_addr().ok();
-    let aviso = tx.clone();
     let disco = DiscoPc::nuevo(raiz).con_avisos(move |c| {
         if c == pixpin_sincro::disco::Cambio::Identidad {
-            let _ = aviso.send(Aviso::Identidad);
+            presencia::difundir(presencia::Novedad::Identidad);
         }
     });
     let r = Respondedor {
         disco: &disco,
         estado: &|t: &str| {
-            let _ = tx.send(Aviso::Registro(t.to_string()));
+            presencia::difundir(presencia::Novedad::Registro(t.to_string()));
         },
         ahora: &ahora_ms,
         mi_puerto: u32::from(mi_puerto),
@@ -1127,7 +1162,7 @@ fn responder(
     };
     let hecho = r.atender(flujo, nonce().context("sin azar")?);
     // Lo que se escribio (la lista de proyectos, «sincronizado hace…»).
-    let _ = tx.send(Aviso::Identidad);
+    presencia::difundir(presencia::Novedad::Identidad);
     hecho?;
     Ok(())
 }
@@ -1658,6 +1693,10 @@ const SINCRO: Icono = material!(
 const BAJAR: Icono = material!("M5,20h14v-2H5V20z M19,9h-4V3H9v6H5l7,7L19,9z");
 /// `Send` (el `AutoMirrored`, que en izquierda a derecha es el mismo).
 const ENVIAR: Icono = material!("M2.01 21L23 12 2.01 3 2 10l15 2-15 2z");
+/// `History`: el de «Copias de seguridad», volver a como estaba.
+const HISTORIAL: Icono = material!(
+    "M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"
+);
 /// `Close`.
 const CERRAR: Icono = material!(
     "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
@@ -1919,6 +1958,9 @@ fn pintar(
         Sub::Elegir(el) => {
             y = elegir::pintar(&mut l, textos, el, &s.identidad.yo.nombre, ancho, y);
         }
+        Sub::Copias(c) => {
+            y = copias_ui::pintar(&mut l, textos, c, 20.0 * e, ancho - 40.0 * e, y);
+        }
         Sub::Portada => y = pintar_portada(&mut l, textos, s, ancho, y),
     }
     y += 40.0 * e + pie;
@@ -1945,6 +1987,7 @@ fn pintar(
             textos.t("sinc-elegir-titulo"),
             Accion::Elegir(elegir::Toque::Cancelar),
         ),
+        Sub::Copias(_) => (textos.t("cop-titulo"), Accion::Volver),
     };
     l.icono(&VOLVER, 28.0 * e, barra / 2.0, TEXTO, vuelta);
     let tam = 24.0 * e;
@@ -1966,20 +2009,27 @@ fn pintar(
     );
 
     // ---- los dialogos, encima de todo
+    if let Sub::Copias(c) = &s.sub {
+        // El de «¿Volver a esta copia?» es suyo y se pinta solo; si esta,
+        // nada de debajo se toca.
+        let mut suyo = Lienzo {
+            p,
+            e,
+            zonas: Vec::new(),
+        };
+        if copias_ui::dialogo(&mut suyo, textos, c, ancho, alto) {
+            l.zonas.clear();
+            zonas.clear();
+            zonas.append(&mut suyo.zonas);
+            return;
+        }
+    }
     if s.campo.is_some() || s.saliendo || s.fase != Fase::Nada {
         // Lo de debajo deja de ser pulsable mientras hay un dialogo, como
         // en Android.
         l.zonas.clear();
         zonas.clear();
-        p.rellenar(
-            rect(0.0, 0.0, ancho, alto),
-            Color {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 0.55,
-            },
-        );
+        p.rellenar(rect(0.0, 0.0, ancho, alto), VELO);
         dialogo(&mut l, ancho, alto, textos, s);
     }
     zonas.append(&mut l.zonas);
@@ -2090,6 +2140,23 @@ fn pintar_portada(
     );
     l.parrafo(&tambien, xi, yb + 56.0 * e, wi, 12.0 * e, SUAVE);
     y += hp;
+
+    // Copias de seguridad (`CopiasActivity` del movil): el sitio al que ir
+    // cuando un envio o una vuelta ha pisado algo.
+    l.titulo(&textos.t("cop-titulo"), x0, &mut y);
+    let cc = textos.t("cop-portada-como");
+    let hcc = l.alto_de(&cc, 14.0 * e, wi);
+    let hb = 16.0 * e + hcc + 12.0 * e + 48.0 * e + 16.0 * e;
+    caja(p, rect(x0, y, w, hb), e);
+    l.parrafo(&cc, xi, y + 16.0 * e, wi, 14.0 * e, TEXTO);
+    l.boton(
+        rect(xi, y + 28.0 * e + hcc, wi, 48.0 * e),
+        &textos.t("cop-ver"),
+        Some(&HISTORIAL),
+        false,
+        Accion::AbrirCopias,
+    );
+    y += hb;
 
     // Actividad
     if !s.registro.is_empty() || !s.mi_direccion.is_empty() {

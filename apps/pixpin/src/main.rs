@@ -405,6 +405,15 @@ fn arrancar(
     // en calentar el driver, no en guardar el objeto. Sin SetThreadPriority:
     // este ejecutable es forbid(unsafe_code) y bajar la prioridad de un
     // trabajo de ~150 ms no justifica abrir un agujero en pixpin-shell.
+    // 7c. La presencia de sincronizar: este equipo se deja encontrar por el
+    // grupo mientras PixPin viva, como `Presencia` en el movil, y no solo
+    // mientras esta abierta la ventana de Sincronizar. Antes, al cerrarla el
+    // anuncio mDNS se apagaba y al volver a abrirla tardaba uno o dos minutos
+    // en llegar al movil; eso es lo que el usuario veia como «tengo que
+    // esperar para que me aparezca». Se puede apagar con `[sincro] presencia
+    // = false`.
+    sincronizar::presencia::instalar(ubicacion.raiz().to_path_buf(), config.sincro.presencia);
+
     std::thread::spawn(|| match pixpin_capture::Dispositivo::nuevo() {
         Ok(_) => tracing::debug!("dispositivo D3D11 precalentado"),
         Err(e) => {
