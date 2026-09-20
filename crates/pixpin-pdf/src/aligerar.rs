@@ -8,6 +8,13 @@
 //! entero en vez de rehacerlo pagina a pagina, para no perder marcadores ni
 //! formularios.
 //!
+//! **Que sostiene el «sin tocar el texto ni los vectores».** Tres cosas, y
+//! hasta hace poco ninguna: (1) el escaneo cuenta los objetos que no supo
+//! leer y el trabajo se para en vez de tirarlos —ver `Escaneo`—; (2) la
+//! comprobacion previa a sustituir DIBUJA la primera y la ultima pagina, que
+//! es lo que ejercita las fuentes y los recursos, y no solo las cuenta; y
+//! (3) antes del renombrado se aparta una copia del original al lado.
+//!
 //! ## Lo primero: aqui NO hay pdfium
 //!
 //! Conviene decirlo alto porque el encargo daba por hecho lo contrario. Este
@@ -112,6 +119,13 @@ pub enum Estorbo {
     /// resolverla no se sabe donde acaba, y adivinarlo buscando `endstream`
     /// dentro de datos binarios es como se corrompe un fichero.
     LargoIndirecto,
+    /// Hay objetos que este lector minimo no supo leer. `reescribir` solo
+    /// escribe lo que reconocio, asi que seguir adelante los TIRARIA del
+    /// fichero —y podrian ser una fuente incrustada, las anotaciones o los
+    /// campos de un formulario—. La promesa de la cabecera de este modulo es
+    /// «sin tocar el texto ni los vectores»: si no se sabe que hay dentro,
+    /// no se toca nada.
+    ObjetosSinEntender,
 }
 
 impl Estorbo {
@@ -125,6 +139,7 @@ impl Estorbo {
             Estorbo::SinTrailer => "el PDF no tiene un trailer legible",
             Estorbo::SinObjetos => "no se reconocio ningun objeto del PDF",
             Estorbo::LargoIndirecto => "un flujo del PDF no dice cuanto mide",
+            Estorbo::ObjetosSinEntender => "hay partes del PDF que no se entienden",
         }
     }
 }
@@ -217,10 +232,17 @@ pub fn inspeccionar(bytes: &[u8]) -> Informe {
         ..Default::default()
     };
 
-    let objetos = objetos(bytes);
+    let Escaneo {
+        objetos,
+        sin_entender,
+    } = objetos(bytes);
     if objetos.is_empty() {
         informe.estorbos.push(Estorbo::SinObjetos);
         return informe;
+    }
+    // **Contados, no ignorados.** Ver `Escaneo`.
+    if sin_entender > 0 {
+        informe.estorbos.push(Estorbo::ObjetosSinEntender);
     }
 
     let trailer = ultimo_trailer(bytes);
@@ -298,7 +320,9 @@ pub fn aligerar(origen: &Path, destino: &Path) -> Result<Resultado, ErrorPdf> {
     // de paginas para comprobar el resultado.
     let paginas_antes = Documento::abrir(origen)?.paginas();
 
-    let objetos = objetos(&bytes);
+    // `inspeccionar` ya ha abortado si hubo tramos sin entender, asi que aqui
+    // la lista es el fichero entero.
+    let objetos = objetos(&bytes).objetos;
     let anchos = anchos_de_pagina(&bytes, &objetos);
 
     let mut cambios: Vec<(u32, Vec<u8>, u32, u32)> = Vec::new();
@@ -346,18 +370,70 @@ pub fn aligerar(origen: &Path, destino: &Path) -> Result<Resultado, ErrorPdf> {
         }));
     }
 
-    // La red: se escribe a un temporal, se abre de verdad y se cuentan sus
-    // paginas. Solo si sale bien ocupa el sitio del original.
-    let temporal = destino.with_extension("aligerando.pdf");
+    // **La red.** Se escribe a un temporal, se abre de verdad y se DIBUJA.
+    // Contar paginas no bastaba: un PDF que perdio una fuente incrustada
+    // carga igual y declara las mismas paginas, asi que pasaba la prueba y
+    // sustituia al original.
+    //
+    // El temporal lleva la hora en el nombre: con un nombre fijo, dos
+    // aligerados a la vez del mismo fichero se pisaban.
+    let temporal = destino.with_extension(format!("aligerando-{}.pdf", marca_de_tiempo()));
     std::fs::write(&temporal, &nuevo).map_err(|_| ErrorPdf::NoExiste(temporal.clone()))?;
-    let bien = Documento::abrir(&temporal).is_ok_and(|d| d.paginas() == paginas_antes);
-    if !bien {
+    if !se_lee_y_se_dibuja(&temporal, paginas_antes) {
         let _ = std::fs::remove_file(&temporal);
         return Ok(Resultado::NoSeGanaNada(Razon::ElNuevoNoSeLee));
+    }
+
+    // **Y copia del original antes de sustituirlo.** Aligerar es la unica
+    // operacion del programa que reescribe un fichero que el usuario trajo de
+    // fuera; si la red de arriba se dejara algo, sin copia no hay vuelta
+    // atras. El original se aparta al lado, con la hora en el nombre.
+    if destino.is_file() {
+        let respaldo = destino.with_extension(format!("original-{}.pdf", marca_de_tiempo()));
+        std::fs::copy(destino, &respaldo).map_err(|_| ErrorPdf::NoExiste(respaldo.clone()))?;
     }
     std::fs::rename(&temporal, destino).map_err(|_| ErrorPdf::NoExiste(destino.to_path_buf()))?;
 
     Ok(Resultado::Aligerado { antes, despues })
+}
+
+/// Milisegundos desde 1970, para que dos trabajos a la vez no compartan
+/// nombre de fichero.
+fn marca_de_tiempo() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+/// **El PDF nuevo se abre, tiene las mismas paginas y se deja DIBUJAR.**
+///
+/// Dibujar es lo que de verdad ejercita las fuentes, los recursos y el arbol
+/// de paginas; `PageCount()` solo mira el catalogo. Se dibuja la primera y la
+/// ultima —las dos puntas del arbol— y no todas, porque en un escaneo de
+/// doscientas paginas eso son varios minutos con el usuario esperando.
+///
+/// Un ancho pequeno basta: lo que se comprueba es que el motor no se atragante
+/// con la pagina, no como queda.
+fn se_lee_y_se_dibuja(ruta: &Path, paginas_antes: u32) -> bool {
+    const ANCHO_DE_PRUEBA: u32 = 64;
+    let Ok(doc) = Documento::abrir(ruta) else {
+        return false;
+    };
+    if doc.paginas() != paginas_antes || doc.paginas() == 0 {
+        return false;
+    }
+    let ultima = doc.paginas() - 1;
+    for i in if ultima == 0 {
+        vec![0]
+    } else {
+        vec![0, ultima]
+    } {
+        if doc.renderizar(i, ANCHO_DE_PRUEBA).is_err() {
+            return false;
+        }
+    }
+    true
 }
 
 /// Cuantos pixeles de ancho le tocan a una imagen que se dibuja sobre
@@ -602,9 +678,27 @@ fn empujar_una_vez(v: &mut Vec<Estorbo>, e: Estorbo) {
     }
 }
 
-/// Todos los objetos de primer nivel, en el orden en que aparecen.
-fn objetos(b: &[u8]) -> Vec<Objeto> {
+/// Lo que salio de recorrer los bytes: los objetos **y los que no se
+/// supieron leer**.
+///
+/// Los segundos son la parte importante y por eso viajan pegados a los
+/// primeros. `reescribir` solo escribe lo que hay en la lista, asi que un
+/// objeto que el analizador no sepa parsear —un `endobj` que falta, un
+/// `/Length` que no cuadra, un diccionario con una construccion que
+/// `fin_del_valor` no cubre— **desaparecia del fichero de salida sin que
+/// nada lo contara**. Fuentes incrustadas, anotaciones, marcadores y campos
+/// de formulario son objetos ordinarios: ahi es donde duele.
+struct Escaneo {
+    objetos: Vec<Objeto>,
+    /// Cuantas cabeceras `N G obj` se encontraron y no se pudieron leer.
+    sin_entender: usize,
+}
+
+/// Todos los objetos de primer nivel, en el orden en que aparecen, y cuantos
+/// se quedaron por el camino.
+fn objetos(b: &[u8]) -> Escaneo {
     let mut salida = Vec::new();
+    let mut sin_entender = 0usize;
     let mut i = 0usize;
     while i + 3 <= b.len() {
         if &b[i..i + 3] != b"obj" {
@@ -618,17 +712,25 @@ fn objetos(b: &[u8]) -> Vec<Objeto> {
             continue;
         }
         let Some((numero, generacion)) = cabecera_hacia_atras(b, i) else {
+            // Sin `N G ` delante esto no era una cabecera de objeto sino la
+            // palabra «obj» dentro de otra cosa: no se cuenta.
             i += 1;
             continue;
         };
         let Some(o) = cuerpo_del_objeto(b, numero, generacion, i + 3) else {
+            // **Aqui si.** La cabecera es de verdad y el cuerpo no se
+            // entendio: ese objeto se perderia al reescribir.
+            sin_entender += 1;
             i += 3;
             continue;
         };
         i = o.cuerpo.1;
         salida.push(o);
     }
-    salida
+    Escaneo {
+        objetos: salida,
+        sin_entender,
+    }
 }
 
 /// Lee `N G ` hacia atras desde el `obj` que empieza en `i`.
@@ -1285,7 +1387,15 @@ mod pruebas {
         imagen.extend_from_slice(&jpeg);
         imagen.extend_from_slice(b"\nendstream");
 
-        let dibujo = b"q 595.28 0 0 841.89 0 0 cm /Im0 Do Q".to_vec();
+        // **Con texto y con una raya, no solo con la foto.** La cabecera de
+        // este modulo promete «sin tocar el texto ni los vectores» y hasta
+        // ahora ningun fixture tenia ni un `BT … Tj` ni un trazo: se estaba
+        // probando que una foto baja de peso, no que lo demas sobrevive, que
+        // es justo donde un fallo silencioso de la `xref` borra cosas.
+        let dibujo = b"q 595.28 0 0 841.89 0 0 cm /Im0 Do Q\n\
+                       BT /F1 12 Tf 50 700 Td (Factura 2026-0042) Tj ET\n\
+                       2 w 50 650 m 545 650 l S"
+            .to_vec();
         let mut contenido: Vec<u8> =
             format!("<< /Length {} >>\nstream\n", dibujo.len()).into_bytes();
         contenido.extend_from_slice(&dibujo);
@@ -1295,10 +1405,12 @@ mod pruebas {
             b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
             b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec(),
             b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] \
-              /Contents 4 0 R /Resources << /XObject << /Im0 5 0 R >> >> >>"
+              /Contents 4 0 R /Resources << /XObject << /Im0 5 0 R >> \
+              /Font << /F1 6 0 R >> >> >>"
                 .to_vec(),
             contenido,
             imagen,
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
         ])
     }
 
@@ -1341,7 +1453,7 @@ mod pruebas {
         cuerpo.extend_from_slice(b"\nendstream");
         let pdf = pdf_con(vec![b"<< /Type /Catalog >>".to_vec(), cuerpo]);
 
-        let objetos = objetos(&pdf);
+        let objetos = objetos(&pdf).objetos;
         assert_eq!(objetos.len(), 2);
         let (i, f) = objetos[1].flujo.unwrap();
         assert_eq!(&pdf[i..f], datos);
@@ -1426,7 +1538,7 @@ mod pruebas {
             b"<< /Type /Page /Parent 2 0 R /Resources << /XObject << /Im0 4 0 R >> >> >>".to_vec(),
             b"<< /Type /XObject /Subtype /Image /Width 9 /Height 9 >>".to_vec(),
         ]);
-        let objetos = objetos(&pdf);
+        let objetos = objetos(&pdf).objetos;
         let anchos = anchos_de_pagina(&pdf, &objetos);
         assert_eq!(anchos.get(&4), Some(&1000.0));
     }
@@ -1438,7 +1550,7 @@ mod pruebas {
             b"<< /Type /Page /Parent 2 0 R /Resources << /XObject << /Im0 3 0 R >> >> >>".to_vec(),
             b"<< /Type /XObject /Subtype /Image /Width 9 /Height 9 >>".to_vec(),
         ]);
-        let objetos = objetos(&pdf);
+        let objetos = objetos(&pdf).objetos;
         let anchos = anchos_de_pagina(&pdf, &objetos);
         assert_eq!(
             anchos.get(&3),
@@ -1504,7 +1616,111 @@ mod pruebas {
         assert_eq!(informe.imagenes.len(), 1);
         assert_eq!(informe.imagenes[0].ancho, ancho_objetivo(595.28));
 
+        // **Y el texto, la fuente y la raya siguen ahi.** Es la promesa de la
+        // cabecera del modulo —«sin tocar el texto ni los vectores»— y es lo
+        // que ninguna prueba miraba: `reescribir` reconstruye la `xref`
+        // entera, que es exactamente donde un fallo silencioso borra texto.
+        let como_texto = String::from_utf8_lossy(&nuevo);
+        assert!(
+            como_texto.contains("(Factura 2026-0042) Tj"),
+            "se perdio el texto de la pagina al aligerar"
+        );
+        assert!(
+            como_texto.contains("/BaseFont /Helvetica"),
+            "se perdio la fuente incrustada al aligerar"
+        );
+        assert!(
+            como_texto.contains("50 650 m 545 650 l S"),
+            "se perdio el trazo vectorial al aligerar"
+        );
+        // Caso negativo, para que las tres de arriba no pasen por accidente:
+        // la foto SI cambio, que es lo unico que este trabajo puede tocar.
+        assert!(
+            !como_texto.contains(&String::from_utf8_lossy(&pdf).to_string()),
+            "no cambio nada: el fichero de salida es el de entrada"
+        );
+
         eprintln!("escaneo: {antes} -> {despues} bytes");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn un_objeto_que_no_se_entiende_se_cuenta_y_para_el_trabajo() {
+        // **El fallo:** `reescribir` solo escribe lo que hay en la lista de
+        // objetos, y un objeto que `cuerpo_del_objeto` no supiera parsear no
+        // entraba en la lista: desaparecia del fichero de salida **sin que
+        // nada lo contara**. Podia ser una fuente, las anotaciones o los
+        // campos de un formulario.
+        let mut pdf = pdf_escaneado(2480, 3508);
+        // Una cabecera de objeto de verdad con un cuerpo que no se cierra.
+        pdf.extend_from_slice(b"\n99 0 obj\n<< /Type /Annot /Rect [0 0 1 1]\n");
+
+        let informe = inspeccionar(&pdf);
+        assert!(
+            informe.estorbos.contains(&Estorbo::ObjetosSinEntender),
+            "el tramo sin entender no se conto: {:?}",
+            informe.estorbos
+        );
+
+        // Y el trabajo entero se para en vez de tirarlo.
+        let d = temporal("sin-entender");
+        let origen = d.join("raro.pdf");
+        std::fs::write(&origen, &pdf).unwrap();
+        let salida = d.join("ligero.pdf");
+        let r = aligerar(&origen, &salida).expect("no deberia fallar, solo negarse");
+        assert_eq!(
+            r,
+            Resultado::NoSeGanaNada(Razon::NoSeEntiende(Estorbo::ObjetosSinEntender))
+        );
+        assert!(!salida.exists(), "escribio pese a no entender el fichero");
+
+        // El caso negativo: el mismo PDF sin el trozo raro si se entiende.
+        let limpio = pdf_escaneado(2480, 3508);
+        assert!(
+            !inspeccionar(&limpio)
+                .estorbos
+                .contains(&Estorbo::ObjetosSinEntender),
+            "un PDF bueno no puede dar este estorbo"
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn aligerar_encima_del_original_deja_una_copia_al_lado() {
+        // **No quedaba copia de nada.** Aligerar es la unica operacion del
+        // programa que reescribe un fichero que el usuario trajo de fuera, y
+        // la unica red era una comprobacion estructural.
+        let d = temporal("copia");
+        let sitio = d.join("factura.pdf");
+        let pdf = pdf_escaneado(2480, 3508);
+        std::fs::write(&sitio, &pdf).unwrap();
+
+        let r = aligerar(&sitio, &sitio).expect("no deberia fallar");
+        assert!(
+            matches!(r, Resultado::Aligerado { .. }),
+            "tenia que bajar: {r:?}"
+        );
+
+        let copias: Vec<_> = std::fs::read_dir(&d)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.contains("original-"))
+            .collect();
+        assert_eq!(copias.len(), 1, "no quedo copia del original: {copias:?}");
+        assert_eq!(
+            std::fs::read(d.join(&copias[0])).unwrap(),
+            pdf,
+            "la copia no es el fichero que habia antes"
+        );
+        // Y no se quedo ningun temporal a medias por el camino.
+        let sobras: Vec<_> = std::fs::read_dir(&d)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.contains("aligerando-"))
+            .collect();
+        assert!(sobras.is_empty(), "quedo un temporal: {sobras:?}");
         let _ = std::fs::remove_dir_all(&d);
     }
 
