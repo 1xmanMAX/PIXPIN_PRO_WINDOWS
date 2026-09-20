@@ -247,10 +247,6 @@ impl Superficie {
             } else {
                 let raiz = dcomp.CreateVisual()?;
                 raiz.AddVisual(&visual, true, None)?;
-                // El colchon: el visual nace corrido para que por la ventana
-                // se vea el centro de la superficie y no su esquina.
-                visual.SetOffsetX2(-(margen as f32))?;
-                visual.SetOffsetY2(-(margen as f32))?;
                 let sup = dcomp.CreateSurface(
                     ancho,
                     alto,
@@ -276,7 +272,7 @@ impl Superficie {
             }
         };
 
-        Ok(Self {
+        let s = Self {
             dcomp,
             _objetivo: objetivo,
             visual,
@@ -290,7 +286,15 @@ impl Superficie {
             banderas,
             senal,
             interfaz: std::cell::RefCell::new(interfaz),
-        })
+        };
+        // El colchon se pone UNA vez y por la misma matriz que el paneo y
+        // el estirado. Ponerlo ademas con `SetOffsetX2` lo contaria dos
+        // veces en cuanto alguien llamara a `estirar`, y el lienzo saltaria
+        // medio colchon en el primer zoom.
+        if margen > 0 {
+            s.aplicar_transformada();
+        }
+        Ok(s)
     }
 
     /// Estira lo YA dibujado sin volver a dibujarlo: el compositor escala la
