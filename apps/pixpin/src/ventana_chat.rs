@@ -8313,6 +8313,10 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         }
         Accion::Ir(j) => {
             a.ir_a = Some(j);
+            // Con el destello, como al llegar desde el universo: entre cien
+            // burbujas parecidas, saltar sin destello deja al usuario
+            // buscando cual de ellas era la que pidio.
+            a.resaltado = Some((j, std::time::Instant::now()));
             Efecto::Nada
         }
         Accion::Elegir(i) => {
