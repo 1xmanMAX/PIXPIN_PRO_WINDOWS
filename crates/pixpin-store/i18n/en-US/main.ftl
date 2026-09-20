@@ -539,3 +539,27 @@ visor-ayuda = Wheel to read · +/− size · M bookmark · G settings · Esc to 
 visor-elige-emoticono = What do you mark it with?
 visor-sin-marcadores = No bookmarks yet
 sinc-presencia-apagada = Presence is off in the settings ([sincro] presencia = false): you can sync from here, but the phone will not find this computer or be able to call it.
+bandeja-abrir-documento = Open a document…
+
+## Canvas shapes and ink: arrowheads, fills and text style (group A)
+lienzo-punta-ninguna = No arrowhead
+lienzo-punta-flecha = Arrow
+lienzo-punta-barra = Bar
+lienzo-punta-circulo = Circle
+lienzo-punta-circulo-hueco = Circle outline
+lienzo-punta-triangulo = Triangle
+lienzo-punta-triangulo-hueco = Triangle outline
+lienzo-punta-rombo = Diamond
+lienzo-punta-rombo-hueco = Diamond outline
+lienzo-punta-inicio = Start arrowhead
+lienzo-punta-fin = End arrowhead
+lienzo-trama-zigzag = Zigzag
+lienzo-trama-tiralineas = Ruled lines
+lienzo-texto-negrita = Bold
+lienzo-texto-cursiva = Italic
+lienzo-texto-tachado = Strikethrough
+lienzo-presion-firme = Fixed-width stroke
+lienzo-flecha-codos = Elbow arrow
+lienzo-flecha-libre = Freehand arrow
+lienzo-arco-guia = Guide oval, not traced yet
+lienzo-luces-fuerza = Light strength

@@ -540,3 +540,27 @@ visor-ayuda = Rueda para leer · +/− tamaño · M marcador · G ajustes · Esc
 visor-elige-emoticono = ¿Con qué lo marcas?
 visor-sin-marcadores = Todavía no hay marcadores
 sinc-presencia-apagada = La presencia está apagada en los ajustes ([sincro] presencia = false): desde aquí puedes sincronizar, pero el móvil no podrá encontrar este equipo ni llamarlo.
+bandeja-abrir-documento = Abrir documento…
+
+## Formas y tinta del lienzo: puntas, tramas y estilo de texto (grupo A)
+lienzo-punta-ninguna = Sin punta
+lienzo-punta-flecha = Flecha
+lienzo-punta-barra = Barra
+lienzo-punta-circulo = Círculo
+lienzo-punta-circulo-hueco = Círculo hueco
+lienzo-punta-triangulo = Triángulo
+lienzo-punta-triangulo-hueco = Triángulo hueco
+lienzo-punta-rombo = Rombo
+lienzo-punta-rombo-hueco = Rombo hueco
+lienzo-punta-inicio = Punta del principio
+lienzo-punta-fin = Punta del final
+lienzo-trama-zigzag = Zigzag
+lienzo-trama-tiralineas = A tiralíneas
+lienzo-texto-negrita = Negrita
+lienzo-texto-cursiva = Cursiva
+lienzo-texto-tachado = Tachado
+lienzo-presion-firme = Trazo de ancho fijo
+lienzo-flecha-codos = Flecha de codos
+lienzo-flecha-libre = Flecha a mano alzada
+lienzo-arco-guia = Óvalo guía sin repasar
+lienzo-luces-fuerza = Fuerza de las luces
