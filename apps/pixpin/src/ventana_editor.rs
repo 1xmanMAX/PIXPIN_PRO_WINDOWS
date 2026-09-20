@@ -42,6 +42,7 @@ use pixpin_motor2d::gesto::{
 };
 use pixpin_motor2d::indice::Rejilla;
 use pixpin_motor2d::pintado::Orden;
+use pixpin_motor2d::seleccion::{OrdenEditor, Tecla};
 use pixpin_motor2d::vector::Punto2;
 use pixpin_motor2d::{ColorRgba, Elemento, Escala, EstiloTrazo, Figura};
 use pixpin_render::{CapaEstatica, Color, Estampa, MotorRender, RectF, Superficie};
@@ -1420,6 +1421,31 @@ fn abrir_en_modo(
                 cambiar_modo = true;
                 break 'bucle;
             }
+            // **La tabla de atajos del motor, antes que las letras sueltas.**
+            // Va primero porque sus atajos llevan modificadores y los de
+            // herramienta no: dejandola detras, un `Mayus+V` se habria comido
+            // ya la `V` de la pluma. La unica tecla pelada que reclama —`S`
+            // del lazo, `K` del cuentagotas— no la usa ninguna de las otras
+            // dos tablas, y hay una prueba que lo vigila.
+            if let EventoOverlay::Tecla {
+                vk,
+                ctrl,
+                shift,
+                alt,
+                ..
+            } = ev
+                && let Some(tecla) = tecla_del_motor(vk)
+                && let Some(orden) = pixpin_motor2d::seleccion::atajo_de(tecla, ctrl, shift, alt)
+            {
+                if aplicar_orden(orden, &mut gesto, &mut escena) {
+                    todo_sucio = true;
+                    contenido_sucio = true;
+                    ventana.invalidar();
+                }
+                // Consumida aunque no haya hecho nada: un `Ctrl+Alt+V` sin
+                // estilo tomado no puede caer en el pegar del portapapeles.
+                continue;
+            }
             if let EventoOverlay::Caracter(c) = ev {
                 if let Some(h) = tecla_a_herramienta(c) {
                     elegir_herramienta(&mut gesto, h);
@@ -1563,6 +1589,92 @@ fn abrir_en_modo(
                     }
                     continue;
                 }
+            }
+
+            // **El lazo.** Ni la maquina de estados ni `construir` lo tocan:
+            // no `deja_rastro()`, asi que no nace ningun elemento. Lo lleva
+            // entero quien tiene la escena — trazar mientras se arrastra y
+            // volcar lo atrapado en la seleccion al soltar.
+            if gesto.herramienta == Herramienta::Lazo {
+                let punto = |p: Punto| {
+                    efectiva.a_mundo(Punto2::nuevo((p.x - area.x) as f32, (p.y - area.y) as f32))
+                };
+                let mut cambio = false;
+                match ev {
+                    EventoOverlay::BotonPulsado(p) => {
+                        gesto.lazo = Some(pixpin_motor2d::lazo::Lazo::empezar(punto(p)));
+                        cambio = true;
+                    }
+                    EventoOverlay::RatonMovido(p) => {
+                        if let Some(l) = gesto.lazo.as_mut() {
+                            // `mover` ya criba los puntos pegados: ver
+                            // `PASO_MINIMO`. Solo se repinta si de verdad
+                            // crecio el contorno.
+                            cambio = l.mover(punto(p));
+                        }
+                    }
+                    EventoOverlay::BotonSoltado(_) => {
+                        if let Some(l) = gesto.lazo.take() {
+                            // Encerrar y no rozar: rodear algo es una
+                            // peticion precisa (ver `ModoLazo`). Un lazo de
+                            // dos puntos —un clic suelto— no atrapa nada y
+                            // deja la seleccion vacia, que es lo mismo que
+                            // hace pulsar en el aire.
+                            let cogidos = l.atrapados(
+                                &escena.elementos,
+                                pixpin_motor2d::lazo::ModoLazo::Encerrar,
+                            );
+                            gesto.seleccion.poner_todos(cogidos);
+                            cambio = true;
+                        }
+                    }
+                    _ => {}
+                }
+                if cambio {
+                    todo_sucio = true;
+                    contenido_sucio = true;
+                    ventana.invalidar();
+                }
+                if matches!(
+                    ev,
+                    EventoOverlay::BotonPulsado(_)
+                        | EventoOverlay::BotonSoltado(_)
+                        | EventoOverlay::RatonMovido(_)
+                ) {
+                    continue;
+                }
+            }
+
+            // **El cuentagotas de estilo.** Un clic toma el estilo de lo que
+            // hay debajo; los siguientes lo pegan. Es el orden natural —se
+            // apunta al modelo y luego a los destinos— y el que hace que la
+            // herramienta se pueda usar seguida sin volver al teclado.
+            if gesto.herramienta == Herramienta::CopiarEstilo
+                && let EventoOverlay::BotonPulsado(p) = ev
+            {
+                let q =
+                    efectiva.a_mundo(Punto2::nuevo((p.x - area.x) as f32, (p.y - area.y) as f32));
+                if let Some(id) = pixpin_motor2d::impacto::elemento_en(&escena.elementos, q) {
+                    let hecho = match &gesto.estilo_tomado {
+                        None => {
+                            if let Some(e) = escena.buscar(id) {
+                                gesto.estilo_tomado = Some(pixpin_motor2d::estilo::copiar(e));
+                            }
+                            true
+                        }
+                        Some(copiado) => {
+                            let mut uno = pixpin_motor2d::seleccion::Seleccion::nueva();
+                            uno.poner(id);
+                            pixpin_motor2d::estilo::pegar_a(&mut escena, &uno, copiado) > 0
+                        }
+                    };
+                    if hecho {
+                        todo_sucio = true;
+                        contenido_sucio = true;
+                        ventana.invalidar();
+                    }
+                }
+                continue;
             }
 
             // 1. Traducir y, si le toca al motor, pasarselo.
@@ -2705,6 +2817,22 @@ fn pintar(
             if let Some(m) = gesto.marquesina() {
                 p.marquesina(m, escala);
             }
+            // El rastro del lazo, con la marquesina: es lo mismo —decir que
+            // se esta encerrando— y va igual de encima de todo.
+            if let Some(l) = &gesto.lazo {
+                if let Some(relleno) = l.relleno() {
+                    dibujar_orden(p, &relleno, vista, None, imagenes, camara.zoom, None);
+                }
+                dibujar_orden(
+                    p,
+                    &l.orden(escala),
+                    vista,
+                    None,
+                    imagenes,
+                    camara.zoom,
+                    None,
+                );
+            }
             // La pista del iman: encima de todo, porque es lo que dice donde va
             // a caer el punto. Si quedara debajo de una figura, justo el caso en
             // el que hace falta -dibujar sobre algo- seria el caso en el que no
@@ -3372,7 +3500,171 @@ fn elegir_herramienta(gesto: &mut Gesto, h: Herramienta) {
     if h != Herramienta::Mano {
         gesto.seleccion.limpiar();
     }
+    // Un lazo a medio trazar que sobrevive al cambio de herramienta es un
+    // rastro mintiendo: dejaria de crecer y seguiria pintado.
+    gesto.lazo = None;
     gesto.herramienta = h;
+}
+
+/// **Traduce la tecla de Windows a la del motor.**
+///
+/// Vive aqui y no en el motor porque `VK_OEM_4`/`VK_OEM_6` son numeros de
+/// Windows, y el motor no sabe de Windows. Solo las teclas que la tabla usa:
+/// lo demas devuelve `None` y sigue su camino.
+fn tecla_del_motor(vk: u32) -> Option<Tecla> {
+    // Los corchetes en el teclado de EE. UU.; en otras distribuciones el
+    // mismo codigo cae en otra tecla fisica, que es lo que hace Windows con
+    // todos los atajos y lo que el usuario espera.
+    const VK_OEM_4: u32 = 0xDB;
+    const VK_OEM_6: u32 = 0xDD;
+    match vk {
+        VK_OEM_4 => Some(Tecla::CorcheteAbre),
+        VK_OEM_6 => Some(Tecla::CorcheteCierra),
+        v if (b'A' as u32..=b'Z' as u32).contains(&v) => {
+            Some(Tecla::Letra((v as u8 as char).to_ascii_lowercase()))
+        }
+        _ => None,
+    }
+}
+
+/// **Ejecuta una orden de la tabla de atajos.** `true` si algo cambio.
+///
+/// Es la contrapartida de `atajo_de`: alli estan las teclas y aqui lo que
+/// hacen, porque quien tiene la escena, la seleccion y el historial es la
+/// ventana. Pura salvo por lo que toca de `gesto` y `escena`, asi que se
+/// prueba sin GPU y sin sintetizar una pulsacion.
+fn aplicar_orden(orden: OrdenEditor, gesto: &mut Gesto, escena: &mut Escena) -> bool {
+    use pixpin_motor2d::organizar;
+    use pixpin_motor2d::transformar::{EjeVolteo, voltear};
+
+    // Las que piden seleccion no hacen nada sin ella, en vez de hacer algo
+    // raro: `necesita_seleccion` es la misma tabla que lo declara.
+    if orden.necesita_seleccion() && gesto.seleccion.esta_vacia() {
+        return false;
+    }
+
+    match orden {
+        OrdenEditor::Lazo => {
+            elegir_herramienta(gesto, Herramienta::Lazo);
+            true
+        }
+        OrdenEditor::CopiarEstilo => {
+            elegir_herramienta(gesto, Herramienta::CopiarEstilo);
+            true
+        }
+        OrdenEditor::TomarEstilo => {
+            // Del primero elegido: con varios, el de mas abajo en el orden
+            // de pintado es el que el usuario «ve» como el modelo.
+            let Some(e) = gesto
+                .seleccion
+                .ids()
+                .first()
+                .and_then(|id| escena.buscar(*id))
+            else {
+                return false;
+            };
+            gesto.estilo_tomado = Some(pixpin_motor2d::estilo::copiar(e));
+            true
+        }
+        OrdenEditor::SoltarEstilo => match &gesto.estilo_tomado {
+            None => false,
+            Some(copiado) => pixpin_motor2d::estilo::pegar_a(escena, &gesto.seleccion, copiado) > 0,
+        },
+        OrdenEditor::VoltearHorizontal | OrdenEditor::VoltearVertical => {
+            let eje = if orden == OrdenEditor::VoltearHorizontal {
+                EjeVolteo::Horizontal
+            } else {
+                EjeVolteo::Vertical
+            };
+            volteando(escena, gesto, eje, voltear)
+        }
+        OrdenEditor::Agrupar => {
+            escena.abrir_paso();
+            let hecho = organizar::agrupar(escena, &gesto.seleccion).is_some();
+            escena.cerrar_paso();
+            hecho
+        }
+        OrdenEditor::Desagrupar => {
+            escena.abrir_paso();
+            organizar::desagrupar(escena, &gesto.seleccion);
+            escena.cerrar_paso();
+            true
+        }
+        OrdenEditor::AlFrente => {
+            escena.abrir_paso();
+            organizar::al_frente(escena, &gesto.seleccion);
+            escena.cerrar_paso();
+            true
+        }
+        OrdenEditor::AlFondo => {
+            escena.abrir_paso();
+            organizar::al_fondo(escena, &gesto.seleccion);
+            escena.cerrar_paso();
+            true
+        }
+        OrdenEditor::Subir => {
+            escena.abrir_paso();
+            organizar::adelante(escena, &gesto.seleccion);
+            escena.cerrar_paso();
+            true
+        }
+        OrdenEditor::Bajar => {
+            escena.abrir_paso();
+            organizar::atras(escena, &gesto.seleccion);
+            escena.cerrar_paso();
+            true
+        }
+        OrdenEditor::AlternarIman => {
+            gesto.enganche.activo = !gesto.enganche.activo;
+            true
+        }
+    }
+}
+
+/// Voltea lo elegido en un solo paso de deshacer.
+///
+/// `transformar::voltear` trabaja sobre un trozo de elementos y aqui hay una
+/// escena con historial, asi que los elegidos se sacan, se voltean y se
+/// devuelven a su sitio. Se sacan por ORDEN de la escena y no por el de la
+/// seleccion: el espejo va alrededor de la caja comun y esa no depende del
+/// orden, pero devolverlos cruzados si cambiaria el orden de pintado.
+fn volteando(
+    escena: &mut Escena,
+    gesto: &Gesto,
+    eje: pixpin_motor2d::transformar::EjeVolteo,
+    hacer: fn(&mut [pixpin_motor2d::elemento::Elemento], pixpin_motor2d::transformar::EjeVolteo),
+) -> bool {
+    let sitios: Vec<usize> = escena
+        .elementos
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| !e.borrado && gesto.seleccion.contiene(e.id))
+        .map(|(i, _)| i)
+        .collect();
+    if sitios.is_empty() {
+        return false;
+    }
+    escena.abrir_paso();
+    // Apuntados ANTES de tocarlos: `apuntar_edicion` guarda el elemento tal
+    // como esta **ahora**, asi que hacerlo despues del volteo guardaria el
+    // volteado y deshacer no devolveria nada.
+    let ids: Vec<u64> = sitios.iter().map(|i| escena.elementos[*i].id).collect();
+    for id in ids {
+        escena.apuntar_edicion(id);
+    }
+    let mut copia: Vec<_> = sitios
+        .iter()
+        .map(|i| escena.elementos[*i].clone())
+        .collect();
+    hacer(&mut copia, eje);
+    for (i, mut e) in sitios.iter().zip(copia) {
+        // Sube la version, que es lo que le dice al otro aparato que esto se
+        // ha movido. Sin ello, un volteo no viajaria al movil.
+        e.tocar();
+        escena.elementos[*i] = e;
+    }
+    escena.cerrar_paso();
+    true
 }
 
 /// Lo que el grupo C dejo listo para el nacimiento de las figuras nuevas.
@@ -4012,6 +4304,188 @@ mod pruebas {
         for c in ['1', '2', '3', 'V'] {
             assert_eq!(tecla_a_herramienta(c), None, "{c}");
         }
+    }
+
+    #[test]
+    fn las_tres_tablas_de_teclas_no_se_pisan_en_ninguna_letra_pelada() {
+        // **La prueba de la unica verdad.** Habia dos tablas de atajos que no
+        // se conocian: `atajo_de` daba `Q` al lazo y `tecla_a_herramienta` se
+        // la da a la lupa. Ahora el lazo es `S`, y esto es lo que impide que
+        // la contradiccion vuelva por otra letra.
+        //
+        // Solo las peladas: las de `atajo_de` con Ctrl, Mayus o Alt no pueden
+        // chocar con las de herramienta ni con las de pluma, que llegan por
+        // `Caracter` sin modificadores.
+        for c in 'a'..='z' {
+            let del_motor =
+                pixpin_motor2d::seleccion::atajo_de(Tecla::Letra(c), false, false, false);
+            let Some(orden) = del_motor else { continue };
+            let mayus = c.to_ascii_uppercase();
+            assert_eq!(
+                tecla_a_herramienta(mayus),
+                None,
+                "«{mayus}» es a la vez {orden:?} y una herramienta de la caja"
+            );
+            assert_eq!(
+                tecla_a_pluma(mayus),
+                None,
+                "«{mayus}» es a la vez {orden:?} y un mando de la pluma"
+            );
+        }
+        // Y el caso concreto que el revisor encontro, por su nombre.
+        assert_eq!(tecla_a_herramienta('Q'), Some(Herramienta::Lupa));
+        assert_eq!(
+            pixpin_motor2d::seleccion::atajo_de(Tecla::Letra('q'), false, false, false),
+            None,
+            "`Q` es la lupa: el lazo no puede reclamarla"
+        );
+        assert_eq!(
+            pixpin_motor2d::seleccion::atajo_de(Tecla::Letra('s'), false, false, false),
+            Some(OrdenEditor::Lazo)
+        );
+    }
+
+    #[test]
+    fn la_tecla_de_windows_se_traduce_a_la_del_motor_y_lo_demas_no_estorba() {
+        assert_eq!(tecla_del_motor(b'S' as u32), Some(Tecla::Letra('s')));
+        assert_eq!(tecla_del_motor(0xDB), Some(Tecla::CorcheteAbre));
+        assert_eq!(tecla_del_motor(0xDD), Some(Tecla::CorcheteCierra));
+        // Caso negativo: lo que no esta en la tabla no puede colarse como
+        // una letra cualquiera, o F11 seria un atajo del motor.
+        assert_eq!(tecla_del_motor(0x7A), None, "F11 no es una letra");
+        assert_eq!(tecla_del_motor(0x1B), None, "Escape no es una letra");
+    }
+
+    #[test]
+    fn voltear_por_atajo_mueve_lo_elegido_y_se_deshace_de_una_vez() {
+        // `transformar::voltear` estaba escrito, probado y sin un solo
+        // llamante: el commit que lo trajo prometia «voltear es una orden» y
+        // la orden no la ejecutaba nadie.
+        let mut escena = Escena::nueva();
+        let mut a = elemento_de_prueba();
+        a.id = 0;
+        a.x = 0.0;
+        let a = escena.anadir(a);
+        let mut b = elemento_de_prueba();
+        b.id = 0;
+        b.x = 100.0;
+        let b = escena.anadir(b);
+
+        let mut gesto = Gesto::nuevo();
+        gesto.seleccion.poner_todos([a, b]);
+        assert!(aplicar_orden(
+            OrdenEditor::VoltearHorizontal,
+            &mut gesto,
+            &mut escena
+        ));
+        // Se intercambian alrededor de la caja comun.
+        assert_eq!(escena.buscar(a).unwrap().x, 100.0);
+        assert_eq!(escena.buscar(b).unwrap().x, 0.0);
+        // Y es UN paso de deshacer, no dos.
+        assert!(escena.deshacer());
+        assert_eq!(escena.buscar(a).unwrap().x, 0.0);
+        assert_eq!(escena.buscar(b).unwrap().x, 100.0);
+
+        // Caso negativo: sin nada elegido no se toca la escena ni se ensucia
+        // el historial.
+        gesto.seleccion.limpiar();
+        assert!(!aplicar_orden(
+            OrdenEditor::VoltearHorizontal,
+            &mut gesto,
+            &mut escena
+        ));
+        assert_eq!(escena.buscar(a).unwrap().x, 0.0);
+    }
+
+    #[test]
+    fn el_estilo_se_toma_de_uno_y_se_pega_en_otro_por_atajo() {
+        // `estilo::{copiar, pegar_a}` tenian cero referencias fuera de su
+        // fichero, y el boton del cuentagotas ya estaba en la caja.
+        let mut escena = Escena::nueva();
+        let mut modelo = elemento_de_prueba();
+        modelo.id = 0;
+        modelo.trazo = ColorRgba::opaco(0.9, 0.1, 0.1);
+        let modelo = escena.anadir(modelo);
+        let mut otro = elemento_de_prueba();
+        otro.id = 0;
+        let otro = escena.anadir(otro);
+
+        let mut gesto = Gesto::nuevo();
+        gesto.seleccion.poner(modelo);
+        assert!(aplicar_orden(
+            OrdenEditor::TomarEstilo,
+            &mut gesto,
+            &mut escena
+        ));
+        assert!(gesto.estilo_tomado.is_some());
+
+        gesto.seleccion.poner(otro);
+        assert!(aplicar_orden(
+            OrdenEditor::SoltarEstilo,
+            &mut gesto,
+            &mut escena
+        ));
+        assert_eq!(
+            escena.buscar(otro).unwrap().trazo,
+            ColorRgba::opaco(0.9, 0.1, 0.1)
+        );
+
+        // Caso negativo: soltar sin haber tomado nada no hace nada.
+        let mut limpio = Gesto::nuevo();
+        limpio.seleccion.poner(otro);
+        assert!(!aplicar_orden(
+            OrdenEditor::SoltarEstilo,
+            &mut limpio,
+            &mut escena
+        ));
+    }
+
+    #[test]
+    fn los_atajos_que_no_piden_seleccion_funcionan_con_el_lienzo_vacio() {
+        let mut escena = Escena::nueva();
+        let mut gesto = Gesto::nuevo();
+        assert!(gesto.seleccion.esta_vacia());
+
+        assert!(aplicar_orden(OrdenEditor::Lazo, &mut gesto, &mut escena));
+        assert_eq!(gesto.herramienta, Herramienta::Lazo);
+        assert!(aplicar_orden(
+            OrdenEditor::CopiarEstilo,
+            &mut gesto,
+            &mut escena
+        ));
+        assert_eq!(gesto.herramienta, Herramienta::CopiarEstilo);
+
+        let antes = gesto.enganche.activo;
+        assert!(aplicar_orden(
+            OrdenEditor::AlternarIman,
+            &mut gesto,
+            &mut escena
+        ));
+        assert_ne!(gesto.enganche.activo, antes, "el iman no se apago");
+
+        // Caso negativo: las que si piden seleccion se quedan quietas.
+        for orden in [
+            OrdenEditor::Agrupar,
+            OrdenEditor::AlFrente,
+            OrdenEditor::TomarEstilo,
+        ] {
+            assert!(
+                !aplicar_orden(orden, &mut gesto, &mut escena),
+                "{orden:?} hizo algo sin nada elegido"
+            );
+        }
+    }
+
+    #[test]
+    fn cambiar_de_herramienta_tira_el_lazo_a_medio_trazar() {
+        // Un rastro que deja de crecer y se sigue pintando es un rastro
+        // mintiendo, y lo que se seleccionara al soltar ya no seria lo que
+        // se ve.
+        let mut gesto = Gesto::nuevo();
+        gesto.herramienta = Herramienta::Lazo;
+        gesto.lazo = Some(pixpin_motor2d::lazo::Lazo::empezar(Punto2::nuevo(0.0, 0.0)));
+        elegir_herramienta(&mut gesto, Herramienta::Lapiz);
+        assert!(gesto.lazo.is_none());
     }
 
     #[test]

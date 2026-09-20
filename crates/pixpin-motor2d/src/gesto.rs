@@ -304,6 +304,23 @@ pub struct Gesto {
     /// cursor. Mientras esto tiene algo, las teclas son del texto y no
     /// atajos de herramienta.
     pub escribiendo: Option<(u64, crate::texto::EdicionTexto)>,
+    /// El lazo que se esta trazando ahora, si la herramienta es el lazo.
+    ///
+    /// Vive aqui y no en la ventana porque **quien lo dibuja y quien lo mueve
+    /// tienen que ver lo mismo**: el bucle de eventos le anade puntos y el
+    /// pintado le pide su `orden()`, y con dos copias el rastro que se ve y
+    /// lo que acaba seleccionandose se separan en cuanto uno se olvide de
+    /// actualizar al otro.
+    ///
+    /// El lazo no `deja_rastro()`, asi que la maquina de estados no crea
+    /// ningun elemento por el: lo lleva entero quien tiene la escena.
+    pub lazo: Option<crate::lazo::Lazo>,
+    /// El estilo que el cuentagotas se llevo, a la espera de pegarlo.
+    ///
+    /// Tambien aqui por lo mismo: la caja de herramientas pinta el
+    /// cuentagotas «cargado» o «vacio» segun esto, y el clic siguiente hace
+    /// una cosa u otra segun esto.
+    pub estilo_tomado: Option<crate::estilo::EstiloCopiado>,
 }
 
 impl Default for Gesto {
@@ -320,6 +337,8 @@ impl Default for Gesto {
             estilo: crate::estilo::EstiloDibujo::default(),
             escribiendo: None,
             forma_elipse: None,
+            lazo: None,
+            estilo_tomado: None,
         }
     }
 }

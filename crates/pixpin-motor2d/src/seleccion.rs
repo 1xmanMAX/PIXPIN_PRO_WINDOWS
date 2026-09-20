@@ -132,8 +132,6 @@ pub enum Tecla {
     CorcheteAbre,
     /// `]`
     CorcheteCierra,
-    /// `'`
-    Apostrofo,
 }
 
 /// Lo que un atajo pide que se haga.
@@ -160,8 +158,6 @@ pub enum OrdenEditor {
     AlFondo,
     Subir,
     Bajar,
-    /// Encender o apagar el pautado del fondo.
-    AlternarRejilla,
     /// Encender o apagar el iman entero.
     AlternarIman,
 }
@@ -169,11 +165,21 @@ pub enum OrdenEditor {
 /// **La tabla de atajos del escritorio.**
 ///
 /// Sigue a Excalidraw donde Excalidraw tiene atajo, porque quien llega aqui
-/// llega de ahi y las dos manos ya se saben esos gestos: `Q` el lazo,
-/// `Ctrl+G` agrupar, `Ctrl+[` y `Ctrl+]` el orden de pintado,
-/// `Ctrl+Alt+C`/`Ctrl+Alt+V` el estilo, `Ctrl+'` la rejilla. Los dos que
-/// Excalidraw no tiene —voltear y el iman— van en `Mayus+H`/`Mayus+V` y
-/// `Alt+S`, que son los de Figma.
+/// llega de ahi y las dos manos ya se saben esos gestos: `Ctrl+G` agrupar,
+/// `Ctrl+[` y `Ctrl+]` el orden de pintado, `Ctrl+Alt+C`/`Ctrl+Alt+V` el
+/// estilo. Los dos que Excalidraw no tiene —voltear y el iman— van en
+/// `Mayus+H`/`Mayus+V` y `Alt+S`, que son los de Figma.
+///
+/// **Donde se aparta de Excalidraw, y por que.** El lazo es `S` y no `Q`.
+/// `Q` ya es la lupa en el escritorio, y no es una eleccion que se pueda
+/// cambiar por detras: la letra va **pintada en el boton** de la caja de
+/// herramientas (`ventana_editor::tecla_de`), asi que moverla seria mentirle
+/// al usuario en la unica pantalla donde este atajo se anuncia. Entre seguir
+/// a Excalidraw y no contradecir lo que se ve, manda lo que se ve.
+///
+/// **Lo que no esta.** El pautado del fondo no tiene atajo porque el editor
+/// no tiene pautado del fondo: no hay nada que encender. Un atajo a nada es
+/// justo el fallo que esta tanda viene a cerrar.
 ///
 /// `alt` entra en la decision aunque hoy solo lo mire un atajo: sin el, un
 /// `Ctrl+Alt+C` de un teclado con AltGr —donde AltGr **es** Ctrl+Alt— se
@@ -182,7 +188,8 @@ pub fn atajo_de(tecla: Tecla, ctrl: bool, shift: bool, alt: bool) -> Option<Orde
     use OrdenEditor::*;
     match (tecla, ctrl, shift, alt) {
         // Herramientas: una tecla pelada, como todas las de Excalidraw.
-        (Tecla::Letra('q'), false, false, false) => Some(Lazo),
+        // `S` y no `Q`: ver la cabecera.
+        (Tecla::Letra('s'), false, false, false) => Some(Lazo),
         (Tecla::Letra('k'), false, false, false) => Some(CopiarEstilo),
 
         // El estilo, con la misma pareja que Excalidraw.
@@ -203,7 +210,6 @@ pub fn atajo_de(tecla: Tecla, ctrl: bool, shift: bool, alt: bool) -> Option<Orde
         (Tecla::CorcheteCierra, true, false, false) => Some(Subir),
         (Tecla::CorcheteAbre, true, false, false) => Some(Bajar),
 
-        (Tecla::Apostrofo, true, false, false) => Some(AlternarRejilla),
         (Tecla::Letra('s'), false, false, true) => Some(AlternarIman),
 
         _ => None,
@@ -213,15 +219,12 @@ pub fn atajo_de(tecla: Tecla, ctrl: bool, shift: bool, alt: bool) -> Option<Orde
 impl OrdenEditor {
     /// Si la orden necesita que haya algo elegido.
     ///
-    /// Las que no —coger una herramienta, encender la rejilla— tienen que
+    /// Las que no —coger una herramienta, encender el iman— tienen que
     /// funcionar con el lienzo vacio, que es justo cuando se encienden.
     pub fn necesita_seleccion(self) -> bool {
         !matches!(
             self,
-            OrdenEditor::Lazo
-                | OrdenEditor::CopiarEstilo
-                | OrdenEditor::AlternarRejilla
-                | OrdenEditor::AlternarIman
+            OrdenEditor::Lazo | OrdenEditor::CopiarEstilo | OrdenEditor::AlternarIman
         )
     }
 }
@@ -356,9 +359,19 @@ mod pruebas {
     fn los_atajos_de_excalidraw_son_los_mismos_aqui() {
         // Quien llega aqui llega de ahi y las dos manos ya se saben estos
         // gestos: cambiarlos seria pedirle que los desaprenda.
+        //
+        // Con una excepcion, y esta prueba la fija para que no se deshaga
+        // sola: el lazo es `S`. `Q` ya es la lupa y la letra va **pintada en
+        // su boton** de la caja de herramientas, asi que aqui habia dos
+        // tablas de atajos diciendo cosas distintas sobre la misma tecla.
+        assert_eq!(
+            atajo_de(Tecla::Letra('s'), false, false, false),
+            Some(OrdenEditor::Lazo)
+        );
         assert_eq!(
             atajo_de(Tecla::Letra('q'), false, false, false),
-            Some(OrdenEditor::Lazo)
+            None,
+            "`Q` es la lupa del editor: el lazo no puede reclamarla"
         );
         assert_eq!(
             atajo_de(Tecla::Letra('g'), true, false, false),
@@ -375,10 +388,6 @@ mod pruebas {
         assert_eq!(
             atajo_de(Tecla::CorcheteAbre, true, true, false),
             Some(OrdenEditor::AlFondo)
-        );
-        assert_eq!(
-            atajo_de(Tecla::Apostrofo, true, false, false),
-            Some(OrdenEditor::AlternarRejilla)
         );
     }
 
@@ -429,9 +438,9 @@ mod pruebas {
 
     #[test]
     fn lo_que_no_toca_el_dibujo_funciona_con_el_lienzo_vacio() {
-        // Encender la rejilla es justo lo que se hace ANTES del primer
+        // Encender el iman es justo lo que se hace ANTES del primer
         // trazo: pedirle una seleccion seria pedirle lo que aun no hay.
-        assert!(!OrdenEditor::AlternarRejilla.necesita_seleccion());
+        assert!(!OrdenEditor::AlternarIman.necesita_seleccion());
         assert!(!OrdenEditor::Lazo.necesita_seleccion());
         assert!(OrdenEditor::VoltearHorizontal.necesita_seleccion());
         assert!(
