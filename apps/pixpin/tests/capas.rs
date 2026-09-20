@@ -18,8 +18,11 @@ fn capa(nombre: &str) -> Option<u8> {
         // `pixpin-audio` es otro cimiento del mismo estilo: Media
         // Foundation para oir y WASAPI para grabar, sin depender de ningun
         // crate de PixPin.
+        // `pixpin-voz` es el tercero: pasar una nota de voz a texto (Media
+        // Foundation para decodificar, Vosk cargado al vuelo) y la cuenta
+        // del telepronter. Tampoco depende de ningun crate de PixPin.
         "pixpin-shell" | "pixpin-render" | "pixpin-gpu" | "pixpin-codec" | "pixpin-motor2d"
-        | "pixpin-sincro" | "pixpin-tinta" | "pixpin-audio" => 1,
+        | "pixpin-sincro" | "pixpin-tinta" | "pixpin-audio" | "pixpin-voz" => 1,
         "pixpin-capture" | "pixpin-pin" | "pixpin-pdf" | "pixpin-ocr" | "pixpin-record"
         | "pixpin-store" | "pixpin-proyecto" | "pixpin-universo" | "pixpin-docs" => 2,
         "pixpin-ui" | "pixpin-flow" | "pixpin-plugin" => 3,
@@ -55,12 +58,12 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_veinticuatro_paquetes() {
+fn estan_los_veinticinco_paquetes() {
     let encontrados = manifiestos();
     assert_eq!(
         encontrados.len(),
-        24,
-        "se esperan 23 crates de libreria mas el ejecutable, encontrados: {:?}",
+        25,
+        "se esperan 24 crates de libreria mas el ejecutable, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }

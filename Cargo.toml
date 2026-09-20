@@ -24,6 +24,10 @@ pixpin-codec = { path = "crates/pixpin-codec" }
 # Oir y grabar notas de voz: Media Foundation para reproducir, WASAPI para
 # el microfono. Sin dependencias de PixPin: vive con los cimientos.
 pixpin-audio = { path = "crates/pixpin-audio" }
+# Pasar una nota de voz a texto y el telepronter. Cimiento como
+# `pixpin-audio`: Media Foundation para decodificar y Vosk cargado al vuelo,
+# sin depender de ningun crate de PixPin.
+pixpin-voz = { path = "crates/pixpin-voz" }
 pixpin-capture = { path = "crates/pixpin-capture" }
 pixpin-pin = { path = "crates/pixpin-pin" }
 pixpin-pdf = { path = "crates/pixpin-pdf" }

@@ -1,0 +1,27 @@
+[package]
+name = "pixpin-voz"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror = "2.0.20"
+tracing = "0.1.44"
+# Vosk contesta en JSON («{"result":[{"word":…,"start":…}],"text":…}») y es
+# el unico sitio del crate donde hace falta: no se escribe un analizador a
+# mano para eso teniendo serde_json ya en el arbol.
+serde_json = "1.0"
+# Media Foundation para decodificar el `.m4a` a PCM, y el cargador de DLL
+# para `libvosk.dll`. Sin `windows-core` suelto: aqui no hay `#[implement]`.
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    # `LoadLibraryW` / `GetProcAddress` / `FreeLibrary`: el motor de voz se
+    # carga al vuelo, no se enlaza.
+    "Win32_System_LibraryLoader",
+    # `GetShortPathNameW`, para darle a Vosk una ruta que su `fopen` sepa
+    # abrir cuando la carpeta del usuario lleva tildes.
+    "Win32_Storage_FileSystem",
+] }

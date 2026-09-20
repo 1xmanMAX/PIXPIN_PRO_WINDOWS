@@ -547,6 +547,7 @@ dependencies = [
  "pixpin-tinta",
  "pixpin-ui",
  "pixpin-universo",
+ "pixpin-voz",
  "qrcodegen",
  "serde",
  "serde_json",
@@ -760,6 +761,16 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "pixpin-voz"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "thiserror",
+ "tracing",
+ "windows",
 ]
 
 [[package]]
