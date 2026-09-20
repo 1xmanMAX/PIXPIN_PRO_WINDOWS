@@ -538,3 +538,4 @@ visor-vacio = This document has no text to show
 visor-ayuda = Wheel to read · +/− size · M bookmark · G settings · Esc to leave
 visor-elige-emoticono = What do you mark it with?
 visor-sin-marcadores = No bookmarks yet
+sinc-presencia-apagada = Presence is off in the settings ([sincro] presencia = false): you can sync from here, but the phone will not find this computer or be able to call it.

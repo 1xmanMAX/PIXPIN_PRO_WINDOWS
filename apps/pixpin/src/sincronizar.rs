@@ -2159,12 +2159,24 @@ fn pintar_portada(
     y += hb;
 
     // Actividad
-    if !s.registro.is_empty() || !s.mi_direccion.is_empty() {
+    let apagada = !presencia::encendida();
+    if !s.registro.is_empty() || !s.mi_direccion.is_empty() || apagada {
         l.titulo(&textos.t("sinc-actividad"), x0, &mut y);
         let lineas = s.registro.len() + usize::from(!s.mi_direccion.is_empty());
-        let ha = 16.0 * e + 20.0 * e * lineas as f32 + 12.0 * e;
+        // Sin presencia, el movil no puede llamar a este equipo, y eso hay
+        // que decirlo donde se dice por donde se escucha.
+        let aviso = apagada.then(|| textos.t("sinc-presencia-apagada"));
+        let ha = 16.0 * e
+            + 20.0 * e * lineas as f32
+            + aviso
+                .as_ref()
+                .map_or(0.0, |t| l.alto_de(t, 12.0 * e, wi) + 4.0 * e)
+            + 12.0 * e;
         caja(p, rect(x0, y, w, ha), e);
         let mut yl = y + 16.0 * e;
+        if let Some(t) = &aviso {
+            yl += l.parrafo(t, xi, yl, wi, 12.0 * e, ERROR) + 4.0 * e;
+        }
         if !s.mi_direccion.is_empty() {
             let mut args = fluent_bundle::FluentArgs::new();
             args.set("dir", s.mi_direccion.clone());

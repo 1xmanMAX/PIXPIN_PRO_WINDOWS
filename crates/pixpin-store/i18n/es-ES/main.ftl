@@ -539,3 +539,4 @@ visor-vacio = Este documento no tiene texto que enseñar
 visor-ayuda = Rueda para leer · +/− tamaño · M marcador · G ajustes · Esc salir
 visor-elige-emoticono = ¿Con qué lo marcas?
 visor-sin-marcadores = Todavía no hay marcadores
+sinc-presencia-apagada = La presencia está apagada en los ajustes ([sincro] presencia = false): desde aquí puedes sincronizar, pero el móvil no podrá encontrar este equipo ni llamarlo.

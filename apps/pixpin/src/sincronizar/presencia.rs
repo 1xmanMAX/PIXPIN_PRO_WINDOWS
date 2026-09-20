@@ -44,15 +44,12 @@ pub(crate) enum Novedad {
 }
 
 struct Servicio {
-    raiz: PathBuf,
     /// En que puerto se escucha, si se pudo abrir.
     puerto: Option<u16>,
     /// Quien quiere enterarse. Un canal cerrado se cae solo al difundir.
     oyentes: Mutex<Vec<mpsc::Sender<Novedad>>>,
     /// Cuantas ventanas estan mirando: con ninguna, la sonda va despacio.
     mirando: AtomicUsize,
-    /// Mientras sea cierto, los hilos siguen. Vive lo que la aplicacion.
-    vivo: Arc<AtomicBool>,
 }
 
 static SERVICIO: OnceLock<Servicio> = OnceLock::new();
@@ -71,6 +68,10 @@ pub(crate) fn instalar(raiz: PathBuf, encendida: bool) {
     if SERVICIO.get().is_some() {
         return;
     }
+    // `vivo` se queda en los hilos y nadie lo baja: la presencia vive lo que
+    // la aplicacion, y cuando el proceso termina se van con el. Existe
+    // porque es lo que esperan `escuchar`, `anunciarse` y `sondear`, que la
+    // ventana usaba antes con una vida mas corta.
     let vivo = Arc::new(AtomicBool::new(true));
     // La puerta se abre AQUI y no en el hilo: el puerto hace falta ya, para
     // decirlo en la ventana y para meterlo en el anuncio.
@@ -80,11 +81,9 @@ pub(crate) fn instalar(raiz: PathBuf, encendida: bool) {
         None
     };
     let _ = SERVICIO.set(Servicio {
-        raiz: raiz.clone(),
         puerto,
         oyentes: Mutex::new(Vec::new()),
         mirando: AtomicUsize::new(0),
-        vivo: vivo.clone(),
     });
     if let Some(p) = puerto {
         super::anunciarse(raiz.clone(), p, vivo.clone());
@@ -120,11 +119,6 @@ pub(crate) fn difundir(n: Novedad) {
     };
     // Quien cerro su ventana se cae solo: el `Sender` no llega a nadie.
     oyentes.retain(|tx| tx.send(n.clone()).is_ok());
-}
-
-/// Donde vive todo, para los hilos del servicio.
-pub(crate) fn raiz() -> Option<PathBuf> {
-    SERVICIO.get().map(|s| s.raiz.clone())
 }
 
 /// Que se mire deprisa: mientras viva lo que devuelve, la sonda va al ritmo
@@ -165,14 +159,6 @@ pub(crate) fn espera_de_la_sonda() -> std::time::Duration {
         .get()
         .is_some_and(|s| s.mirando.load(Ordering::SeqCst) > 0);
     std::time::Duration::from_millis(if mirando { MIRANDO_MS } else { A_SOLAS_MS })
-}
-
-/// Solo para las pruebas y para cerrar: para los hilos.
-#[cfg(test)]
-pub(crate) fn parar() {
-    if let Some(s) = SERVICIO.get() {
-        s.vivo.store(false, Ordering::SeqCst);
-    }
 }
 
 #[cfg(test)]
