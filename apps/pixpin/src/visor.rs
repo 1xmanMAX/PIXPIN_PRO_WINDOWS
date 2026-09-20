@@ -35,6 +35,7 @@ use anyhow::{Context, Result};
 use pixpin_docs::documento::{Clase, TramoDoc, texto_y_tramos};
 use pixpin_docs::{Documento, lectura};
 use pixpin_geom::Rect;
+use pixpin_render::icono::material;
 use pixpin_render::{Color, EstiloTexto, Pintor, RectF, Superficie, Tramo};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::{Catalogo, Ubicacion};
@@ -684,34 +685,37 @@ fn pastilla(e: &Estado, p: &Pintor, marco: Rect, escala: f32, botones: &mut Vec<
         TEXTO,
     );
     // El marcador y el engranaje, **junto al nombre** (v0.66 del movil).
+    //
+    // Los dibujos de Material (`bookmark_add` y `settings`), que son los que
+    // usa el movil, y no los emoticonos 🔖 y ⚙: un emoticono lo pinta la
+    // fuente del sistema con SU color y SU tamano, asi que no se tenia ni el
+    // dorado del boton encendido ni el mismo cuerpo que el resto de iconos.
     let x = caja.x + 14.0 * escala + w + 8.0 * escala;
-    p.texto(
-        "🔖",
-        x,
-        caja.y + 7.0 * escala,
-        tam,
-        if e.eligiendo_emoji { DORADO } else { APAGADO },
-    );
-    p.texto(
-        "⚙",
-        x + lado,
-        caja.y + 7.0 * escala,
-        tam,
-        if e.panel { DORADO } else { APAGADO },
-    );
-    for (i, que) in [Accion::Marcador, Accion::Engranaje]
-        .into_iter()
-        .enumerate()
+    let lado_icono = 19.0 * escala;
+    for (i, (icono, encendido, que)) in [
+        (&material::BOOKMARK_ADD, e.eligiendo_emoji, Accion::Marcador),
+        (&material::SETTINGS, e.panel, Accion::Engranaje),
+    ]
+    .into_iter()
+    .enumerate()
     {
-        botones.push(Boton {
-            caja: RectF {
-                x: x - 4.0 * escala + i as f32 * lado,
-                y: caja.y,
-                ancho: lado,
-                alto: caja.alto,
+        let zona = RectF {
+            x: x - 4.0 * escala + i as f32 * lado,
+            y: caja.y,
+            ancho: lado,
+            alto: caja.alto,
+        };
+        p.icono(
+            icono,
+            RectF {
+                x: zona.x + (zona.ancho - lado_icono) / 2.0,
+                y: zona.y + (zona.alto - lado_icono) / 2.0,
+                ancho: lado_icono,
+                alto: lado_icono,
             },
-            que,
-        });
+            if encendido { DORADO } else { APAGADO },
+        );
+        botones.push(Boton { caja: zona, que });
     }
 }
 
