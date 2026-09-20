@@ -1290,6 +1290,21 @@ impl Gesto {
         } else {
             None
         };
+        // **Las flechas siguen a lo que se acaba de mover**, y lo hacen
+        // DENTRO del paso de deshacer que sigue abierto: si `seguir` abriera
+        // el suyo, un solo Ctrl+Z dejaria la caja en su sitio viejo y la
+        // flecha en el nuevo, que es peor que no seguirla.
+        //
+        // Solo despues de mover, escalar o girar. Tras dibujar una figura
+        // nueva no hay nada que recolocar —todavia no le cuelga ninguna
+        // flecha—, y recorrer la escena entera por cada trazo seria pagar el
+        // repaso del organigrama cada vez que se apoya el lapiz.
+        if matches!(
+            self.estado,
+            Estado::Moviendo { .. } | Estado::Escalando { .. } | Estado::Girando { .. }
+        ) {
+            crate::enlace::seguir(escena, self.seleccion.ids());
+        }
         // Un paso sin cambios no entra en el historial, asi que hacer clic
         // sin arrastrar no consume un Ctrl+Z. De eso se encarga cerrar_paso.
         escena.cerrar_paso();
@@ -2981,6 +2996,125 @@ mod pruebas {
         assert!(
             g2.anclaje_activo.is_some(),
             "a escala 1.0 (zoom 1, radio de escena 14) 10 tiene que enganchar"
+        );
+    }
+
+    /// **La flecha sigue a la caja, y un solo Ctrl+Z deshace las dos.**
+    ///
+    /// Es la razon de que `enlace::seguir` se llame aqui y no desde la
+    /// ventana: dentro del paso de deshacer que el arrastre dejo abierto. Si
+    /// abriera el suyo, un Ctrl+Z dejaria la caja en su sitio viejo y la
+    /// flecha en el nuevo, que se ve peor que no seguirla.
+    #[test]
+    fn al_mover_la_caja_la_flecha_la_sigue_y_se_deshacen_juntas() {
+        use crate::elemento::Enganche;
+
+        let mut escena = Escena::nueva();
+        let caja = escena.anadir(rect(200.0, 0.0, 80.0, 40.0));
+        let flecha = escena.anadir(Elemento {
+            figura: Figura::Flecha {
+                puntos: vec![Punto2::nuevo(0.0, 20.0), Punto2::nuevo(190.0, 20.0)],
+                punta_inicio: crate::formas::TipoPunta::Ninguna,
+                punta_fin: crate::formas::TipoPunta::Flecha,
+                codos: false,
+            },
+            extras: crate::elemento::Extras {
+                enganche_fin: Some(Enganche {
+                    elemento: crate::enlace::id_de_texto(caja),
+                    foco: 0.0,
+                    hueco: 1.0,
+                    punto_fijo: None,
+                    modo: Default::default(),
+                }),
+                ..Default::default()
+            },
+            ..rect(0.0, 0.0, 190.0, 40.0)
+        });
+        let punta_antes = match &escena.buscar(flecha).unwrap().figura {
+            Figura::Flecha { puntos, .. } => puntos[1],
+            _ => unreachable!(),
+        };
+
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Mano;
+        g.seleccion.poner_todos(vec![caja]);
+        g.evento(pulsar(Punto2::nuevo(240.0, 20.0)), &mut escena, 1.0);
+        g.evento(mover(Punto2::nuevo(240.0, 320.0)), &mut escena, 1.0);
+        g.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(240.0, 320.0),
+            },
+            &mut escena,
+            1.0,
+        );
+
+        let punta_despues = match &escena.buscar(flecha).unwrap().figura {
+            Figura::Flecha { puntos, .. } => puntos[1],
+            _ => unreachable!(),
+        };
+        assert_ne!(
+            punta_antes, punta_despues,
+            "la flecha no siguio a la caja que se movio"
+        );
+
+        // Y un SOLO deshacer devuelve las dos cosas a la vez.
+        assert!(escena.deshacer());
+        assert_eq!(escena.buscar(caja).unwrap().y, 0.0, "la caja no volvio");
+        let punta_vuelta = match &escena.buscar(flecha).unwrap().figura {
+            Figura::Flecha { puntos, .. } => puntos[1],
+            _ => unreachable!(),
+        };
+        assert_eq!(
+            punta_vuelta, punta_antes,
+            "un Ctrl+Z dejo la caja en su sitio viejo y la flecha en el nuevo"
+        );
+    }
+
+    #[test]
+    fn dibujar_una_figura_nueva_no_recoloca_ninguna_flecha() {
+        use crate::elemento::Enganche;
+
+        // Caso negativo: tras dibujar no hay nada que seguir -a lo que acaba
+        // de nacer no le cuelga ninguna flecha- y repasar la escena entera
+        // por cada trazo seria pagar el organigrama al apoyar el lapiz.
+        let mut escena = Escena::nueva();
+        let caja = escena.anadir(rect(200.0, 0.0, 80.0, 40.0));
+        let flecha = escena.anadir(Elemento {
+            figura: Figura::Flecha {
+                puntos: vec![Punto2::nuevo(0.0, 20.0), Punto2::nuevo(190.0, 20.0)],
+                punta_inicio: crate::formas::TipoPunta::Ninguna,
+                punta_fin: crate::formas::TipoPunta::Flecha,
+                codos: false,
+            },
+            extras: crate::elemento::Extras {
+                enganche_fin: Some(Enganche {
+                    elemento: crate::enlace::id_de_texto(caja),
+                    foco: 0.0,
+                    hueco: 1.0,
+                    punto_fijo: None,
+                    modo: Default::default(),
+                }),
+                ..Default::default()
+            },
+            ..rect(0.0, 0.0, 190.0, 40.0)
+        });
+        let version_antes = escena.buscar(flecha).unwrap().version;
+
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Rectangulo;
+        g.evento(pulsar(Punto2::nuevo(500.0, 500.0)), &mut escena, 1.0);
+        g.evento(mover(Punto2::nuevo(560.0, 560.0)), &mut escena, 1.0);
+        g.evento(
+            EventoGesto::Soltar {
+                p: Punto2::nuevo(560.0, 560.0),
+            },
+            &mut escena,
+            1.0,
+        );
+        assert_eq!(
+            escena.buscar(flecha).unwrap().version,
+            version_antes,
+            "la flecha se toco sin que nadie moviera su caja"
         );
     }
 }
