@@ -719,6 +719,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "pixpin-tinta"
+version = "0.1.0"
+
+[[package]]
 name = "pixpin-ui"
 version = "0.1.0"
 dependencies = [

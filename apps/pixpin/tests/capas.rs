@@ -16,7 +16,7 @@ fn capa(nombre: &str) -> Option<u8> {
         // depender de ningun crate de PixPin, asi que vive abajo del todo
         // con los demas cimientos.
         "pixpin-shell" | "pixpin-render" | "pixpin-gpu" | "pixpin-codec" | "pixpin-motor2d"
-        | "pixpin-sincro" => 1,
+        | "pixpin-sincro" | "pixpin-tinta" => 1,
         "pixpin-capture" | "pixpin-pin" | "pixpin-pdf" | "pixpin-ocr" | "pixpin-record"
         | "pixpin-store" | "pixpin-proyecto" | "pixpin-universo" => 2,
         "pixpin-ui" | "pixpin-flow" | "pixpin-plugin" => 3,
@@ -52,12 +52,12 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_veintiun_paquetes() {
+fn estan_los_veintidos_paquetes() {
     let encontrados = manifiestos();
     assert_eq!(
         encontrados.len(),
-        21,
-        "se esperan 20 crates de libreria mas el ejecutable, encontrados: {:?}",
+        22,
+        "se esperan 21 crates de libreria mas el ejecutable, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }
