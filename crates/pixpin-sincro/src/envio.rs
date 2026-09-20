@@ -532,19 +532,35 @@ impl<F: std::io::Read + std::io::Write> Receptor<F> {
             if cabecera.t != "archivo" {
                 return Err(ErrorEnvio::FueraDeOrden { que: "un archivo" });
             }
+            // **Mientras llega se llama `<nombre>.parte`** y solo al final se
+            // le pone su nombre. Asi un corte —la wifi, el movil que se
+            // apaga, PixPin que se cierra— no deja un fichero a medias con
+            // cara de entero: lo que se quede con `.parte` detras se ve que
+            // no vale, y nada que se llame como lo que se pidio esta roto.
             let destino = ruta_libre(carpeta, &nombre_sano(&e.nombre));
-            let mut fichero = std::fs::File::create(&destino)?;
+            let parte = crate::disco::con_sufijo(&destino, ".parte");
+            let mut fichero = std::fs::File::create(&parte)?;
             let bien = self.recibir_trozos(cabecera.bytes.max(0) as u64, &mut fichero, |n| {
                 hechos += n;
                 avance(hechos, total);
-            })?;
+            });
+            // El fichero se cierra pase lo que pase: en Windows no se puede
+            // borrar ni renombrar lo que sigue abierto.
             drop(fichero);
+            let bien = match bien {
+                Ok(b) => b,
+                Err(x) => {
+                    let _ = std::fs::remove_file(&parte);
+                    return Err(x);
+                }
+            };
             if !bien {
                 // Lo que llego a medias no se queda: mejor nada que un
                 // fichero roto con un nombre que promete estar entero.
-                let _ = std::fs::remove_file(&destino);
+                let _ = std::fs::remove_file(&parte);
                 return Err(ErrorEnvio::Corrupto(e.nombre.clone()));
             }
+            crate::disco::reemplazar(&parte, &destino)?;
             salida.push((e, destino));
         }
         mandar_aviso(
@@ -930,6 +946,95 @@ mod pruebas {
             |s| Receptor::conectar(s, "000000", "Movil", "m1", [2; 32], true).is_err(),
         );
         assert!(error.es_codigo_distinto(), "{error}");
+    }
+
+    #[test]
+    fn un_envio_cortado_a_medias_no_deja_un_fichero_con_cara_de_entero() {
+        // Lo que llega se escribe como `<nombre>.parte` y solo al final se
+        // le pone su nombre. Aqui quien envia corta el socket a mitad del
+        // primer archivo: al otro lado no puede quedar ningun `plano.pdf`
+        // —que pareceria bueno y se abriria roto— y el `.parte` se limpia.
+        let destino = carpeta_de_prueba("corte-llega");
+        let ((), error) = enfrentar(
+            move |s| {
+                // Un emisor de mentira que promete un archivo largo, manda un
+                // trozo y suelta el socket: es lo que hace una wifi que se cae.
+                let mut canal = Canal::saludar(s, &clave("482913"), [1; 32], false).unwrap();
+                leer_aviso(&mut canal, "el saludo").unwrap();
+                let oferta = Oferta {
+                    de: "Portatil".into(),
+                    de_id: "pc".into(),
+                    elementos: vec![Elemento {
+                        tipo: ARCHIVO.into(),
+                        nombre: "plano.pdf".into(),
+                        bytes: 4096,
+                        mime: None,
+                        identidad: "archivo:pc:plano.pdf".into(),
+                        proyecto: None,
+                        proyecto_nombre: None,
+                        creado: 0,
+                        uid: None,
+                        codigo_de_chat: None,
+                        aparato: None,
+                    }],
+                    de_codigo: "K7Q2".into(),
+                    rechazado: None,
+                };
+                canal
+                    .mandar(Tipo::Json, &serde_json::to_vec(&oferta).unwrap())
+                    .unwrap();
+                leer_aviso(&mut canal, "la respuesta").unwrap();
+                mandar_aviso(
+                    &mut canal,
+                    &Aviso {
+                        t: "archivo".into(),
+                        nombre: "plano.pdf".into(),
+                        bytes: 4096,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                canal.mandar(Tipo::Trozo, &[7u8; 100]).unwrap();
+                // Y aqui se corta: el socket se suelta a medio archivo.
+                drop(canal);
+            },
+            |s| {
+                let mut r = Receptor::conectar(s, "482913", "Movil", "m1", [2; 32], true).unwrap();
+                r.aceptar(&destino, |_, _| {}).err().map(|e| e.to_string())
+            },
+        );
+        assert!(error.is_some(), "el corte se cuenta como fallo");
+        assert!(
+            !destino.join("plano.pdf").exists(),
+            "nada con el nombre definitivo: estaria a medias y se abriria roto"
+        );
+    }
+
+    #[test]
+    fn lo_que_llega_entero_no_deja_ningun_resto_a_medias() {
+        let origen = carpeta_de_prueba("sin-restos-sale");
+        let destino = carpeta_de_prueba("sin-restos-llega");
+        let cosas = cosas_de_prueba(&origen);
+        let (_, llegados) = enfrentar(
+            move |s| {
+                let yo = yo();
+                Emisor::nuevo(&yo, &cosas)
+                    .atender(s, "482913", [1; 32], false, |_| true, |_, _| {})
+                    .unwrap()
+            },
+            |s| {
+                let mut r = Receptor::conectar(s, "482913", "Movil", "m1", [2; 32], true).unwrap();
+                r.aceptar(&destino, |_, _| {}).unwrap().len()
+            },
+        );
+        assert_eq!(llegados, 2);
+        let restos: Vec<String> = std::fs::read_dir(&destino)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".parte"))
+            .collect();
+        assert!(restos.is_empty(), "quedaron a medias: {restos:?}");
     }
 
     #[test]

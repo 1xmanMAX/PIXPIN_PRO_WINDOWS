@@ -268,7 +268,7 @@ impl Disco for DiscoAndroid {
     }
 
     fn borrar_chat(&self, chat: &str, motivo: &str, cuando: i64, aparato: &str) -> io::Result<()> {
-        self.hacer_copia(chat, motivo, cuando);
+        self.hacer_copia(chat, motivo, cuando)?;
         let claves: Vec<String> = self
             .mensajes_por_clave(chat)?
             .into_iter()

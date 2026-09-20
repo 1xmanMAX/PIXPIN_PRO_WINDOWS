@@ -529,12 +529,14 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
                     nombre_de(d, &c),
                     otro.nombre
                 ));
-                // Antes de tocar nada, como estaba.
+                // Antes de tocar nada, como estaba. Si la copia no se pudo
+                // hacer, la vuelta se para aqui: sin ella no hay con que
+                // volver si lo que llega viene roto.
                 d.hacer_copia(
                     &c,
                     &format!("Antes de sincronizar con {}", otro.nombre),
                     ahora,
-                );
+                )?;
                 d.sellar()?;
                 d.adoptar_documentos()?;
                 enviar(
@@ -980,11 +982,12 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
     /// Paso 1: que pasa con los mensajes de `chat`.
     pub fn preparar(&mut self, chat: &str) -> Resultado<Preparado> {
         let d = self.disco;
+        // Sin copia no se sincroniza: ver `Disco::hacer_copia`.
         d.hacer_copia(
             chat,
             &format!("Antes de sincronizar con {}", self.otro.nombre),
             (self.ahora)(),
-        );
+        )?;
         d.sellar()?;
         d.adoptar_documentos()?;
         self.conocidos.clear();

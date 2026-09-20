@@ -159,9 +159,19 @@ impl DiscoPc {
     /// Las lineas de un chat: las que se entienden como objeto JSON (con el
     /// `proyecto` del chat puesto, que es por lo que se reconocen) y las que
     /// no, tal cual, para no perderlas al reescribir.
-    fn lineas(&self, chat: &str) -> (Vec<Json>, Vec<String>) {
-        let texto = std::fs::read_to_string(self.carpeta_de(chat).join("guardados.jsonl"))
-            .unwrap_or_default();
+    ///
+    /// **Un fallo de lectura no es «no hay mensajes»**: lo que se lee aqui se
+    /// vuelve a escribir entero unas lineas mas abajo, asi que un error
+    /// pasajero —el fichero abierto por otro, el disco ocupado— se convertiria
+    /// en borrar la conversacion. Solo un fichero que de verdad NO EXISTE
+    /// (un chat recien creado) cuenta como vacio; cualquier otro error sube y
+    /// quien iba a escribir se para.
+    fn lineas(&self, chat: &str) -> io::Result<(Vec<Json>, Vec<String>)> {
+        let texto = match std::fs::read_to_string(self.carpeta_de(chat).join("guardados.jsonl")) {
+            Ok(t) => t,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(e),
+        };
         let mut buenas = Vec::new();
         let mut crudas = Vec::new();
         for l in texto.lines().filter(|l| !l.trim().is_empty()) {
@@ -173,7 +183,7 @@ impl DiscoPc {
                 _ => crudas.push(l.to_string()),
             }
         }
-        (buenas, crudas)
+        Ok((buenas, crudas))
     }
 
     fn escribir_lineas(&self, chat: &str, buenas: &[Json], crudas: &[String]) -> io::Result<()> {
@@ -423,18 +433,18 @@ impl Disco for DiscoPc {
 
     fn chats(&self) -> io::Result<Vec<Chat>> {
         let mapa = self.mapa();
-        let resumen = |chat: &str| {
-            let (l, _) = self.lineas(chat);
+        let resumen = |chat: &str| -> io::Result<(u32, i64)> {
+            let (l, _) = self.lineas(chat)?;
             let ultimo = l
                 .iter()
                 .filter_map(|m| kotlin::numero(m, "cuando"))
                 .max()
                 .unwrap_or(0)
                 .max(0);
-            (l.len() as u32, ultimo)
+            Ok((l.len() as u32, ultimo))
         };
         let (n, ultimo) = if mapa.iter().any(|(c, _)| c == GENERAL) {
-            resumen(GENERAL)
+            resumen(GENERAL)?
         } else {
             (0, 0)
         };
@@ -445,7 +455,7 @@ impl Disco for DiscoPc {
             tocado: ultimo,
         }];
         for (chat, f) in mapa.iter().filter(|(c, _)| c != GENERAL) {
-            let (n, ultimo) = resumen(chat);
+            let (n, ultimo) = resumen(chat)?;
             v.push(Chat {
                 id: chat.clone(),
                 nombre: f.nombre.clone(),
@@ -460,7 +470,7 @@ impl Disco for DiscoPc {
         if self.ficha_de(chat).is_none() {
             return Ok(Vec::new());
         }
-        let (l, _) = self.lineas(chat);
+        let (l, _) = self.lineas(chat)?;
         Ok(l.iter().filter_map(|m| self.portatil_de(chat, m)).collect())
     }
 
@@ -483,7 +493,7 @@ impl Disco for DiscoPc {
             .filter(|m| kotlin::chat_de(m) == chat)
             .collect();
         let ficha = self.asegurar_ficha(chat, chat)?;
-        let (buenas, crudas) = self.lineas(chat);
+        let (buenas, crudas) = self.lineas(chat)?;
         let (salida, quitados) = disco::aplicar_en_lista(buenas, chat, &llegan, &quitar);
         self.escribir_lineas(chat, &salida, &crudas)?;
         self.marcas_tras_aplicar(chat, &llegan, borrar, &quitados, ahora)?;
@@ -514,7 +524,7 @@ impl Disco for DiscoPc {
     fn sellar(&self) -> io::Result<()> {
         let aparato = crate::codigos::de_aparato(&self.identidad()?.yo.id);
         for (chat, _) in self.mapa() {
-            let (mut buenas, crudas) = self.lineas(&chat);
+            let (mut buenas, crudas) = self.lineas(&chat)?;
             if !disco::sellar_chat(&mut buenas, &aparato).is_empty() {
                 self.escribir_lineas(&chat, &buenas, &crudas)?;
             }
@@ -530,7 +540,7 @@ impl Disco for DiscoPc {
         let Some(f) = self.ficha_de(chat) else {
             return self.anotar_lapida(chat, cuando, aparato);
         };
-        self.hacer_copia(chat, motivo, cuando);
+        self.hacer_copia(chat, motivo, cuando)?;
         // Marca de cada mensaje, como `aplicarMensajes`: sin ellas volverian
         // solos en la vuelta siguiente. El cuaderno no se vacia: va entero a
         // la papelera con su carpeta, por si hay que volver.

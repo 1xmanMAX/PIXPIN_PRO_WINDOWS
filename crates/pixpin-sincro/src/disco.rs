@@ -678,8 +678,13 @@ pub trait Disco {
 
     /// `Copias.hacer`: como esta un chat ahora, antes de que nada lo pise.
     /// Devuelve si se hizo (no se repite una igual a la ultima).
-    fn hacer_copia(&self, chat: &str, motivo: &str, ahora: i64) -> bool {
-        crate::copias::hacer(self, chat, motivo, ahora).unwrap_or(false)
+    ///
+    /// **Si no se pudo hacer, el error sube y lo que iba a escribir encima se
+    /// para.** La copia es la unica forma de volver atras si la
+    /// sincronizacion trae algo roto, y seguir sin ella es exactamente el
+    /// caso que costo los lienzos de «Tesis»: escribir encima sin red.
+    fn hacer_copia(&self, chat: &str, motivo: &str, ahora: i64) -> io::Result<bool> {
+        crate::copias::hacer(self, chat, motivo, ahora)
     }
 }
 
@@ -1122,15 +1127,30 @@ pub fn con_sufijo(p: &Path, sufijo: &str) -> PathBuf {
     PathBuf::from(s)
 }
 
-/// Pone `tmp` en el sitio de `destino`. En Windows `rename` sobre un
-/// fichero que existe puede fallar (si alguien lo tiene abierto sin
-/// compartir el borrado); entonces se quita el destino y se vuelve a probar.
+/// Pone `tmp` en el sitio de `destino`, **sin que el destino deje de existir
+/// en ningun momento**.
+///
+/// El `rename` de Rust en Windows es `MoveFileExW` con
+/// `MOVEFILE_REPLACE_EXISTING`: ya sustituye un fichero que existe, de un
+/// golpe, y es lo que se prueba primero. Si falla es porque alguien tiene el
+/// destino abierto sin compartir el borrado, y entonces se escribe ENCIMA,
+/// que es lo que hace el Kotlin del movil (`copyTo(overwrite = true)`).
+///
+/// Lo que **no** se hace es borrar el destino y volver a probar, que es lo
+/// que hacia antes: entre el borrado y el segundo intento no habia fichero,
+/// y si el segundo intento tambien fallaba —o el programa se caia ahi— no
+/// quedaba nada. Este es el camino por el que se escriben `guardados.jsonl`
+/// y los indices de `base/`: perderlo es perder la conversacion.
 pub fn reemplazar(tmp: &Path, destino: &Path) -> io::Result<()> {
     if std::fs::rename(tmp, destino).is_ok() {
         return Ok(());
     }
-    let _ = std::fs::remove_file(destino);
-    std::fs::rename(tmp, destino)
+    // Se lee ANTES de tocar el destino: si el temporal no esta (o no se
+    // puede leer), el destino se queda como estaba y el error se cuenta.
+    let datos = std::fs::read(tmp)?;
+    std::fs::write(destino, &datos)?;
+    let _ = std::fs::remove_file(tmp);
+    Ok(())
 }
 
 /// Escribe entero o nada: temporal y cambio de nombre.
@@ -1334,5 +1354,53 @@ mod pruebas {
     fn limpio_es_el_de_kotlin() {
         assert_eq!(limpio("../a b/ñ"), ".._a_b__");
         assert_eq!(limpio("id-tab_1.x"), "id-tab_1.x");
+    }
+
+    fn carpeta_de_prueba(nombre: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("pixpin-disco-{nombre}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn reemplazar_pone_lo_nuevo_en_el_sitio_de_lo_viejo() {
+        let d = carpeta_de_prueba("reemplazar");
+        let (tmp, destino) = (d.join("x.tmp"), d.join("x"));
+        std::fs::write(&destino, b"viejo").unwrap();
+        std::fs::write(&tmp, b"nuevo").unwrap();
+        reemplazar(&tmp, &destino).unwrap();
+        assert_eq!(std::fs::read(&destino).unwrap(), b"nuevo");
+        assert!(!tmp.exists(), "el temporal no se queda por ahi");
+    }
+
+    #[test]
+    fn si_no_se_puede_sustituir_lo_que_habia_sigue_entero() {
+        // Caso negativo y razon de ser del arreglo: antes, cuando el primer
+        // `rename` fallaba se BORRABA el destino para volver a probar, y si
+        // el segundo intento tampoco salia no quedaba nada. Este es el camino
+        // por el que se escribe `guardados.jsonl`: era perder el chat entero.
+        let d = carpeta_de_prueba("reemplazar-falla");
+        let destino = d.join("guardados.jsonl");
+        std::fs::write(&destino, b"la conversacion\n").unwrap();
+        let tmp = d.join("no-esta.tmp");
+        assert!(
+            reemplazar(&tmp, &destino).is_err(),
+            "no hay con que sustituir"
+        );
+        assert_eq!(
+            std::fs::read(&destino).unwrap(),
+            b"la conversacion\n",
+            "lo que habia no se toca si no hay con que sustituirlo"
+        );
+    }
+
+    #[test]
+    fn escribir_atomico_no_deja_nada_a_medias_ni_temporales() {
+        let d = carpeta_de_prueba("atomico");
+        let f = d.join("sub").join("base.json");
+        escribir_atomico(&f, b"{}").unwrap();
+        assert_eq!(std::fs::read(&f).unwrap(), b"{}");
+        assert!(!con_sufijo(&f, ".tmp").exists());
     }
 }
