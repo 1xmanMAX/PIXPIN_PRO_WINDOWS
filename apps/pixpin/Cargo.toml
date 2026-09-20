@@ -14,6 +14,7 @@ anyhow = "1.0.104"
 fluent-bundle = "0.16.0"
 pixpin-capture = { version = "0.1.0", path = "../../crates/pixpin-capture" }
 pixpin-ocr = { version = "0.1.0", path = "../../crates/pixpin-ocr" }
+pixpin-docs = { version = "0.1.0", path = "../../crates/pixpin-docs" }
 pixpin-pdf = { version = "0.1.0", path = "../../crates/pixpin-pdf" }
 pixpin-proyecto = { version = "0.1.0", path = "../../crates/pixpin-proyecto" }
 pixpin-codec = { version = "0.1.0", path = "../../crates/pixpin-codec" }

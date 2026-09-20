@@ -530,6 +530,7 @@ dependencies = [
  "fluent-bundle",
  "pixpin-capture",
  "pixpin-codec",
+ "pixpin-docs",
  "pixpin-geom",
  "pixpin-motor2d",
  "pixpin-nivel",

@@ -522,3 +522,19 @@ cop-volver-titulo = Go back to this backup?
 cop-volver-texto = «{ $nombre }» goes back to how it was on { $cuando } ({ $motivo }): { $hojas } sheets. The canvases you added afterwards stay. A backup of how it is now is saved first, so you can undo this.
 cop-ha-vuelto = «{ $nombre }» has gone back to the backup
 cop-no-se-pudo = Could not go back to the backup: { $motivo }
+
+## The document viewer: Word, EPUB books and web pages (task 2.1)
+visor-titulo = PixPin viewer
+visor-marcador = Bookmark here
+visor-ajustes = Reading settings
+visor-tamano = Text size
+visor-quitar-marcadores = Remove bookmarks
+visor-guardar-pagina = Save as a web page
+visor-guardar-pdf = Save as PDF
+visor-abrir-carpeta = Open the folder
+visor-guardado = Saved to "{ $nombre }"
+visor-no-guardado = Could not save it
+visor-vacio = This document has no text to show
+visor-ayuda = Wheel to read · +/− size · M bookmark · G settings · Esc to leave
+visor-elige-emoticono = What do you mark it with?
+visor-sin-marcadores = No bookmarks yet

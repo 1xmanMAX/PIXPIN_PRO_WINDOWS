@@ -523,3 +523,19 @@ cop-volver-titulo = ¿Volver a esta copia?
 cop-volver-texto = «{ $nombre }» vuelve a como estaba el { $cuando } ({ $motivo }): { $hojas } hojas. Los lienzos que añadiste después se quedan. Antes se guarda una copia de cómo está ahora, así que puedes deshacerlo.
 cop-ha-vuelto = «{ $nombre }» ha vuelto a la copia
 cop-no-se-pudo = No se pudo volver a la copia: { $motivo }
+
+## El visor de documentos: Word, libros EPUB y páginas (tarea 2.1)
+visor-titulo = Visor de PixPin
+visor-marcador = Marcador aquí
+visor-ajustes = Ajustes de lectura
+visor-tamano = Tamaño de la letra
+visor-quitar-marcadores = Quitar los marcadores
+visor-guardar-pagina = Guardar como página web
+visor-guardar-pdf = Guardar como PDF
+visor-abrir-carpeta = Abrir la carpeta
+visor-guardado = Guardado en «{ $nombre }»
+visor-no-guardado = No se pudo guardar
+visor-vacio = Este documento no tiene texto que enseñar
+visor-ayuda = Rueda para leer · +/− tamaño · M marcador · G ajustes · Esc salir
+visor-elige-emoticono = ¿Con qué lo marcas?
+visor-sin-marcadores = Todavía no hay marcadores
