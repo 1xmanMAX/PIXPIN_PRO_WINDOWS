@@ -569,11 +569,16 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
                     Punto2::nuevo(e.x, e.y + e.alto),
                 ]
             };
+            // **El movil oscurece 45, no 60.** Aqui estaba puesto a mano y un
+            // foco del telefono abierto en el escritorio apagaba de mas: lo
+            // de alrededor, que un foco existe para dejar ver en contexto, se
+            // perdia. El numero es el de `lupa_elemento`, que es donde vive lo
+            // que se sabe de un foco, y no una segunda constante aqui.
             let oscuridad = e.relleno.unwrap_or(ColorRgba {
                 r: 0.0,
                 g: 0.0,
                 b: 0.0,
-                a: 0.6,
+                a: crate::lupa_elemento::OSCURECER_POR_DEFECTO as f32 / 100.0,
             });
             salida.push(Orden::Velo {
                 hueco: hueco.clone(),
@@ -1526,10 +1531,14 @@ mod pruebas {
         assert!(hueco.len() > 16, "hueco con {} puntos", hueco.len());
     }
 
+    /// Un foco sin relleno oscurece lo que oscurece el movil, que son 45 y no
+    /// 60: con 60, un foco del telefono abierto aqui apagaba de mas y lo de
+    /// alrededor —que es para lo que sirve un foco— dejaba de verse.
     #[test]
-    fn el_foco_sin_relleno_oscurece_al_sesenta_por_ciento() {
-        // Caso negativo: un fichero antiguo o un consumidor descuidado que
-        // no ponga relleno no puede dejar el velo transparente.
+    fn el_foco_sin_relleno_oscurece_lo_mismo_que_en_el_movil() {
+        // Y el caso negativo del que ya estaba: un fichero antiguo o un
+        // consumidor descuidado que no ponga relleno tampoco puede dejar el
+        // velo transparente.
         let e = Elemento {
             relleno: None,
             ..foco(false)
@@ -1537,7 +1546,9 @@ mod pruebas {
         let Orden::Velo { color, .. } = &ordenes(&e)[0] else {
             panic!("velo esperado");
         };
-        assert!((color.a - 0.6).abs() < 1e-6);
+        let esperado = crate::lupa_elemento::OSCURECER_POR_DEFECTO as f32 / 100.0;
+        assert!((color.a - esperado).abs() < 1e-6, "oscurece {}", color.a);
+        assert!(color.a > 0.0, "un velo transparente no es un foco");
     }
 
     /// Todos los puntos de una lista de ordenes, para poder compararlas.

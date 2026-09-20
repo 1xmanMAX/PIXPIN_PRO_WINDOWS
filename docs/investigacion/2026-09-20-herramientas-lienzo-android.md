@@ -1216,3 +1216,41 @@ El grupo A paró antes de tocarlos, como se le pidió. Faltan, y son del agente 
 ### Fuera de los cinco, pendiente en `pixpin-ui` (tiene otro dueño)
 
 Botones de las 12 herramientas nuevas en `BOTONES_EDITOR`, y las filas del panel: PUNTAS (los 9 iconos ya existen en `iconos_excalidraw.rs`), RELLENO (2 botones más), ESTILO_DE_TEXTO, PRESIÓN, FORMA_FLECHA, MATERIAL y el mando de escena de las luces. **Las claves i18n ya están puestas** (`b4cb501`).
+
+### Enganche de los cuatro grupos (2026-09-20, agente coordinador)
+
+Los cinco ficheros comunes ya están tocados. Lo que quedó **enganchado**:
+
+| Commit | Qué quedó usable |
+|---|---|
+| `136f6f0` | `mod tapar;` y `mod construir;`. El mosaico tapa en el editor (se salta en el pintado normal y en la capa congelada, y la pasada corre con el fotograma cerrado y la cámara corrida el colchón). El bote, recortar, extender y el punto etiquetado cuelgan del pulsar; los ángulos en vivo van con la pista del imán. |
+| `5f1940a` | `Figura::Flecha` pasa a `TipoPunta` + `codos`; `startArrowhead`/`endArrowhead`/`elbowed` se **leen y escriben**; `fontFamily` en las dos direcciones; `EstiloRelleno::{Zigzag, LineasPixpin}` con sus palabras. `punta_flecha` se cae (la sustituye `contorno_de_punta`). |
+| `f28c6b4` | Caja del arco por `arco::caja_del_arco`; muestreo único por `arco::puntos_del_arco`; `presionFirme`; rombo redondeado; tachado. |
+| `76306a5` | Las 12 herramientas nuevas en `BOTONES_EDITOR` (30 botones, 1231 px al 100 %). |
+| `9285fcc` | El fallo del grupo B: un enganche nacido aquí sobrevive a guardar y reabrir. `Extras::id_de_fichero`, y `id_estable` deja de ser una segunda copia de `enlace::id_del_fichero`. |
+| `921fd07` | `enlace::seguir` dentro del paso de deshacer abierto (`gesto::soltar`). |
+| este | El foco oscurece 45 y no 60, con la constante de `lupa_elemento`. |
+
+Lo que **sigue sin enganchar**, con el motivo:
+
+- **`luces` de la escena y `color_encendido`**, y **el texto dentro de figura**
+  (`extras.contenedor`): los tres necesitan algo que `pintado::ordenes(&Elemento)`
+  no tiene, que es la escena. Las luces, además, tendrían que entrar en la clave
+  de `Cache` o cambiar el mando dejaría los colores viejos en pantalla.
+- **`negrita`/`cursiva`**: necesitan un campo en `Orden::Texto` y en el dibujante.
+  El tachado no, porque es una raya.
+- **Grupo B, el resto**: despachador de atajos (`seleccion::atajo_de`),
+  `enlace::figura_bajo` al soltar, tiradores de punta, lazo, rejilla, voltear y
+  copiar/pegar estilo. Todos son cableado en `ventana_editor.rs` y necesitan
+  estado nuevo de la ventana (rejilla encendida, estilo tomado).
+- **Grupo D, el resto**: `marco::ordenes_del_papel`, `Extras::cristal` +
+  `lupa_elemento::{leer,escribir}` para `pixpin-spotlight`/`pixpin-lupa` (y sacar
+  `pixpin-lupa` de `LOS_AJENOS`), `crop` → `imagenes_lienzo::Recorte`,
+  `Herramienta::Serie` → `serie::nuevo`, goma → `borrador::alcanzados_con_grupo`.
+- **`pixpin-ui`, las filas del panel**: MATERIAL, PUNTAS, RELLENO (2 botones más),
+  ESTILO_DE_TEXTO, PRESIÓN, FORMA_FLECHA y el mando de las luces. Las claves i18n
+  siguen puestas y sin usar.
+- **La barra no cabe en pantallas estrechas.** Con 30 botones mide 1231 px al
+  100 %; `barra_superior` no la parte en dos filas, así que en un portátil de
+  1366 —o al 150 % de escala— Deshacer, Rehacer y Salir se salen. Está medido en
+  `los_treinta_botones_del_editor_caben_a_lo_ancho_y_salir_el_ultimo`.
