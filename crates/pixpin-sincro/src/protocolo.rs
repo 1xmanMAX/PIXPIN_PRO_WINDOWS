@@ -593,11 +593,21 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
             }
             "pon" => {
                 let rel = ruta()?;
-                let c = p
+                // Sin `chat` y sin un «archivos» previo que lo diga no se
+                // sabe DE QUE conversacion es esto. Antes caia a la cadena
+                // vacia, que no es un chat: el fichero se escribia con un id
+                // que no existe y quedaba fuera de toda conversacion. Se
+                // rechaza como una ruta no permitida, leyendo los trozos que
+                // ya vienen para no perder el paso.
+                let Some(c) = p
                     .chat
                     .clone()
                     .or_else(|| alcance.as_ref().map(|a| a.0.clone()))
-                    .unwrap_or_default();
+                    .filter(|c| !c.trim().is_empty())
+                else {
+                    recibir_trozos(canal, p.bytes, &mut io::sink(), &mut |_| {})?;
+                    return Err(fallo(format!("«pon» sin chat para {rel}")));
+                };
                 (self.estado)(&format!("Recibiendo {}", nombre(&rel)));
                 conocidos.remove(&rel);
                 if !permitida(&rel) {

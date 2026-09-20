@@ -200,13 +200,29 @@ pub fn guardar_adjunto(
 }
 
 impl Indice {
-    /// Lee el indice. Un fichero ilegible da la lista vacia y no impide
-    /// abrir la ventana: es una lista, no los datos.
+    /// Lee el indice. **Solo un indice que NO EXISTE da la lista vacia**;
+    /// un fichero que esta pero no se puede leer o no se entiende es un
+    /// error, y quien va a reescribir la lista entera tiene que verlo.
+    ///
+    /// Confundir «no hay lista» con «no la pude leer» es perder proyectos:
+    /// quien lee, anade una ficha y guarda, deja en el disco una lista de UNA
+    /// ficha en lugar de las que habia, y el indice viejo ya no vuelve. Un
+    /// disco ocupado, un permiso o un antivirus a media escritura bastan.
+    pub fn leer_si_esta(raiz: &Path) -> std::io::Result<Indice> {
+        let texto = match std::fs::read_to_string(ruta(raiz)) {
+            Ok(t) => t,
+            // Un almacen recien nacido: aqui la lista vacia es la verdad.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Indice::default()),
+            Err(e) => return Err(e),
+        };
+        serde_json::from_str(&texto).map_err(std::io::Error::other)
+    }
+
+    /// Lo mismo, para quien solo va a ENSENAR la lista: un indice roto da la
+    /// lista vacia y no impide abrir la ventana. Quien vaya a guardar encima
+    /// tiene que usar `leer_si_esta` y parar si falla.
     pub fn leer(raiz: &Path) -> Indice {
-        std::fs::read_to_string(ruta(raiz))
-            .ok()
-            .and_then(|t| serde_json::from_str(&t).ok())
-            .unwrap_or_default()
+        Indice::leer_si_esta(raiz).unwrap_or_default()
     }
 
     /// Temporal y renombrado, como el resto del almacen: un corte a mitad no
@@ -393,7 +409,10 @@ pub fn importar_paquete(
         }
     }
 
-    let mut indice = Indice::leer(raiz);
+    // `leer_si_esta` y no `leer`: aqui se REESCRIBE la lista entera, y una
+    // lista vacia por no haberla podido leer se llevaria por delante todos
+    // los proyectos que ya habia.
+    let mut indice = Indice::leer_si_esta(raiz)?;
     indice.proyectos.push(ficha.clone());
     indice.guardar(raiz)?;
     Ok(ficha)
@@ -513,8 +532,14 @@ pub fn actualizar_paquete(
             continue;
         }
         if nombre == "guardados.jsonl" {
-            let fundido = fundir_cuaderno(&destino.join("guardados.jsonl"), bytes);
-            std::fs::write(destino.join("guardados.jsonl"), fundido)?;
+            // Temporal y renombrado, como el indice: un corte en mitad de
+            // esta escritura deja la conversacion partida por la mitad, y lo
+            // que se pierde son mensajes que solo tenia este equipo.
+            let fundido = fundir_cuaderno(&destino.join("guardados.jsonl"), bytes)?;
+            pixpin_sincro::disco::escribir_atomico(
+                &destino.join("guardados.jsonl"),
+                fundido.as_bytes(),
+            )?;
             continue;
         }
         let ruta = destino.join(nombre.replace('\\', "/"));
@@ -548,7 +573,7 @@ pub fn actualizar_paquete(
         serde_json::to_vec_pretty(&puesto).map_err(std::io::Error::other)?,
     )?;
 
-    let mut indice = Indice::leer(raiz);
+    let mut indice = Indice::leer_si_esta(raiz)?;
     let Some(sitio) = indice.proyectos.iter().position(|f| f.id == id) else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::NotFound,
@@ -576,9 +601,17 @@ pub fn actualizar_paquete(
 /// Lo que ya estaba con el mismo codigo se sustituye **en su sitio** (para
 /// que la conversacion no se reordene) y lo que no estaba se anade al final.
 /// Lo que solo tiene este equipo se queda: recibir no borra mensajes.
-fn fundir_cuaderno(fichero: &Path, llegan: &[u8]) -> String {
+fn fundir_cuaderno(fichero: &Path, llegan: &[u8]) -> std::io::Result<String> {
     use crate::cuaderno::Mensaje;
-    let mias = std::fs::read_to_string(fichero).unwrap_or_default();
+    // **No `unwrap_or_default`**: un cuaderno que esta pero no se deja leer
+    // daria la fusion con SOLO lo que trae el movil, y lo escrito aqui y no
+    // sincronizado se perderia sin que nadie lo notara. Solo cuenta como
+    // vacio el cuaderno que todavia no existe.
+    let mias = match std::fs::read_to_string(fichero) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e),
+    };
     let texto = String::from_utf8_lossy(llegan);
     let mut nuevas: Vec<(String, &str)> = Vec::new();
     for linea in texto.lines().filter(|l| !l.trim().is_empty()) {
@@ -613,7 +646,7 @@ fn fundir_cuaderno(fichero: &Path, llegan: &[u8]) -> String {
         salida.push_str(linea);
         salida.push('\n');
     }
-    salida
+    Ok(salida)
 }
 
 /// Lo contrario de `importar_paquete`: un proyecto de la lista, entero, como
@@ -800,7 +833,7 @@ impl Ficha {
 /// no estaba. El «Del movil» de las primeras versiones se convierte en el, con
 /// lo que ya tenia dentro.
 pub fn asegurar_guardados(raiz: &Path, cuando: i64, aparato: &str) -> std::io::Result<Ficha> {
-    let mut indice = Indice::leer(raiz);
+    let mut indice = Indice::leer_si_esta(raiz)?;
     if let Some(f) = indice.proyectos.iter().find(|f| f.es_guardados()) {
         return Ok(f.clone());
     }
@@ -854,7 +887,7 @@ pub fn borrar_proyectos(
         .iter()
         .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
         .collect();
-    let mut indice = Indice::leer(raiz);
+    let mut indice = Indice::leer_si_esta(raiz)?;
     let antes = indice.proyectos.len();
     // Los chats que se van, antes de que dejen de estar en el indice: cada
     // uno deja su lapida (`LapidaDeChat`). Sin ella, la siguiente vuelta de

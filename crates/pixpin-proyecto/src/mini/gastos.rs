@@ -73,8 +73,14 @@ pub struct Moneda {
 }
 
 /// Monedas sin decimales: un yen es un yen, no cien centimos de yen.
-const SIN_DECIMALES: [&str; 12] = [
-    "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "VND", "VUV",
+///
+/// La lista es la de `java.util.Currency` con `defaultFractionDigits == 0`,
+/// **entera**: a una moneda que falte aqui se le dan dos decimales, y
+/// entonces el importe se multiplica por cien en cada ida y vuelta con el
+/// movil sin que nadie vea un error. XOF, XAF, XPF, UGX y UYI faltaban.
+const SIN_DECIMALES: [&str; 17] = [
+    "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX", "UYI", "VND",
+    "VUV", "XAF", "XOF", "XPF",
 ];
 
 /// Monedas de tres decimales (milesimas).
@@ -675,6 +681,32 @@ mod pruebas {
         // tres cifras detras no caben como decimales de euro, asi que la coma
         // pasa a ser de millares y esto son novecientos noventa y nueve euros.
         assert_eq!(centimos_de("0,999", 2), Some(99_900));
+    }
+
+    /// Una moneda sin decimales que se creyera de dos multiplica el importe
+    /// por cien en cada ida y vuelta con el movil, y en pantalla se lee bien:
+    /// nadie ve el error hasta que el total es cien veces mayor.
+    #[test]
+    fn las_monedas_sin_decimales_son_todas_las_de_java_y_no_solo_el_yen() {
+        for codigo in [
+            "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX", "UYI",
+            "VND", "VUV", "XAF", "XOF", "XPF",
+        ] {
+            let m = Moneda::de_codigo(codigo).unwrap_or_else(|| panic!("{codigo} no es moneda"));
+            assert_eq!(m.decimales(), 0, "{codigo} tiene que ir sin decimales");
+            // Ida y vuelta: mil francos CFA siguen siendo mil, no cien mil.
+            assert_eq!(
+                centimos_de(&texto_de_importe(1000, &m), m.decimales()),
+                Some(1000),
+                "{codigo} cambia de valor al ir y volver"
+            );
+        }
+        // Caso negativo: el euro y el dinar no entran en la lista por estar
+        // cerca; la lista es exacta, no «las raras».
+        assert_eq!(Moneda::de_codigo("EUR").unwrap().decimales(), 2);
+        assert_eq!(Moneda::de_codigo("KWD").unwrap().decimales(), 3);
+        // Y «XOF» mal escrito no se cuela como moneda sin decimales.
+        assert_eq!(Moneda::de_codigo("XO"), None);
     }
 
     #[test]
