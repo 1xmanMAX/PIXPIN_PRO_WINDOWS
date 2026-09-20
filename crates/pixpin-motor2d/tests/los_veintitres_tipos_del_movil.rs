@@ -186,8 +186,11 @@ fn lienzo_con_los_veintitres() -> String {
                 m.insert("fontSize".into(), Value::from(20.0));
             }
             "pixpin-arc" => {
-                m.insert("arcStart".into(), Value::from(30.0));
-                m.insert("arcSweep".into(), Value::from(120.0));
+                // En RADIANES, que es como los escribe el movil. Se eligen
+                // valores exactos en `f32` para que la ida y vuelta pueda
+                // seguir comparandose numero a numero.
+                m.insert("arcStart".into(), Value::from(0.5));
+                m.insert("arcSweep".into(), Value::from(2.25));
             }
             "pixpin-region" => {
                 m.insert(
@@ -205,7 +208,8 @@ fn lienzo_con_los_veintitres() -> String {
                 m.insert("text".into(), Value::String("A".into()));
                 m.insert("width".into(), Value::from(0.0));
                 m.insert("height".into(), Value::from(0.0));
-                m.insert("etiquetaAngulo".into(), Value::from(45.0));
+                // En radianes, igual que el arco.
+                m.insert("etiquetaAngulo".into(), Value::from(0.75));
                 m.insert("etiquetaRadio".into(), Value::from(16.0));
             }
             "pixpin-axes" | "pixpin-number-line" | "pixpin-space" => {
@@ -451,19 +455,46 @@ fn los_tipos_nuevos_de_esta_tanda_se_leen_como_lo_que_son() {
     let Figura::Arco { inicio, barrido } = figura("pixpin-arc") else {
         panic!("el arco no entro como arco");
     };
-    // El movil los guarda en grados y aqui todo lo angular va en radianes.
-    assert!((inicio - 30f32.to_radians()).abs() < 1e-5);
-    assert!((barrido.unwrap() - 120f32.to_radians()).abs() < 1e-5);
+    // El movil los guarda en RADIANES (`Element.kt`: «en radianes»; `Arco.kt`
+    // los usa crudos contra 2π), asi que el numero entra tal cual. Convertir
+    // aqui encogia un arco de media vuelta del movil hasta un punto.
+    assert!((inicio - 0.5).abs() < 1e-6, "arcStart no entro en radianes");
+    assert!(
+        (barrido.unwrap() - 2.25).abs() < 1e-6,
+        "arcSweep no entro en radianes"
+    );
+    // El caso negativo: si alguien volviera a meter una conversion, el
+    // valor pasaria a grados y no se parceria en nada al del fichero.
+    assert!(
+        (inicio - 0.5f32.to_radians()).abs() > 0.4 && (inicio - 0.5f32.to_degrees()).abs() > 0.4,
+        "arcStart llego convertido de unidad"
+    );
     let Figura::Region { contorno, huecos } = figura("pixpin-region") else {
         panic!("la region no entro como region");
     };
     assert_eq!(contorno.len(), 4);
     assert_eq!(huecos.len(), 1, "el agujero del anillo es lo que la define");
-    let Figura::Punto { letra, radio, .. } = figura("pixpin-point") else {
+    let Figura::Punto {
+        letra,
+        radio,
+        angulo,
+    } = figura("pixpin-point")
+    else {
         panic!("el punto no entro como punto");
     };
     assert_eq!(letra, "A");
     assert_eq!(radio, 16.0);
+    // `etiquetaAngulo` tambien va en radianes: `Puntos.kt` lo mete directo
+    // en `cos`/`sin`. Un 0.75 leido como grados dejaria la letra pegada a
+    // la derecha del punto en vez de arriba a la derecha.
+    assert!(
+        (angulo - 0.75).abs() < 1e-6,
+        "el angulo no entro en radianes"
+    );
+    assert!(
+        (angulo - 0.75f32.to_radians()).abs() > 0.7,
+        "el angulo llego convertido a radianes otra vez"
+    );
 }
 
 #[test]
@@ -499,4 +530,46 @@ fn los_diez_campos_nuevos_del_elemento_llegan_al_escritorio() {
         flecha.enganche_fin.is_none(),
         "un `endBinding` nulo es «no esta atada», no un enganche a nadie"
     );
+}
+
+#[test]
+fn un_punto_sin_etiqueta_guardada_coloca_la_letra_donde_la_coloca_el_movil() {
+    // `etiquetaAngulo` y `etiquetaRadio` son nulables en `Element.kt`, y con
+    // `explicitNulls = false` el movil NO los escribe mientras no se toque la
+    // letra. Quien rellena el hueco es `Puntos.sitioDeLaEtiqueta`, con
+    // `-PI/4` y `RADIO_DE_LA_LETRA = 22.0`. Si aqui se rellenara con otra
+    // cosa, la letra de un punto recien hecho en el movil saldria en otro
+    // sitio y al guardar se le moveria tambien a el.
+    let lienzo = serde_json::json!({
+        "type": "excalidraw",
+        "version": 2,
+        "source": "prueba",
+        "elements": [{
+            "id": "p1", "type": "pixpin-point", "x": 10.0, "y": 20.0,
+            "width": 0.0, "height": 0.0, "angle": 0.0, "text": "B",
+            "strokeColor": "#1e1e1e", "backgroundColor": "transparent",
+            "fillStyle": "solid", "strokeWidth": 1, "strokeStyle": "solid",
+            "roughness": 1, "opacity": 100, "seed": 1, "version": 1,
+            "versionNonce": 1, "isDeleted": false, "updated": 1, "locked": false
+        }]
+    })
+    .to_string();
+
+    let l = leer(&lienzo).unwrap();
+    let Entrada::Nuestro { elemento, .. } = &l.entradas[0] else {
+        panic!("el punto entro como ajeno");
+    };
+    let Figura::Punto { angulo, radio, .. } = &elemento.figura else {
+        panic!("no entro como punto");
+    };
+    assert!(
+        (*angulo - (-std::f32::consts::FRAC_PI_4)).abs() < 1e-6,
+        "sin `etiquetaAngulo` la letra tiene que ir donde la pone el movil, no a 0"
+    );
+    assert!(
+        (*radio - 22.0).abs() < 1e-6,
+        "el radio por omision es 22, no 14"
+    );
+    // Caso negativo: los valores viejos eran otros y no valen.
+    assert!(*angulo != 0.0 && *radio != 14.0);
 }

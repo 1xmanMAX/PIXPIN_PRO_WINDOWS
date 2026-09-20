@@ -677,15 +677,19 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
             Figura::Cota { puntos }
         }
         "pixpin-scalebar" => Figura::EscalaGrafica,
-        // El arco: un trozo del ovalo de su caja. El movil lo guarda en
-        // GRADOS y aqui todo lo angular va en radianes, como `angle`.
+        // El arco: un trozo del ovalo de su caja. `arcStart` y `arcSweep`
+        // van en RADIANES en los dos aparatos, asi que el numero pasa tal
+        // cual: `Element.kt` los documenta «en radianes» y `Arco.kt` los
+        // mete crudos en `cos`/`sin` y los compara contra 2π. Convertir
+        // aqui hacia grados encogia un arco de media vuelta del movil hasta
+        // un punto, y mandaba los nuestros como veinte vueltas.
         //
         // `arcSweep` ausente o nulo no se rellena con un cero: es el estado
         // «todavia es solo la guia» y tiene que sobrevivir al viaje, o un
         // ovalo guia del movil volveria convertido en un arco vacio.
         "pixpin-arc" => Figura::Arco {
-            inicio: num_o(v, "arcStart", 0.0).to_radians(),
-            barrido: num(v, "arcSweep").map(f32::to_radians),
+            inicio: num_o(v, "arcStart", 0.0),
+            barrido: num(v, "arcSweep"),
         },
         // El numero de serie. El movil lo guarda como TEXTO en `text`
         // porque su elemento es plano y ahi cabe cualquier rotulo; aqui es
@@ -706,10 +710,18 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
                 .unwrap_or_default(),
         },
         // El punto etiquetado: su caja no tiene tamano, (x, y) ES el punto.
+        //
+        // `etiquetaAngulo` va en RADIANES en los dos aparatos: `Puntos.kt`
+        // lo mete directo en `cos`/`sin` y lo produce con `atan2`. Los dos
+        // campos son nulables, asi que con `explicitNulls = false` el movil
+        // NO los escribe cuando no los ha tocado; los valores por omision
+        // tienen que ser entonces los suyos —`-PI/4` y `22.0`— o la letra
+        // de un punto recien nacido en el movil se coloca aqui en otro
+        // sitio y al guardar se le mueve a el.
         "pixpin-point" => Figura::Punto {
             letra: v.get("text").and_then(Value::as_str).unwrap_or("").into(),
-            angulo: num_o(v, "etiquetaAngulo", 0.0).to_radians(),
-            radio: num_o(v, "etiquetaRadio", 14.0),
+            angulo: num_o(v, "etiquetaAngulo", -std::f32::consts::FRAC_PI_4),
+            radio: num_o(v, "etiquetaRadio", 22.0),
         },
         // El resto son suyos y no sabemos dibujarlos: `pixpin-solid`,
         // `pixpin-gantt`, `pixpin-lupa`... Se conservan como ajenos.
@@ -1185,16 +1197,17 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
             mapa.insert("type".into(), Value::String("frame".to_string()));
             mapa.insert("name".into(), Value::String(nombre.clone()));
         }
-        // El arco vuelve a GRADOS, que es como los guarda el movil. Y
-        // `barrido: None` vuelve a ser `null` y no un cero: es la guia sin
-        // repasar, y un cero la convertiria en un arco de longitud nula.
+        // El arco sale en RADIANES, que es la unidad de `arcStart`/`arcSweep`
+        // en los dos aparatos (ver la lectura). Y `barrido: None` vuelve a
+        // ser `null` y no un cero: es la guia sin repasar, y un cero la
+        // convertiria en un arco de longitud nula.
         Figura::Arco { inicio, barrido } => {
             mapa.insert("type".into(), Value::String("pixpin-arc".to_string()));
-            mapa.insert("arcStart".into(), Value::from(inicio.to_degrees() as f64));
+            mapa.insert("arcStart".into(), Value::from(*inicio as f64));
             mapa.insert(
                 "arcSweep".into(),
                 match barrido {
-                    Some(b) => Value::from(b.to_degrees() as f64),
+                    Some(b) => Value::from(*b as f64),
                     None => Value::Null,
                 },
             );
@@ -1225,10 +1238,8 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
         } => {
             mapa.insert("type".into(), Value::String("pixpin-point".to_string()));
             mapa.insert("text".into(), Value::String(letra.clone()));
-            mapa.insert(
-                "etiquetaAngulo".into(),
-                Value::from(angulo.to_degrees() as f64),
-            );
+            // En radianes, como lo lee `Puntos.sitioDeLaEtiqueta`.
+            mapa.insert("etiquetaAngulo".into(), Value::from(*angulo as f64));
             mapa.insert("etiquetaRadio".into(), Value::from(*radio as f64));
         }
         // **`mosaicBlur` se leia y no se escribia.** Un mosaico nacido en el
