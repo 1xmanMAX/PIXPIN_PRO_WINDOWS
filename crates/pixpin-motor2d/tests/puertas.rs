@@ -46,6 +46,7 @@ fn elemento(i: u64) -> Elemento {
         bloqueado: false,
         enlace: None,
         redondo: false,
+        material: Default::default(),
     }
 }
 

@@ -239,6 +239,7 @@ fn elemento_emoji(caracter: &str, x: f32, y: f32, lado: f32) -> Elemento {
         bloqueado: false,
         enlace: None,
         redondo: false,
+        material: Default::default(),
     }
 }
 

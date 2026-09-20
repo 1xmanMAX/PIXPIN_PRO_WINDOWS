@@ -287,6 +287,7 @@ fn base(id: u64, figura: Figura, x: f32, y: f32, ancho: f32, alto: f32) -> Eleme
         bloqueado: false,
         enlace: None,
         redondo: false,
+        material: Default::default(),
     }
 }
 

@@ -33,6 +33,7 @@ use serde_json::{Map, Value};
 use crate::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
 use crate::medida::Escala;
 use crate::relleno::EstiloRelleno;
+use crate::tinta::MaterialTinta;
 use crate::vector::Punto2;
 
 #[derive(Debug, thiserror::Error)]
@@ -558,6 +559,13 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
         trazo: color_desde(v.get("strokeColor")).unwrap_or(ColorRgba::opaco(0.1, 0.1, 0.1)),
         relleno: color_desde(v.get("backgroundColor")),
         estilo_relleno: estilo_relleno_desde(v.get("fillStyle")),
+        // Un `material` que no conocemos se lee como lisa y **se conserva**:
+        // ver `material_hacia`, que es quien no lo pisa al escribir.
+        material: v
+            .get("material")
+            .and_then(Value::as_str)
+            .and_then(MaterialTinta::desde_palabra)
+            .unwrap_or_default(),
         grosor: num_o(v, "strokeWidth", 2.0),
         estilo: match v.get("strokeStyle").and_then(|s| s.as_str()) {
             Some("dashed") => EstiloTrazo::Discontinuo,
@@ -646,6 +654,21 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
         mapa.insert(
             "fillStyle".into(),
             Value::String(estilo_relleno_hacia(e.estilo_relleno).into()),
+        );
+    }
+    // La misma regla que el `fillStyle`: un material de una version futura
+    // del movil se lee como lisa, asi que reescribirlo lo destruiria —
+    // entraria como «acuarela» y saldria como «lisa» para siempre—. Mientras
+    // el material siga siendo el de por omision, o sea mientras aqui no se
+    // haya tocado, se devuelve el original tal cual.
+    let material_ajeno = mapa
+        .get("material")
+        .and_then(Value::as_str)
+        .is_some_and(|s| MaterialTinta::desde_palabra(s).is_none());
+    if !(material_ajeno && e.material == MaterialTinta::default()) {
+        mapa.insert(
+            "material".into(),
+            Value::String(e.material.palabra().into()),
         );
     }
     mapa.insert("strokeWidth".into(), Value::from(e.grosor as f64));
@@ -1063,6 +1086,80 @@ mod pruebas {
     }
 
     #[test]
+    fn un_trazo_de_tiza_del_movil_se_lee_como_tiza_y_vuelve_como_tiza() {
+        // La ida y vuelta que decide si el material sirve para algo: lo que
+        // el telefono escribio en `material` tiene que sobrevivir a pasar por
+        // Windows, palabra por palabra.
+        for m in crate::tinta::MATERIALES {
+            let json = format!(
+                r##"{{"type":"excalidraw","elements":[
+                {{"type":"rectangle","x":0,"y":0,"width":10,"height":10,
+                 "material":"{}","seed":1}}
+            ]}}"##,
+                m.palabra()
+            );
+            let l = leer(&json).unwrap();
+            assert_eq!(l.elementos()[0].material, m, "leyendo {m:?}");
+            let vuelta = escribir(&l);
+            assert_eq!(
+                leer(&vuelta).unwrap().elementos()[0].material,
+                m,
+                "escribiendo {m:?}"
+            );
+            assert!(
+                vuelta.contains(&format!("\"{}\"", m.palabra())),
+                "{m:?} no salio con su palabra: {vuelta}"
+            );
+        }
+    }
+
+    #[test]
+    fn un_elemento_sin_material_es_de_tinta_lisa() {
+        // Todo lo dibujado antes de que el movil inventara el campo: sin
+        // `material` la tinta es la de siempre, no un grano sorpresa.
+        let json = r##"{"type":"excalidraw","elements":[
+            {"type":"rectangle","x":0,"y":0,"width":10,"height":10,"seed":1}
+        ]}"##;
+        assert_eq!(
+            leer(json).unwrap().elementos()[0].material,
+            MaterialTinta::Lisa
+        );
+    }
+
+    #[test]
+    fn un_material_desconocido_no_rompe_nada_y_se_conserva_al_guardar() {
+        // Caso negativo, y el que mas cuesta cuando se rompe: un material de
+        // una version futura del movil no puede tumbar el elemento -un
+        // material raro no deja de ser un rectangulo-, se pinta como pluma, y
+        // no puede desaparecer al pasar por Windows.
+        let json = r##"{"type":"excalidraw","elements":[
+            {"type":"rectangle","x":0,"y":0,"width":10,"height":10,
+             "material":"acuarela-del-futuro","seed":1}
+        ]}"##;
+        let mut l = leer(json).unwrap();
+        assert_eq!(l.cuantos_ajenos(), 0, "sigue siendo un rectangulo nuestro");
+        assert_eq!(
+            l.elementos()[0].material,
+            MaterialTinta::Lisa,
+            "lo que no se entiende se pinta como pluma"
+        );
+        assert!(
+            escribir(&l).contains("acuarela-del-futuro"),
+            "el material que no entendemos tiene que volver intacto"
+        );
+
+        // Pero en cuanto se elige uno aqui, manda lo de aqui: si no, la tiza
+        // elegida en Windows no llegaria nunca al movil.
+        primero_mut(&mut l).material = MaterialTinta::Tiza;
+        let vuelta = escribir(&l);
+        assert!(!vuelta.contains("acuarela-del-futuro"), "{vuelta}");
+        assert_eq!(
+            leer(&vuelta).unwrap().elementos()[0].material,
+            MaterialTinta::Tiza
+        );
+    }
+
+    #[test]
     fn transparente_es_sin_relleno_y_no_negro_invisible() {
         // Caso negativo: devolver negro con alfa cero pintaria una caja
         // invisible que ademas responde al raton.
@@ -1423,6 +1520,7 @@ mod pruebas {
                 bloqueado: false,
                 enlace: None,
                 redondo: false,
+                material: Default::default(),
             },
             original: Box::new(Value::Object(Map::new())),
         });

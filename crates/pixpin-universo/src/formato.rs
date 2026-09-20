@@ -127,6 +127,7 @@ mod pruebas {
             bloqueado: false,
             enlace: None,
             redondo: false,
+            material: Default::default(),
         }
     }
 

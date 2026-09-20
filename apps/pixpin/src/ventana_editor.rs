@@ -3282,6 +3282,7 @@ mod pruebas {
             bloqueado: false,
             enlace: None,
             redondo: false,
+            material: Default::default(),
         }
     }
 
@@ -3678,6 +3679,7 @@ mod pruebas {
             bloqueado: false,
             enlace: None,
             redondo: false,
+            material: Default::default(),
         });
 
         let mut gesto = Gesto::nuevo();
@@ -4047,6 +4049,7 @@ mod pruebas {
             bloqueado: false,
             enlace: None,
             redondo: false,
+            material: Default::default(),
         };
         let mut cache = Cache::nueva();
 

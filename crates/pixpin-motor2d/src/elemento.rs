@@ -205,6 +205,46 @@ pub struct Elemento {
     /// del suyo parece otro recuadro distinto.
     #[serde(default)]
     pub redondo: bool,
+    /// **De que esta hecha su tinta** (`material` del movil, v0.59). No toca
+    /// la geometria: cambiar de material no mueve la figura ni un pixel, solo
+    /// cambia como se pinta lo que ya hay. Ver `tinta::material`.
+    #[serde(default)]
+    pub material: crate::tinta::MaterialTinta,
+}
+
+impl Default for Elemento {
+    /// Un rectangulo vacio en el origen, con el estilo de fabrica.
+    ///
+    /// Existe para que quien monta un `Elemento` a mano pueda escribir
+    /// `..Default::default()` y no tenga que volver a tocarse cada vez que
+    /// aqui nace un campo. Es lo que hace que anadir `material` no sea un
+    /// remiendo en veinte ficheros ajenos.
+    fn default() -> Self {
+        Self {
+            id: 0,
+            figura: Figura::Rectangulo,
+            x: 0.0,
+            y: 0.0,
+            ancho: 0.0,
+            alto: 0.0,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            relleno: None,
+            estilo_relleno: EstiloRelleno::default(),
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+            bloqueado: false,
+            enlace: None,
+            redondo: false,
+            material: crate::tinta::MaterialTinta::Lisa,
+        }
+    }
 }
 
 fn relleno_solido() -> EstiloRelleno {
@@ -359,6 +399,7 @@ mod pruebas {
             bloqueado: false,
             enlace: None,
             redondo: false,
+            material: Default::default(),
         }
     }
 

@@ -12,6 +12,7 @@ use pixpin_motor2d::estilo::{CambioEstilo, EstiloDibujo, NivelGrosor};
 use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
 use pixpin_motor2d::organizar::{self, Alineacion, Reparto};
 use pixpin_motor2d::relleno::EstiloRelleno;
+use pixpin_motor2d::tinta::MaterialTinta;
 use pixpin_render::iconos_excalidraw as i;
 use pixpin_render::{Color, Pintor, RectF};
 use pixpin_ui::panel_lateral::{AccionPanel, Capa, ContextoPanel, Control, PanelLateral, Seccion};
@@ -72,6 +73,7 @@ pub fn panel_para(
                 estilo: primero.estilo,
                 rugosidad: primero.rugosidad,
                 opacidad: primero.opacidad,
+                material: primero.material,
             },
         ),
         None => {
@@ -177,6 +179,22 @@ fn icono_de(accion: AccionPanel) -> Option<&'static pixpin_render::icono::Icono>
         AccionPanel::Estilo(CambioEstilo::Estilo(EstiloTrazo::Punteado)) => {
             &i::STROKE_STYLE_DOTTED_ICON
         }
+        // **Los materiales de tinta** (v0.59 del movil). Excalidraw no tiene
+        // esta fila, asi que cada uno lleva el icono suyo mas parecido: la
+        // pluma para la lisa, el rayo para las encendidas, los rellenos para
+        // las de raya y el lapiz para las porosas. Lo que de verdad distingue
+        // una de otra es la muestra pintada, no el icono.
+        AccionPanel::Estilo(CambioEstilo::Material(m)) => match m {
+            MaterialTinta::Lisa => &i::STROKE_STYLE_SOLID_ICON,
+            MaterialTinta::Luz | MaterialTinta::Hdr => &i::BOLT_ICON,
+            MaterialTinta::Rayado => &i::FILL_HACHURE_ICON,
+            MaterialTinta::Cruzado => &i::FILL_CROSS_HATCH_ICON,
+            MaterialTinta::Puntos => &i::STROKE_STYLE_DOTTED_ICON,
+            MaterialTinta::Tiza => &i::BUCKET_FILL_ICON,
+            MaterialTinta::Lapiz2b => &i::PENCIL_ICON,
+            MaterialTinta::Seco => &i::STROKE_STYLE_DASHED_ICON,
+            MaterialTinta::Trama => &i::FILL_ZIG_ZAG_ICON,
+        },
         AccionPanel::Estilo(CambioEstilo::Rugosidad(r)) if r < 0.5 => &i::SLOPPINESS_ARCHITECT_ICON,
         AccionPanel::Estilo(CambioEstilo::Rugosidad(r)) if r < 1.5 => &i::SLOPPINESS_ARTIST_ICON,
         AccionPanel::Estilo(CambioEstilo::Rugosidad(_)) => &i::SLOPPINESS_CARTOONIST_ICON,

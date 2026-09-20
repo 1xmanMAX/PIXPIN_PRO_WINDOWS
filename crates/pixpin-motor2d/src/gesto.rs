@@ -649,6 +649,10 @@ impl Gesto {
             bloqueado: false,
             enlace: None,
             redondo: false,
+            // **El trazo nuevo nace con el material elegido**, igual que
+            // nace con el color y con el grosor: el panel deja el «actual» y
+            // lo siguiente que se dibuje sale de ahi.
+            material: self.estilo.material,
         }
     }
 
@@ -1404,6 +1408,7 @@ mod pruebas {
             bloqueado: false,
             enlace: None,
             redondo: false,
+            material: Default::default(),
         }
     }
 
@@ -2473,6 +2478,7 @@ mod pruebas {
             bloqueado: false,
             enlace: None,
             redondo: false,
+            material: Default::default(),
         }
     }
 

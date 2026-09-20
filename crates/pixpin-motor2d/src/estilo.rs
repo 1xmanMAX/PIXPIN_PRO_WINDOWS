@@ -11,6 +11,7 @@ use crate::elemento::{ColorRgba, EstiloTrazo, Figura};
 use crate::escena::Escena;
 use crate::relleno::EstiloRelleno;
 use crate::seleccion::Seleccion;
+use crate::tinta::MaterialTinta;
 
 /// Los tres grosores del panel de Excalidraw (`strokeWidth` 1, 2 y 4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +76,10 @@ pub struct EstiloDibujo {
     pub rugosidad: f32,
     /// De 0 a 1.
     pub opacidad: f32,
+    /// **De que esta hecha la tinta**: lisa, con grano o encendida. Va con el
+    /// color y no con la herramienta, porque es la otra mitad de «de que
+    /// color va esto» (misma razon que en el movil).
+    pub material: MaterialTinta,
 }
 
 impl Default for EstiloDibujo {
@@ -90,6 +95,7 @@ impl Default for EstiloDibujo {
             estilo: EstiloTrazo::Solido,
             rugosidad: 1.0,
             opacidad: 1.0,
+            material: MaterialTinta::Lisa,
         }
     }
 }
@@ -105,6 +111,8 @@ pub enum CambioEstilo {
     Estilo(EstiloTrazo),
     Rugosidad(f32),
     Opacidad(f32),
+    /// De que esta hecha la tinta. Ver `tinta::material`.
+    Material(MaterialTinta),
 }
 
 impl EstiloDibujo {
@@ -117,6 +125,7 @@ impl EstiloDibujo {
             CambioEstilo::Estilo(e) => self.estilo = e,
             CambioEstilo::Rugosidad(r) => self.rugosidad = r.clamp(0.0, 2.0),
             CambioEstilo::Opacidad(o) => self.opacidad = o.clamp(0.0, 1.0),
+            CambioEstilo::Material(m) => self.material = m,
         }
     }
 }
@@ -141,6 +150,7 @@ pub fn aplicar_a(escena: &mut Escena, sel: &Seleccion, cambio: CambioEstilo) {
         CambioEstilo::Estilo(s) => e.estilo != s,
         CambioEstilo::Rugosidad(r) => e.rugosidad != r.clamp(0.0, 2.0),
         CambioEstilo::Opacidad(o) => e.opacidad != o.clamp(0.0, 1.0),
+        CambioEstilo::Material(m) => e.material != m,
     };
     let afectados: Vec<u64> = sel
         .ids()
@@ -163,6 +173,7 @@ pub fn aplicar_a(escena: &mut Escena, sel: &Seleccion, cambio: CambioEstilo) {
                 CambioEstilo::Estilo(s) => e.estilo = s,
                 CambioEstilo::Rugosidad(r) => e.rugosidad = r.clamp(0.0, 2.0),
                 CambioEstilo::Opacidad(o) => e.opacidad = o.clamp(0.0, 1.0),
+                CambioEstilo::Material(m) => e.material = m,
             }
             // Sin subir la version la cache seguiria pintando el aspecto
             // viejo.
@@ -200,6 +211,7 @@ mod pruebas {
             bloqueado: false,
             enlace: None,
             redondo: false,
+            material: Default::default(),
         })
     }
 

@@ -528,6 +528,7 @@ impl Anotador {
             bloqueado: false,
             enlace: None,
             redondo: false,
+            material: Default::default(),
         }
     }
 
@@ -655,6 +656,7 @@ impl Anotador {
             bloqueado: false,
             enlace: None,
             redondo: false,
+            material: Default::default(),
         })
     }
 }

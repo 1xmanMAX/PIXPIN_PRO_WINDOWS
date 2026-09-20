@@ -7,7 +7,10 @@
 
 pub mod freehand;
 pub mod laser;
+pub mod material;
 pub mod prediccion;
+
+pub use material::{MATERIALES, MaterialTinta, paso_del_grano, tejido};
 
 use serde::{Deserialize, Serialize};
 

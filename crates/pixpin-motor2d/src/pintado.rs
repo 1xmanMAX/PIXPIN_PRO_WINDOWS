@@ -73,6 +73,76 @@ pub enum Orden {
     },
 }
 
+/// **El grano de una tinta: la tela que se estampa DENTRO del trazo.**
+///
+/// No lleva geometria, y eso es lo importante: la silueta a la que hay que
+/// recortar la tela es **la que ya salio** en la `Orden::Tinta` (o en el
+/// contorno de la figura), asi que repetirla aqui seria calcular dos veces lo
+/// mismo y, peor, pagarla dos veces en la cache de teselado. Quien pinta ya
+/// tiene la silueta en la mano: esto solo le dice con que tenirla.
+///
+/// Por eso tampoco es una variante mas de [`Orden`]: una variante nueva
+/// obligaria a que todos los que pintan ordenes —la capa de pantalla, el pin,
+/// el chat, el editor— la supieran pintar antes de poder compilar, y el grano
+/// no tiene sentido en todos. Asi, quien quiera grano lo pide; quien no,
+/// sigue igual que estaba.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Grano {
+    /// De que esta hecha la tinta.
+    pub material: crate::tinta::MaterialTinta,
+    /// El color de la tela: la **misma** tinta, oscurecida. Un rayado negro
+    /// sobre una tinta azul son dos tintas y se lee como una mancha sucia;
+    /// oscureciendo la suya, lo que se ve es relieve.
+    pub color: ColorRgba,
+    /// Cada cuantos pixeles del documento se repite el cuadro.
+    pub paso: f32,
+    /// Si la tela va inclinada 45 grados (`GRADOS_DEL_GRANO`).
+    pub inclinada: bool,
+}
+
+/// Lo ancho que sale de verdad la tinta de `e`, que no siempre es su grosor.
+///
+/// Aqui estaba, en el movil, lo de «la tinta de luz no hace nada»: el lapiz
+/// guarda el `strokeWidth` de Excalidraw y se pinta como una mancha de
+/// `FACTOR_VARIABLE` veces eso, asi que con el numero guardado el grano salia
+/// a la escala equivocada —repartido como si el trazo fuera cuatro veces mas
+/// fino de lo que se ve—.
+fn ancho_de_la_tinta(e: &Elemento) -> f32 {
+    match &e.figura {
+        Figura::Lapiz {
+            opciones: Some(_), ..
+        } => e.grosor * crate::tinta::FACTOR_VARIABLE,
+        Figura::Resaltador { .. } => e.grosor * 3.0,
+        _ => e.grosor,
+    }
+    .max(1.0)
+}
+
+/// El grano que hay que estampar dentro de `e`, si lleva alguno.
+///
+/// `None` para la tinta lisa y para las encendidas: lo que se ve de un tubo
+/// encendido es el resplandor, y un rayado dentro de un resplandor no llega a
+/// la pantalla.
+pub fn grano_de(e: &Elemento) -> Option<Grano> {
+    if e.borrado || !e.material.hay_grano() {
+        return None;
+    }
+    let oscuro = 1.0 - crate::tinta::material::CUANTO_OSCURECE_EL_GRANO;
+    Some(Grano {
+        material: e.material,
+        color: ColorRgba {
+            r: e.trazo.r * oscuro,
+            g: e.trazo.g * oscuro,
+            b: e.trazo.b * oscuro,
+            // El grano va a plena tinta aunque el cuerpo vaya flojo: es lo
+            // que se tiene que leer.
+            a: e.trazo.a * e.opacidad.clamp(0.0, 1.0),
+        },
+        paso: crate::tinta::paso_del_grano(ancho_de_la_tinta(e)),
+        inclinada: e.material.se_inclina(),
+    })
+}
+
 /// Aplica la opacidad del elemento a un color.
 fn con_opacidad(c: ColorRgba, opacidad: f32) -> ColorRgba {
     ColorRgba {
@@ -183,7 +253,11 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
     // Un generador propio, sembrado con la semilla del elemento: asi su
     // aspecto no depende de cuantos elementos se dibujaron antes (D38).
     let mut azar = Azar::nuevo(e.semilla);
-    let color = con_opacidad(e.trazo, e.opacidad);
+    // **Las porosas pintan el cuerpo mas flojo.** En la tiza, el lapiz
+    // blando y el rotulador seco lo que se tiene que leer es el grano; con el
+    // cuerpo a plena tinta el grano se pierde encima de un trazo macizo y las
+    // tres se ven iguales que la lisa. Ver `tinta::material`.
+    let color = con_opacidad(e.trazo, e.opacidad * e.material.cuerpo());
     let mut salida = Vec::new();
 
     match &e.figura {
@@ -803,6 +877,7 @@ mod pruebas {
             bloqueado: false,
             enlace: None,
             redondo: false,
+            material: Default::default(),
         }
     }
 
