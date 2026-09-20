@@ -432,7 +432,7 @@ fn tomar_refrescar() -> bool {
 /// trabajo suyo. Devuelve `false` y quien llama vuelve a intentarlo cuando
 /// se cierren.
 fn releer_lo_abierto(ubicacion: &Ubicacion, a: &mut Abierto) -> bool {
-    if a.hoja.is_some() || a.vivo.is_some() {
+    if a.hoja.is_some() || a.mini.is_some() || a.vivo.is_some() {
         return false;
     }
     let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
@@ -986,7 +986,7 @@ pub fn abrir(
                             // Volver es salir del proyecto, como en el movil:
                             // lo que estuviera a medias se guarda antes.
                             if let Some(a) = abierto.as_mut() {
-                                cerrar_hoja(ubicacion, a);
+                                cerrar_panel(ubicacion, a);
                                 apagar_lienzo(ubicacion, a);
                             }
                             if let Some(a) = abierto.take() {
@@ -1035,13 +1035,25 @@ pub fn abrir(
                             }
                             hay_que_pintar = true;
                         }
+                    } else if abierto.as_ref().is_some_and(|a| a.mini.is_some()) {
+                        // Con una mini-app abierta, el sitio del historial es
+                        // suyo: el clic es de un boton, de una fila o de la
+                        // cabecera, que es por donde se vuelve.
+                        if let Some(a) = abierto.as_mut() {
+                            if disposicion.cabecera_chat.contiene(l) {
+                                cerrar_panel(ubicacion, a);
+                            } else {
+                                pulsar_mini(a, l, &disposicion, escala, textos);
+                            }
+                            hay_que_pintar = true;
+                        }
                     } else if abierto.as_ref().is_some_and(|a| a.hoja.is_some()) {
                         // Con la hoja abierta, la conversacion no esta debajo:
                         // el clic es de la hoja o de su cabecera, que es por
                         // donde se vuelve.
                         if let Some(a) = abierto.as_mut() {
                             if disposicion.cabecera_chat.contiene(l) {
-                                cerrar_hoja(ubicacion, a);
+                                cerrar_panel(ubicacion, a);
                             } else {
                                 let t = disposicion_hoja(&disposicion, escala);
                                 if let Some(h) = a.hoja.as_mut() {
@@ -1206,7 +1218,7 @@ pub fn abrir(
                             // Y la hoja abierta se guarda: cambiar de proyecto no
                             // puede llevarse por delante lo que se escribio.
                             if let Some(a) = abierto.as_mut() {
-                                cerrar_hoja(ubicacion, a);
+                                cerrar_panel(ubicacion, a);
                                 apagar_lienzo(ubicacion, a);
                             }
                             if let Some(a) = abierto.take() {
@@ -1341,7 +1353,7 @@ pub fn abrir(
                             {
                                 // Lo que estuviera a medias se guarda antes:
                                 // va a la papelera, y de alli se puede volver.
-                                cerrar_hoja(ubicacion, a);
+                                cerrar_panel(ubicacion, a);
                                 apagar_lienzo(ubicacion, a);
                             }
                             if abierto.as_ref().is_some_and(|a| ids.contains(&a.ficha.id)) {
@@ -1398,7 +1410,12 @@ pub fn abrir(
                     // elegidos manda la barra de arriba, no este menu.
                     let pulsado = abierto
                         .as_ref()
-                        .filter(|a| a.hoja.is_none() && a.info.is_none() && a.marcados.is_empty())
+                        .filter(|a| {
+                            a.hoja.is_none()
+                                && a.mini.is_none()
+                                && a.info.is_none()
+                                && a.marcados.is_empty()
+                        })
                         .and_then(|a| {
                             let area = area_del_historial(&disposicion, a, escala);
                             let c = a.colocado.borrow();
@@ -1439,6 +1456,7 @@ pub fn abrir(
                                 &fichas,
                                 &mut elegida,
                                 &mut borradores,
+                                textos,
                                 lienzo,
                             );
                             buscando = false;
@@ -1473,6 +1491,33 @@ pub fn abrir(
                         ventana.soltar_raton();
                     }
                     arrastre = None;
+                }
+                EventoOverlay::Rueda(delta)
+                    if abierto.as_ref().is_some_and(|a| a.mini.is_some()) =>
+                {
+                    // Solo se desplaza la lista: el numero grande y los
+                    // botones se quedan quietos, que es lo que no se puede
+                    // perder de vista al bajar por las vueltas.
+                    if let Some(a) = abierto.as_mut() {
+                        let reparto = a
+                            .mini
+                            .as_ref()
+                            .and_then(|m| m.vista(textos))
+                            .map(|v| (v.reparto, v.lista.len()));
+                        if let Some((reparto, cuantas)) = reparto
+                            && let Some(m) = a.mini.as_mut()
+                        {
+                            let t = pixpin_ui::mini::Disposicion::calcular(
+                                hueco_hoja(&disposicion),
+                                escala,
+                                reparto,
+                            );
+                            let paso = 3 * (pixpin_ui::mini::FILA_ALTO * escala / 100) as i32;
+                            m.scroll = (m.scroll - delta.signum() * paso)
+                                .clamp(0, t.tope_scroll(cuantas, escala));
+                        }
+                    }
+                    hay_que_pintar = true;
                 }
                 EventoOverlay::Rueda(delta)
                     if abierto.as_ref().is_some_and(|a| a.hoja.is_some()) =>
@@ -1699,6 +1744,62 @@ pub fn abrir(
                 // La hoja de calculo se lleva el teclado entero mientras esta
                 // abierta: escribir en una celda es escribir, y cualquier
                 // otra cosa que se colara aqui iria a parar al borrador.
+                // Una mini-app abierta se lleva el teclado igual que la hoja:
+                // lo que se escriba es de su caja de anadir, no del borrador
+                // de la conversacion que esta detras.
+                EventoOverlay::Caracter(c)
+                    if abierto.as_ref().is_some_and(|a| a.mini.is_some()) =>
+                {
+                    if c >= ' '
+                        && let Some(m) = abierto.as_mut().and_then(|a| a.mini.as_mut())
+                    {
+                        m.borrador.push(c);
+                        hay_que_pintar = true;
+                    }
+                }
+                EventoOverlay::Tecla { vk, .. }
+                    if abierto.as_ref().is_some_and(|a| a.mini.is_some()) =>
+                {
+                    // Escapar con algo escrito lo borra y solo el segundo
+                    // cierra: es la unica forma de arrepentirse de lo tecleado
+                    // sin perder el panel.
+                    let vaciar = vk == VK_ESCAPE
+                        && abierto
+                            .as_ref()
+                            .and_then(|a| a.mini.as_ref())
+                            .is_some_and(|m| !m.borrador.is_empty());
+                    if vk == VK_ESCAPE && !vaciar {
+                        if let Some(a) = abierto.as_mut() {
+                            cerrar_panel(ubicacion, a);
+                        }
+                    } else if let Some(a) = abierto.as_mut() {
+                        let textos_ref = textos;
+                        if let Some(m) = a.mini.as_mut() {
+                            match vk {
+                                VK_ESCAPE => m.borrador.clear(),
+                                VK_RETROCESO => {
+                                    m.borrador.pop();
+                                }
+                                VK_ENTRAR if !m.borrador.trim().is_empty() => {
+                                    let texto = std::mem::take(&mut m.borrador);
+                                    m.hacer(&crate::mini_panel::Orden::Anadir(texto), textos_ref);
+                                    // Al final de la lista, que es donde acaba
+                                    // de caer lo anadido.
+                                    if let Some(v) = m.vista(textos_ref) {
+                                        let t = pixpin_ui::mini::Disposicion::calcular(
+                                            hueco_hoja(&disposicion),
+                                            escala,
+                                            v.reparto,
+                                        );
+                                        m.scroll = t.tope_scroll(v.lista.len(), escala);
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::Caracter(c)
                     if abierto.as_ref().is_some_and(|a| a.hoja.is_some()) =>
                 {
@@ -1722,7 +1823,7 @@ pub fn abrir(
                             .is_some_and(|h| h.edicion.is_none());
                     if cerrar_la_hoja {
                         if let Some(a) = abierto.as_mut() {
-                            cerrar_hoja(ubicacion, a);
+                            cerrar_panel(ubicacion, a);
                         }
                     } else if let Some(h) = abierto.as_mut().and_then(|a| a.hoja.as_mut()) {
                         match vk {
@@ -2011,7 +2112,7 @@ pub fn abrir(
                 Some(i) => {
                     if elegida != Some(i) || abierto.is_none() {
                         if let Some(a) = abierto.as_mut() {
-                            cerrar_hoja(ubicacion, a);
+                            cerrar_panel(ubicacion, a);
                             apagar_lienzo(ubicacion, a);
                         }
                         if let Some(a) = abierto.take() {
@@ -2027,7 +2128,7 @@ pub fn abrir(
                         // Lo que tapara la conversacion se quita: se viene a
                         // ver ese mensaje. La hoja se guarda al cerrarse.
                         a.info = None;
-                        cerrar_hoja(ubicacion, a);
+                        cerrar_panel(ubicacion, a);
                         if let Some(j) = codigo.and_then(|c| indice_de_codigo(&a.mensajes, &c)) {
                             a.ir_a = Some(j);
                             a.resaltado = Some((j, std::time::Instant::now()));
@@ -2060,7 +2161,7 @@ pub fn abrir(
                         tracing::info!(hechas, total, "el PDF tiene mas paginas que el tope");
                     }
                     if let Some(a) = abierto.as_mut() {
-                        cerrar_hoja(ubicacion, a);
+                        cerrar_panel(ubicacion, a);
                         apagar_lienzo(ubicacion, a);
                     }
                     fichas.push(ficha.clone());
@@ -2081,7 +2182,7 @@ pub fn abrir(
             // es lo mismo que cerrarlos con Escape, y perderlos aqui seria una
             // trampa.
             if let Some(a) = abierto.as_mut() {
-                cerrar_hoja(ubicacion, a);
+                cerrar_panel(ubicacion, a);
                 apagar_lienzo(ubicacion, a);
             }
             break;
@@ -2237,6 +2338,15 @@ pub fn abrir(
                             // Con una hoja abierta, la conversacion deja su sitio:
                             // una tabla necesita todo el ancho y el alto que
                             // haya, y el historial vuelve al cerrarla.
+                            // Y con una mini-app, lo mismo: su panel ocupa el
+                            // sitio del historial hasta que se cierre.
+                            None if a.mini.is_some() => {
+                                if let Some(m) = a.mini.as_ref() {
+                                    pintar_mini(p, &disposicion, &c, m);
+                                }
+                                pintar_cabecera(p, &disposicion, &c, a);
+                                a.zonas.borrow_mut().clear();
+                            }
                             None if a.hoja.is_some() => {
                                 if let Some(h) = a.hoja.as_ref() {
                                     pintar_hoja(p, &disposicion, &c, h);
@@ -2287,10 +2397,9 @@ pub fn abrir(
             // estan, otra vuelta para llevar la vista alli.
             // Solo con el historial a la vista: con la hoja o el panel
             // delante no se mide nada, y esto daria vueltas sin parar.
-            if abierto
-                .as_ref()
-                .is_some_and(|a| a.ir_a.is_some() && a.hoja.is_none() && a.info.is_none())
-            {
+            if abierto.as_ref().is_some_and(|a| {
+                a.ir_a.is_some() && a.hoja.is_none() && a.mini.is_none() && a.info.is_none()
+            }) {
                 hay_que_pintar = true;
             }
         }
@@ -2304,10 +2413,20 @@ pub fn abrir(
             .as_ref()
             .and_then(|a| a.resaltado)
             .map(|(_, desde)| RESALTE.saturating_sub(desde.elapsed()).as_millis() as u32 + 1);
-        let dormir = match (hasta_el_aviso, hasta_el_resalte) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        };
+        // Y hasta el siguiente repintado de una mini-app que se mueve sola:
+        // un cronometro en marcha tiene que ir contando sin que nadie toque
+        // nada. **No escribe en disco**, igual que en el movil
+        // (`MiniActivity.kt:356-362`): lo que cambia es el numero calculado.
+        let hasta_el_latido = abierto
+            .as_ref()
+            .and_then(|a| a.mini.as_ref())
+            .and_then(|m| m.vista(textos))
+            .and_then(|v| v.late_cada_ms)
+            .map(|ms| ms as u32);
+        let dormir = [hasta_el_aviso, hasta_el_resalte, hasta_el_latido]
+            .into_iter()
+            .flatten()
+            .min();
         pixpin_shell::overlay::esperar_eventos(if hay_que_pintar { Some(0) } else { dormir });
     }
 
@@ -2442,6 +2561,10 @@ struct Abierto {
     /// aparte por cada tabla llenaria el escritorio, y la hoja es del
     /// proyecto, no de la aplicacion.
     hoja: Option<HojaAbierta>,
+    /// La mini-aplicacion abierta, si hay alguna. Ocupa el mismo sitio que
+    /// la hoja de calculo y por el mismo motivo: es del proyecto, no de la
+    /// aplicacion.
+    mini: Option<MiniAbierta>,
     /// El lienzo que esta vivo dentro de su burbuja, si hay alguno.
     vivo: Option<LienzoVivo>,
     /// La burbuja que se esta arrastrando a la derecha para comentarla: cual
@@ -3664,6 +3787,7 @@ fn pintar_flecha_de_comentar(
 /// Vive aqui fuera y no dentro del bucle porque ya no se hace al PULSAR sino
 /// al SOLTAR: pulsar solo apunta el gesto, que puede acabar siendo un
 /// arrastre a la derecha para comentar.
+#[allow(clippy::too_many_arguments)] // es el contexto del bucle, que va entero
 fn tocar_la_burbuja(
     indice: usize,
     ubicacion: &Ubicacion,
@@ -3671,6 +3795,7 @@ fn tocar_la_burbuja(
     fichas: &[pixpin_proyecto::almacen::Ficha],
     elegida: &mut Option<usize>,
     borradores: &mut std::collections::HashMap<String, String>,
+    textos: &Catalogo,
     lienzo: OpcionesLienzo,
 ) {
     // Un proyecto adjunto es la puerta a ese proyecto: pulsarlo lo abre.
@@ -3682,7 +3807,7 @@ fn tocar_la_burbuja(
         .and_then(|id| fichas.iter().position(|f| f.id == id));
     if let Some(i) = a_otro {
         if let Some(a) = abierto.as_mut() {
-            cerrar_hoja(ubicacion, a);
+            cerrar_panel(ubicacion, a);
             apagar_lienzo(ubicacion, a);
         }
         if let Some(a) = abierto.take() {
@@ -3717,6 +3842,23 @@ fn tocar_la_burbuja(
             m.clase == Some(pixpin_proyecto::cuaderno::Clase::Dibujo)
                 && m.referencia.as_deref().is_some_and(|r| !r.is_empty())
         });
+    // Una mini-app se abre en su panel, en el sitio del historial. Si no la
+    // conocemos, `abrir_mini` dice que no y se sigue por el camino de
+    // siempre: un documento de una version futura se abre con su aplicacion
+    // o no se abre, pero nunca en un panel en blanco.
+    let es_mini = abierto
+        .as_ref()
+        .and_then(|a| a.mensajes.get(indice))
+        .is_some_and(|m| {
+            m.clase == Some(pixpin_proyecto::cuaderno::Clase::MiniApp)
+                && m.miniapp.as_deref() != Some(pixpin_proyecto::tabla::MINIAPP)
+        });
+    if es_mini
+        && let Some(a) = abierto.as_mut()
+        && abrir_mini(a, indice, textos)
+    {
+        return;
+    }
     match abierto.as_mut() {
         Some(a) if es_tabla => abrir_hoja(a, indice),
         // Una foto se abre en el editor 2D, con la foto de fondo: es donde
@@ -4782,6 +4924,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         alto: std::cell::Cell::new(0),
         colocado: std::cell::RefCell::new(Colocado::default()),
         hoja: None,
+        mini: None,
         vivo: None,
         busqueda: None,
         por_etiqueta: None,
@@ -5358,6 +5501,63 @@ fn crear_tabla(
     let raiz = ubicacion.raiz();
     cuaderno::anadir(&almacen::carpeta(raiz, &a.ficha.id), &mensaje)?;
     a.vistas.push(leer_vista(ubicacion, &a.ficha.id, &mensaje));
+    a.mensajes.push(mensaje);
+    a.ficha.tocado = cuando;
+    a.ficha.resumen = nombre;
+    let mut indice = almacen::Indice::leer(raiz);
+    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == a.ficha.id) {
+        f.tocado = a.ficha.tocado;
+        f.resumen = a.ficha.resumen.clone();
+        indice.guardar(raiz)?;
+    }
+    Ok(())
+}
+
+/// Crea una de las siete mini-apps del movil en la conversacion.
+///
+/// El documento nace con `mini::documento_nuevo`, que lo escribe **letra por
+/// letra como lo escribe el movil**, y el mensaje con `cuaderno::Mensaje`,
+/// que pone los campos que espera Kotlin: escribirlo a mano cambiaria el
+/// resumen de sincronizacion y el movil veria el mensaje como modificado en
+/// cada vuelta.
+fn crear_miniapp(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    aparato: &str,
+    cual: &str,
+    textos: &Catalogo,
+) -> std::io::Result<()> {
+    use pixpin_proyecto::{almacen, cuaderno};
+    let nombre = clave_del_nombre(cual)
+        .map(|c| textos.t(c))
+        .unwrap_or_default();
+    let documento =
+        pixpin_proyecto::mini::documento_nuevo(cual, &nombre, &moneda_del_catalogo(textos))
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("no se conoce la mini-app «{cual}»"),
+                )
+            })?;
+
+    let cuando = pixpin_shell::entorno::ahora_utc_ms();
+    let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let mensaje = cuaderno::Mensaje::miniapp(
+        cual,
+        &nombre,
+        &documento,
+        &cuaderno::Sello {
+            cuando,
+            numero,
+            aparato: aparato.to_string(),
+            proyecto: a.ficha.id.clone(),
+        },
+    );
+    let raiz = ubicacion.raiz();
+    cuaderno::anadir(&almacen::carpeta(raiz, &a.ficha.id), &mensaje)?;
+    // Estas no tienen ojeada: su burbuja es la fila con el icono, el nombre y
+    // el resumen. Una vista previa de «0 de 0» no dice mas que el resumen.
+    a.vistas.push(None);
     a.mensajes.push(mensaje);
     a.ficha.tocado = cuando;
     a.ficha.resumen = nombre;
@@ -6326,6 +6526,17 @@ fn abrir_hoja(a: &mut Abierto, indice: usize) {
     }
 }
 
+/// Cierra lo que ocupe el sitio del historial —la hoja de calculo o una
+/// mini-aplicacion— guardandolo si se toco.
+///
+/// Uno solo para los dos porque el sitio es uno solo: quien cambia de
+/// proyecto, cierra la ventana o pulsa «volver» no tiene que acordarse de
+/// cual de las dos cosas habia abierta.
+fn cerrar_panel(ubicacion: &Ubicacion, a: &mut Abierto) {
+    cerrar_hoja(ubicacion, a);
+    cerrar_mini(ubicacion, a);
+}
+
 /// Cierra la hoja, guardandola si se toco.
 fn cerrar_hoja(ubicacion: &Ubicacion, a: &mut Abierto) {
     let Some(mut h) = a.hoja.take() else {
@@ -6662,6 +6873,405 @@ mod pruebas_hoja {
         assert_eq!(h.en_la_barra(), "=1+1");
         h.edicion = Some("=2+2".into());
         assert_eq!(h.en_la_barra(), "=2+2", "y lo que se teclea manda");
+    }
+}
+
+// --- El panel de una mini-aplicacion ----------------------------------
+
+/// Una mini-aplicacion abierta para tocarla, en el sitio del historial.
+///
+/// Es la misma decision que con la hoja de calculo: **dentro de la
+/// conversacion y no en una ventana aparte**. Una tarea marcada, un gasto
+/// apuntado o un cronometro en marcha son del proyecto, no de la aplicacion,
+/// y siete ventanas sueltas llenarian el escritorio.
+struct MiniAbierta {
+    /// Que mensaje del historial es. El documento ES su texto, asi que
+    /// guardar es reescribir ese mensaje.
+    indice: usize,
+    /// La palabra de `Mensaje.miniapp`: es lo que decide que panel sale.
+    cual: String,
+    documento: String,
+    /// Lo que se esta tecleando en la caja de abajo.
+    borrador: String,
+    scroll: i32,
+    /// Si cambio algo. Sin esto, abrir una lista y cerrarla la reescribiria
+    /// en el disco para nada, y el resumen de sincronizacion cambiaria con
+    /// ella.
+    tocada: bool,
+    /// A quien le toco en el ultimo sorteo de la ruleta.
+    ///
+    /// **No se guarda en el documento**, igual que en el movil
+    /// (`mini/Contador.kt:68-91` no tiene donde ponerlo): vive mientras el
+    /// panel esta abierto y se pierde al cerrarlo.
+    elegido: Option<String>,
+}
+
+/// La moneda con la que nace una hoja de gastos.
+///
+/// Sale del catalogo y no del sistema porque el catalogo ya es el idioma
+/// elegido: un PixPin en castellano apunta en euros aunque Windows este en
+/// ingles. En cuanto el documento se guarda deja de importar, porque la
+/// moneda viaja dentro de el (`gastos::Libro`).
+fn moneda_del_catalogo(textos: &Catalogo) -> pixpin_proyecto::mini::gastos::Moneda {
+    use pixpin_proyecto::mini::gastos::Moneda;
+    Moneda::de_codigo(textos.t("mini-moneda").trim()).unwrap_or_else(Moneda::euro)
+}
+
+impl MiniAbierta {
+    /// Lo que hay que pintar ahora mismo. Se recalcula del documento en cada
+    /// fotograma a proposito: el documento es la unica verdad, y un estado
+    /// aparte se desincronizaria en cuanto algo lo tocara por otro camino.
+    ///
+    /// La hora se pregunta aqui dentro y **en UTC**, no se hereda de `Pinta`:
+    /// alli es la hora local y se calcula una sola vez al abrir la ventana,
+    /// que es justo lo contrario de lo que necesita un cronometro. Los
+    /// documentos guardan `System.currentTimeMillis()` del movil, que es UTC.
+    fn vista(&self, textos: &Catalogo) -> Option<crate::mini_panel::Vista> {
+        crate::mini_panel::vista(
+            &self.cual,
+            &self.documento,
+            &moneda_del_catalogo(textos),
+            pixpin_shell::entorno::ahora_utc_ms(),
+        )
+    }
+
+    /// Hace la orden y deja el documento nuevo. Devuelve si cambio algo.
+    fn hacer(&mut self, orden: &crate::mini_panel::Orden, textos: &Catalogo) -> bool {
+        use crate::mini_panel::Orden;
+        // Girar no toca el documento; lo que cambia es a quien le toco. Para
+        // quitarlo de la lista esta su propia aspa, que ya esta ahi: un
+        // segundo boton para lo mismo solo esconderia el primero.
+        if let Orden::Girar(azar) = orden {
+            self.elegido = crate::mini_panel::sorteo(&self.documento, *azar).and_then(|n| {
+                pixpin_proyecto::mini::ruleta::leer(&self.documento)
+                    .get(n)
+                    .cloned()
+            });
+            return true;
+        }
+        let nuevo = crate::mini_panel::aplicar(
+            &self.cual,
+            &self.documento,
+            &moneda_del_catalogo(textos),
+            orden,
+            pixpin_shell::entorno::ahora_utc_ms(),
+        );
+        if nuevo == self.documento {
+            return false;
+        }
+        self.documento = nuevo;
+        self.tocada = true;
+        true
+    }
+}
+
+/// Abre la mini-app de un mensaje. No hace nada si no la conocemos: una de
+/// una version futura se queda en la lista como texto, que es lo que es.
+fn abrir_mini(a: &mut Abierto, indice: usize, textos: &Catalogo) -> bool {
+    let Some(m) = a.mensajes.get(indice) else {
+        return false;
+    };
+    let Some(cual) = m.miniapp.as_deref() else {
+        return false;
+    };
+    if crate::mini_panel::vista(cual, &m.texto, &moneda_del_catalogo(textos), 0).is_none() {
+        return false;
+    }
+    a.mini = Some(MiniAbierta {
+        indice,
+        cual: cual.to_string(),
+        documento: m.texto.clone(),
+        borrador: String::new(),
+        scroll: 0,
+        tocada: false,
+        elegido: None,
+    });
+    true
+}
+
+/// Cierra el panel, guardandolo si se toco.
+fn cerrar_mini(ubicacion: &Ubicacion, a: &mut Abierto) {
+    let Some(m) = a.mini.take() else {
+        return;
+    };
+    if !m.tocada {
+        return;
+    }
+    if let Err(e) = guardar_mini(ubicacion, a, &m) {
+        tracing::error!(?e, "no se pudo guardar la mini-app; sigue como estaba");
+    }
+}
+
+/// Escribe el documento en su mensaje del cuaderno.
+///
+/// Por `cuaderno::reemplazar`, que **copia tal cual las lineas que no
+/// entiende**: marcar una casilla no puede llevarse por delante lo que
+/// escribio una version mas nueva del movil.
+fn guardar_mini(ubicacion: &Ubicacion, a: &mut Abierto, m: &MiniAbierta) -> Result<()> {
+    let Some(mensaje) = a.mensajes.get_mut(m.indice) else {
+        return Ok(());
+    };
+    mensaje.texto = m.documento.clone();
+    let mensaje = mensaje.clone();
+    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
+    if !pixpin_proyecto::cuaderno::reemplazar(&carpeta, &mensaje)? {
+        // No estaba: mejor anadirlo que perderlo.
+        pixpin_proyecto::cuaderno::anadir(&carpeta, &mensaje)?;
+    }
+    // El resumen de la burbuja cambio: hay que volver a colocar.
+    a.colocado.borrow_mut().ancho = 0;
+    Ok(())
+}
+
+/// Donde cayo el raton dentro del panel.
+enum ZonaMini {
+    Boton(crate::mini_panel::Orden),
+    Marcar(usize),
+    Borrar(usize),
+}
+
+/// Que se pulso, calculado igual al pintar y al hacer clic.
+///
+/// Se resuelve aqui y no en el bucle para que las dos mitades —lo que se
+/// dibuja y lo que responde— salgan de la misma cuenta: un boton pintado en
+/// un sitio y pulsable en otro es el fallo clasico de estas pantallas.
+fn zona_mini(
+    v: &crate::mini_panel::Vista,
+    d: &pixpin_ui::mini::Disposicion,
+    m: &MiniAbierta,
+    l: Punto,
+    escala: u32,
+) -> Option<ZonaMini> {
+    for (fila, botones) in v.filas_de_botones.iter().enumerate() {
+        if let Some(n) = d.cual_boton(l, fila as u32, botones.len(), escala)
+            && botones[n].activo
+        {
+            return Some(ZonaMini::Boton(botones[n].orden.clone()));
+        }
+    }
+    let n = d.cual_fila(l, v.lista.len(), m.scroll, escala)?;
+    let caja = d.fila(n, m.scroll, escala);
+    if v.lista[n].se_borra && d.aspa(caja, escala).contiene(l) {
+        return Some(ZonaMini::Borrar(n));
+    }
+    v.lista[n].se_marca.then_some(ZonaMini::Marcar(n))
+}
+
+/// Atiende un clic dentro del panel.
+fn pulsar_mini(a: &mut Abierto, l: Punto, d: &Disposicion, escala: u32, textos: &Catalogo) {
+    use crate::mini_panel::Orden;
+    let Some(m) = a.mini.as_mut() else {
+        return;
+    };
+    let Some(v) = m.vista(textos) else {
+        return;
+    };
+    let t = pixpin_ui::mini::Disposicion::calcular(hueco_hoja(d), escala, v.reparto);
+    let Some(zona) = zona_mini(&v, &t, m, l, escala) else {
+        return;
+    };
+    let orden = match zona {
+        ZonaMini::Marcar(n) => Orden::Alternar(n),
+        ZonaMini::Borrar(n) => Orden::Quitar(n),
+        // El azar se siembra con el reloj y se inyecta: el sorteo en si es
+        // puro y se comprueba en `mini_panel`, que es donde vive la regla.
+        ZonaMini::Boton(Orden::Girar(_)) => {
+            let mut azar =
+                pixpin_motor2d::azar::Azar::nuevo(pixpin_shell::entorno::ahora_utc_ms() as u32);
+            Orden::Girar(azar.siguiente() as f64)
+        }
+        ZonaMini::Boton(otra) => otra,
+    };
+    m.hacer(&orden, textos);
+}
+
+/// El panel de la mini-app en el sitio del historial.
+fn pintar_mini(p: &Pintor, d: &Disposicion, c: &Pinta, m: &MiniAbierta) {
+    use crate::mini_panel::Rotulo;
+    use pixpin_ui::mini as ui;
+    let (tema, escala) = (c.tema, c.escala);
+    let e = escala as f32 / 100.0;
+    let Some(v) = m.vista(c.textos) else {
+        return;
+    };
+    let t = pixpin_ui::mini::Disposicion::calcular(hueco_hoja(d), escala, v.reparto);
+    p.rellenar(rf(t.panel), tema.papel);
+
+    // La cabecera: el nombre del documento y por donde se sale. Sin la caja
+    // de escribir ni el historial delante, nada mas dice como volver.
+    let tam_titulo = ui::TITULO_TAM * e;
+    let titulo = pixpin_proyecto::mini::titulo(&m.documento);
+    let (_, alto_titulo) = p.medir_texto("Ag", tam_titulo);
+    let y_titulo = t.cabecera.y as f32 + (t.cabecera.alto as f32 - alto_titulo) / 2.0;
+    let margen = ui::MARGEN as f32 * e;
+    let volver = c.textos.t("hoja-volver");
+    let (ancho_volver, _) = p.medir_texto(&volver, tam_titulo);
+    p.texto_linea(
+        &titulo,
+        t.cabecera.x as f32 + margen,
+        y_titulo,
+        tam_titulo,
+        (t.cabecera.ancho as f32 - margen * 2.0 - ancho_volver - 12.0 * e).max(0.0),
+        tema.texto_papel,
+    );
+    p.texto(
+        &volver,
+        t.cabecera.derecha() as f32 - ancho_volver - margen,
+        y_titulo,
+        tam_titulo,
+        tema.apagado,
+    );
+
+    // El tablero: el numero grande. Es lo que se lee desde lejos, y por eso
+    // es lo unico que no cede sitio cuando la ventana es baja.
+    if t.tablero.alto > 0 {
+        let texto = match (v.tablero.is_empty(), m.elegido.as_deref()) {
+            // La ruleta no tiene numero: su tablero es a quien le ha tocado.
+            (true, Some(quien)) => quien.to_string(),
+            (true, None) => String::new(),
+            _ => v.tablero.clone(),
+        };
+        if !texto.is_empty() {
+            let tam = ui::TABLERO_TAM * e;
+            let (ancho, alto) = p.medir_texto(&texto, tam);
+            p.texto(
+                &texto,
+                t.tablero.x as f32 + (t.tablero.ancho as f32 - ancho) / 2.0,
+                t.tablero.y as f32 + (t.tablero.alto as f32 - alto) / 2.0,
+                tam,
+                if v.alerta {
+                    hex(0xe5534b)
+                } else {
+                    tema.texto_papel
+                },
+            );
+        }
+    }
+
+    // Los botones.
+    let tam_boton = ui::BOTON_TAM * e;
+    for (fila, botones) in v.filas_de_botones.iter().enumerate() {
+        for (n, b) in botones.iter().enumerate() {
+            let caja = rf(t.boton(fila as u32, n, botones.len(), escala));
+            let radio = 8.0 * e;
+            if b.principal && b.activo {
+                p.rellenar_redondeado(caja, radio, tema.enviar);
+            } else {
+                p.rellenar_redondeado(caja, radio, tema.pildora_borde);
+                p.rellenar_redondeado(encoger(caja, 1.0), (radio - 1.0).max(0.0), tema.papel);
+            }
+            let rotulo = match &b.rotulo {
+                Rotulo::Clave(k) => c.textos.t(k),
+                Rotulo::Tal(s) => s.clone(),
+            };
+            let (ancho, alto) = p.medir_texto(&rotulo, tam_boton);
+            let color = match (b.activo, b.principal) {
+                (false, _) => tema.apagado,
+                (true, true) => tema.papel,
+                (true, false) => tema.texto_papel,
+            };
+            p.texto_linea(
+                &rotulo,
+                caja.x + (caja.ancho - ancho).max(0.0) / 2.0,
+                caja.y + (caja.alto - alto) / 2.0,
+                tam_boton,
+                caja.ancho,
+                color,
+            );
+        }
+    }
+
+    // La lista, lo unico que se desplaza.
+    if t.lista.alto > 0 {
+        let tam = ui::FILA_TAM * e;
+        p.empujar_recorte(rf(t.lista));
+        for (n, f) in v.lista.iter().enumerate() {
+            let caja = t.fila(n, m.scroll, escala);
+            // Lo que queda fuera no se mide siquiera: una lista de mil
+            // nombres no puede costar mil medidas de texto por fotograma.
+            if caja.abajo() < t.lista.y || caja.y > t.lista.abajo() {
+                continue;
+            }
+            let caja_f = rf(caja);
+            let (_, alto) = p.medir_texto("Ag", tam);
+            let y = caja_f.y + (caja_f.alto - alto) / 2.0;
+            let color = if f.hecha {
+                tema.apagado
+            } else {
+                tema.texto_papel
+            };
+            let mut derecha = caja_f.x + caja_f.ancho;
+            if f.se_borra {
+                let aspa = rf(t.aspa(caja, escala));
+                p.icono(&mi::CLOSE, encoger(aspa, 7.0 * e), tema.apagado);
+                derecha = aspa.x;
+            }
+            if !f.detalle.is_empty() {
+                let (ancho_d, _) = p.medir_texto(&f.detalle, tam);
+                p.texto(&f.detalle, derecha - ancho_d - 6.0 * e, y, tam, color);
+                derecha -= ancho_d + 12.0 * e;
+            }
+            // La casilla de una tarea, con su marca. El tachado del movil no
+            // se imita con una raya: se apaga el color, que es lo que este
+            // pintor sabe hacer y se lee igual de rapido.
+            let mut x = caja_f.x;
+            if f.se_marca {
+                let icono: &'static Icono = if f.hecha {
+                    &mi::CHECK_BOX
+                } else {
+                    &mi::CHECK_BOX_OUTLINE_BLANK
+                };
+                p.icono(
+                    icono,
+                    RectF {
+                        x,
+                        y: caja_f.y + (caja_f.alto - 18.0 * e) / 2.0,
+                        ancho: 18.0 * e,
+                        alto: 18.0 * e,
+                    },
+                    if f.hecha { tema.enviar } else { tema.apagado },
+                );
+                x += 26.0 * e;
+            }
+            p.texto_linea(&f.texto, x, y, tam, (derecha - x).max(0.0), color);
+            p.rellenar(
+                RectF {
+                    x: caja_f.x,
+                    y: caja_f.y + caja_f.alto - 1.0,
+                    ancho: caja_f.ancho,
+                    alto: 1.0,
+                },
+                tema.separador,
+            );
+        }
+        p.soltar_recorte();
+    }
+
+    // La caja de escribir, abajo.
+    if t.anadir.alto > 0 {
+        let tam = ui::ANADIR_TAM * e;
+        let caja = rf(t.anadir);
+        p.rellenar(caja, tema.cabecera);
+        let (_, alto) = p.medir_texto("Ag", tam);
+        let y = caja.y + (caja.alto - alto) / 2.0;
+        let (texto, color) = if m.borrador.is_empty() {
+            (
+                v.guia.map(|g| c.textos.t(g)).unwrap_or_default(),
+                tema.apagado,
+            )
+        } else {
+            // El cursor va pegado a lo escrito: no hay seleccion ni flechas
+            // en esta caja, asi que una barra fija basta y no parpadea.
+            (format!("{}|", m.borrador), tema.texto)
+        };
+        p.texto_linea(
+            &texto,
+            caja.x + margen,
+            y,
+            tam,
+            (caja.ancho - margen * 2.0).max(0.0),
+            color,
+        );
     }
 }
 
@@ -7341,16 +7951,26 @@ fn fila_de(
         Clase::Pagina => &mi::MENU_BOOK,
         Clase::Proyecto => &mi::FOLDER,
         Clase::Voz => &mi::PLAY_ARROW,
-        Clase::MiniApp if m.miniapp.as_deref() == Some(pixpin_proyecto::tabla::MINIAPP) => {
-            &mi::TABLE_CHART
-        }
+        // Cualquier mini-app que conozcamos, no solo la tabla: una lista de
+        // tareas llegada del movil salia hasta ahora como texto suelto.
+        Clase::MiniApp => icono_de_miniapp(m.miniapp.as_deref().unwrap_or_default()),
         _ => return None,
     };
     let nombre = nombre_de_la_fila(m, textos);
     let detalle = match clase {
-        // Un lienzo, una tabla o un proyecto dicen solo su nombre, como en
-        // el movil: su peso no es lo que se pregunta de ellos.
-        Clase::Dibujo | Clase::MiniApp | Clase::Proyecto => String::new(),
+        // La mini-app ensena su RESUMEN —«3 de 7», «60,50 €», la hora de la
+        // alarma—, que es lo que el movil pone en la burbuja
+        // (`MiniApps.kt:79-89`). Sin el, la burbuja solo repetia su nombre.
+        Clase::MiniApp => pixpin_proyecto::mini::resumen(
+            m.miniapp.as_deref().unwrap_or_default(),
+            &m.texto,
+            &moneda_del_catalogo(textos),
+        )
+        .map(|r| r.texto)
+        .unwrap_or_default(),
+        // Un lienzo o un proyecto dicen solo su nombre, como en el movil: su
+        // peso no es lo que se pregunta de ellos.
+        Clase::Dibujo | Clase::Proyecto => String::new(),
         Clase::Voz => {
             let s = (m.duracion_ms.max(0) / 1000) as u64;
             if s == 0 {
@@ -7395,7 +8015,16 @@ fn nombre_de_la_fila(m: &pixpin_proyecto::cuaderno::Mensaje, textos: &Catalogo) 
                 nombre.to_string()
             }
         }
-        Some(Clase::MiniApp) if nombre.is_empty() => textos.t("chat-tabla"),
+        // Sin nombre se llama como su mini-app, no «Tabla»: una lista de
+        // tareas del movil se rotulaba «Tabla» solo por ser de clase MINIAPP.
+        Some(Clase::MiniApp) if nombre.is_empty() => {
+            match clave_del_nombre(m.miniapp.as_deref().unwrap_or_default()) {
+                Some(clave) => textos.t(clave),
+                // Una mini-app de una version futura: su propia palabra, que
+                // es mas honrado que llamarla como la que no es.
+                None => m.miniapp.clone().unwrap_or_else(|| textos.t("chat-tabla")),
+            }
+        }
         Some(Clase::Voz) if nombre.is_empty() => textos.t("chat-clase-voz"),
         _ if nombre.is_empty() => {
             let resumen = m.resumen();
@@ -7829,6 +8458,9 @@ enum Accion {
     AdjProyectos,
     AdjProyecto(String),
     MiniApps,
+    /// Una de las siete del movil, por su palabra de `Mensaje.miniapp`. La
+    /// palabra es el dato guardado y no se renombra (`MiniApps.kt:94-99`).
+    AdjMini(&'static str),
     // Un mensaje, por su posicion.
     Responder(usize),
     Copiar(usize),
@@ -8008,6 +8640,64 @@ fn menu_del_clip(textos: &Catalogo) -> Vec<EntradaMenu> {
             Accion::AdjDelMovil,
         ),
     ]
+}
+
+/// La palabra de `Mensaje.miniapp` de una mini-app, y la clave de su nombre.
+///
+/// Las siete del movil mas la hoja de calculo, que solo existe aqui. Ninguna
+/// palabra se traduce: es el dato que viaja por la sincronizacion, y
+/// renombrarla dejaria sin dueno a todo lo ya escrito (`MiniApps.kt:94-99`).
+fn clave_del_nombre(cual: &str) -> Option<&'static str> {
+    use pixpin_proyecto::mini;
+    Some(match cual {
+        mini::TAREAS => "mini-tareas",
+        mini::GASTOS => "mini-gastos",
+        mini::CRONOMETRO => "mini-cronometro",
+        mini::TEMPORIZADOR => "mini-temporizador",
+        mini::CONTADOR => "mini-contador",
+        mini::RULETA => "mini-ruleta",
+        mini::ALARMA => "mini-alarma",
+        _ if cual == pixpin_proyecto::tabla::MINIAPP => "chat-tabla",
+        _ => return None,
+    })
+}
+
+/// El icono de una mini-app en la fila de su burbuja.
+///
+/// Los tres relojes —cronometro, temporizador y alarma— comparten el mismo a
+/// proposito: son lo mismo visto de tres formas, y un icono inventado para
+/// cada uno diria menos que el que ya se entiende.
+fn icono_de_miniapp(cual: &str) -> &'static Icono {
+    use pixpin_proyecto::mini;
+    match cual {
+        mini::GASTOS => &mi::LIST,
+        mini::CRONOMETRO | mini::TEMPORIZADOR | mini::ALARMA => &mi::ALARM,
+        _ if cual == pixpin_proyecto::tabla::MINIAPP => &mi::TABLE_CHART,
+        // Tareas, contador y ruleta: la lista con casillas, que es el icono
+        // con el que el movil rotula la hoja de mini-apps entera.
+        _ => &mi::CHECKLIST,
+    }
+}
+
+/// El menu del clip que ofrece las mini-apps: las siete del movil y, la
+/// ultima, la hoja de calculo, que solo existe en este equipo.
+fn menu_de_miniapps(textos: &Catalogo) -> Vec<EntradaMenu> {
+    let mut v: Vec<EntradaMenu> = pixpin_proyecto::mini::TODAS
+        .iter()
+        .filter_map(|cual| {
+            Some(entrada(
+                Some(icono_de_miniapp(cual)),
+                textos.t(clave_del_nombre(cual)?),
+                Accion::AdjMini(cual),
+            ))
+        })
+        .collect();
+    v.push(entrada(
+        Some(&mi::TABLE_CHART),
+        textos.t("chat-tabla"),
+        Accion::AdjTabla,
+    ));
+    v
 }
 
 /// Los tres puntos de la cabecera, en el orden del movil. La biblioteca y
@@ -8540,11 +9230,16 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                 Err(e) => fallo(&e),
             }
         }
-        Accion::MiniApps => Efecto::Menu(vec![entrada(
-            Some(&mi::TABLE_CHART),
-            cx.textos.t("chat-tabla"),
-            Accion::AdjTabla,
-        )]),
+        Accion::MiniApps => Efecto::Menu(menu_de_miniapps(cx.textos)),
+        Accion::AdjMini(cual) => {
+            match crear_miniapp(cx.ubicacion, a, cx.identidad, cual, cx.textos) {
+                Ok(()) => {
+                    a.scroll = None;
+                    Efecto::Cambio
+                }
+                Err(e) => fallo(&e),
+            }
+        }
         // Lo demas lo atiende el bucle.
         Accion::AdjArchivo
         | Accion::AdjImagen
@@ -8911,6 +9606,7 @@ fn disponer(marco: Rect, escala: u32, ancho_lista: u32, abierto: Option<&Abierto
         (a.respondiendo.is_some() || resultados_de_la_busqueda(a).is_some())
             && a.info.is_none()
             && a.hoja.is_none()
+            && a.mini.is_none()
     });
     if hay_barra {
         d.encima_de_la_isla = BARRA_DE_RESPONDER * escala / 100;

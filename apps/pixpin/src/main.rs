@@ -58,6 +58,7 @@ mod gif;
 mod grabador;
 mod imagenes_lienzo;
 mod medir_fotogramas;
+mod mini_panel;
 mod miniaturas;
 mod navegacion;
 mod overlay;

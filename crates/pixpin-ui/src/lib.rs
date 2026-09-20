@@ -17,6 +17,7 @@ pub mod historial;
 pub mod info;
 pub mod lupa;
 pub mod menu;
+pub mod mini;
 pub mod overlay;
 pub mod panel;
 pub mod panel_lateral;

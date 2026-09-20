@@ -615,3 +615,24 @@ lienzo-estilo-sin-tomar = Todavía no has tomado ningún estilo.
 
 # El adjunto que el visor de documentos sabe abrir sin salir de PixPin.
 chat-abrir-aqui = Abrir aquí
+
+# Las siete mini-aplicaciones del movil, y su panel.
+mini-moneda = EUR
+mini-tareas = Lista de tareas
+mini-gastos = Gastos
+mini-cronometro = Cronómetro
+mini-temporizador = Temporizador
+mini-contador = Contador
+mini-ruleta = Ruleta
+mini-alarma = Alarma
+mini-tarea-nueva = Escribe algo que hacer y pulsa Intro
+mini-gasto-nuevo = Concepto e importe, por ejemplo: Cena 42,50
+mini-nombre-nuevo = Un nombre y pulsa Intro
+mini-limpiar-hechas = Quitar las hechas
+mini-arrancar = Arrancar
+mini-parar = Parar
+mini-vuelta = Vuelta
+mini-reiniciar = Reiniciar
+mini-sortear = Sortear
+mini-alarma-encender = Activar
+mini-alarma-apagar = Desactivar

@@ -614,3 +614,24 @@ lienzo-estilo-sin-tomar = You have not taken a style yet.
 
 # The attachment the document viewer can open without leaving PixPin.
 chat-abrir-aqui = Open here
+
+# The seven mini-apps from the phone, and their panel.
+mini-moneda = USD
+mini-tareas = To-do list
+mini-gastos = Expenses
+mini-cronometro = Stopwatch
+mini-temporizador = Timer
+mini-contador = Counter
+mini-ruleta = Spinner
+mini-alarma = Alarm
+mini-tarea-nueva = Type something to do and press Enter
+mini-gasto-nuevo = Item and amount, for example: Dinner 42.50
+mini-nombre-nuevo = A name, then press Enter
+mini-limpiar-hechas = Clear the done ones
+mini-arrancar = Start
+mini-parar = Stop
+mini-vuelta = Lap
+mini-reiniciar = Reset
+mini-sortear = Spin
+mini-alarma-encender = Turn on
+mini-alarma-apagar = Turn off
