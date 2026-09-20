@@ -445,6 +445,24 @@ const REPOSO_CAMARA: std::time::Duration = std::time::Duration::from_millis(150)
 /// encima de esto, la textura ampliada se ve claramente borrosa.
 const ESTIRADO_MAXIMO: f32 = 3.0;
 
+/// **B2 esta APAGADO.** El trazo en curso vuelve a pintarse en la escena,
+/// con su capa congelada, como antes de B2.
+///
+/// El motivo, medido y no supuesto: el visual de la capa de tinta NO SE VE.
+/// La prueba `superficie::pruebas::una_ventana_compuesta_ensena_la_interfaz_
+/// encima_de_la_escena` monta el mismo arbol, pinta una banda en la capa de
+/// la interfaz y otra en la de la tinta, lee la PANTALLA y encuentra la de
+/// la interfaz y no la de la tinta. Y no es el orden de los visuales: pasa
+/// igual creando la tinta antes o despues de la interfaz, con referencia
+/// explicita o sin ella, y con una sola pasada de dibujo o con dos. Dejarlo
+/// encendido significaria dibujar un trazo y no ver nada hasta soltar, que
+/// es mucho peor que el tiron de apoyar el lapiz que B2 venia a quitar.
+///
+/// Lo que B2 dejo hecho y sigue sirviendo el dia que esto se entienda: la
+/// capa, `pintar_tinta`, `encender_tinta`, `apagar_tinta`, el ritmo sin
+/// `Present` (`espera_de_tinta`) y `pintar_tinta_viva`.
+const TINTA_EN_CAPA: bool = false;
+
 /// Cada cuanto compone DWM cuando no lo quiere decir (con la ventana tapada,
 /// por ejemplo): 60 Hz, que es lo que hay en el equipo suelo.
 const PERIODO_SUPUESTO_MS: f32 = 16.7;
@@ -794,9 +812,7 @@ fn abrir_en_modo(
         if con_capas {
             let margen_fondo = s.margen_estrellas(margen_escena);
             let (cw, ch) = crate::universo::cielo::tamano(area.ancho, area.alto);
-            if let Err(err) =
-                superficie.montar_fondo(cw, ch, area.ancho, area.alto, margen_fondo)
-            {
+            if let Err(err) = superficie.montar_fondo(cw, ch, area.ancho, area.alto, margen_fondo) {
                 tracing::warn!(?err, "sin capas de fondo para el universo");
             }
         }
@@ -1702,7 +1718,7 @@ fn abrir_en_modo(
                 // se ve es la textura corrida y el trazo saldria donde no
                 // es. En ese caso se fuerza el fotograma nitido y la capa
                 // entra en la vuelta siguiente.
-                let quiere_tinta = con_capas && gesto.trazo_en_curso().is_some();
+                let quiere_tinta = TINTA_EN_CAPA && con_capas && gesto.trazo_en_curso().is_some();
                 let tinta_ahora =
                     quiere_tinta && camara_pintada == efectiva && !superficie.esta_estirada();
                 if quiere_tinta && !tinta_ahora && !tinta_viva {
@@ -1723,7 +1739,7 @@ fn abrir_en_modo(
                 if !tinta_ahora && tinta_viva {
                     // Al soltar -o al convertirse en forma rapida-: el trazo
                     // ya esta en la escena y lo pinta el fotograma nitido.
-                    superficie.apagar_tinta();
+                    superficie.apagar_tinta(&motor);
                     tinta_viva = false;
                     todo_sucio = true;
                     contenido_sucio = true;
@@ -1927,7 +1943,8 @@ fn abrir_en_modo(
             let paralaje = universo.as_deref().map_or(0.0, |s| s.paralaje());
             let compone = |s: f32, dx: f32, dy: f32| {
                 universo.is_none()
-                    || (s == 1.0 && superficie.desplazamiento_fondo_valido(dx * paralaje, dy * paralaje))
+                    || (s == 1.0
+                        && superficie.desplazamiento_fondo_valido(dx * paralaje, dy * paralaje))
             };
             match transformada_de_camara(
                 &camara_pintada,

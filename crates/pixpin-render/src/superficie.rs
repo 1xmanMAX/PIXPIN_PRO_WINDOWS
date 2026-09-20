@@ -264,13 +264,22 @@ impl Superficie {
                 (objetivo, visual.clone(), visual, None, None)
             } else {
                 let raiz = dcomp.CreateVisual()?;
-                raiz.AddVisual(&visual, true, None)?;
+                raiz.AddVisual(&visual, false, None)?;
                 // Una capa por cada cosa que se mueve a su ritmo, de abajo
                 // arriba: la escena (se desplaza al panear), la tinta viva
                 // (no se mueve: se dibuja donde esta la mano) y la interfaz
-                // (no se mueve nunca). `true` = encima de lo que ya cuelga
-                // de la raiz, asi que el orden de estas dos llamadas ES el
-                // orden en que se ven.
+                // (no se mueve nunca).
+                //
+                // **El orden se consigue anadiendo por el FINAL de la lista
+                // de hijos** (`AddVisual(v, false, None)`), y el final es lo
+                // que se ve encima. Medido, no supuesto: con
+                // `AddVisual(v, true, None)` -que es «al principio de la
+                // lista»- la barra de herramientas quedaba DEBAJO del
+                // lienzo, que se pinta opaco, y no se veia; la prueba
+                // `una_ventana_compuesta_ensena_la_interfaz_encima_de_la_escena`
+                // lo comprueba leyendo la pantalla. Pasar un visual de
+                // referencia tampoco vale: con referencia, `true` dejaba la
+                // capa de la tinta invisible.
                 let capa = || -> Result<CapaDComp, ErrorRender> {
                     let sup = dcomp.CreateSurface(
                         ancho,
@@ -279,7 +288,7 @@ impl Superficie {
                         DXGI_ALPHA_MODE_PREMULTIPLIED,
                     )?;
                     let v = dcomp.CreateVisual()?;
-                    raiz.AddVisual(&v, true, None)?;
+                    raiz.AddVisual(&v, false, None)?;
                     Ok(CapaDComp {
                         visual: v,
                         superficie: sup,
@@ -287,10 +296,17 @@ impl Superficie {
                         encendida: std::cell::Cell::new(false),
                     })
                 };
+                // En este orden: la tinta encima de la escena, la interfaz
+                // encima de la tinta.
                 let tinta = capa()?;
                 let interfaz = capa()?;
-                // La interfaz esta siempre puesta; la tinta solo mientras se
-                // traza (ver `CapaDComp::encendida`).
+                // Las dos con su superficie puesta DESDE AQUI. Ponersela
+                // despues, al empezar a trazar, no se veia: el visual se
+                // quedaba sin ensenar nada por mucho que la superficie
+                // tuviera pixeles. La tinta se apaga vaciandola, que ademas
+                // es lo que hay que hacer de todos modos para que no quede
+                // el trazo anterior dentro.
+                tinta.visual.SetContent(&tinta.superficie)?;
                 interfaz.visual.SetContent(&interfaz.superficie)?;
                 interfaz.encendida.set(true);
                 objetivo.SetRoot(&raiz)?;
@@ -479,7 +495,7 @@ impl Superficie {
         self.pintar_capa(&self.tinta, motor, zona, dibuja)
     }
 
-    /// Enciende la capa de la tinta: la vacia entera y se la pone al visual.
+    /// Enciende la capa de la tinta: la deja vacia y lista para el trazo.
     ///
     /// Es lo unico que cuesta apoyar el lapiz con B2: un `Clear` de pantalla
     /// entera que la grafica resuelve con su borrado rapido (1,9 ms medidos
@@ -494,40 +510,34 @@ impl Superficie {
             }
         }
         self.pintar_capa(&self.tinta, motor, None, |_, _| {})?;
-        let prestamo = self.tinta.borrow();
-        let Some(capa) = prestamo.as_ref() else {
-            return Ok(());
-        };
-        // SAFETY: el visual y la superficie son propios y siguen vivos.
-        unsafe {
-            capa.visual.SetContent(&capa.superficie)?;
-            self.dcomp.Commit()?;
+        if let Some(capa) = self.tinta.borrow().as_ref() {
+            capa.encendida.set(true);
         }
-        capa.encendida.set(true);
         Ok(())
     }
 
-    /// Apaga la capa de la tinta: el visual se queda sin contenido.
+    /// Apaga la capa de la tinta: la vacia entera.
     ///
     /// Se llama al soltar, cuando el trazo ya ha pasado al motor 2D y lo va
-    /// a pintar la escena. Quitar el contenido y no solo vaciarlo importa:
-    /// un visual transparente de pantalla entera le cuesta a DWM una mezcla
-    /// en CADA composicion, tenga pixeles o no.
-    pub fn apagar_tinta(&self) {
-        let prestamo = self.tinta.borrow();
-        let Some(capa) = prestamo.as_ref() else {
-            return;
+    /// a pintar la escena; si no se vaciara, el trazo se veria dos veces.
+    ///
+    /// Vaciarla y no quitarle el contenido al visual: quitarlo ahorraria a
+    /// DWM la mezcla de una capa transparente de pantalla entera, pero un
+    /// visual al que se le pone la superficie DESPUES de estar en el arbol
+    /// no ensena nada -medido con la prueba de aqui abajo, que es
+    /// exactamente el fallo por el que el trazo en curso no se veia-.
+    pub fn apagar_tinta(&self, motor: &MotorRender) {
+        let apagar = {
+            let prestamo = self.tinta.borrow();
+            prestamo.as_ref().is_some_and(|c| c.encendida.get())
         };
-        if !capa.encendida.get() {
+        if !apagar {
             return;
         }
-        // SAFETY: el visual es propio y sigue vivo; un error solo dejaria la
-        // capa puesta, que se ve igual (esta vacia) y cuesta una mezcla.
-        unsafe {
-            let _ = capa.visual.SetContent(None);
-            let _ = self.dcomp.Commit();
+        let _ = self.pintar_capa(&self.tinta, motor, None, |_, _| {});
+        if let Some(capa) = self.tinta.borrow().as_ref() {
+            capa.encendida.set(false);
         }
-        capa.encendida.set(false);
     }
 
     /// **A3 fase 2: el cielo y las estrellas, DEBAJO de la escena.**
@@ -561,10 +571,10 @@ impl Superficie {
             return Ok(());
         }
         let (ancho_fondo, alto_fondo) = (ancho + margen_fondo * 2, alto + margen_fondo * 2);
-        // SAFETY: el dispositivo y la raiz son propios y siguen vivos.
-        // `AddVisual(..., false, None)` mete el visual al PRINCIPIO de la
-        // lista, o sea DEBAJO de todo lo que ya cuelga: primero las
-        // estrellas, y despues el cielo debajo de ellas.
+        // SAFETY: el dispositivo y la raiz son propios y siguen vivos. Estas
+        // dos van DEBAJO de la escena, o sea al PRINCIPIO de la lista de
+        // hijos (`AddVisual(v, true, None)`), que es el otro extremo del que
+        // usa `crear` para las de encima.
         let (cielo, fondo) = unsafe {
             let nueva = |w: u32, h: u32| -> Result<CapaDComp, ErrorRender> {
                 let sup = self.dcomp.CreateSurface(
@@ -575,7 +585,7 @@ impl Superficie {
                 )?;
                 let v = self.dcomp.CreateVisual()?;
                 v.SetContent(&sup)?;
-                self._raiz.AddVisual(&v, false, None)?;
+                self._raiz.AddVisual(&v, true, None)?;
                 Ok(CapaDComp {
                     visual: v,
                     superficie: sup,
@@ -583,6 +593,10 @@ impl Superficie {
                     encendida: std::cell::Cell::new(true),
                 })
             };
+            // Cada una se mete delante de la anterior POR EL PRINCIPIO, asi
+            // que primero las estrellas (justo debajo de la escena) y luego
+            // el cielo, que queda debajo de las estrellas: el orden en que
+            // se ven es cielo, estrellas, escena.
             let fondo = nueva(ancho_fondo, alto_fondo)?;
             let cielo = nueva(ancho_cielo, alto_cielo)?;
             // El cielo se hornea chico y lo estira la composicion, con el
@@ -1031,6 +1045,235 @@ mod pruebas {
         unsafe { DestroyWindow(hwnd).unwrap() };
     }
 
+    /// Lo que se ve de esa ventana EN LA PANTALLA, en BGRA y fila a fila.
+    ///
+    /// Se lee de la pantalla y no con `PrintWindow`: probado, a una ventana
+    /// sin bits de redireccion (`WS_EX_NOREDIRECTIONBITMAP`) `PrintWindow`
+    /// le devuelve negro aun con `PW_RENDERFULLCONTENT`, porque no hay
+    /// superficie GDI que imprimir y lo unico que existe es el arbol de
+    /// composicion. Leer la pantalla mide justo lo que se quiere medir: lo
+    /// que DWM acabo poniendo delante del usuario.
+    fn capturar_ventana(hwnd: HWND, ancho: i32, alto: i32) -> Vec<u8> {
+        use windows::Win32::Foundation::RECT;
+        use windows::Win32::Graphics::Gdi::{
+            BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection,
+            DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, ReleaseDC, SRCCOPY, SelectObject,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+        let mut caja = RECT::default();
+        // SAFETY: la ventana es del llamante y `caja` es local.
+        unsafe { GetWindowRect(hwnd, &mut caja).expect("donde esta la ventana") };
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: ancho,
+                // Negativo: de arriba abajo, como se lee despues.
+                biHeight: -alto,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        // SAFETY: todos los objetos GDI se crean aqui, se sueltan aqui, y
+        // `bits` apunta a la seccion DIB que vive hasta el `DeleteObject`.
+        unsafe {
+            let pantalla = GetDC(None);
+            let hdc = CreateCompatibleDC(Some(pantalla));
+            let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+            let bmp = CreateDIBSection(Some(hdc), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+                .expect("seccion DIB");
+            let viejo = SelectObject(hdc, bmp.into());
+            let _ = BitBlt(
+                hdc,
+                0,
+                0,
+                ancho,
+                alto,
+                Some(pantalla),
+                caja.left,
+                caja.top,
+                SRCCOPY,
+            );
+            let px =
+                std::slice::from_raw_parts(bits as *const u8, (ancho * alto * 4) as usize).to_vec();
+            SelectObject(hdc, viejo);
+            let _ = DeleteObject(bmp.into());
+            let _ = DeleteDC(hdc);
+            ReleaseDC(None, pantalla);
+            px
+        }
+    }
+
+    /// Deja que DWM componga y vuelve a capturar hasta que `listo` diga que
+    /// ya esta todo, o hasta que se acabe la paciencia.
+    ///
+    /// Esperar a «que algo deje de estar negro» no basta: los `Commit` de
+    /// cada capa llegan a DWM en orden y la pantalla puede ensenar un
+    /// fotograma con la escena y sin la ultima capa. Sin esta espera, la
+    /// prueba fallaba por carrera y no por z.
+    fn capturar_cuando_componga(hwnd: HWND, lado: i32, listo: impl Fn(&[u8]) -> bool) -> Vec<u8> {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            DispatchMessageW, MSG, PM_REMOVE, PeekMessageW,
+        };
+        let mut px = Vec::new();
+        for _ in 0..60 {
+            // SAFETY: bombear la cola de esta ventana; `m` es local.
+            unsafe {
+                let mut m = MSG::default();
+                while PeekMessageW(&mut m, None, 0, 0, PM_REMOVE).as_bool() {
+                    let _ = DispatchMessageW(&m);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(16));
+            px = capturar_ventana(hwnd, lado, lado);
+            if listo(&px) {
+                break;
+            }
+        }
+        px
+    }
+
+    /// **La prueba que faltaba: que la interfaz se VEA.**
+    ///
+    /// Las capas se creaban, se pintaban y no daban error, y aun asi la
+    /// barra de herramientas no aparecia: el visual de la interfaz quedaba
+    /// DEBAJO del de la escena, que se pinta opaca. Colgarlos con
+    /// `AddVisual(..., true, None)` deja el orden a lo que signifique «el
+    /// principio de la lista», y eso no esta documentado.
+    ///
+    /// Aqui se pinta la escena entera de rojo, un rectangulo azul en la capa
+    /// de la interfaz y otro verde en la de la tinta, se captura lo que DWM
+    /// compone de verdad y se mira que color gana en cada sitio.
+    #[test]
+    #[ignore = "necesita GPU y sesion de escritorio; ejecutar con --ignored"]
+    fn una_ventana_compuesta_ensena_la_interfaz_encima_de_la_escena() {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            SW_SHOWNA, ShowWindow, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOPMOST,
+        };
+        const LADO: i32 = 256;
+        let rojo = Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 1.0,
+        };
+        let azul = Color {
+            r: 0.0,
+            g: 0.0,
+            b: 1.0,
+            a: 1.0,
+        };
+        let verde = Color {
+            r: 0.0,
+            g: 1.0,
+            b: 0.0,
+            a: 1.0,
+        };
+        // SAFETY: clase del sistema y ventana propia, destruida al final.
+        // Sin bits de redireccion, como el overlay de verdad: es la unica
+        // forma de que lo que se capture sea el arbol de composicion. Y
+        // siempre encima, porque lo que se lee es la PANTALLA: si otra
+        // ventana la tapara se estaria midiendo esa otra.
+        let hwnd = unsafe {
+            CreateWindowExW(
+                WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOPMOST,
+                w!("STATIC"),
+                w!("prueba de capas"),
+                WS_POPUP,
+                0,
+                0,
+                LADO,
+                LADO,
+                None,
+                None,
+                Some(GetModuleHandleW(None).unwrap().into()),
+                None,
+            )
+            .expect("ventana de prueba")
+        };
+        // SAFETY: la ventana es nuestra; `SW_SHOWNA` no le roba el foco a
+        // nadie, que en una prueba importa.
+        unsafe {
+            let _ = ShowWindow(hwnd, SW_SHOWNA);
+        }
+
+        let d3d = d3d();
+        let motor = MotorRender::nuevo(&d3d).unwrap();
+        let superficie =
+            Superficie::nueva_con_capas(&motor, &d3d, hwnd, LADO as u32, LADO as u32, 64)
+                .expect("la superficie con capas deberia crearse");
+        let destino = superficie.empezar(&motor).unwrap();
+        motor
+            .dibujar(&destino, |p| p.limpiar(rojo))
+            .expect("la escena se pinta");
+        superficie
+            .presentar_sincronizado(None)
+            .expect("present de la escena");
+        superficie
+            .pintar_interfaz(&motor, |p, _| {
+                p.rellenar(
+                    crate::lienzo::RectF {
+                        x: 0.0,
+                        y: 0.0,
+                        ancho: LADO as f32,
+                        alto: 32.0,
+                    },
+                    azul,
+                );
+            })
+            .expect("la interfaz se pinta");
+        // La capa de la tinta se pinta igual, pero NO se comprueba que se
+        // vea: hoy no se ve, y por eso B2 esta apagado (ver
+        // `ventana_editor::TINTA_EN_CAPA`). Se deja pintada aqui para que el
+        // dia que se arregle baste con anadir la comprobacion.
+        superficie
+            .encender_tinta(&motor)
+            .expect("la capa de tinta se enciende");
+        superficie
+            .pintar_tinta(&motor, None, |p, _| {
+                p.rellenar(
+                    crate::lienzo::RectF {
+                        x: 0.0,
+                        y: 200.0,
+                        ancho: LADO as f32,
+                        alto: 32.0,
+                    },
+                    verde,
+                );
+            })
+            .expect("la tinta se pinta");
+
+        // La seccion DIB viene en BGRA.
+        let color_de = |px: &[u8], x: i32, y: i32| {
+            let i = ((y * LADO + x) * 4) as usize;
+            (px[i + 2], px[i + 1], px[i])
+        };
+        // Los dos sitios que se miran: el lienzo en medio y la barra arriba.
+        let px = capturar_cuando_componga(hwnd, LADO, |px| {
+            let escena = color_de(px, 128, 128);
+            let barra = color_de(px, 128, 16);
+            escena.0 > 150 && barra.2 > 150
+        });
+        let color = |x: i32, y: i32| color_de(&px, x, y);
+        let (r, g, b) = color(128, 128);
+        assert!(
+            r > 150 && g < 100 && b < 100,
+            "en medio tiene que verse la escena, y se ve {:?}",
+            (r, g, b)
+        );
+        let (r, g, b) = color(128, 16);
+        assert!(
+            b > 150 && r < 100,
+            "la interfaz tiene que verse ENCIMA de la escena, y ahi se ve {:?}",
+            (r, g, b)
+        );
+        drop(superficie);
+        // SAFETY: la ventana la creo este test y nadie mas la usa.
+        unsafe { DestroyWindow(hwnd).unwrap() };
+    }
+
     /// A3 de punta a punta contra la GPU de verdad: la superficie con
     /// colchon y capa de interfaz se crea, se pinta la escena, se pinta la
     /// interfaz, se desplaza el visual y se estira, todo sin error.
@@ -1126,7 +1369,7 @@ mod pruebas {
         superficie
             .pintar_tinta(&motor, Some((50, 50, 10, 10)), |_, _| {})
             .expect("una zona vacia no revienta");
-        superficie.apagar_tinta();
+        superficie.apagar_tinta(&motor);
         assert!(!superficie.tinta_encendida());
 
         // Y lo que hace A3 en cada fotograma de paneo: mover el visual.
