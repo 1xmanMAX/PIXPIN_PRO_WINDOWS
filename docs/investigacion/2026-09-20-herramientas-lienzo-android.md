@@ -1189,3 +1189,30 @@ que se porte tiene que seguir esa regla o el dibujo del otro se rompe en silenci
   crear») y el código vivo, que sí lo crea. No la he resuelto; la dejo apuntada.
 - **`Espacio.kt`**: cuento 275 líneas con `wc -l`; una lectura parcial dio 90. La
   cifra buena es la del recuento del fichero entero.
+
+---
+
+## Estado de ejecución (2026-09-20, añadido por el agente coordinador)
+
+### Hecho
+
+| Tanda | Commits | Qué quedó |
+|---|---|---|
+| Tintas | `bf57fc3` | Los **diez** materiales del móvil con su fórmula, sus constantes y su azar (incluido el puerto del generador de Java). `luz` y `hdr` quedaron como pluma en esta tanda. |
+| Tanda cero, 1.ª mitad | `15b1000` | El mosaico **tapa** (banda opaca de urgencia: antes se veía lo censurado), el foco viaja en los dos sentidos, el rombo se ve, `roundness` se escribe. |
+| Tanda cero, 2.ª mitad | `1ad0c3b` | 12 variantes de `Herramienta`, 4 de `Figura`, los diez campos en `Elemento::extras`, el puente y el pintado de todo ello, `perimetros.rs` (cimiento de B y C), el grano de tinta en el editor, y la prueba de los 23 tipos. Destapó y arregló tres fugas: `seed` decimal, `mosaicBlur` que no se escribía y el hueco de una región sin recortar. |
+| Grupo A | `38989af`, `b4cb501` | Flecha de codos, arco, las 8 puntas, tramas `zigzag` y `pixpin-lines`, texto dentro de figura, negrita/cursiva/tachado, rombo redondeado, `presionFirme`, y **el color de `luz`/`hdr` portado exacto**: el móvil dejó de pintar halo (`Renderer.kt:2136-2158`), solo cambia el color. |
+
+### Enganches pendientes en los cinco ficheros cerrados
+
+El grupo A paró antes de tocarlos, como se le pidió. Faltan, y son del agente coordinador:
+
+- **`elemento.rs`**: `Figura::Flecha` necesita `TipoPunta` en vez de `bool` y un campo `codos`; `EstiloRelleno` necesita `Zigzag` y `LineasPixpin`; `caja()` del arco debe usar `arco::caja_del_arco` (hoy una uña se selecciona por el círculo entero).
+- **`excalidraw.rs`**: leer y **escribir** `startArrowhead`/`endArrowhead` (hoy no se escriben), `elbowed`, las dos tramas nuevas, **`fontFamily`** (hoy ni se lee ni se escribe: el móvil reabre nuestro texto con otra letra) y la clave `luces` de la escena.
+- **`pintado.rs`**: flecha por `codo::trazado_de_flecha` + las ocho puntas; las dos tramas; `presionFirme`; texto dentro de figura y tachado; rombo redondo; arco por `arco::puntos_del_arco` (hoy hay un muestreo duplicado de 64 tramos); y el color con `color_encendido`.
+- **`gesto.rs`**: `Arco`, `FlechaCodos` y `FlechaLibre` nacen rectas.
+- **`ventana_editor.rs`**: `mod formas;` si se quiere `ventana_editor/formas.rs`.
+
+### Fuera de los cinco, pendiente en `pixpin-ui` (tiene otro dueño)
+
+Botones de las 12 herramientas nuevas en `BOTONES_EDITOR`, y las filas del panel: PUNTAS (los 9 iconos ya existen en `iconos_excalidraw.rs`), RELLENO (2 botones más), ESTILO_DE_TEXTO, PRESIÓN, FORMA_FLECHA, MATERIAL y el mando de escena de las luces. **Las claves i18n ya están puestas** (`b4cb501`).
