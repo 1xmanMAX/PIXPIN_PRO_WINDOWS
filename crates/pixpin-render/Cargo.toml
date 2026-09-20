@@ -13,8 +13,3 @@ windows-numerics = "0.3.1"
 
 [dev-dependencies]
 serde_json = "1.0"
-# Solo para las pruebas: la muestra de los materiales de tinta necesita el
-# contorno de un trazo de verdad (`pixpin-motor2d`) y guardar un PNG que se
-# pueda mirar a ojo (`pixpin-codec`). Ni uno ni otro entran en el crate.
-pixpin-motor2d = { path = "../pixpin-motor2d" }
-pixpin-codec = { path = "../pixpin-codec" }

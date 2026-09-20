@@ -197,6 +197,7 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
     };
     let color = con_opacidad(r, e.opacidad);
     let mut azar = Azar::nuevo(e.semilla);
+    let rombo = matches!(e.figura, Figura::Rombo);
 
     if e.estilo_relleno == EstiloRelleno::Solido {
         // La figura LISA, no la rugosa: rellenar la temblorosa deja huecos
@@ -206,6 +207,8 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
                 .into_iter()
                 .next()
                 .unwrap_or_default()
+        } else if rombo {
+            formas::vertices_de_rombo(e.x, e.y, e.ancho, e.alto).to_vec()
         } else {
             vec![
                 Punto2::nuevo(e.x, e.y),
@@ -229,6 +232,20 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
         &mut azar,
     )
     .into_iter()
+    // El rayado se genera para la caja; el rombo ocupa la mitad de ella, asi
+    // que cada raya se recorta a sus cuatro lados. Sin esto el sombreado se
+    // saldria por las cuatro esquinas y el rombo se leeria como un cuadrado.
+    .filter_map(|(a, b)| {
+        if rombo {
+            crate::relleno::recortar_a_convexo(
+                a,
+                b,
+                &formas::vertices_de_rombo(e.x, e.y, e.ancho, e.alto),
+            )
+        } else {
+            Some((a, b))
+        }
+    })
     .map(|(a, b)| Orden::Polilinea {
         puntos: vec![a, b],
         color,
@@ -341,6 +358,52 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
                         });
                     }
                 }
+            }
+        }
+
+        // **El mosaico: una banda opaca, y a propósito.**
+        //
+        // El movil tapa remuestreando los pixeles de debajo —bloques o
+        // mancha, segun `desenfoque`—, y para eso hacen falta los pixeles,
+        // que aqui no estan: el motor es puro y solo produce ordenes. Asi que
+        // por ahora se tapa con una mancha maciza.
+        //
+        // Se parece menos, pero **tapa lo mismo**, que es lo unico que un
+        // mosaico promete. Lo que habia antes era no pintar nada, y eso
+        // significaba ensenar en el escritorio el numero de cuenta que el
+        // usuario habia tapado en el telefono. Entre parecerse y tapar, tapa.
+        Figura::Mosaico { .. } => {
+            let tapa = e.relleno.filter(|c| c.a > 0.0).unwrap_or(ColorRgba {
+                r: 0.42,
+                g: 0.42,
+                b: 0.45,
+                a: 1.0,
+            });
+            salida.push(Orden::Relleno {
+                puntos: vec![
+                    Punto2::nuevo(e.x, e.y),
+                    Punto2::nuevo(e.x + e.ancho, e.y),
+                    Punto2::nuevo(e.x + e.ancho, e.y + e.alto),
+                    Punto2::nuevo(e.x, e.y + e.alto),
+                ],
+                // **Sin la opacidad del elemento**: un mosaico a medio tapar
+                // no tapa. Es la unica figura del lienzo a la que la
+                // opacidad no se le aplica, y es por lo que existe.
+                color: ColorRgba { a: 1.0, ..tapa },
+            });
+        }
+
+        Figura::Rombo => {
+            // El relleno va PRIMERO, como en el rectangulo: si fuera despues
+            // taparia el trazo por dentro.
+            salida.extend(ordenes_de_relleno(e, false));
+            for pasada in formas::rombo(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar) {
+                salida.push(Orden::Polilinea {
+                    puntos: pasada,
+                    color,
+                    grosor: e.grosor,
+                    estilo: e.estilo,
+                });
             }
         }
 

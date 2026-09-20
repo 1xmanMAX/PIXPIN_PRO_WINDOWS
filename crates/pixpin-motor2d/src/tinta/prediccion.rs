@@ -124,7 +124,12 @@ pub fn con_punta(e: &Elemento, origen: Option<Punto2>, q: Punto2) -> Option<Elem
         {
             *puntos.last_mut()? = q;
         }
-        Figura::Rectangulo | Figura::Elipse | Figura::Foco { .. } | Figura::EscalaGrafica => {
+        Figura::Rectangulo
+        | Figura::Rombo
+        | Figura::Mosaico { .. }
+        | Figura::Elipse
+        | Figura::Foco { .. }
+        | Figura::EscalaGrafica => {
             let o = origen?;
             c.x = o.x.min(q.x);
             c.y = o.y.min(q.y);

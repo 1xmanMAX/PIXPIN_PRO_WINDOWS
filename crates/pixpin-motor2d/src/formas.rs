@@ -90,6 +90,39 @@ pub fn rectangulo(
     salida
 }
 
+/// Los cuatro lados de un rombo, cada uno con sus dos pasadas.
+///
+/// Los vertices son los puntos medios de los lados de su caja, que es como
+/// los pone Excalidraw (`diamond`): asi un rombo y un rectangulo del mismo
+/// tamano se estiran igual y los tiradores caen en el mismo sitio.
+pub fn rombo(
+    x: f32,
+    y: f32,
+    ancho: f32,
+    alto: f32,
+    rugosidad: f32,
+    azar: &mut Azar,
+) -> Vec<Vec<Punto2>> {
+    let e = vertices_de_rombo(x, y, ancho, alto);
+    let mut salida = Vec::with_capacity(8);
+    for i in 0..4 {
+        salida.extend(linea(e[i], e[(i + 1) % 4], rugosidad, azar));
+    }
+    salida
+}
+
+/// Los cuatro vertices de un rombo, en orden. Aparte de [`rombo`] porque el
+/// relleno los necesita sin temblor: rellenar la figura temblorosa deja
+/// huecos por donde se escapa el fondo.
+pub fn vertices_de_rombo(x: f32, y: f32, ancho: f32, alto: f32) -> [Punto2; 4] {
+    [
+        Punto2::nuevo(x + ancho / 2.0, y),
+        Punto2::nuevo(x + ancho, y + alto / 2.0),
+        Punto2::nuevo(x + ancho / 2.0, y + alto),
+        Punto2::nuevo(x, y + alto / 2.0),
+    ]
+}
+
 /// Una elipse "a mano": dos vueltas completas ligeramente distintas.
 ///
 /// No se cierra en el mismo punto donde empieza a proposito: una elipse

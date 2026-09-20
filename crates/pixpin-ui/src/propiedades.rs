@@ -40,7 +40,7 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
         Figura::Resaltador { .. } => &[ColorTrazo, Grosor, Opacidad],
         Figura::Linea { .. } => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
         Figura::Flecha { .. } => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad, PuntaFlecha],
-        Figura::Rectangulo | Figura::Elipse => &[
+        Figura::Rectangulo | Figura::Rombo | Figura::Elipse => &[
             ColorTrazo,
             Relleno,
             EstiloRelleno,
@@ -53,6 +53,10 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
         // El foco oscurece lo de alrededor: su color es el del velo.
         Figura::Foco { .. } => &[Opacidad],
         Figura::Imagen { .. } => &[Opacidad],
+        // Un mosaico tapa: lo unico que se puede elegir es de que color
+        // queda la mancha. Ni opacidad —un mosaico a medias no tapa— ni
+        // nada que cambie su forma.
+        Figura::Mosaico { .. } => &[Relleno],
         // Una cota es una raya de medir: ni relleno ni rugosidad.
         Figura::Cota { .. } => &[ColorTrazo, Grosor, Estilo, Opacidad],
         // Cuantos cuadros y cuanto mide cada uno lo decide la escala, no el

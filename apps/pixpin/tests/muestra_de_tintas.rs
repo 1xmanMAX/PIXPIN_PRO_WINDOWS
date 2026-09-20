@@ -14,8 +14,6 @@
 
 use std::time::Instant;
 
-use windows::Win32::Graphics::Direct3D11::ID3D11Device;
-
 use pixpin_motor2d::elemento::{ColorRgba, Elemento, Figura};
 use pixpin_motor2d::pintado;
 use pixpin_motor2d::tinta::{self, MATERIALES, MaterialTinta};
@@ -26,42 +24,21 @@ use pixpin_render::{CacheGrano, Color, MotorRender};
 const ANCHO: u32 = 900;
 const ALTO: u32 = 150;
 
+/// Un motor y un sitio donde pintar fuera de pantalla, como los monta el
+/// arnes del editor (`ventana_editor/medir.rs`): sin `unsafe`, porque
+/// `apps/pixpin` no lo permite y no hace falta.
+fn motor_y_dispositivo() -> (pixpin_capture::Dispositivo, MotorRender) {
+    let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
+    let m = MotorRender::nuevo(d.d3d()).expect("motor");
+    (d, m)
+}
+
 const BLANCO: Color = Color {
     r: 1.0,
     g: 1.0,
     b: 1.0,
     a: 1.0,
 };
-
-/// Un motor y un dispositivo D3D11 de hardware. Las mismas lineas que
-/// `puerta_tinta.rs`: una prueba de integracion no ve los ayudantes
-/// `#[cfg(test)]` del crate, asi que se repiten.
-fn motor_y_dispositivo() -> (MotorRender, ID3D11Device) {
-    use windows::Win32::Foundation::HMODULE;
-    use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_HARDWARE;
-    use windows::Win32::Graphics::Direct3D11::{
-        D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice,
-    };
-    let mut d3d = None;
-    // SAFETY: salidas locales; sin adaptador concreto ni capas de depuracion.
-    unsafe {
-        D3D11CreateDevice(
-            None,
-            D3D_DRIVER_TYPE_HARDWARE,
-            HMODULE::default(),
-            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-            None,
-            D3D11_SDK_VERSION,
-            Some(&mut d3d),
-            None,
-            None,
-        )
-        .expect("sin D3D11 hardware");
-    }
-    let d3d = d3d.expect("dispositivo");
-    let motor = MotorRender::nuevo(&d3d).expect("motor");
-    (motor, d3d)
-}
 
 /// Un trazo ondulado de lado a lado, como el que se hace a pulso.
 fn trazo_de_muestra(material: MaterialTinta) -> Elemento {
@@ -161,8 +138,9 @@ fn carpeta_de_muestras() -> std::path::PathBuf {
 #[test]
 #[ignore = "necesita GPU y sesion de escritorio"]
 fn cada_material_pinta_el_mismo_trazo_de_otra_manera() {
-    let (motor, d3d) = motor_y_dispositivo();
-    let fuera = FueraDePantalla::nuevo(&motor, &d3d, ANCHO, ALTO).expect("fuera de pantalla");
+    let (dispositivo, motor) = motor_y_dispositivo();
+    let d3d = dispositivo.d3d();
+    let fuera = FueraDePantalla::nuevo(&motor, d3d, ANCHO, ALTO).expect("fuera de pantalla");
     let mut cache = CacheGrano::nueva();
     let carpeta = carpeta_de_muestras();
 
@@ -230,8 +208,9 @@ fn cada_material_pinta_el_mismo_trazo_de_otra_manera() {
 fn una_tela_se_teje_una_sola_vez_por_material_y_color() {
     // Es lo que hace que el grano cueste un relleno y no cien rayas: la tela
     // sube a la GPU la primera vez y se reaprovecha en todos los fotogramas.
-    let (motor, d3d) = motor_y_dispositivo();
-    let fuera = FueraDePantalla::nuevo(&motor, &d3d, ANCHO, ALTO).expect("fuera de pantalla");
+    let (dispositivo, motor) = motor_y_dispositivo();
+    let d3d = dispositivo.d3d();
+    let fuera = FueraDePantalla::nuevo(&motor, d3d, ANCHO, ALTO).expect("fuera de pantalla");
     let mut cache = CacheGrano::nueva();
     let e = trazo_de_muestra(MaterialTinta::Tiza);
     for _ in 0..5 {
@@ -266,8 +245,9 @@ fn el_grano_no_vuelve_lento_el_lienzo() {
     // de tiza, que es el caso peor —cuerpo mas grano, dos rellenos por
     // trazo—, y el segundo tiene que seguir cabiendo en un fotograma de
     // 60 Hz igual que el primero.
-    let (motor, d3d) = motor_y_dispositivo();
-    let fuera = FueraDePantalla::nuevo(&motor, &d3d, 1920, 1080).expect("fuera de pantalla");
+    let (dispositivo, motor) = motor_y_dispositivo();
+    let d3d = dispositivo.d3d();
+    let fuera = FueraDePantalla::nuevo(&motor, d3d, 1920, 1080).expect("fuera de pantalla");
     let mut cache = CacheGrano::nueva();
     let contornos: Vec<Vec<(f32, f32)>> = (0..1_000)
         .map(|i: usize| {

@@ -69,7 +69,27 @@ pub enum Figura {
         #[serde(default = "verdadero")]
         punta_fin: bool,
     },
+    /// **Un mosaico de censura** (`pixpin-mosaic` del movil): tapa su caja
+    /// para que no se lea lo que hay debajo.
+    ///
+    /// Hasta ahora entraba como elemento ajeno: se conservaba al guardar
+    /// pero **no se pintaba**, asi que en una captura anotada en el telefono
+    /// —un numero de cuenta, una cara— el PC ENSENABA lo que el usuario
+    /// habia tapado. No era una figura que faltaba: era un dato que se
+    /// escapaba.
+    ///
+    /// `desenfoque` es el `mosaicBlur` del movil: con el puesto tapa con
+    /// mancha y sin el, con bloques.
+    Mosaico {
+        #[serde(default)]
+        desenfoque: bool,
+    },
     Rectangulo,
+    /// El rombo de Excalidraw (`diamond`): una de sus diez figuras
+    /// principales, y aqui era un elemento ajeno e invisible. Su geometria
+    /// sale de la caja, como la del rectangulo; lo unico distinto es por
+    /// donde pasan los lados.
+    Rombo,
     Elipse,
     /// Oscurece todo menos su caja (D51). El motor entrega el hueco; quien
     /// pinta sabe cuanto mide el lienzo y oscurece el resto.

@@ -211,9 +211,105 @@ fn temblar(a: Punto2, b: Punto2, rugosidad: f32, azar: &mut Azar) -> (Punto2, Pu
     )
 }
 
+/// Recorta el segmento `a`-`b` al poligono CONVEXO `tapa`, dado en sentido
+/// horario o antihorario indistintamente.
+///
+/// Hace falta porque el rayado se genera siempre para la caja de la figura, y
+/// hay figuras que no llenan su caja: un rombo ocupa la mitad. Sin recortar,
+/// el sombreado se sale por las cuatro esquinas y el rombo se lee como un
+/// cuadrado mal dibujado.
+///
+/// Devuelve `None` si el segmento se queda entero fuera, que es lo que le
+/// pasa a la mitad de las rayas de un rombo.
+pub fn recortar_a_convexo(a: Punto2, b: Punto2, tapa: &[Punto2]) -> Option<(Punto2, Punto2)> {
+    if tapa.len() < 3 {
+        return Some((a, b));
+    }
+    // El area con signo dice de que lado queda el dentro, asi que el mismo
+    // codigo vale para un poligono dado en un sentido y en el otro.
+    let doble_area: f32 = (0..tapa.len())
+        .map(|i| {
+            let (p, q) = (tapa[i], tapa[(i + 1) % tapa.len()]);
+            p.x * q.y - q.x * p.y
+        })
+        .sum();
+    let signo = if doble_area >= 0.0 { 1.0 } else { -1.0 };
+
+    let (dx, dy) = (b.x - a.x, b.y - a.y);
+    // Liang-Barsky: el segmento vive en `t` de 0 a 1 y cada lado le recorta
+    // un trozo por delante o por detras.
+    let (mut t0, mut t1) = (0.0f32, 1.0f32);
+    for i in 0..tapa.len() {
+        let (p, q) = (tapa[i], tapa[(i + 1) % tapa.len()]);
+        // Normal que apunta hacia FUERA del poligono.
+        let (nx, ny) = (signo * (q.y - p.y), signo * -(q.x - p.x));
+        let numerador = nx * (p.x - a.x) + ny * (p.y - a.y);
+        let denominador = nx * dx + ny * dy;
+        if denominador.abs() < f32::EPSILON {
+            // Paralelo al lado: o esta dentro del todo o fuera del todo.
+            if numerador < 0.0 {
+                return None;
+            }
+            continue;
+        }
+        // Con la normal hacia fuera, estar dentro es `n·(X - p) <= 0`. Si el
+        // segmento avanza HACIA fuera por este lado, el corte es el final; si
+        // avanza hacia dentro, es el principio.
+        let t = numerador / denominador;
+        if denominador > 0.0 {
+            t1 = t1.min(t);
+        } else {
+            t0 = t0.max(t);
+        }
+        if t0 > t1 {
+            return None;
+        }
+    }
+    Some((
+        Punto2::nuevo(a.x + dx * t0, a.y + dy * t0),
+        Punto2::nuevo(a.x + dx * t1, a.y + dy * t1),
+    ))
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    /// Los cuatro vertices de un rombo de 100x100 en el origen.
+    fn rombo() -> [Punto2; 4] {
+        crate::formas::vertices_de_rombo(0.0, 0.0, 100.0, 100.0)
+    }
+
+    #[test]
+    fn una_raya_que_cruza_el_rombo_se_queda_solo_con_lo_de_dentro() {
+        // Por el medio a lo ancho, el rombo mide sus cien: la raya entra
+        // entera. Mas arriba mide menos, y ahi es donde se recorta.
+        let (a, b) = recortar_a_convexo(
+            Punto2::nuevo(-50.0, 25.0),
+            Punto2::nuevo(150.0, 25.0),
+            &rombo(),
+        )
+        .expect("cruza el rombo");
+        assert!((a.x - 25.0).abs() < 0.01, "entra por {a:?}");
+        assert!((b.x - 75.0).abs() < 0.01, "sale por {b:?}");
+    }
+
+    #[test]
+    fn una_raya_por_la_esquina_de_la_caja_se_va_entera() {
+        // Caso negativo, y el que da sentido a todo esto: la esquina de la
+        // caja esta FUERA del rombo, asi que esa raya no se pinta.
+        assert_eq!(
+            recortar_a_convexo(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(10.0, 0.0), &rombo()),
+            None
+        );
+    }
+
+    #[test]
+    fn sin_poligono_no_se_recorta_nada() {
+        // Una figura que si llena su caja no paga por esto.
+        let (a, b) = (Punto2::nuevo(0.0, 0.0), Punto2::nuevo(1.0, 1.0));
+        assert_eq!(recortar_a_convexo(a, b, &[]), Some((a, b)));
+    }
 
     fn rayas(estilo: EstiloRelleno, elipse: bool) -> Vec<(Punto2, Punto2)> {
         let mut azar = Azar::nuevo(7);

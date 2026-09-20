@@ -52,7 +52,7 @@ pub fn toca(e: &Elemento, p: Punto2) -> bool {
 
         // La barra va con las de caja, como el rectangulo (D37): nunca
         // lleva relleno, asi que se toca por su borde.
-        Figura::Rectangulo | Figura::EscalaGrafica => {
+        Figura::Rectangulo | Figura::Rombo | Figura::Mosaico { .. } | Figura::EscalaGrafica => {
             if e.tiene_relleno() {
                 dentro_de_la_caja(p, e, margen)
             } else {

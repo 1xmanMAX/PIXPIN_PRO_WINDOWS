@@ -244,7 +244,14 @@ fn sellar(mapa: &mut Map<String, Value>, e: &Elemento, original: &Value) {
     }
     if !mapa.contains_key("type") {
         let tipo = match &e.figura {
-            Figura::Rectangulo | Figura::Foco { .. } => "rectangle",
+            Figura::Rectangulo => "rectangle",
+            // **El foco tiene tipo propio alla y aqui escribia
+            // «rectangle».** Un foco hecho en el escritorio llegaba al movil
+            // como un rectangulo transparente cualquiera: dejaba de
+            // oscurecer, que es lo unico que un foco hace.
+            Figura::Foco { .. } => "pixpin-spotlight",
+            Figura::Rombo => "diamond",
+            Figura::Mosaico { .. } => "pixpin-mosaic",
             Figura::Elipse => "ellipse",
             // El resaltador no existe alla: viaja como un trazo, con su
             // opacidad, que es lo que lo hace resaltador a la vista.
@@ -475,6 +482,22 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
                 .unwrap_or_default()
                 .to_string(),
         },
+        "diamond" => Figura::Rombo,
+        "pixpin-mosaic" => Figura::Mosaico {
+            desenfoque: v
+                .get("mosaicBlur")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        },
+        // El foco del movil. `forma` dice si su hueco es redondo; el resto de
+        // sus campos —`oscurecer`, `foco`, `focoAncho`, `focoAlto`— se
+        // quedan en el original y vuelven intactos, que es todo lo que puede
+        // prometer el puente hasta que el PC sepa leerlos.
+        "pixpin-spotlight" => Figura::Foco {
+            elipse: v.get("forma").and_then(Value::as_str).is_some_and(|f| {
+                f.eq_ignore_ascii_case("elipse") || f.eq_ignore_ascii_case("ovalo")
+            }) || v.get("lupaRedonda").and_then(Value::as_bool) == Some(true),
+        },
         "ellipse" => Figura::Elipse,
         "line" => Figura::Linea {
             puntos: puntos_desde(v, x, y),
@@ -539,10 +562,8 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
             Figura::Cota { puntos }
         }
         "pixpin-scalebar" => Figura::EscalaGrafica,
-        // El resto son suyos y no sabemos dibujarlos: `pixpin-mosaic`,
-        // `pixpin-solid`, `pixpin-gantt`... y tambien `diamond` e `image`,
-        // que son de Excalidraw pero todavia no tenemos. Se conservan como
-        // ajenos.
+        // El resto son suyos y no sabemos dibujarlos: `pixpin-solid`,
+        // `pixpin-gantt`... Se conservan como ajenos.
         _ => return None,
     };
     Some(Elemento {
@@ -700,6 +721,24 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
     // Un `Int` del movil: no le cabe el bit de arriba de nuestro u32.
     mapa.insert("seed".into(), Value::from(e.semilla & 0x7fff_ffff));
     sellar(&mut mapa, e, original);
+    // **`roundness` se leia y no se escribia nunca**, asi que un recuadro
+    // redondeado nacido en el escritorio llegaba al movil con las esquinas en
+    // punta. Es un objeto y no un booleano porque Excalidraw guarda ahi QUE
+    // algoritmo de redondeo usar: el 3 es el de radio fijo, que es el que
+    // pone Excalidraw para las figuras cerradas de hoy. Solo se escribe donde
+    // el movil lo escribe —rectangulo y linea—; en lo demas, si el original
+    // traia uno, se respeta y si no, no se inventa.
+    if matches!(e.figura, Figura::Rectangulo | Figura::Linea { .. }) {
+        if e.redondo {
+            if mapa.get("roundness").is_none_or(Value::is_null) {
+                let mut r = Map::new();
+                r.insert("type".into(), Value::from(3));
+                mapa.insert("roundness".into(), Value::Object(r));
+            }
+        } else {
+            mapa.insert("roundness".into(), Value::Null);
+        }
+    }
     mapa.insert("isDeleted".into(), Value::Bool(e.borrado));
     mapa.insert("locked".into(), Value::Bool(e.bloqueado));
     if let Some(enlace) = &e.enlace {
@@ -769,7 +808,12 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
             mapa.insert("type".into(), Value::String("frame".to_string()));
             mapa.insert("name".into(), Value::String(nombre.clone()));
         }
-        Figura::Rectangulo | Figura::Elipse | Figura::Foco { .. } | Figura::Imagen { .. } => {}
+        Figura::Rectangulo
+        | Figura::Rombo
+        | Figura::Mosaico { .. }
+        | Figura::Elipse
+        | Figura::Foco { .. }
+        | Figura::Imagen { .. } => {}
     }
     Value::Object(mapa)
 }
@@ -1082,6 +1126,141 @@ mod pruebas {
         assert_eq!(
             leer(&vuelta).unwrap().elementos()[0].estilo_relleno,
             EstiloRelleno::Solido
+        );
+    }
+
+    #[test]
+    fn un_rombo_del_movil_se_ve_aqui_y_vuelve_siendo_un_rombo() {
+        // `diamond` es una de las diez figuras principales de Excalidraw y
+        // aqui caia en el carril ajeno: sobrevivia al guardar, pero era
+        // invisible en pantalla.
+        let json = r##"{"type":"excalidraw","elements":[
+            {"id":"d1","type":"diamond","x":10,"y":20,"width":100,"height":60,"seed":7}
+        ]}"##;
+        let l = leer(json).unwrap();
+        assert_eq!(l.cuantos_ajenos(), 0, "ya no es ajeno");
+        assert_eq!(l.elementos()[0].figura, Figura::Rombo);
+        assert!(
+            !crate::pintado::ordenes(&l.elementos()[0]).is_empty(),
+            "un rombo que no produce ordenes sigue siendo invisible"
+        );
+        let vuelta = escribir(&l);
+        assert_eq!(leer(&vuelta).unwrap().elementos()[0].figura, Figura::Rombo);
+        assert!(vuelta.contains("\"diamond\""), "{vuelta}");
+    }
+
+    #[test]
+    fn un_mosaico_del_movil_se_pinta_en_vez_de_ensenar_lo_que_tapaba() {
+        // El fallo mas feo de todos: el mosaico entraba como ajeno y no se
+        // pintaba, asi que el dato que el usuario tapo en el telefono se
+        // VEIA en el escritorio.
+        let json = r##"{"type":"excalidraw","elements":[
+            {"id":"m1","type":"pixpin-mosaic","x":0,"y":0,"width":80,"height":30,
+             "mosaicBlur":true,"seed":3}
+        ]}"##;
+        let l = leer(json).unwrap();
+        assert_eq!(l.cuantos_ajenos(), 0);
+        let e = &l.elementos()[0];
+        assert_eq!(e.figura, Figura::Mosaico { desenfoque: true });
+        let ordenes = crate::pintado::ordenes(e);
+        // Lo que importa no es que pinte algo, sino que lo que pinte TAPE:
+        // una mancha opaca del tamano de la caja.
+        let tapa = ordenes.iter().any(|o| match o {
+            crate::pintado::Orden::Relleno { puntos, color } => color.a >= 1.0 && puntos.len() == 4,
+            _ => false,
+        });
+        assert!(tapa, "el mosaico no tapo nada: {ordenes:?}");
+        // Y vuelve siendo lo que era, con su `mosaicBlur` intacto.
+        let vuelta = escribir(&l);
+        assert!(vuelta.contains("pixpin-mosaic"), "{vuelta}");
+        assert_eq!(
+            leer(&vuelta).unwrap().elementos()[0].figura,
+            Figura::Mosaico { desenfoque: true }
+        );
+    }
+
+    #[test]
+    fn un_mosaico_medio_transparente_sigue_tapando_del_todo() {
+        // Caso negativo: la opacidad del elemento NO se le aplica. Un
+        // mosaico al 20 % no es un mosaico discreto, es un dato legible.
+        let json = r##"{"type":"excalidraw","elements":[
+            {"type":"pixpin-mosaic","x":0,"y":0,"width":80,"height":30,"opacity":20}
+        ]}"##;
+        let e = leer(json).unwrap().elementos()[0].clone();
+        assert_eq!(e.opacidad, 0.2);
+        let opaco = crate::pintado::ordenes(&e)
+            .iter()
+            .any(|o| matches!(o, crate::pintado::Orden::Relleno { color, .. } if color.a >= 1.0));
+        assert!(opaco, "el mosaico se pinto translucido");
+    }
+
+    #[test]
+    fn un_foco_va_y_vuelve_con_su_tipo_propio_y_no_como_un_rectangulo() {
+        // El puente estaba roto en los dos sentidos: lo que salia de aqui
+        // llegaba al movil como un rectangulo transparente —dejaba de
+        // oscurecer— y lo que venia de alla entraba como ajeno y no se veia.
+        let json = r##"{"type":"excalidraw","elements":[
+            {"id":"f1","type":"pixpin-spotlight","x":0,"y":0,"width":200,"height":100,
+             "oscurecer":60,"forma":"elipse","seed":5}
+        ]}"##;
+        let l = leer(json).unwrap();
+        assert_eq!(l.cuantos_ajenos(), 0, "ya no es ajeno");
+        assert_eq!(l.elementos()[0].figura, Figura::Foco { elipse: true });
+        let vuelta = escribir(&l);
+        assert!(vuelta.contains("pixpin-spotlight"), "{vuelta}");
+        // Lo que el PC todavia no sabe leer del foco vuelve intacto.
+        assert!(vuelta.contains("\"oscurecer\""), "{vuelta}");
+
+        // Y uno nacido aqui sale con el tipo bueno, no como «rectangle».
+        let mut nuevo = Lienzo::vacio();
+        nuevo.entradas.push(Entrada::Nuestro {
+            elemento: Elemento {
+                id: 1,
+                figura: Figura::Foco { elipse: false },
+                ancho: 10.0,
+                alto: 10.0,
+                ..Default::default()
+            },
+            original: Box::new(Value::Object(Map::new())),
+        });
+        let salida = escribir(&nuevo);
+        assert!(salida.contains("pixpin-spotlight"), "{salida}");
+        assert!(!salida.contains("\"rectangle\""), "{salida}");
+    }
+
+    #[test]
+    fn un_recuadro_redondeado_de_aqui_llega_redondeado_al_movil() {
+        // `roundness` se leia y no se escribia nunca: un recuadro redondeado
+        // nacido en el escritorio llegaba al telefono con las esquinas en
+        // punta.
+        let mut l = Lienzo::vacio();
+        l.entradas.push(Entrada::Nuestro {
+            elemento: Elemento {
+                id: 1,
+                figura: Figura::Rectangulo,
+                ancho: 50.0,
+                alto: 50.0,
+                redondo: true,
+                ..Default::default()
+            },
+            original: Box::new(Value::Object(Map::new())),
+        });
+        let salida = escribir(&l);
+        assert!(salida.contains("\"roundness\""), "{salida}");
+        assert!(leer(&salida).unwrap().elementos()[0].redondo);
+
+        // Caso negativo: quitarle el redondeo aqui tiene que quitarselo alla.
+        let json = r##"{"type":"excalidraw","elements":[
+            {"id":"r1","type":"rectangle","x":0,"y":0,"width":10,"height":10,
+             "roundness":{"type":3},"seed":1}
+        ]}"##;
+        let mut leido = leer(json).unwrap();
+        assert!(leido.elementos()[0].redondo);
+        primero_mut(&mut leido).redondo = false;
+        let vuelta = escribir(&leido);
+        assert!(
+            !leer(&vuelta).unwrap().elementos()[0].redondo,
+            "sigue redondo: {vuelta}"
         );
     }
 

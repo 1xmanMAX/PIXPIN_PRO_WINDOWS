@@ -678,8 +678,6 @@ dependencies = [
 name = "pixpin-render"
 version = "0.1.0"
 dependencies = [
- "pixpin-codec",
- "pixpin-motor2d",
  "pixpin-nivel",
  "serde_json",
  "thiserror",
