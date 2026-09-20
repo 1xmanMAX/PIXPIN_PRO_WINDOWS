@@ -99,6 +99,24 @@ fn icono(b: BotonCaja) -> &'static pixpin_render::icono::Icono {
         // La caja de dibujo no ofrece el emoji (es del universo, que tendra
         // su propia caja); si alguna vez llega, se ve como texto.
         BotonCaja::Elegir(Herramienta::Emoji) => &i::TEXT_ICON,
+        // Las que abre la tanda cero. Los iconos ya estaban descargados de
+        // Excalidraw —el rombo, el lazo, la flecha de codos, el bote, el
+        // cuentagotas— y no se usaban todavia: aqui se les da su boton para
+        // que el dia que la caja los ofrezca no haya que volver por aqui.
+        BotonCaja::Elegir(Herramienta::Rombo) => &i::DIAMOND_ICON,
+        BotonCaja::Elegir(Herramienta::Arco) => &i::ANGLE_ICON,
+        BotonCaja::Elegir(Herramienta::FlechaCodos) => &i::ELBOW_ARROW_ICON,
+        BotonCaja::Elegir(Herramienta::FlechaLibre) => &i::ROUND_ARROW_ICON,
+        BotonCaja::Elegir(Herramienta::Lazo) => &i::LASSO_ICON,
+        // El ojo cerrado y no una rejilla: lo que un mosaico hace es dejar
+        // de enseñar, y la rejilla ya es la barra de escala.
+        BotonCaja::Elegir(Herramienta::Mosaico) => &i::EYE_CLOSED_ICON,
+        BotonCaja::Elegir(Herramienta::Serie) => &i::ABACUS_ICON,
+        BotonCaja::Elegir(Herramienta::Relleno) => &i::BUCKET_FILL_ICON,
+        BotonCaja::Elegir(Herramienta::Recortar) => &i::CUT_ICON,
+        BotonCaja::Elegir(Herramienta::Extender) => &i::ARROW_RIGHT_ICON,
+        BotonCaja::Elegir(Herramienta::Punto) => &i::DOTS_ICON,
+        BotonCaja::Elegir(Herramienta::CopiarEstilo) => &i::EYE_DROPPER_ICON,
         BotonCaja::Deshacer => &i::UNDO_ICON,
         BotonCaja::Rehacer => &i::REDO_ICON,
         BotonCaja::Color => &i::PALETTE,

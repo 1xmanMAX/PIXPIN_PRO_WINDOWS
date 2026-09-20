@@ -180,6 +180,7 @@ fn arrastrar_una_seleccion_tampoco_asigna() {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         }));
     }
 
@@ -281,6 +282,7 @@ fn encuadrar_sesenta_fotogramas_solo_calcula_la_geometria_una_vez() {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         });
     }
 
@@ -335,6 +337,7 @@ fn el_iman_no_asigna_en_el_camino_caliente() {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         };
         e.id = i + 1;
         e.x = (i % 10) as f32 * 40.0;

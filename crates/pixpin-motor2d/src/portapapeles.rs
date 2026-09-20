@@ -101,6 +101,7 @@ mod pruebas {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         }
     }
 

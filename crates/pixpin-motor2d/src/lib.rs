@@ -34,6 +34,7 @@ pub mod indice;
 pub mod marco;
 pub mod medida;
 pub mod organizar;
+pub mod perimetros;
 pub mod pintado;
 pub mod portapapeles;
 pub mod relleno;
@@ -58,6 +59,10 @@ pub use medida::{
 };
 pub use organizar::{
     Alineacion, Reparto, agrupar, al_fondo, al_frente, alinear, desagrupar, hermanos_de, repartir,
+};
+pub use perimetros::{
+    Contorno, PASO_PERIMETRO, contornos_de, intersecciones_cerca, punto_en_el_perimetro,
+    segmentos_de,
 };
 pub use pintado::{
     Orden, marco_de_seleccion, ordenes, ordenes_a_distancia, ordenes_de_escena,

@@ -109,6 +109,7 @@ impl Banco {
                         continue;
                     }
                     let mut indice = 0u32;
+                    let grano = pixpin_motor2d::pintado::grano_de(e);
                     por_cada_orden(cache, e, efectiva.zoom, escena.escala.as_ref(), |orden| {
                         let con_cache = formas_cacheadas || matches!(orden, Orden::Tinta { .. });
                         dibujar_orden(
@@ -118,6 +119,7 @@ impl Banco {
                             con_cache.then_some((&mut *cache_tinta, (e.id, e.version, indice))),
                             &self.imagenes,
                             efectiva.zoom,
+                            grano,
                         );
                         indice += 1;
                     });
@@ -288,6 +290,7 @@ fn base(id: u64, figura: Figura, x: f32, y: f32, ancho: f32, alto: f32) -> Eleme
         enlace: None,
         redondo: false,
         material: Default::default(),
+        extras: Default::default(),
     }
 }
 
@@ -653,6 +656,7 @@ fn hornear_capa(
                 continue;
             }
             let mut indice = 0u32;
+            let grano = pixpin_motor2d::pintado::grano_de(e);
             por_cada_orden(cache, e, t.efectiva.zoom, escena.escala.as_ref(), |orden| {
                 dibujar_orden(
                     p,
@@ -661,6 +665,7 @@ fn hornear_capa(
                     Some((&mut *cache_tinta, (e.id, e.version, indice))),
                     imagenes,
                     t.efectiva.zoom,
+                    grano,
                 );
                 indice += 1;
             });
@@ -694,10 +699,10 @@ fn fotograma_de_trazo(b: &Banco, t: &Trazando, en_escena: bool, limpiar: bool) {
             let origen = t.efectiva.a_pantalla(Punto2::nuevo(0.0, 0.0));
             p.poner_vista((0.0, 0.0), t.efectiva.zoom, (origen.x + m, origen.y + m));
             for orden in pixpin_motor2d::pintado::ordenes_a_distancia(&t.vivo, t.efectiva.zoom) {
-                dibujar_orden(p, &orden, t.vista, None, &b.imagenes, t.efectiva.zoom);
+                dibujar_orden(p, &orden, t.vista, None, &b.imagenes, t.efectiva.zoom, None);
             }
             if let Some(o) = t.punta.and_then(|q| punta_de_tinta(&t.vivo, q)) {
-                dibujar_orden(p, &o, t.vista, None, &b.imagenes, t.efectiva.zoom);
+                dibujar_orden(p, &o, t.vista, None, &b.imagenes, t.efectiva.zoom, None);
             }
             p.soltar_recorte();
         })

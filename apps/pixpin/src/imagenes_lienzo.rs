@@ -282,6 +282,7 @@ pub fn elemento_imagen(id_objeto: u64, x: f32, y: f32, ancho: f32, alto: f32) ->
         enlace: None,
         redondo: false,
         material: Default::default(),
+        extras: Default::default(),
     }
 }
 

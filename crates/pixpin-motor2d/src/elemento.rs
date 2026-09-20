@@ -145,6 +145,272 @@ pub enum Figura {
     Emoji {
         caracter: String,
     },
+    /// **Un trozo de ovalo** (`pixpin-arc` del movil): se pone un ovalo guia
+    /// y se repasa con el lapiz solo el tramo que interesa.
+    ///
+    /// No guarda puntos sino el tramo del ovalo, que es lo que permite
+    /// estirar la caja despues y que el arco se reajuste en vez de
+    /// deformarse. `inicio` y `barrido` van en radianes, medidos sobre el
+    /// ovalo de la caja (`arcStart`/`arcSweep` del movil, que alli van en
+    /// grados: la traduccion esta en `excalidraw.rs`).
+    ///
+    /// **`barrido: None` es un estado de verdad**, no un dato que falta:
+    /// significa «todavia es solo la guia», el ovalo puesto y aun sin
+    /// repasar. Machacarlo con un cero convertiria una guia en un arco de
+    /// longitud nula, que no es lo mismo ni se ve igual.
+    Arco {
+        #[serde(default)]
+        inicio: f32,
+        #[serde(default)]
+        barrido: Option<f32>,
+    },
+    /// **Un numero de serie** (`pixpin-serial`): el circulito con un 1, un 2,
+    /// un 3 con el que se anota una captura paso a paso. El numero va en el
+    /// `text` del movil; aqui es un numero y no una cadena porque el movil
+    /// calcula el siguiente sumando uno al mayor que haya en la escena.
+    Serie {
+        #[serde(default)]
+        numero: u32,
+    },
+    /// **Lo que pinto el bote de relleno** (`pixpin-region`): el contorno que
+    /// se ENCONTRO entre las figuras que cerraban el hueco, con sus agujeros.
+    ///
+    /// Guarda lo encontrado y no una referencia a las figuras que lo
+    /// encerraban, igual que el movil y a proposito: lo que se relleno se
+    /// queda relleno aunque despues se mueva una de las paredes.
+    ///
+    /// Los puntos son ABSOLUTOS, como en el resto de figuras de aqui, y los
+    /// huecos tambien. `huecos` se pinta por la regla par/impar: un anillo es
+    /// su contorno menos su agujero.
+    Region {
+        #[serde(default)]
+        contorno: Vec<Punto2>,
+        #[serde(default)]
+        huecos: Vec<Vec<Punto2>>,
+    },
+    /// **Un punto con su letra** (`pixpin-point`): la A, la B y la C de un
+    /// croquis de geometria.
+    ///
+    /// Su caja no tiene tamano: `x` e `y` SON el punto. La letra orbita a su
+    /// alrededor en polares —`angulo` en radianes y `radio` en pixeles del
+    /// documento— para que al mover el punto la letra lo siga sin pisar el
+    /// dibujo (`etiquetaAngulo`/`etiquetaRadio` del movil).
+    Punto {
+        #[serde(default)]
+        letra: String,
+        #[serde(default)]
+        angulo: f32,
+        #[serde(default = "radio_de_etiqueta")]
+        radio: f32,
+    },
+}
+
+/// Lo que el movil pone de fabrica cuando planta un punto etiquetado.
+fn radio_de_etiqueta() -> f32 {
+    14.0
+}
+
+/// Como se posa el extremo de una flecha sobre la figura a la que se ata
+/// (`BindMode` del movil).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModoEnganche {
+    /// Se queda FUERA, sobre el contorno, orbitandolo.
+    #[default]
+    Orbita,
+    /// Se queda DENTRO, en el punto exacto donde se solto.
+    Dentro,
+}
+
+/// El anclaje de un extremo de flecha a una figura (`Binding` del movil).
+///
+/// **Guarda un punto y no solo la figura.** Con el id a secas la flecha se
+/// ataba «a la caja» y acababa siempre proyectada al borde mas cercano, con
+/// lo que daba igual donde se hubiera soltado la punta.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Enganche {
+    /// El id de TEXTO de la figura, el del fichero (`elementId`). Es texto y
+    /// no un numero por lo mismo que `grupos`: lo genera el movil y aqui
+    /// viaja de ida y vuelta sin tocarlo.
+    pub elemento: String,
+    /// Cuanto se desvia el punto de contacto del centro, de -1 a 1.
+    #[serde(default)]
+    pub foco: f32,
+    /// Separacion entre la punta y el borde, en pixeles del documento.
+    #[serde(default = "uno")]
+    pub hueco: f32,
+    /// El punto agarrado, en proporcion de la caja: `(0,0)` es su esquina
+    /// superior izquierda y `(1,1)` la inferior derecha.
+    #[serde(default)]
+    pub punto_fijo: Option<(f32, f32)>,
+    #[serde(default)]
+    pub modo: ModoEnganche,
+}
+
+/// Una referencia a un elemento atado a este: el texto de dentro de una
+/// figura, o la flecha que le apunta (`BoundElement` del movil).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Atado {
+    pub id: String,
+    /// El tipo tal cual viene del fichero (`arrow`, `text`...). Se guarda
+    /// como texto y no como enumerado porque aqui no se usa para decidir
+    /// nada: se conserva para devolverlo intacto.
+    pub tipo: String,
+}
+
+/// El tamano de una hoja, POR SU PROPORCION (`TamanoDePapel` del movil).
+///
+/// Una hoja no se guarda en centimetros porque el lienzo no tiene
+/// centimetros: lo que el tamano aporta es la proporcion —que un A4 sea un A4
+/// y no un recuadro cualquiera—.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TamanoPapel {
+    A4,
+    A5,
+    Carta,
+    Cuadrada,
+    Apaisada,
+}
+
+impl TamanoPapel {
+    /// Alto partido por ancho, con los mismos numeros del movil.
+    pub fn proporcion(self) -> f32 {
+        match self {
+            TamanoPapel::A4 => 297.0 / 210.0,
+            TamanoPapel::A5 => 210.0 / 148.0,
+            TamanoPapel::Carta => 11.0 / 8.5,
+            TamanoPapel::Cuadrada => 1.0,
+            TamanoPapel::Apaisada => 9.0 / 16.0,
+        }
+    }
+
+    pub fn palabra(self) -> &'static str {
+        match self {
+            TamanoPapel::A4 => "a4",
+            TamanoPapel::A5 => "a5",
+            TamanoPapel::Carta => "carta",
+            TamanoPapel::Cuadrada => "cuadrada",
+            TamanoPapel::Apaisada => "apaisada",
+        }
+    }
+
+    pub fn desde_palabra(p: &str) -> Option<TamanoPapel> {
+        Some(match p {
+            "a4" => TamanoPapel::A4,
+            "a5" => TamanoPapel::A5,
+            "carta" => TamanoPapel::Carta,
+            "cuadrada" => TamanoPapel::Cuadrada,
+            "apaisada" => TamanoPapel::Apaisada,
+            _ => return None,
+        })
+    }
+}
+
+/// La pauta impresa de una hoja: lo que trae el papel antes de escribir
+/// (`PautaDeHoja` del movil).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PautaHoja {
+    #[default]
+    Lisa,
+    Rayada,
+    Cuadros,
+    Puntos,
+}
+
+impl PautaHoja {
+    pub fn palabra(self) -> &'static str {
+        match self {
+            PautaHoja::Lisa => "lisa",
+            PautaHoja::Rayada => "rayada",
+            PautaHoja::Cuadros => "cuadros",
+            PautaHoja::Puntos => "puntos",
+        }
+    }
+
+    pub fn desde_palabra(p: &str) -> Option<PautaHoja> {
+        Some(match p {
+            "lisa" => PautaHoja::Lisa,
+            "rayada" => PautaHoja::Rayada,
+            "cuadros" => PautaHoja::Cuadros,
+            "puntos" => PautaHoja::Puntos,
+            _ => return None,
+        })
+    }
+}
+
+/// **Los diez campos del elemento del movil que el PC ya modela pero que
+/// todavia no manda del todo**, juntos en un sitio.
+///
+/// Van agrupados y no sueltos en `Elemento` por una razon muy concreta y
+/// medida: en este proyecto hay ocho sitios que construyen un `Elemento`
+/// entero a mano, y varios son de otros duenos (`pixpin-ui`,
+/// `pixpin-universo`, el universo de la app). **Cada campo suelto que nace en
+/// `Elemento` obliga a tocar los ocho**, y esta tanda anade diez de golpe:
+/// ochenta lineas en ficheros ajenos, y los mismos ochenta otra vez cuando el
+/// grupo que venga anada el suyo. Con un campo solo, el precio se paga una
+/// vez y los grupos A, B y D amplian esto sin salir de aqui.
+///
+/// Lo que NO es: un cajon de sastre para JSON desconocido. Eso ya existe y
+/// esta un nivel mas arriba (`excalidraw::Entrada::Nuestro`, que guarda el
+/// original). Aqui solo entra lo que el PC entiende con nombre y tipo.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct Extras {
+    /// Trazo de ancho constante, para escribir a mano (`presionFirme`). Sin
+    /// el, lo escrito adelgaza en las curvas y la letra se rompe.
+    #[serde(default)]
+    pub presion_firme: bool,
+    #[serde(default)]
+    pub negrita: bool,
+    #[serde(default)]
+    pub cursiva: bool,
+    #[serde(default)]
+    pub tachado: bool,
+    /// La figura que contiene a este texto (`containerId`). Es lo que hace
+    /// que una caja lleve su rotulo dentro y lo arrastre consigo.
+    #[serde(default)]
+    pub contenedor: Option<String>,
+    /// A que figura se ata el primer extremo de esta flecha (`startBinding`).
+    #[serde(default)]
+    pub enganche_inicio: Option<Enganche>,
+    #[serde(default)]
+    pub enganche_fin: Option<Enganche>,
+    /// Quienes estan atados a ESTE elemento (`boundElements`): su rotulo de
+    /// dentro, las flechas que le apuntan.
+    #[serde(default)]
+    pub atados: Vec<Atado>,
+    /// De que tamano de papel es esta hoja, si es de alguno (`papel`).
+    #[serde(default)]
+    pub papel: Option<TamanoPapel>,
+    /// La pauta impresa de la hoja (`pauta`).
+    #[serde(default)]
+    pub pauta: PautaHoja,
+}
+
+impl Extras {
+    /// Si no hay nada que escribir. Lo usa el puente para no ensuciar el
+    /// JSON de un elemento que nunca tuvo ninguno de estos campos.
+    pub fn vacios(&self) -> bool {
+        *self == Extras::default()
+    }
+
+    /// Lo que ocupa de verdad, contando lo que hay al otro lado de los
+    /// punteros. Lo usa `Elemento::bytes`.
+    pub fn bytes(&self) -> usize {
+        self.contenedor.as_ref().map_or(0, String::len)
+            + self
+                .enganche_inicio
+                .iter()
+                .chain(self.enganche_fin.iter())
+                .map(|b| b.elemento.len())
+                .sum::<usize>()
+            + self
+                .atados
+                .iter()
+                .map(|a| a.id.len() + a.tipo.len() + size_of::<Atado>())
+                .sum::<usize>()
+    }
 }
 
 fn verdadero() -> bool {
@@ -230,6 +496,10 @@ pub struct Elemento {
     /// cambia como se pinta lo que ya hay. Ver `tinta::material`.
     #[serde(default)]
     pub material: crate::tinta::MaterialTinta,
+    /// Los diez campos del movil que el PC modela pero todavia no manda del
+    /// todo: ver [`Extras`], que explica por que van juntos.
+    #[serde(default)]
+    pub extras: Extras,
 }
 
 impl Default for Elemento {
@@ -263,6 +533,7 @@ impl Default for Elemento {
             enlace: None,
             redondo: false,
             material: crate::tinta::MaterialTinta::Lisa,
+            extras: Extras::default(),
         }
     }
 }
@@ -317,6 +588,16 @@ impl Elemento {
                     puntos.iter().map(|p| p.y).fold(f32::MIN, f32::max) + mitad,
                 )
             }
+            // La region NO tiene caja propia en el fichero: `width` y
+            // `height` del movil son los de su contorno encontrado, y si se
+            // usaran aqui un anillo recortado se seleccionaria por un
+            // rectangulo que no toca. Se mide lo que de verdad hay pintado.
+            Figura::Region { contorno, .. } if !contorno.is_empty() => (
+                contorno.iter().map(|p| p.x).fold(f32::MAX, f32::min),
+                contorno.iter().map(|p| p.y).fold(f32::MAX, f32::min),
+                contorno.iter().map(|p| p.x).fold(f32::MIN, f32::max),
+                contorno.iter().map(|p| p.y).fold(f32::MIN, f32::max),
+            ),
             _ => (self.x, self.y, self.x + self.ancho, self.y + self.alto),
         }
     }
@@ -333,6 +614,16 @@ impl Elemento {
             | Figura::Flecha { puntos, .. }
             | Figura::Cota { puntos } => {
                 for p in puntos.iter_mut() {
+                    p.x += dx;
+                    p.y += dy;
+                }
+            }
+            // **Los huecos se mueven con el contorno o el anillo se abre.**
+            // Por eso la region no asoma sus puntos por `puntos()`: quien los
+            // moviera por ahi dejaria los agujeros donde estaban y el relleno
+            // taparia justo lo que se queria dejar ver.
+            Figura::Region { contorno, huecos } => {
+                for p in contorno.iter_mut().chain(huecos.iter_mut().flatten()) {
                     p.x += dx;
                     p.y += dy;
                 }
@@ -377,10 +668,14 @@ impl Elemento {
             | Figura::Flecha { puntos, .. }
             | Figura::Cota { puntos } => puntos.len() * size_of::<Punto2>(),
             Figura::Texto { texto, familia, .. } => texto.len() + familia.len(),
+            Figura::Region { contorno, huecos } => {
+                (contorno.len() + huecos.iter().map(Vec::len).sum::<usize>()) * size_of::<Punto2>()
+            }
+            Figura::Punto { letra, .. } => letra.len(),
             _ => 0,
         };
         let grupos: usize = self.grupos.iter().map(String::len).sum();
-        size_of::<Elemento>() + dentro + grupos
+        size_of::<Elemento>() + dentro + grupos + self.extras.bytes()
     }
 }
 
@@ -420,6 +715,7 @@ mod pruebas {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         }
     }
 

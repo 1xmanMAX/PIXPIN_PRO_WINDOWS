@@ -257,6 +257,80 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
     .collect()
 }
 
+/// **El contorno de una region con sus agujeros recortados, en UN solo
+/// poligono.**
+///
+/// El primer intento fue mandar el contorno y cada agujero como ordenes de
+/// relleno seguidas, el segundo con alfa cero, contando con que quien pinta
+/// los restara por la regla par/impar. **Se probo y no**: `Pintor::poligono`
+/// pinta una figura por llamada, asi que el agujero salia pintado igual y la
+/// prueba de muestra lo enseno —un anillo relleno de lado a lado—.
+///
+/// Lo que si funciona es el ojo de cerradura de toda la vida: se recorre el
+/// contorno, se sale por un puente hasta el agujero mas cercano, se le da la
+/// vuelta entera al agujero y se vuelve por el mismo puente. Queda un solo
+/// contorno cerrado, y las dos reglas de relleno —la par/impar de Direct2D y
+/// la del giro— dejan el agujero vacio: el puente se recorre dos veces y se
+/// anula solo.
+///
+/// El puente se busca entre el par de vertices MAS CERCANO, que es el que
+/// menos se nota y el que menos riesgo corre de cruzar otro trozo del
+/// contorno.
+fn anillo_con_huecos(contorno: &[Punto2], huecos: &[Vec<Punto2>]) -> Vec<Punto2> {
+    let mut anillo = contorno.to_vec();
+    for hueco in huecos.iter().filter(|h| h.len() >= 3) {
+        let (mut mi, mut mj, mut mejor) = (0usize, 0usize, f32::MAX);
+        for (i, a) in anillo.iter().enumerate() {
+            for (j, b) in hueco.iter().enumerate() {
+                let d = a.distancia(*b);
+                if d < mejor {
+                    (mejor, mi, mj) = (d, i, j);
+                }
+            }
+        }
+        let n = hueco.len();
+        // El agujero al reves: con la par/impar da igual el sentido, pero al
+        // reves vale tambien para la regla del giro, y asi este poligono
+        // sirve sea cual sea la que use quien lo pinte.
+        let mut puente: Vec<Punto2> = (0..=n).map(|k| hueco[(mj + n - (k % n)) % n]).collect();
+        // Y de vuelta al contorno por donde se salio.
+        puente.push(anillo[mi]);
+        anillo.splice(mi + 1..mi + 1, puente);
+    }
+    anillo
+}
+
+/// Cuantos tramos se usan para el ovalo entero de un arco. El mismo criterio
+/// que `perimetros`: por debajo de este numero la curva se lee como poligono.
+const TRAMOS_DEL_ARCO: usize = 64;
+
+/// El arco de `e` muestreado en tramos rectos, en coordenadas del documento.
+///
+/// Con `barrido` puesto sale el tramo repasado; sin el, **el ovalo entero**,
+/// que es la guia que todavia no se ha repasado y que tiene que verse para
+/// poder repasarla.
+pub(crate) fn arco_muestreado(e: &Elemento, inicio: f32, barrido: Option<f32>) -> Vec<Punto2> {
+    let (rx, ry) = (e.ancho / 2.0, e.alto / 2.0);
+    if rx <= 0.0 || ry <= 0.0 {
+        return Vec::new();
+    }
+    let (cx, cy) = (e.x + rx, e.y + ry);
+    let vuelta = std::f32::consts::TAU;
+    let (desde, abarca) = match barrido {
+        Some(b) => (inicio, b),
+        None => (0.0, vuelta),
+    };
+    // Los tramos se reparten en proporcion a lo que abarca: un arco de
+    // treinta grados con sesenta y cuatro tramos gastaria por gastar.
+    let n = ((TRAMOS_DEL_ARCO as f32 * (abarca.abs() / vuelta)).ceil() as usize).clamp(2, 256);
+    (0..=n)
+        .map(|i| {
+            let a = desde + abarca * (i as f32 / n as f32);
+            Punto2::nuevo(cx + rx * a.cos(), cy + ry * a.sin())
+        })
+        .collect()
+}
+
 /// Las ordenes de dibujo de un elemento, en orden de pintado.
 /// El rotulo del marco: su tamano y cuanto sube por encima de la caja. Va
 /// fuera de ella a proposito, como en Excalidraw: dentro taparia contenido.
@@ -582,6 +656,132 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
                 }
             }
         }
+        // **El arco: el tramo del ovalo, y la guia entera si aun no se ha
+        // repasado.** Liso y no tembloroso a proposito: el arco se usa como
+        // plantilla y un transportador que tiembla no sirve de plantilla. El
+        // detalle —el repasado a mano, el reajuste al estirar— es del grupo
+        // que lo herede; esto es lo que hace falta para que se VEA.
+        Figura::Arco { inicio, barrido } => {
+            let puntos = arco_muestreado(e, *inicio, *barrido);
+            if puntos.len() >= 2 {
+                salida.push(Orden::Polilinea {
+                    puntos,
+                    color,
+                    grosor: e.grosor,
+                    // La guia sin repasar se ensena punteada: es un andamio,
+                    // no una raya del dibujo, y confundirlas seria dejar
+                    // ovalos enteros donde solo hay un arco a medias.
+                    estilo: if barrido.is_some() {
+                        e.estilo
+                    } else {
+                        EstiloTrazo::Punteado
+                    },
+                });
+            }
+        }
+
+        // El circulito con su numero. El radio sale del alto de la caja, no
+        // de un `fontSize` aparte: aqui la caja ES el circulo, y asi estirar
+        // el elemento agranda el numero con el, que es lo que hace el movil.
+        Figura::Serie { numero } => {
+            salida.extend(ordenes_de_relleno(e, true));
+            for pasada in formas::elipse(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar) {
+                salida.push(Orden::Polilinea {
+                    puntos: pasada,
+                    color,
+                    grosor: e.grosor,
+                    estilo: e.estilo,
+                });
+            }
+            let texto = numero.to_string();
+            let tam = (e.alto.min(e.ancho) * 0.6).max(1.0);
+            // **Centrado a ojo, y a proposito.** `Orden::Texto` no sabe
+            // centrar —solo ajusta al ancho— y el motor es puro: no puede
+            // medir una fuente sin DirectWrite. Se estima el ancho a
+            // `ANCHO_DE_CIFRA` por cifra, que en Segoe UI es lo que mide un
+            // digito, y se aparta lo que sobra. Un numero de serie sin esto
+            // sale pegado al borde izquierdo del circulo y se lee como otra
+            // cosa; con esto cae en el medio con el error de un pelo.
+            const ANCHO_DE_CIFRA: f32 = 0.6;
+            let ancho_texto = tam * ANCHO_DE_CIFRA * texto.chars().count() as f32;
+            salida.push(Orden::Texto {
+                texto,
+                x: e.x + (e.ancho - ancho_texto).max(0.0) / 2.0,
+                y: e.y + (e.alto - tam) / 2.0,
+                tam,
+                familia: "Segoe UI".to_string(),
+                color,
+                ancho_max: ancho_texto.max(1.0),
+            });
+        }
+
+        // Lo que encontro el bote: el contorno macizo con sus agujeros
+        // RECORTADOS DE VERDAD. Ver `anillo_con_huecos`.
+        Figura::Region { contorno, huecos } => {
+            if contorno.len() >= 3 {
+                let relleno = e.relleno.filter(|c| c.a > 0.0);
+                if let Some(r) = relleno {
+                    salida.push(Orden::Relleno {
+                        puntos: anillo_con_huecos(contorno, huecos),
+                        color: con_opacidad(r, e.opacidad),
+                    });
+                }
+                // El borde, siempre, y **tambien el de cada agujero**: sin
+                // el, una region sin relleno es invisible y no habria como
+                // seleccionarla, y un agujero sin borde no se distingue de
+                // un trozo que nadie relleno.
+                for anillo in std::iter::once(contorno).chain(huecos.iter()) {
+                    if anillo.len() < 3 {
+                        continue;
+                    }
+                    let mut borde = anillo.clone();
+                    if let Some(p) = borde.first().copied() {
+                        borde.push(p);
+                    }
+                    salida.push(Orden::Polilinea {
+                        puntos: borde,
+                        color,
+                        grosor: e.grosor,
+                        estilo: e.estilo,
+                    });
+                }
+            }
+        }
+
+        // El punto y su letra. La letra ORBITA en polares alrededor del
+        // punto: es lo que hace que al mover el punto la letra lo siga sin
+        // pisar el dibujo.
+        Figura::Punto {
+            letra,
+            angulo,
+            radio,
+        } => {
+            let r = (e.grosor * 1.6).max(2.0);
+            let mut circulo = Azar::nuevo(e.semilla);
+            let disco = formas::elipse(e.x - r, e.y - r, r * 2.0, r * 2.0, 0.0, &mut circulo)
+                .into_iter()
+                .next()
+                .unwrap_or_default();
+            if disco.len() >= 3 {
+                salida.push(Orden::Relleno {
+                    puntos: disco,
+                    color,
+                });
+            }
+            if !letra.is_empty() {
+                let tam = (e.grosor * 5.0).max(10.0);
+                salida.push(Orden::Texto {
+                    texto: letra.clone(),
+                    x: e.x + radio * angulo.cos(),
+                    y: e.y + radio * angulo.sin() - tam / 2.0,
+                    tam,
+                    familia: "Segoe UI".to_string(),
+                    color,
+                    ancho_max: tam * letra.chars().count() as f32,
+                });
+            }
+        }
+
         // La barra entera depende de la escala: va en `ordenes_medibles`.
         Figura::EscalaGrafica => {}
     }
@@ -941,6 +1141,7 @@ mod pruebas {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         }
     }
 

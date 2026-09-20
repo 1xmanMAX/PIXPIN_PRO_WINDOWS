@@ -30,7 +30,10 @@
 
 use serde_json::{Map, Value};
 
-use crate::elemento::{ColorRgba, Elemento, EstiloTrazo, Figura};
+use crate::elemento::{
+    Atado, ColorRgba, Elemento, Enganche, EstiloTrazo, Extras, Figura, ModoEnganche, PautaHoja,
+    TamanoPapel,
+};
 use crate::medida::Escala;
 use crate::relleno::EstiloRelleno;
 use crate::tinta::MaterialTinta;
@@ -264,6 +267,10 @@ fn sellar(mapa: &mut Map<String, Value>, e: &Elemento, original: &Value) {
             Figura::Cota { .. } => "pixpin-measure",
             Figura::EscalaGrafica => "pixpin-scalebar",
             Figura::Marco { .. } => "frame",
+            Figura::Arco { .. } => "pixpin-arc",
+            Figura::Serie { .. } => "pixpin-serial",
+            Figura::Region { .. } => "pixpin-region",
+            Figura::Punto { .. } => "pixpin-point",
         };
         mapa.insert("type".into(), Value::String(tipo.into()));
     }
@@ -391,6 +398,30 @@ fn puntos_desde(v: &Value, x: f32, y: f32) -> Vec<Punto2> {
                     // solo la primera dejaba los trazos del movil SIN PUNTOS:
                     // el dibujo se abria con sus mil elementos y no se veia
                     // ninguno, solo las figuras, que no llevan puntos.
+                    let (px, py) = match p {
+                        Value::Array(par) => (par.first()?.as_f64()?, par.get(1)?.as_f64()?),
+                        Value::Object(o) => (o.get("x")?.as_f64()?, o.get("y")?.as_f64()?),
+                        _ => return None,
+                    };
+                    Some(Punto2 {
+                        x: x + px as f32,
+                        y: y + py as f32,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Una lista de puntos suelta —un anillo de `huecos`—, de relativa a
+/// ABSOLUTA. Acepta las dos formas, como `puntos_desde`: el movil escribe
+/// `{"x":…,"y":…}` y Excalidraw, `[x, y]`.
+fn lista_de_puntos(v: &Value, x: f32, y: f32) -> Vec<Punto2> {
+    v.as_array()
+        .map(|lista| {
+            lista
+                .iter()
+                .filter_map(|p| {
                     let (px, py) = match p {
                         Value::Array(par) => (par.first()?.as_f64()?, par.get(1)?.as_f64()?),
                         Value::Object(o) => (o.get("x")?.as_f64()?, o.get("y")?.as_f64()?),
@@ -562,8 +593,42 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
             Figura::Cota { puntos }
         }
         "pixpin-scalebar" => Figura::EscalaGrafica,
+        // El arco: un trozo del ovalo de su caja. El movil lo guarda en
+        // GRADOS y aqui todo lo angular va en radianes, como `angle`.
+        //
+        // `arcSweep` ausente o nulo no se rellena con un cero: es el estado
+        // «todavia es solo la guia» y tiene que sobrevivir al viaje, o un
+        // ovalo guia del movil volveria convertido en un arco vacio.
+        "pixpin-arc" => Figura::Arco {
+            inicio: num_o(v, "arcStart", 0.0).to_radians(),
+            barrido: num(v, "arcSweep").map(f32::to_radians),
+        },
+        // El numero de serie. El movil lo guarda como TEXTO en `text`
+        // porque su elemento es plano y ahi cabe cualquier rotulo; aqui es
+        // un numero, que es lo que de verdad es. Si viniera algo que no es
+        // un numero —un rotulo a mano en una version futura— el elemento
+        // cae al carril ajeno en vez de perder lo que ponia.
+        "pixpin-serial" => Figura::Serie {
+            numero: v.get("text").and_then(Value::as_str)?.trim().parse().ok()?,
+        },
+        // Lo que pinto el bote de relleno: el contorno encontrado en
+        // `points` y sus agujeros en `huecos`, los dos relativos a (x, y).
+        "pixpin-region" => Figura::Region {
+            contorno: puntos_desde(v, x, y),
+            huecos: v
+                .get("huecos")
+                .and_then(Value::as_array)
+                .map(|anillos| anillos.iter().map(|a| lista_de_puntos(a, x, y)).collect())
+                .unwrap_or_default(),
+        },
+        // El punto etiquetado: su caja no tiene tamano, (x, y) ES el punto.
+        "pixpin-point" => Figura::Punto {
+            letra: v.get("text").and_then(Value::as_str).unwrap_or("").into(),
+            angulo: num_o(v, "etiquetaAngulo", 0.0).to_radians(),
+            radio: num_o(v, "etiquetaRadio", 14.0),
+        },
         // El resto son suyos y no sabemos dibujarlos: `pixpin-solid`,
-        // `pixpin-gantt`... Se conservan como ajenos.
+        // `pixpin-gantt`, `pixpin-lupa`... Se conservan como ajenos.
         _ => return None,
     };
     Some(Elemento {
@@ -596,9 +661,15 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
         rugosidad: num_o(v, "roughness", 1.0),
         // El suyo va de 0 a 100 y el nuestro de 0 a 1.
         opacidad: (num_o(v, "opacity", 100.0) / 100.0).clamp(0.0, 1.0),
+        // **La semilla es el campo mas importante del modelo**: sin ella la
+        // figura se sortea de nuevo y cambia de forma al reabrirla. Por eso
+        // se acepta tambien escrita como decimal (`1001.0`): un JSON que ha
+        // pasado por una herramienta que serializa todos los numeros como
+        // coma flotante seguia siendo legible en todo menos en esto, y el
+        // dibujo volvia con otro garabato sin que nada avisara.
         semilla: v
             .get("seed")
-            .and_then(|s| s.as_u64())
+            .and_then(|s| s.as_u64().or_else(|| s.as_f64().map(|f| f as u64)))
             .map(|s| s as u32)
             .unwrap_or(1),
         version: v
@@ -628,7 +699,194 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
                     .collect()
             })
             .unwrap_or_default(),
+        extras: extras_desde(v),
     })
+}
+
+/// Los diez campos del movil que ahora el PC entiende. Ver `Extras`.
+///
+/// Todo con valor de reserva: un elemento que no traiga ninguno de estos
+/// campos —la mayoria— da un `Extras::default()`, y eso es lo que hace que
+/// `escribir` siga devolviendo intacto lo que nadie toco.
+fn extras_desde(v: &Value) -> Extras {
+    let si = |clave: &str| v.get(clave).and_then(Value::as_bool).unwrap_or(false);
+    Extras {
+        presion_firme: si("presionFirme"),
+        negrita: si("negrita"),
+        cursiva: si("cursiva"),
+        tachado: si("tachado"),
+        contenedor: v
+            .get("containerId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
+        enganche_inicio: v.get("startBinding").and_then(enganche_desde),
+        enganche_fin: v.get("endBinding").and_then(enganche_desde),
+        atados: v
+            .get("boundElements")
+            .and_then(Value::as_array)
+            .map(|lista| {
+                lista
+                    .iter()
+                    .filter_map(|a| {
+                        Some(Atado {
+                            id: a.get("id")?.as_str()?.to_string(),
+                            tipo: a
+                                .get("type")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .to_string(),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        // Un papel que no conocemos se lee como «ninguno» y **se conserva**:
+        // ver `extras_hacia`, que no lo pisa mientras aqui no se toque. La
+        // misma regla del `fillStyle` y del `material`.
+        papel: v
+            .get("papel")
+            .and_then(Value::as_str)
+            .and_then(TamanoPapel::desde_palabra),
+        pauta: v
+            .get("pauta")
+            .and_then(Value::as_str)
+            .and_then(PautaHoja::desde_palabra)
+            .unwrap_or_default(),
+    }
+}
+
+/// Un `Binding` del movil. Sin `elementId` no hay enganche que valga: un
+/// anclaje que no dice a quien se ata no ata a nadie.
+fn enganche_desde(v: &Value) -> Option<Enganche> {
+    Some(Enganche {
+        elemento: v.get("elementId")?.as_str()?.to_string(),
+        foco: num_o(v, "focus", 0.0),
+        hueco: num_o(v, "gap", 1.0),
+        punto_fijo: v
+            .get("fixedPoint")
+            .and_then(Value::as_array)
+            .and_then(|a| Some((a.first()?.as_f64()? as f32, a.get(1)?.as_f64()? as f32))),
+        modo: match v.get("mode").and_then(Value::as_str) {
+            Some("inside") => ModoEnganche::Dentro,
+            _ => ModoEnganche::Orbita,
+        },
+    })
+}
+
+fn enganche_hacia(b: &Enganche) -> Value {
+    let mut m = Map::new();
+    m.insert("elementId".into(), Value::String(b.elemento.clone()));
+    m.insert("focus".into(), Value::from(b.foco as f64));
+    m.insert("gap".into(), Value::from(b.hueco as f64));
+    match b.punto_fijo {
+        Some((x, y)) => m.insert(
+            "fixedPoint".into(),
+            Value::Array(vec![Value::from(x as f64), Value::from(y as f64)]),
+        ),
+        None => m.insert("fixedPoint".into(), Value::Null),
+    };
+    m.insert(
+        "mode".into(),
+        Value::String(
+            match b.modo {
+                ModoEnganche::Orbita => "orbit",
+                ModoEnganche::Dentro => "inside",
+            }
+            .into(),
+        ),
+    );
+    Value::Object(m)
+}
+
+/// Devuelve los diez campos al JSON, **encima del original**.
+///
+/// Si aqui no se toco nada —`Extras::vacios()`— no se escribe ninguno. No es
+/// una optimizacion: es lo que impide que un elemento que nunca tuvo
+/// `negrita` vuelva del PC con diez claves nuevas puestas a falso, y lo que
+/// deja intacto un `papel` de una version futura del movil que aqui se leyo
+/// como «ninguno».
+fn extras_hacia(mapa: &mut Map<String, Value>, x: &Extras) {
+    // ...pero si el original SI traia alguno, hay que escribirlos todos
+    // aunque aqui esten vacios: si no, quitar aqui el rotulo de dentro de una
+    // caja dejaria su `containerId` viejo y el movil lo volveria a ver atado.
+    // Es la misma regla que ya obliga a escribir `groupIds` en vacio.
+    const CLAVES: [&str; 10] = [
+        "presionFirme",
+        "negrita",
+        "cursiva",
+        "tachado",
+        "containerId",
+        "startBinding",
+        "endBinding",
+        "boundElements",
+        "papel",
+        "pauta",
+    ];
+    if x.vacios() && !CLAVES.iter().any(|c| mapa.contains_key(*c)) {
+        return;
+    }
+    mapa.insert("presionFirme".into(), Value::Bool(x.presion_firme));
+    mapa.insert("negrita".into(), Value::Bool(x.negrita));
+    mapa.insert("cursiva".into(), Value::Bool(x.cursiva));
+    mapa.insert("tachado".into(), Value::Bool(x.tachado));
+    mapa.insert(
+        "containerId".into(),
+        match &x.contenedor {
+            Some(c) => Value::String(c.clone()),
+            None => Value::Null,
+        },
+    );
+    for (clave, b) in [
+        ("startBinding", &x.enganche_inicio),
+        ("endBinding", &x.enganche_fin),
+    ] {
+        mapa.insert(
+            clave.into(),
+            match b {
+                Some(b) => enganche_hacia(b),
+                None => Value::Null,
+            },
+        );
+    }
+    mapa.insert(
+        "boundElements".into(),
+        Value::Array(
+            x.atados
+                .iter()
+                .map(|a| {
+                    let mut m = Map::new();
+                    m.insert("id".into(), Value::String(a.id.clone()));
+                    m.insert("type".into(), Value::String(a.tipo.clone()));
+                    Value::Object(m)
+                })
+                .collect(),
+        ),
+    );
+    // La misma regla que el `fillStyle` y el `material`: un tamano de papel
+    // de una version futura del movil se lee aqui como «ninguno», asi que
+    // reescribirlo lo destruiria. Mientras no se elija uno aqui, vuelve tal
+    // cual.
+    let papel_ajeno = mapa
+        .get("papel")
+        .and_then(Value::as_str)
+        .is_some_and(|p| TamanoPapel::desde_palabra(p).is_none());
+    if !(papel_ajeno && x.papel.is_none()) {
+        mapa.insert(
+            "papel".into(),
+            match x.papel {
+                Some(p) => Value::String(p.palabra().into()),
+                None => Value::Null,
+            },
+        );
+    }
+    let pauta_ajena = mapa
+        .get("pauta")
+        .and_then(Value::as_str)
+        .is_some_and(|p| PautaHoja::desde_palabra(p).is_none());
+    if !(pauta_ajena && x.pauta == PautaHoja::default()) {
+        mapa.insert("pauta".into(), Value::String(x.pauta.palabra().into()));
+    }
 }
 
 /// Devuelve el elemento al JSON, encima del original.
@@ -808,13 +1066,66 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
             mapa.insert("type".into(), Value::String("frame".to_string()));
             mapa.insert("name".into(), Value::String(nombre.clone()));
         }
+        // El arco vuelve a GRADOS, que es como los guarda el movil. Y
+        // `barrido: None` vuelve a ser `null` y no un cero: es la guia sin
+        // repasar, y un cero la convertiria en un arco de longitud nula.
+        Figura::Arco { inicio, barrido } => {
+            mapa.insert("type".into(), Value::String("pixpin-arc".to_string()));
+            mapa.insert("arcStart".into(), Value::from(inicio.to_degrees() as f64));
+            mapa.insert(
+                "arcSweep".into(),
+                match barrido {
+                    Some(b) => Value::from(b.to_degrees() as f64),
+                    None => Value::Null,
+                },
+            );
+        }
+        // El numero va en `text`, que es donde lo pone el movil y de donde
+        // saca el siguiente de la serie.
+        Figura::Serie { numero } => {
+            mapa.insert("type".into(), Value::String("pixpin-serial".to_string()));
+            mapa.insert("text".into(), Value::String(numero.to_string()));
+        }
+        Figura::Region { contorno, huecos } => {
+            mapa.insert("type".into(), Value::String("pixpin-region".to_string()));
+            mapa.insert("points".into(), puntos_hacia(contorno, e.x, e.y, objetos));
+            mapa.insert(
+                "huecos".into(),
+                Value::Array(
+                    huecos
+                        .iter()
+                        .map(|a| puntos_hacia(a, e.x, e.y, objetos))
+                        .collect(),
+                ),
+            );
+        }
+        Figura::Punto {
+            letra,
+            angulo,
+            radio,
+        } => {
+            mapa.insert("type".into(), Value::String("pixpin-point".to_string()));
+            mapa.insert("text".into(), Value::String(letra.clone()));
+            mapa.insert(
+                "etiquetaAngulo".into(),
+                Value::from(angulo.to_degrees() as f64),
+            );
+            mapa.insert("etiquetaRadio".into(), Value::from(*radio as f64));
+        }
+        // **`mosaicBlur` se leia y no se escribia.** Un mosaico nacido en el
+        // escritorio llegaba al movil sin decir con que tapa, y uno suyo al
+        // que aqui se le quitara el desenfoque volvia desenfocado.
+        Figura::Mosaico { desenfoque } => {
+            mapa.insert("type".into(), Value::String("pixpin-mosaic".to_string()));
+            mapa.insert("mosaicBlur".into(), Value::Bool(*desenfoque));
+        }
         Figura::Rectangulo
         | Figura::Rombo
-        | Figura::Mosaico { .. }
         | Figura::Elipse
         | Figura::Foco { .. }
         | Figura::Imagen { .. } => {}
     }
+    extras_hacia(&mut mapa, &e.extras);
     Value::Object(mapa)
 }
 
@@ -1700,6 +2011,7 @@ mod pruebas {
                 enlace: None,
                 redondo: false,
                 material: Default::default(),
+                extras: Default::default(),
             },
             original: Box::new(Value::Object(Map::new())),
         });

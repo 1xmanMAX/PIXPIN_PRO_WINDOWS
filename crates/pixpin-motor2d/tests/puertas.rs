@@ -47,6 +47,7 @@ fn elemento(i: u64) -> Elemento {
         enlace: None,
         redondo: false,
         material: Default::default(),
+        extras: Default::default(),
     }
 }
 

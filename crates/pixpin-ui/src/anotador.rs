@@ -529,6 +529,7 @@ impl Anotador {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         }
     }
 
@@ -657,6 +658,7 @@ impl Anotador {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         })
     }
 }

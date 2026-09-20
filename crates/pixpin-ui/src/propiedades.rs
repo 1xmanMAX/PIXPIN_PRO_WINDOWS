@@ -68,6 +68,19 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
         Figura::Marco { .. } => &[],
         // El emoji ya trae su color: solo se le puede atenuar.
         Figura::Emoji { .. } => &[Opacidad],
+        // El arco es una raya curva: lo mismo que la linea. Su relleno no se
+        // ofrece porque un trozo de ovalo no encierra nada.
+        Figura::Arco { .. } => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
+        // El numero de serie es un circulo con un numero dentro: se le
+        // cambia el color, el fondo y el tamano —que sale de su caja—, pero
+        // no la fuente: la serie tiene que leerse igual en los diez
+        // circulos, y dejar cambiarla de uno en uno es invitar a que no.
+        Figura::Serie { .. } => &[ColorTrazo, Relleno, Grosor, Opacidad],
+        // Lo que pinto el bote: es un relleno, y es lo que se ajusta.
+        Figura::Region { .. } => &[ColorTrazo, Relleno, EstiloRelleno, Grosor, Opacidad],
+        // Un punto es un sitio: color y poco mas. Ni rugosidad —un punto
+        // tembloroso no es un punto— ni relleno.
+        Figura::Punto { .. } => &[ColorTrazo, Grosor, Opacidad],
     }
 }
 
@@ -100,6 +113,34 @@ pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad] {
         // Mismas propiedades que su Figura correspondiente, arriba.
         Herramienta::Cota => &[ColorTrazo, Grosor, Estilo, Opacidad],
         Herramienta::EscalaGrafica => &[ColorTrazo, Opacidad],
+        // Las que abre la tanda cero. Cada una con lo mismo que su figura,
+        // arriba: son dos caras de la misma tabla y separarlas es como se
+        // desincronizan.
+        Herramienta::Rombo => &[
+            ColorTrazo,
+            Relleno,
+            EstiloRelleno,
+            Grosor,
+            Estilo,
+            Rugosidad,
+            Opacidad,
+        ],
+        Herramienta::Arco => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
+        Herramienta::FlechaCodos | Herramienta::FlechaLibre => {
+            &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad, PuntaFlecha]
+        }
+        Herramienta::Mosaico => &[Relleno],
+        Herramienta::Serie => &[ColorTrazo, Relleno, Grosor, Opacidad],
+        Herramienta::Relleno => &[Relleno, EstiloRelleno, Opacidad],
+        Herramienta::Punto => &[ColorTrazo, Grosor, Opacidad],
+        // Trabajan sobre lo que ya hay y no traen estilo propio: el lazo
+        // selecciona, recortar y extender cambian puntos, y copiar estilo
+        // toma el suyo de la figura que se pique. Ofrecer mandos aqui seria
+        // ofrecer ajustes que no se aplican a nada.
+        Herramienta::Lazo
+        | Herramienta::Recortar
+        | Herramienta::Extender
+        | Herramienta::CopiarEstilo => &[],
     }
 }
 
@@ -149,6 +190,7 @@ mod pruebas {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         }
     }
 

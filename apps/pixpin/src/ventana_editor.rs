@@ -1799,6 +1799,9 @@ fn abrir_en_modo(
                             // `pintar` ya no lo repinta mientras la capa
                             // valga (ve su comentario para el porque).
                             let mut indice = 0u32;
+                            // De que esta hecha su tinta. `None` en la
+                            // lisa y en las encendidas, que no llevan tela.
+                            let grano = pixpin_motor2d::pintado::grano_de(e);
                             por_cada_orden(
                                 &mut cache,
                                 e,
@@ -1812,6 +1815,7 @@ fn abrir_en_modo(
                                         Some((&mut cache_tinta, (e.id, e.version, indice))),
                                         imagenes,
                                         efectiva.zoom,
+                                        grano,
                                     );
                                     indice += 1;
                                 },
@@ -2608,7 +2612,15 @@ fn pintar(
                                     &copia,
                                     camara.zoom,
                                 ) {
-                                    dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom);
+                                    dibujar_orden(
+                                        p,
+                                        &orden,
+                                        vista,
+                                        None,
+                                        imagenes,
+                                        camara.zoom,
+                                        None,
+                                    );
                                 }
                                 continue;
                             }
@@ -2623,11 +2635,12 @@ fn pintar(
                 let mut indice = 0u32;
                 let clave_tinta = !ahora_excluidos.contains(&e.id);
                 let mut hubo_tinta = false;
+                let grano = pixpin_motor2d::pintado::grano_de(e);
                 por_cada_orden(cache, e, camara.zoom, escena.escala.as_ref(), |orden| {
                     hubo_tinta |= matches!(orden, Orden::Tinta { .. });
                     let tinta =
                         clave_tinta.then_some((&mut *cache_tinta, (e.id, e.version, indice)));
-                    dibujar_orden(p, orden, vista, tinta, imagenes, camara.zoom);
+                    dibujar_orden(p, orden, vista, tinta, imagenes, camara.zoom, grano);
                     indice += 1;
                 });
                 // La punta va encima, y SOLO si el trazo se esta pintando como
@@ -2636,7 +2649,7 @@ fn pintar(
                 // pegada a una raya se veria como un borron. A ese aumento la
                 // punta predicha mide menos de un pixel de todos modos.
                 if let (Some(orden), true) = (punta, hubo_tinta) {
-                    dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom);
+                    dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom, None);
                 }
             }
 
@@ -2654,7 +2667,7 @@ fn pintar(
                 p.marco(caja, angulo, escala);
                 if let Some(tiradores) = tiradores {
                     for orden in tiradores.ordenes(escala) {
-                        dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom);
+                        dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom, None);
                     }
                 }
             }
@@ -2673,6 +2686,7 @@ fn pintar(
                     None,
                     imagenes,
                     camara.zoom,
+                    None,
                 );
             }
             // La caja es un dialogo en pantalla, no algo del lienzo: no se mueve
@@ -2817,7 +2831,7 @@ fn pintar_tinta_viva(
                             for orden in
                                 pixpin_motor2d::pintado::ordenes_a_distancia(&copia, camara.zoom)
                             {
-                                dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom);
+                                dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom, None);
                             }
                             return;
                         }
@@ -2830,10 +2844,10 @@ fn pintar_tinta_viva(
             // no cobrar nunca. Es lo mismo que hace `pintar`.
             por_cada_orden(cache, e, camara.zoom, escena.escala.as_ref(), |orden| {
                 hubo_tinta |= matches!(orden, Orden::Tinta { .. });
-                dibujar_orden(p, orden, vista, None, imagenes, camara.zoom);
+                dibujar_orden(p, orden, vista, None, imagenes, camara.zoom, None);
             });
             if let (Some(orden), true) = (punta, hubo_tinta) {
-                dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom);
+                dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom, None);
             }
         })
         .is_ok()
@@ -3021,6 +3035,34 @@ fn dibujar_cajetin(
 ///
 /// `imagenes` y `zoom` solo los usa `Orden::Imagen`: el almacen resuelve el
 /// `id_objeto` y el zoom efectivo elige el muestreo (D141).
+/// Estampa la tela de un material dentro de una silueta ya calculada.
+///
+/// Es la misma llamada que hace `apps/pixpin/tests/muestra_de_tintas.rs`,
+/// puesta en una funcion para que no haya dos formas de pedir lo mismo: si
+/// el editor y la muestra se pidieran por su cuenta, la muestra dejaria de
+/// ser prueba de lo que se ve en pantalla.
+fn estampar_grano(
+    p: &pixpin_render::Pintor<'_>,
+    cache: &mut pixpin_render::CacheGrano,
+    clave: (u64, u32),
+    contorno: &[(f32, f32)],
+    g: &pixpin_motor2d::pintado::Grano,
+) {
+    let tela = pixpin_motor2d::tinta::tejido(g.material);
+    p.grano(
+        cache,
+        clave,
+        contorno,
+        &tela,
+        pixpin_motor2d::tinta::material::LADO_DEL_MOSAICO,
+        g.material as u32,
+        a_color(g.color),
+        g.paso,
+        g.inclinada,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
 fn dibujar_orden(
     p: &pixpin_render::Pintor<'_>,
     orden: &Orden,
@@ -3028,6 +3070,7 @@ fn dibujar_orden(
     tinta: Option<(&mut pixpin_render::CacheTinta, (u64, u32, u32))>,
     imagenes: &ImagenesLienzo,
     zoom: f32,
+    grano: Option<pixpin_motor2d::pintado::Grano>,
 ) {
     match orden {
         // Acierto de cache: se pinta con la realizacion ya teselada sin
@@ -3048,12 +3091,35 @@ fn dibujar_orden(
             }
             None => p.poligono(&a_tuplas(puntos), a_color(*color)),
         },
+        // **El cuerpo del trazo y, detras, su grano.** Hasta ahora el grano
+        // solo se veia en la prueba que saca los PNG de muestra: el editor
+        // pintaba la silueta y se saltaba la tela, asi que un trazo de tiza
+        // del movil se veia aqui macizo y los diez materiales se veian
+        // iguales. El motor ya decia con que tenirlo (`pintado::grano_de`);
+        // lo que faltaba era pedirlo.
         Orden::Tinta { contorno, color } => match tinta {
             Some((c, clave)) => {
-                if !p.pintar_realizada(c, clave, a_color(*color)) {
-                    p.tinta_cacheada(c, clave, &a_tuplas(contorno), a_color(*color));
+                let puntos = if p.pintar_realizada(c, clave, a_color(*color)) {
+                    // Acierto de cache: la silueta ya esta teselada y no
+                    // hace falta convertir los puntos... salvo que haya
+                    // grano, que necesita la geometria de verdad porque se
+                    // pinta con un pincel de mosaico y no de color.
+                    grano.is_some().then(|| a_tuplas(contorno))
+                } else {
+                    let v = a_tuplas(contorno);
+                    p.tinta_cacheada(c, clave, &v, a_color(*color));
+                    Some(v)
+                };
+                if let (Some(g), Some(v)) = (grano, puntos) {
+                    estampar_grano(p, &mut c.grano, (clave.0, clave.1), &v, &g);
                 }
             }
+            // Sin cache es lo que cambia en CADA fotograma: el trazo en
+            // curso y lo que se arrastra. Ahi el grano se salta a
+            // proposito, porque su brocha se ancla al documento y volver a
+            // tejerla sesenta veces por segundo cuesta mas de lo que se ve;
+            // en cuanto se suelta, el trazo entra por el camino de arriba y
+            // aparece con su tela.
             None => p.tinta(&a_tuplas(contorno), a_color(*color)),
         },
         Orden::Polilinea {
@@ -3283,6 +3349,7 @@ mod pruebas {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         }
     }
 
@@ -3680,6 +3747,7 @@ mod pruebas {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         });
 
         let mut gesto = Gesto::nuevo();
@@ -4050,6 +4118,7 @@ mod pruebas {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         };
         let mut cache = Cache::nueva();
 

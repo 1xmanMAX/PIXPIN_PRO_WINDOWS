@@ -67,7 +67,30 @@ pub fn toca(e: &Elemento, p: Punto2) -> bool {
         // Lo que se ve del foco es el hueco: se agarra por dentro.
         Figura::Foco { .. } => dentro_de_la_caja(p, e, margen),
 
-        Figura::Elipse => {
+        // El arco se toca por la raya que se ve, no por su caja: la caja es
+        // la del ovalo entero y agarrarlo por ahi seria agarrar aire en tres
+        // cuartos de ella.
+        Figura::Arco { inicio, barrido } => cerca_de_la_polilinea(
+            &crate::pintado::arco_muestreado(e, *inicio, *barrido),
+            p,
+            margen,
+        ),
+
+        // La region se agarra por su contorno encontrado, y por dentro solo
+        // si de verdad esta pintada: una region sin relleno es un borde.
+        Figura::Region { contorno, .. } => {
+            cerca_de_la_polilinea(contorno, p, margen)
+                || (e.tiene_relleno() && dentro_de_la_caja(p, e, margen))
+        }
+
+        // El punto no tiene caja: su `caja()` es un solo sitio, asi que esto
+        // es un circulo de radio `margen` alrededor de el, que es justo el
+        // area con la que se puede pinchar algo que no tiene tamano.
+        Figura::Punto { .. } => dentro_de_la_caja(p, e, margen),
+
+        // El numero de serie es un circulo dentro de su caja, no la caja: va
+        // con la elipse.
+        Figura::Elipse | Figura::Serie { .. } => {
             let rx = (e.ancho / 2.0).max(0.001);
             let ry = (e.alto / 2.0).max(0.001);
             let cx = e.x + rx;
@@ -218,6 +241,7 @@ mod pruebas {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         }
     }
 

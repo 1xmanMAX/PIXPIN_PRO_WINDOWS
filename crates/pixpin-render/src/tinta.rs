@@ -60,6 +60,16 @@ const MAX_REALIZACIONES: usize = 60_000;
 pub struct CacheTinta {
     pub(crate) mapa: HashMap<(u64, u32), Realizada>,
     pub(crate) escala: f32,
+    /// **La tela con la que se tine la silueta**: las brochas de mosaico de
+    /// `Pintor::grano`, una por material y color.
+    ///
+    /// Vive dentro y no al lado por una razon practica: va exactamente a los
+    /// mismos sitios que la silueta —quien pinta un trazo pinta su grano— y
+    /// las dos son recursos del MISMO dispositivo Direct2D, asi que se
+    /// pierden y se vacian a la vez. Tenerlas separadas obligaba a llevar un
+    /// segundo parametro por las cinco funciones de pintado de la ventana
+    /// para no perderlo jamas de vista.
+    pub grano: crate::grano::CacheGrano,
 }
 
 impl CacheTinta {
@@ -67,13 +77,17 @@ impl CacheTinta {
         Self {
             mapa: HashMap::new(),
             escala: 1.0,
+            grano: crate::grano::CacheGrano::nueva(),
         }
     }
 
     /// Dispositivo perdido o documento nuevo: las realizaciones son del
-    /// dispositivo viejo y no valen.
+    /// dispositivo viejo y no valen. **Las brochas del grano tampoco**: son
+    /// bitmaps del mismo dispositivo, y sobrevivir a su muerte es justo el
+    /// fallo que se ve como un lienzo en blanco.
     pub fn vaciar(&mut self) {
         self.mapa.clear();
+        self.grano.vaciar();
     }
 
     pub fn escala(&self) -> f32 {

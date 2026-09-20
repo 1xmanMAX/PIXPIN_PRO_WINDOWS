@@ -103,6 +103,44 @@ pub enum Herramienta {
     /// sabe que emoji se eligio es la sesion del universo, y es ella la que
     /// lo coloca en la escena.
     Emoji,
+
+    // --- Las que abre la tanda cero ---
+    //
+    // Estan aqui, en un solo sitio y de una vez, para que los cuatro grupos
+    // que vienen a portar herramientas no tengan que volver a tocar este
+    // enumerado ni el `match` central: cada uno rellena su modulo y ya.
+    // Todas producen ALGO honesto desde el primer dia —una figura que se ve
+    // y que viaja al movil— aunque el detalle fino sea de su grupo.
+    /// El rombo de Excalidraw. Una de sus diez figuras principales.
+    Rombo,
+    /// Un trozo de ovalo: se pone la guia y se repasa (grupo A).
+    Arco,
+    /// La flecha de codos, el conector de organigrama (grupo A). Hasta que
+    /// su grupo porte `Elbow.kt` nace como una flecha recta: se ve, se
+    /// mueve y llega al movil como flecha, que es lo peor que puede pasar.
+    FlechaCodos,
+    /// La flecha a pulso: por dentro ES una flecha, con todos los puntos
+    /// del trazo en vez de dos (`Scene.kt:57-64`).
+    FlechaLibre,
+    /// Selecciona con un contorno a mano (grupo B).
+    Lazo,
+    /// Tapa lo que hay debajo (grupo D).
+    Mosaico,
+    /// El circulito numerado de anotar una captura paso a paso (grupo D).
+    Serie,
+    /// El bote: rellena el hueco entre varias figuras (grupo C).
+    Relleno,
+    /// Quita el trozo de raya que sobra hasta donde la cruzan las demas
+    /// (grupo C).
+    Recortar,
+    /// Alarga la punta que se queda corta hasta lo primero que topa
+    /// (grupo C).
+    Extender,
+    /// Un punto con su letra, para un croquis de geometria (grupo C).
+    Punto,
+    /// Copia el estilo de una figura y lo pega en otra (grupo B). Es
+    /// invencion de escritorio: en el movil no existe.
+    CopiarEstilo,
 }
 
 impl Herramienta {
@@ -110,14 +148,38 @@ impl Herramienta {
     /// un clic deja un punto de tinta, que es lo que espera cualquiera que
     /// haya usado un rotulador.
     pub fn necesita_arrastre(self) -> bool {
-        !matches!(self, Herramienta::Lapiz | Herramienta::Texto)
+        !matches!(
+            self,
+            Herramienta::Lapiz
+                | Herramienta::Texto
+                // La flecha a pulso se traza como el lapiz, punto a punto.
+                | Herramienta::FlechaLibre
+                // Estas tres se plantan de un toque: el punto no tiene caja
+                // que arrastrar y el numero de serie tampoco.
+                | Herramienta::Serie
+                | Herramienta::Punto
+        )
     }
 
     /// Si lo que dibuja se guarda en el documento.
+    ///
+    /// Las que dicen que no son de dos clases: las que solo MIRAN (la mano,
+    /// la lupa-vista) y **las que trabajan sobre lo que ya hay** —el bote,
+    /// recortar, extender, copiar estilo, el lazo—. Estas ultimas si tocan
+    /// el documento, pero no naciendo un elemento bajo el arrastre, que es
+    /// lo unico que esta bandera decide.
     pub fn deja_rastro(self) -> bool {
         !matches!(
             self,
-            Herramienta::Mano | Herramienta::Lupa | Herramienta::Borrador | Herramienta::Escalar
+            Herramienta::Mano
+                | Herramienta::Lupa
+                | Herramienta::Borrador
+                | Herramienta::Escalar
+                | Herramienta::Lazo
+                | Herramienta::Relleno
+                | Herramienta::Recortar
+                | Herramienta::Extender
+                | Herramienta::CopiarEstilo
         )
     }
 }
@@ -606,6 +668,38 @@ impl Gesto {
                 punta_fin: true,
             },
             Herramienta::Elipse => Figura::Elipse,
+            Herramienta::Rombo => Figura::Rombo,
+            Herramienta::Mosaico => Figura::Mosaico { desenfoque: false },
+            // Por dentro es una flecha, como en el movil: asi se edita, se
+            // exporta y viaja por el mismo camino que la recta.
+            Herramienta::FlechaLibre => Figura::Flecha {
+                puntos: reservados(),
+                punta_inicio: false,
+                punta_fin: true,
+            },
+            // La de codos nace recta hasta que el grupo A porte `Elbow.kt`.
+            // Es una flecha de verdad, no un hueco: llega al movil como
+            // flecha y alli se ve; lo que falta es que doble.
+            Herramienta::FlechaCodos => Figura::Flecha {
+                puntos: vec![p, p],
+                punta_inicio: false,
+                punta_fin: true,
+            },
+            // Nace como la GUIA —el ovalo sin repasar—, que es el primer
+            // estado de verdad del arco y no un arco a medio hacer.
+            Herramienta::Arco => Figura::Arco {
+                inicio: 0.0,
+                barrido: None,
+            },
+            // El numero lo pone quien sabe cuantos hay en la escena (el
+            // movil suma uno al mayor); el motor no cuenta elementos.
+            Herramienta::Serie => Figura::Serie { numero: 1 },
+            // La letra la pone la serie de quien la coloque, por lo mismo.
+            Herramienta::Punto => Figura::Punto {
+                letra: String::new(),
+                angulo: -std::f32::consts::FRAC_PI_4,
+                radio: 14.0,
+            },
             Herramienta::Foco => Figura::Foco { elipse: false },
             Herramienta::Cota => Figura::Cota {
                 puntos: reservados(),
@@ -631,7 +725,11 @@ impl Gesto {
             // El fondo solo tiene sentido en lo que encierra un area.
             estilo_relleno: self.estilo.estilo_relleno,
             relleno: match self.herramienta {
-                Herramienta::Rectangulo | Herramienta::Elipse => self.estilo.relleno,
+                Herramienta::Rectangulo
+                | Herramienta::Elipse
+                | Herramienta::Rombo
+                | Herramienta::Arco
+                | Herramienta::Serie => self.estilo.relleno,
                 _ => None,
             },
             grosor: if self.herramienta == Herramienta::Lapiz {
@@ -653,6 +751,7 @@ impl Gesto {
             // nace con el color y con el grosor: el panel deja el «actual» y
             // lo siguiente que se dibuje sale de ahi.
             material: self.estilo.material,
+            extras: Default::default(),
         }
     }
 
@@ -1409,6 +1508,7 @@ mod pruebas {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         }
     }
 
@@ -2479,6 +2579,7 @@ mod pruebas {
             enlace: None,
             redondo: false,
             material: Default::default(),
+            extras: Default::default(),
         }
     }
 
