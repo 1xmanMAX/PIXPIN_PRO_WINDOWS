@@ -122,6 +122,29 @@ fn dentro_de_la_caja(p: Punto2, e: &Elemento, margen: f32) -> bool {
     p.x >= x0 - margen && p.x <= x1 + margen && p.y >= y0 - margen && p.y <= y1 + margen
 }
 
+/// Si el punto cae dentro de la caja del elemento, **contando su giro** y sin
+/// ninguna tolerancia.
+///
+/// No es lo mismo que [`toca`] y por eso existe aparte: aquel pregunta «se
+/// esta picando esto», con su margen del tamano de la punta del raton y con
+/// la regla de que una figura vacia solo se toca por el borde. Este pregunta
+/// «esta el punto en el area que ocupa», que es lo que necesita el enganche
+/// de flechas para decidir si la punta se solto **encima** de una caja —vacia
+/// o no— y no al lado.
+///
+/// El angulo se deshace sobre el punto y no sobre la figura, igual que en
+/// [`toca`]: girar un punto es una operacion; girar la geometria, cientos.
+pub fn dentro_de_la_caja_girada(e: &Elemento, p: Punto2) -> bool {
+    let (x0, y0, x1, y1) = e.caja();
+    let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+    let local = if e.angulo == 0.0 {
+        p
+    } else {
+        p.girar(centro, -e.angulo)
+    };
+    local.x >= x0 && local.x <= x1 && local.y >= y0 && local.y <= y1
+}
+
 fn cerca_del_borde_del_rectangulo(p: Punto2, e: &Elemento, margen: f32) -> bool {
     let (x0, y0, x1, y1) = (e.x, e.y, e.x + e.ancho, e.y + e.alto);
     let esquinas = [
@@ -565,5 +588,52 @@ mod pruebas {
         let (x0, y0, x1, y1) = e.caja();
         assert_eq!(c[0], Punto2::nuevo(x0, y0));
         assert_eq!(c[2], Punto2::nuevo(x1, y1));
+    }
+
+    #[test]
+    fn estar_dentro_de_la_caja_no_es_lo_mismo_que_tocar() {
+        // La diferencia que justifica que existan las dos: en medio de un
+        // rectangulo VACIO no se pica nada —el clic tiene que llegar al texto
+        // de debajo— pero la punta de una flecha soltada ahi si esta
+        // «encima» de la caja y tiene que atarse a ella.
+        let vacio = Elemento {
+            x: 0.0,
+            y: 0.0,
+            ancho: 100.0,
+            alto: 100.0,
+            relleno: None,
+            ..base()
+        };
+        let en_medio = Punto2::nuevo(50.0, 50.0);
+        assert!(
+            !toca(&vacio, en_medio),
+            "una figura vacia se toca por el borde"
+        );
+        assert!(dentro_de_la_caja_girada(&vacio, en_medio));
+
+        // Caso negativo: fuera es fuera, sin tolerancia ninguna. Con el
+        // margen de `toca` (seis pixeles) este punto si contaria.
+        assert!(!dentro_de_la_caja_girada(
+            &vacio,
+            Punto2::nuevo(103.0, 50.0)
+        ));
+    }
+
+    #[test]
+    fn dentro_de_la_caja_deshace_el_giro_del_elemento() {
+        // Sin deshacerlo, un cuadrado a 45 grados aceptaria puntos de las
+        // esquinas de su caja sin girar, por las que la figura no pasa.
+        let mut e = Elemento {
+            x: 0.0,
+            y: 0.0,
+            ancho: 100.0,
+            alto: 100.0,
+            ..base()
+        };
+        e.angulo = std::f32::consts::FRAC_PI_4;
+        // La esquina (0,0) sin girar queda fuera de la figura girada.
+        assert!(!dentro_de_la_caja_girada(&e, Punto2::nuevo(0.0, 0.0)));
+        // Y el centro sigue dentro, gire lo que gire.
+        assert!(dentro_de_la_caja_girada(&e, Punto2::nuevo(50.0, 50.0)));
     }
 }

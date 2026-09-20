@@ -296,6 +296,156 @@ pub fn a_saltos(angulo: f32) -> f32 {
     (angulo / SALTO_GIRO).round() * SALTO_GIRO
 }
 
+// -------------------------------------------------------------------------
+// Voltear
+// -------------------------------------------------------------------------
+
+/// Por que espejo se refleja.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EjeVolteo {
+    /// Izquierda por derecha.
+    Horizontal,
+    /// Arriba por abajo.
+    Vertical,
+}
+
+/// Voltea `elementos` **sobre la caja comun** (`flip` de `Transform.kt`).
+///
+/// # Por que sobre la caja comun y no uno a uno
+///
+/// Volteando cada elemento por su cuenta, la composicion se queda igual y no
+/// parece que haya pasado nada: cada figura se refleja dentro de su propio
+/// sitio y el conjunto no se mueve. Lo que se pide al voltear una seleccion
+/// es que **la izquierda pase a la derecha**, y eso solo ocurre reflejando
+/// sobre un espejo comun.
+///
+/// # Por que no basta con el efecto que ya habia
+///
+/// Cruzar el ancla al escalar ya volteaba (D30, prueba
+/// `cruzar_el_ancla_voltea_en_vez_de_aplastar`), pero eso es un accidente del
+/// arrastre: exige pasar la figura entera por encima de si misma con el raton
+/// apretado, no reflejar varios a la vez, y no es un paso de deshacer con
+/// nombre. Voltear tiene que ser una orden.
+///
+/// # Lo que se voltea ademas de la geometria
+///
+/// - **El angulo se invierte**: reflejar invierte el sentido de giro, y sin
+///   esto una figura inclinada a la derecha se quedaria inclinada a la
+///   derecha dentro de un dibujo que ya mira al otro lado.
+/// - **Las puntas de flecha se intercambian** al voltear en horizontal: si no,
+///   una flecha que apuntaba a la izquierda acaba apuntando a la izquierda
+///   despues de haber cruzado el dibujo entero.
+/// - **Lo bloqueado no se toca**, igual que en el movil y que en el resto del
+///   editor.
+///
+/// # En que se aparta del movil
+///
+/// Alla, ademas, se invierte el signo de `scale` en las imagenes, que es como
+/// Excalidraw guarda que una foto esta del reves. Aqui `Figura::Imagen` no
+/// tiene `scale` —solo `id_objeto`—, asi que una imagen se voltea de sitio
+/// pero no de contenido. Es del grupo D, que es quien trae `crop` y `scale`.
+pub fn voltear(elementos: &mut [Elemento], eje: EjeVolteo) {
+    let Some((x0, y0, x1, y1)) = caja_comun(elementos) else {
+        return;
+    };
+    let espejo_x = (x0 + x1) / 2.0;
+    let espejo_y = (y0 + y1) / 2.0;
+    let reflejar = |p: Punto2| match eje {
+        EjeVolteo::Horizontal => Punto2::nuevo(2.0 * espejo_x - p.x, p.y),
+        EjeVolteo::Vertical => Punto2::nuevo(p.x, 2.0 * espejo_y - p.y),
+    };
+
+    for e in elementos.iter_mut() {
+        if e.bloqueado || e.borrado {
+            continue;
+        }
+        let (ex0, ey0, ex1, ey1) = e.caja();
+
+        match &mut e.figura {
+            // **Las rayas y el lapiz se reflejan por sus puntos, no por su
+            // caja.** Su caja SALE de los puntos, asi que espejar la caja por
+            // un lado y los puntos por otro los descoloca entre si: un
+            // garabato trazado hacia la izquierda salia disparado en vez de
+            // quedarse donde estaba. Aqui los puntos son absolutos, asi que
+            // basta con reflejarlos y recolocar `x`/`y` detras.
+            Figura::Lapiz { puntos, .. }
+            | Figura::Resaltador { puntos }
+            | Figura::Linea { puntos }
+            | Figura::Flecha { puntos, .. }
+            | Figura::Cota { puntos } => {
+                for q in puntos.iter_mut() {
+                    *q = reflejar(*q);
+                }
+            }
+            // El relleno encontrado guarda contorno y agujeros, y los dos son
+            // absolutos aqui: **los agujeros se reflejan con el contorno o el
+            // anillo se abre** y el relleno acaba tapando justo lo que se
+            // queria dejar ver.
+            Figura::Region { contorno, huecos } => {
+                for q in contorno.iter_mut().chain(huecos.iter_mut().flatten()) {
+                    *q = reflejar(*q);
+                }
+            }
+            // La flecha intercambia sus puntas: hay que hacerlo aqui dentro
+            // porque `Figura::Flecha` ya se llevo el prestamo arriba, asi que
+            // se resuelve despues, fuera del `match`.
+            _ => {}
+        }
+
+        match &e.figura {
+            Figura::Lapiz { .. }
+            | Figura::Resaltador { .. }
+            | Figura::Linea { .. }
+            | Figura::Flecha { .. }
+            | Figura::Cota { .. }
+            | Figura::Region { .. } => {
+                // `x`/`y` se recolocan a la esquina de la caja nueva: es lo
+                // que se escribe en el fichero como origen de los puntos.
+                let (nx0, ny0, _, _) = e.caja();
+                e.x = nx0;
+                e.y = ny0;
+            }
+            // Las que se pintan por su caja se mueven de caja: la esquina que
+            // estaba a la izquierda pasa a ser la de la derecha.
+            _ => match eje {
+                EjeVolteo::Horizontal => e.x = 2.0 * espejo_x - ex1,
+                EjeVolteo::Vertical => e.y = 2.0 * espejo_y - ey1,
+            },
+        }
+        let _ = (ex0, ey0, ey1);
+
+        if let Figura::Flecha {
+            punta_inicio,
+            punta_fin,
+            ..
+        } = &mut e.figura
+        {
+            if eje == EjeVolteo::Horizontal {
+                std::mem::swap(punta_inicio, punta_fin);
+            }
+        }
+
+        // Reflejar invierte el sentido de giro.
+        if e.angulo != 0.0 {
+            e.angulo = -e.angulo;
+        }
+        e.tocar();
+    }
+}
+
+/// La caja que abarca a todos los que cuentan.
+fn caja_comun(elementos: &[Elemento]) -> Option<(f32, f32, f32, f32)> {
+    let mut caja: Option<(f32, f32, f32, f32)> = None;
+    for e in elementos.iter().filter(|e| !e.borrado) {
+        let (x0, y0, x1, y1) = e.caja();
+        caja = Some(match caja {
+            None => (x0, y0, x1, y1),
+            Some((a, b, c, d)) => (a.min(x0), b.min(y0), c.max(x1), d.max(y1)),
+        });
+    }
+    caja
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -935,5 +1085,182 @@ mod pruebas {
             false,
         );
         assert_ne!(e.version, antes, "sin esto la cache pintaria lo viejo");
+    }
+
+    // --- Voltear ---
+
+    fn en(x: f32, ancho: f32) -> Elemento {
+        Elemento { x, ancho, ..rect() }
+    }
+
+    #[test]
+    fn voltear_en_horizontal_pasa_la_izquierda_a_la_derecha() {
+        // Sobre la caja comun: es lo que hace que la composicion cambie. Dos
+        // cajas de 20 en x=0 y x=80; el espejo esta en x=50.
+        let mut es = [en(0.0, 20.0), en(80.0, 20.0)];
+        voltear(&mut es, EjeVolteo::Horizontal);
+        assert_eq!(es[0].x, 80.0, "la de la izquierda cruza a la derecha");
+        assert_eq!(es[1].x, 0.0);
+    }
+
+    #[test]
+    fn voltear_uno_solo_lo_refleja_sobre_si_mismo_y_no_lo_mueve() {
+        // Con un solo elemento la caja comun es la suya, asi que se queda
+        // donde esta: lo que cambia es su contenido. Es lo que se espera al
+        // voltear una sola figura.
+        let mut es = [rect()];
+        voltear(&mut es, EjeVolteo::Horizontal);
+        assert_eq!((es[0].x, es[0].y), (0.0, 0.0));
+    }
+
+    #[test]
+    fn un_trazo_se_refleja_por_sus_puntos_y_no_sale_disparado() {
+        // El fallo que el movil documenta: la caja de un trazo SALE de sus
+        // puntos. Espejando la caja por un lado y los puntos por otro, un
+        // garabato con puntos negativos salia despedido.
+        let mut trazo = rect();
+        trazo.figura = Figura::Linea {
+            puntos: vec![
+                Punto2::nuevo(-30.0, 0.0),
+                Punto2::nuevo(-10.0, 0.0),
+                Punto2::nuevo(-10.0, 40.0),
+            ],
+        };
+        let antes = trazo.caja();
+        let mut es = [trazo];
+        voltear(&mut es, EjeVolteo::Horizontal);
+        let despues = es[0].caja();
+        assert!(
+            (antes.0 - despues.0).abs() < 1e-3 && (antes.2 - despues.2).abs() < 1e-3,
+            "la caja se quedo en {despues:?} en vez de {antes:?}"
+        );
+        let Figura::Linea { puntos } = &es[0].figura else {
+            unreachable!()
+        };
+        // El espejo de su propia caja: el primer punto y el ultimo cambian de
+        // lado.
+        assert!((puntos[0].x + 10.0).abs() < 1e-3, "{:?}", puntos[0]);
+    }
+
+    #[test]
+    fn voltear_en_horizontal_intercambia_las_puntas_de_la_flecha() {
+        // Si no, una flecha que apuntaba a la izquierda sigue apuntando a la
+        // izquierda despues de haber cruzado el dibujo entero.
+        let mut f = rect();
+        f.figura = Figura::Flecha {
+            puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
+            punta_inicio: false,
+            punta_fin: true,
+        };
+        let mut es = [f];
+        voltear(&mut es, EjeVolteo::Horizontal);
+        let Figura::Flecha {
+            punta_inicio,
+            punta_fin,
+            ..
+        } = &es[0].figura
+        else {
+            unreachable!()
+        };
+        assert!(*punta_inicio && !*punta_fin);
+    }
+
+    #[test]
+    fn voltear_en_vertical_no_toca_las_puntas() {
+        // Caso negativo: arriba por abajo no cambia cual es el principio de
+        // la flecha.
+        let mut f = rect();
+        f.figura = Figura::Flecha {
+            puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
+            punta_inicio: false,
+            punta_fin: true,
+        };
+        let mut es = [f];
+        voltear(&mut es, EjeVolteo::Vertical);
+        let Figura::Flecha {
+            punta_inicio,
+            punta_fin,
+            ..
+        } = &es[0].figura
+        else {
+            unreachable!()
+        };
+        assert!(!*punta_inicio && *punta_fin);
+    }
+
+    #[test]
+    fn voltear_invierte_el_sentido_del_giro() {
+        let mut e = rect();
+        e.angulo = FRAC_PI_6;
+        let mut es = [e];
+        voltear(&mut es, EjeVolteo::Horizontal);
+        assert!((es[0].angulo + FRAC_PI_6).abs() < 1e-6);
+    }
+
+    #[test]
+    fn los_agujeros_de_un_relleno_se_reflejan_con_su_contorno() {
+        // O el anillo se abre y el relleno acaba tapando justo lo que se
+        // queria dejar ver.
+        let mut r = rect();
+        r.figura = Figura::Region {
+            contorno: vec![
+                Punto2::nuevo(0.0, 0.0),
+                Punto2::nuevo(100.0, 0.0),
+                Punto2::nuevo(100.0, 100.0),
+                Punto2::nuevo(0.0, 100.0),
+            ],
+            huecos: vec![vec![
+                Punto2::nuevo(10.0, 40.0),
+                Punto2::nuevo(30.0, 40.0),
+                Punto2::nuevo(30.0, 60.0),
+                Punto2::nuevo(10.0, 60.0),
+            ]],
+        };
+        let mut es = [r];
+        voltear(&mut es, EjeVolteo::Horizontal);
+        let Figura::Region { huecos, .. } = &es[0].figura else {
+            unreachable!()
+        };
+        // El agujero estaba pegado a la izquierda; ahora a la derecha.
+        assert!((huecos[0][0].x - 90.0).abs() < 1e-3, "{:?}", huecos[0]);
+    }
+
+    #[test]
+    fn voltear_respeta_lo_bloqueado_y_lo_borrado() {
+        // Caso negativo: bloquear es pedir que no se mueva, pase lo que pase.
+        let mut fijo = en(0.0, 20.0);
+        fijo.bloqueado = true;
+        let mut es = [fijo, en(80.0, 20.0)];
+        voltear(&mut es, EjeVolteo::Horizontal);
+        assert_eq!(es[0].x, 0.0, "lo bloqueado se quedo donde estaba");
+        assert_eq!(es[1].x, 0.0);
+    }
+
+    #[test]
+    fn voltear_una_seleccion_vacia_no_hace_nada() {
+        let mut nada: [Elemento; 0] = [];
+        voltear(&mut nada, EjeVolteo::Horizontal);
+    }
+
+    #[test]
+    fn voltear_dos_veces_devuelve_el_dibujo_a_su_sitio() {
+        // La comprobacion de ida y vuelta: es la unica forma de estar seguro
+        // de que la caja comun y el reflejo de puntos no discrepan.
+        let mut trazo = rect();
+        trazo.figura = Figura::Linea {
+            puntos: vec![Punto2::nuevo(-30.0, 5.0), Punto2::nuevo(70.0, 45.0)],
+        };
+        let original = [trazo.clone(), en(80.0, 20.0)];
+        let mut es = original.clone();
+        voltear(&mut es, EjeVolteo::Horizontal);
+        voltear(&mut es, EjeVolteo::Horizontal);
+        for (a, b) in es.iter().zip(original.iter()) {
+            assert!(
+                (a.caja().0 - b.caja().0).abs() < 1e-3 && (a.caja().2 - b.caja().2).abs() < 1e-3,
+                "{:?} no volvio a {:?}",
+                a.caja(),
+                b.caja()
+            );
+        }
     }
 }
