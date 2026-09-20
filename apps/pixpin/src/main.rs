@@ -70,9 +70,9 @@ mod scroll;
 mod sincronizar;
 mod universo;
 mod ventana_ajustes;
-mod visor;
 mod ventana_chat;
 mod ventana_editor;
+mod visor;
 
 use anyhow::{Context, Result};
 use overlay::{AccionFinal, ModoConfirmacion, Recursos, TextosBarra, ejecutar_overlay};

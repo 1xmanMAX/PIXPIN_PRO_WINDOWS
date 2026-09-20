@@ -279,19 +279,8 @@ const COLOR_DEL_ROTULO: ColorRgba = ColorRgba {
 ///
 /// La pregunta barata, para no montar los angulos de un plano entero en cada
 /// movimiento del raton cuando no se esta moviendo nada que forme esquina.
-pub fn hay_angulos_que_enseñar(gesto: &Gesto) -> bool {
+pub fn hay_angulos_que_ensenar(gesto: &Gesto) -> bool {
     !gesto.en_reposo() && (gesto.elemento_en_curso().is_some() || !gesto.seleccion.ids().is_empty())
-}
-
-/// ¿Esta herramienta trabaja sobre lo que ya hay en vez de dibujar?
-///
-/// Lo usa la ventana para saber que, con ella puesta, un clic **no** abre un
-/// arrastre: pasa una vez por [`al_pulsar`] y se acabo.
-pub fn trabaja_sobre_lo_que_hay(h: Herramienta) -> bool {
-    matches!(
-        h,
-        Herramienta::Relleno | Herramienta::Recortar | Herramienta::Extender
-    )
 }
 
 #[cfg(test)]
@@ -464,17 +453,21 @@ mod pruebas {
         // ninguno, o el dibujo se llenaria de cifras que nadie esta mirando.
         let escena = escena_con_recinto();
         let gesto = con_herramienta(Herramienta::Mano);
-        assert!(!hay_angulos_que_enseñar(&gesto));
+        assert!(!hay_angulos_que_ensenar(&gesto));
         assert!(angulos_en_vivo(&escena, &gesto, 1.0).is_empty());
     }
 
+    /// Las tres que trabajan sobre lo que ya hay no pueden abrir un arrastre,
+    /// y quien lo dice es `Herramienta::deja_rastro` y solo el: una segunda
+    /// lista aqui con los mismos tres nombres acabaria discrepando de la
+    /// primera el dia que se anada una cuarta.
     #[test]
     fn las_tres_que_trabajan_sobre_lo_que_hay_no_abren_un_arrastre() {
-        assert!(trabaja_sobre_lo_que_hay(Herramienta::Relleno));
-        assert!(trabaja_sobre_lo_que_hay(Herramienta::Recortar));
-        assert!(trabaja_sobre_lo_que_hay(Herramienta::Extender));
+        assert!(!Herramienta::Relleno.deja_rastro());
+        assert!(!Herramienta::Recortar.deja_rastro());
+        assert!(!Herramienta::Extender.deja_rastro());
         // El punto si nace de un clic: lo crea el gesto y aqui se remata.
-        assert!(!trabaja_sobre_lo_que_hay(Herramienta::Punto));
-        assert!(!trabaja_sobre_lo_que_hay(Herramienta::Lapiz));
+        assert!(Herramienta::Punto.deja_rastro());
+        assert!(Herramienta::Lapiz.deja_rastro());
     }
 }

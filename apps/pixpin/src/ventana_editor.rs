@@ -1646,11 +1646,16 @@ fn abrir_en_modo(
                         _ => {}
                     }
                 }
+                // Donde se pulso, para las cuatro herramientas de construir:
+                // `g` se consume en `gesto.evento` y el punto hace falta
+                // DESPUES, cuando el punto etiquetado ya ha nacido.
+                let mut pulsado = None;
                 match g {
                     EventoGesto::Pulsar { p, .. } => {
                         predictor.reiniciar();
                         predictor.anotar(p, ms);
                         quieto = Some((std::time::Instant::now(), p));
+                        pulsado = Some(p);
                     }
                     EventoGesto::Mover { p, .. } => {
                         predictor.anotar(p, ms);
@@ -1667,6 +1672,17 @@ fn abrir_en_modo(
                 }
                 let en_reposo_antes = gesto.en_reposo();
                 let r = gesto.evento(g, &mut escena, 1.0 / efectiva.zoom);
+                // **Las cuatro de construir.** Van DESPUES del gesto y solo
+                // al pulsar: tres de ellas no dibujan nada -miran lo que ya
+                // hay y lo cambian- y la cuarta remata el punto que el gesto
+                // acaba de hacer nacer, asi que antes no existiria.
+                if let Some(p) = pulsado
+                    && construir::al_pulsar(&mut escena, &gesto, p, efectiva.zoom)
+                {
+                    todo_sucio = true;
+                    contenido_sucio = true;
+                    ventana.invalidar();
+                }
                 ventana.poner_cursor(forma_de(r.cursor));
                 // `VentanaOverlay::invalidar` no toma una region: invalida
                 // la ventana entera para que Windows mande `WM_PAINT`, pero
@@ -1791,6 +1807,15 @@ fn abrir_en_modo(
                                 continue;
                             };
                             if e.borrado {
+                                continue;
+                            }
+                            // El mosaico no entra en la capa congelada por lo
+                            // mismo que no entra en el pintado normal: lo que
+                            // tapa es lo que hay DEBAJO, y la pasada de
+                            // tapado corre sobre el destino ya volcado, en
+                            // cada fotograma. Si aqui se pintara su banda, la
+                            // pasada leeria la banda.
+                            if tapar::es_mosaico(e) {
                                 continue;
                             }
                             // Las dos llamadas -aqui y en `pintar`- tienen
@@ -2590,6 +2615,12 @@ fn pintar(
                 if e.borrado {
                     continue;
                 }
+                // El mosaico lo pinta `tapar::pasar`, con los pixeles de
+                // debajo, cuando este fotograma ya este cerrado. Ver
+                // `tapar.rs`.
+                if tapar::es_mosaico(e) {
+                    continue;
+                }
                 // Lo que se esta dibujando (trazo, linea, flecha, rectangulo,
                 // elipse) con su punta en el punto predicho. La escena no se
                 // toca, asi que al soltar queda lo real.
@@ -2689,6 +2720,16 @@ fn pintar(
                     None,
                 );
             }
+            // Los angulos de las esquinas que se estan moviendo. Van con la
+            // pista del iman y por lo mismo: son ayuda, no dibujo, y encima
+            // de todo o justo cuando hacen falta quedarian tapados. La
+            // pregunta barata va delante para no montar los angulos de un
+            // plano entero en cada aviso del raton.
+            if construir::hay_angulos_que_ensenar(gesto) {
+                for orden in construir::angulos_en_vivo(escena, gesto, camara.zoom) {
+                    dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom, None);
+                }
+            }
             // La caja es un dialogo en pantalla, no algo del lienzo: no se mueve
             // ni se escala con la camara. `desplazar(0.0, 0.0)` deshace la vista
             // del mundo que `poner_vista` dejo puesta arriba, igual que hace
@@ -2744,6 +2785,33 @@ fn pintar(
         }
         // Lo que se acaba de pintar ya esta en la camara nueva.
         superficie.reponer_fondo();
+    }
+    // **La pasada de tapado**, con el fotograma de la escena ya cerrado
+    // (`motor.dibujar` acaba de hacer su `EndDraw`): leer lo pintado exige
+    // que el destino este escrito de verdad. Va antes de presentar, y solo
+    // si el fotograma salio bien: sobre un destino que no se llego a pintar
+    // no hay nada que tapar.
+    //
+    // La camara se corre el colchon porque `plan_en_pantalla` da pixeles de
+    // VENTANA y esto se pinta en la superficie de la escena, que va `margen`
+    // pixeles mas grande por lado. Sin el corrimiento cada mosaico taparia
+    // arriba y a la izquierda de donde esta -y dejaria al descubierto justo
+    // el dato que venia a tapar-.
+    if error.is_ok() {
+        let corrida = Camara {
+            x: camara.x - margen / camara.zoom,
+            y: camara.y - margen / camara.zoom,
+            zoom: camara.zoom,
+        };
+        let (ancho_sup, alto_sup) = tamano_escena(ancho_px, alto_px, margen);
+        tapar::pasar(
+            motor,
+            &destino,
+            &escena.elementos,
+            &corrida,
+            ancho_sup,
+            alto_sup,
+        );
     }
     if error.is_err() {
         // Dispositivo perdido: las realizaciones de tinta son del dispositivo
@@ -3306,6 +3374,12 @@ fn elegir_herramienta(gesto: &mut Gesto, h: Herramienta) {
     }
     gesto.herramienta = h;
 }
+
+/// Lo que el grupo C dejo listo para el nacimiento de las figuras nuevas.
+mod construir;
+/// La pasada de tapado del mosaico. Ver su cabecera: se engancha en dos
+/// sitios del fotograma y los dos estan en `pintar`.
+mod tapar;
 
 #[cfg(test)]
 mod medir;

@@ -424,7 +424,9 @@ mod pruebas {
     fn un_recorte_que_se_sale_del_original_se_queda_en_el_borde() {
         // Los hay, de documentos editados a mano: pedir pixeles que no estan
         // hace que Direct2D dibuje basura en el borde.
-        let f = recorte(300.0, 150.0, 400.0, 400.0).fuente_en(400, 200).unwrap();
+        let f = recorte(300.0, 150.0, 400.0, 400.0)
+            .fuente_en(400, 200)
+            .unwrap();
         assert_eq!((f.x, f.y, f.ancho, f.alto), (300.0, 150.0, 100.0, 50.0));
     }
 

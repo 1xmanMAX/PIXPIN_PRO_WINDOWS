@@ -37,18 +37,6 @@ pub fn es_mosaico(e: &Elemento) -> bool {
     matches!(e.figura, Figura::Mosaico { .. })
 }
 
-/// Si hay algo que tapar en este fotograma. Se pregunta antes de nada para
-/// no pagar el cierre del fotograma en el caso normal, que es no tener
-/// ningun mosaico en pantalla.
-pub fn hay_algo_que_tapar(
-    elementos: &[Elemento],
-    camara: &Camara,
-    ancho_px: u32,
-    alto_px: u32,
-) -> bool {
-    !mosaico::plan_en_pantalla(elementos, camara, ancho_px, alto_px).is_empty()
-}
-
 /// **Tapa todos los mosaicos que se ven.**
 ///
 /// Devuelve cuantos tapo, que es lo que una prueba de humo puede mirar sin
@@ -64,13 +52,7 @@ pub fn pasar(
 ) -> usize {
     let mut tapados = 0;
     for m in mosaico::plan_en_pantalla(elementos, camara, ancho_px, alto_px) {
-        match pixpin_render::capa_estatica::tapar(
-            motor,
-            destino,
-            m.zona,
-            m.lado,
-            m.desenfoque,
-        ) {
+        match pixpin_render::capa_estatica::tapar(motor, destino, m.zona, m.lado, m.desenfoque) {
             Ok(()) => tapados += 1,
             Err(e) => tracing::warn!(?e, id = m.id, "no se pudo tapar un mosaico"),
         }
@@ -101,18 +83,19 @@ mod pruebas {
         assert!(!es_mosaico(&Elemento::default()), "un rectangulo se pinta");
     }
 
+    /// El caso normal y el que mas veces ocurre: ni un mosaico. La pasada no
+    /// tiene entonces nada que hacer, y sobre todo no puede inventarse una
+    /// zona: tapar de mas es tapar el dibujo.
     #[test]
-    fn sin_mosaicos_a_la_vista_no_se_cierra_el_fotograma_para_nada() {
-        // El caso normal y el que mas veces ocurre: ni un mosaico. Pagar el
-        // cierre del fotograma por nada seria cobrar a todo el mundo por una
-        // herramienta que casi nadie tiene puesta.
+    fn sin_mosaicos_a_la_vista_la_pasada_no_tiene_nada_que_hacer() {
         let c = Camara::nueva();
-        assert!(!hay_algo_que_tapar(&[], &c, 800, 600));
-        assert!(!hay_algo_que_tapar(&[Elemento::default()], &c, 800, 600));
+        let vacio = |es: &[Elemento]| mosaico::plan_en_pantalla(es, &c, 800, 600).is_empty();
+        assert!(vacio(&[]));
+        assert!(vacio(&[Elemento::default()]), "un rectangulo no es mosaico");
         assert!(
-            !hay_algo_que_tapar(&[mosaico_en(10_000.0)], &c, 800, 600),
+            vacio(&[mosaico_en(10_000.0)]),
             "uno fuera de la pantalla tampoco cuenta"
         );
-        assert!(hay_algo_que_tapar(&[mosaico_en(10.0)], &c, 800, 600));
+        assert!(!vacio(&[mosaico_en(10.0)]), "uno a la vista si");
     }
 }
