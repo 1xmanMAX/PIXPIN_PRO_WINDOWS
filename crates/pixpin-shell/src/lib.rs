@@ -9,6 +9,7 @@ pub mod abrir_con;
 pub mod arranque;
 pub mod atajo;
 pub mod atajos;
+pub mod aviso;
 pub mod bandeja;
 pub mod dialogo;
 pub mod elegir;
