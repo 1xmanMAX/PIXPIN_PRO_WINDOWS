@@ -243,3 +243,131 @@ fn las_figuras_nuevas_pintan_algo_y_no_dejan_el_lienzo_en_blanco() {
         "un mosaico que tapa menos que un rombo no esta tapando"
     );
 }
+
+/// **Las ocho puntas, la flecha de codos y las dos tramas nuevas, en una hoja
+/// de contactos.**
+///
+/// Las ocho puntas no se comprueban con un `assert_eq`: lo que hay que ver es
+/// que se DISTINGAN unas de otras, porque en un diagrama entidad-relacion la
+/// punta dice la cardinalidad y dos puntas iguales son dos cosas distintas
+/// que se leen igual. Lo que si se comprueba a maquina es lo unico que una
+/// prueba puede decir sin mirar: que ninguna deja la flecha pelada, que las
+/// macizas manchan mas que sus huecas, y que la de codos no traza la misma
+/// raya que la recta.
+///
+/// `cargo test -p pixpin --test muestra_de_figuras_nuevas -- --ignored
+/// --nocapture --test-threads=1`
+#[test]
+#[ignore = "necesita GPU y sesion de escritorio"]
+fn las_ocho_puntas_y_las_dos_tramas_se_distinguen_de_un_vistazo() {
+    use pixpin_motor2d::TipoPunta;
+    use pixpin_motor2d::relleno::EstiloRelleno;
+
+    let (dispositivo, motor) = motor_y_dispositivo();
+    let fuera =
+        FueraDePantalla::nuevo(&motor, dispositivo.d3d(), ANCHO, ALTO).expect("fuera de pantalla");
+    let carpeta = carpeta_de_muestras();
+
+    // Una flecha larga y horizontal: la punta cae siempre en el mismo sitio,
+    // que es lo que permite comparar las ocho mirando el mismo trozo de hoja.
+    let flecha = |punta: TipoPunta, codos: bool| Elemento {
+        figura: Figura::Flecha {
+            puntos: vec![Punto2::nuevo(30.0, 100.0), Punto2::nuevo(230.0, 100.0)],
+            punta_inicio: TipoPunta::Ninguna,
+            punta_fin: punta,
+            codos,
+        },
+        grosor: 3.0,
+        ..muestra(Figura::Rectangulo, None)
+    };
+
+    let mut huellas: Vec<(String, u64)> = Vec::new();
+    let mut guardar = |nombre: String, e: &Elemento| {
+        let rgba = pintar(&fuera, &motor, e);
+        let tinta = tinta_derramada(&rgba);
+        let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba {
+            ancho: ANCHO,
+            alto: ALTO,
+            pixeles: rgba,
+        })
+        .expect("codificar");
+        let ruta = carpeta.join(format!("{nombre}.png"));
+        std::fs::write(&ruta, png).expect("guardar");
+        println!("{nombre:>24}: {tinta:>9} de tinta -> {}", ruta.display());
+        huellas.push((nombre, tinta));
+    };
+
+    guardar("punta-ninguna".into(), &flecha(TipoPunta::Ninguna, false));
+    for punta in pixpin_motor2d::PUNTAS {
+        let palabra = punta.palabra().expect("las ocho tienen palabra");
+        guardar(format!("punta-{palabra}"), &flecha(punta, false));
+    }
+    // La de codos, con los extremos en diagonal: en horizontal el conector
+    // ortogonal y la recta son la misma raya y no habria nada que mirar.
+    let mut codos = flecha(TipoPunta::Flecha, true);
+    let mut recta = flecha(TipoPunta::Flecha, false);
+    for e in [&mut codos, &mut recta] {
+        if let Figura::Flecha { puntos, .. } = &mut e.figura {
+            *puntos = vec![Punto2::nuevo(40.0, 40.0), Punto2::nuevo(220.0, 160.0)];
+        }
+    }
+    guardar("flecha-de-codos".into(), &codos);
+    guardar("flecha-recta".into(), &recta);
+
+    let amarillo = Some(ColorRgba {
+        r: 1.0,
+        g: 0.8,
+        b: 0.2,
+        a: 1.0,
+    });
+    for (nombre, estilo) in [
+        ("rayado", EstiloRelleno::Rayado),
+        ("zigzag", EstiloRelleno::Zigzag),
+        ("lineas-pixpin", EstiloRelleno::LineasPixpin),
+    ] {
+        let mut e = muestra(Figura::Rectangulo, amarillo);
+        e.estilo_relleno = estilo;
+        // Con rugosidad, que es donde se ve la diferencia entre el rayado
+        // tembloroso y el tiralineas: sin ella los dos salen rectos.
+        e.rugosidad = 1.0;
+        guardar(format!("trama-{nombre}"), &e);
+    }
+
+    let de = |n: &str| huellas.iter().find(|(k, _)| k == n).unwrap().1;
+    for punta in pixpin_motor2d::PUNTAS {
+        let palabra = punta.palabra().unwrap();
+        assert!(
+            de(&format!("punta-{palabra}")) > de("punta-ninguna"),
+            "la punta «{palabra}» no dibuja nada: la flecha sale pelada"
+        );
+    }
+    // Maciza contra hueca: si mancharan lo mismo, una es la otra y el
+    // diagrama pierde la distincion que la punta venia a decir.
+    for (maciza, hueca) in [
+        ("circle", "circle_outline"),
+        ("triangle", "triangle_outline"),
+        ("diamond", "diamond_outline"),
+    ] {
+        assert!(
+            de(&format!("punta-{maciza}")) > de(&format!("punta-{hueca}")),
+            "«{maciza}» no mancha mas que «{hueca}»: la maciza no se esta rellenando"
+        );
+    }
+    assert_ne!(
+        de("flecha-de-codos"),
+        de("flecha-recta"),
+        "la flecha de codos traza la misma raya que la recta"
+    );
+    // El tiralineas es el mismo barrido SIN temblor: por eso no puede dejar
+    // exactamente la misma tinta que el rayado tembloroso.
+    assert_ne!(
+        de("trama-lineas-pixpin"),
+        de("trama-rayado"),
+        "el tiralineas sale igual que el rayado: no se esta repartiendo"
+    );
+    // El zigzag dibuja DOS ramas por raya: mancha mas que el rayado simple.
+    assert!(
+        de("trama-zigzag") > de("trama-rayado"),
+        "el zigzag no dibuja sus dos ramas"
+    );
+}

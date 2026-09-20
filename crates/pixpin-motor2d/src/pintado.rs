@@ -300,35 +300,23 @@ fn anillo_con_huecos(contorno: &[Punto2], huecos: &[Vec<Punto2>]) -> Vec<Punto2>
     anillo
 }
 
-/// Cuantos tramos se usan para el ovalo entero de un arco. El mismo criterio
-/// que `perimetros`: por debajo de este numero la curva se lee como poligono.
-const TRAMOS_DEL_ARCO: usize = 64;
-
 /// El arco de `e` muestreado en tramos rectos, en coordenadas del documento.
 ///
 /// Con `barrido` puesto sale el tramo repasado; sin el, **el ovalo entero**,
 /// que es la guia que todavia no se ha repasado y que tiene que verse para
 /// poder repasarla.
+///
+/// Es una sola linea porque la cuenta esta en `arco.rs`, que es el puerto del
+/// `Arco.kt` del movil. Aqui habia un segundo muestreo con sus propios 64
+/// tramos: dos verdades sobre por donde pasa un arco significan que se pica
+/// donde no se ve, porque `impacto.rs` usa esta y el reajuste usa la otra.
 pub(crate) fn arco_muestreado(e: &Elemento, inicio: f32, barrido: Option<f32>) -> Vec<Punto2> {
-    let (rx, ry) = (e.ancho / 2.0, e.alto / 2.0);
-    if rx <= 0.0 || ry <= 0.0 {
-        return Vec::new();
-    }
-    let (cx, cy) = (e.x + rx, e.y + ry);
-    let vuelta = std::f32::consts::TAU;
-    let (desde, abarca) = match barrido {
-        Some(b) => (inicio, b),
-        None => (0.0, vuelta),
-    };
-    // Los tramos se reparten en proporcion a lo que abarca: un arco de
-    // treinta grados con sesenta y cuatro tramos gastaria por gastar.
-    let n = ((TRAMOS_DEL_ARCO as f32 * (abarca.abs() / vuelta)).ceil() as usize).clamp(2, 256);
-    (0..=n)
-        .map(|i| {
-            let a = desde + abarca * (i as f32 / n as f32);
-            Punto2::nuevo(cx + rx * a.cos(), cy + ry * a.sin())
-        })
-        .collect()
+    crate::arco::puntos_del_arco(
+        (e.x, e.y, e.ancho, e.alto),
+        inicio,
+        barrido,
+        crate::arco::PASOS_DEL_ARCO,
+    )
 }
 
 /// Las ordenes de dibujo de un elemento, en orden de pintado.
@@ -357,7 +345,20 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             presiones,
             opciones,
         } => {
-            let contorno = crate::tinta::contorno_de_lapiz(puntos, presiones, e.grosor, *opciones);
+            // **La presion firme.** Un trazo con `presionFirme` va de ancho
+            // constante: es lo que hace usable escribir a mano, porque sin
+            // ella la tinta adelgaza en las curvas y la letra se rompe. Se
+            // pide por `contorno_de_lapiz_firme` y no aplicando el campo aqui
+            // para que no pueda quedarse puesta en un sitio y no en el otro,
+            // que es como se veia el fallo en el movil: firme mientras se
+            // escribe y adelgazando al soltar.
+            let contorno = crate::tinta::contorno_de_lapiz_firme(
+                puntos,
+                presiones,
+                e.grosor,
+                *opciones,
+                e.extras.presion_firme,
+            );
             if !contorno.is_empty() {
                 salida.push(Orden::Tinta { contorno, color });
             }
@@ -489,13 +490,28 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             // El relleno va PRIMERO, como en el rectangulo: si fuera despues
             // taparia el trazo por dentro.
             salida.extend(ordenes_de_relleno(e, false));
-            for pasada in formas::rombo(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar) {
+            // **El rombo redondeado.** El estilo de fabrica del movil trae
+            // `roundness`, asi que un rombo pide puntas redondeadas desde el
+            // primer dia; dibujado en pico la diferencia canta, porque sus
+            // cuatro vertices son angulos agudos. Va liso y no a mano alzada
+            // porque el redondeo ya es la forma: temblarlo encima convierte
+            // el cuarto de vuelta en un garabato.
+            if e.redondo {
                 salida.push(Orden::Polilinea {
-                    puntos: pasada,
+                    puntos: formas::rombo_redondo(e.x, e.y, e.ancho, e.alto),
                     color,
                     grosor: e.grosor,
                     estilo: e.estilo,
                 });
+            } else {
+                for pasada in formas::rombo(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar) {
+                    salida.push(Orden::Polilinea {
+                        puntos: pasada,
+                        color,
+                        grosor: e.grosor,
+                        estilo: e.estilo,
+                    });
+                }
             }
         }
 
@@ -581,15 +597,43 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             texto,
             tam,
             familia,
-        } => salida.push(Orden::Texto {
-            texto: texto.clone(),
-            x: e.x,
-            y: e.y,
-            tam: *tam,
-            familia: familia.clone(),
-            color,
-            ancho_max: e.ancho.max(1.0),
-        }),
+        } => {
+            salida.push(Orden::Texto {
+                texto: texto.clone(),
+                x: e.x,
+                y: e.y,
+                tam: *tam,
+                familia: familia.clone(),
+                color,
+                ancho_max: e.ancho.max(1.0),
+            });
+            // **El tachado, renglon a renglon.** No es un adorno de la fuente
+            // sino una raya del dibujo: `Orden::Texto` no lleva tachado y el
+            // motor es puro, asi que la altura la da `texto::raya_del_tachado`
+            // -la misma cuenta para el editor, la exportacion y la miniatura,
+            // porque tres copias acabarian poniendo la raya a tres alturas-.
+            let estilo_texto = crate::texto::EstiloDeTexto {
+                negrita: e.extras.negrita,
+                cursiva: e.extras.cursiva,
+                tachado: e.extras.tachado,
+            };
+            if estilo_texto.tachado {
+                for (fila, renglon) in texto.split('\n').enumerate() {
+                    let y = e.y + fila as f32 * *tam * crate::texto::INTERLINEADO;
+                    let Some((a, b, gordo)) =
+                        crate::texto::raya_del_tachado(renglon, e.x, y, *tam, estilo_texto)
+                    else {
+                        continue;
+                    };
+                    salida.push(Orden::Polilinea {
+                        puntos: vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)],
+                        color,
+                        grosor: gordo,
+                        estilo: EstiloTrazo::Solido,
+                    });
+                }
+            }
+        }
 
         // Un emoji es texto con la fuente de color de Windows. El 0,8 deja
         // sitio al glifo, que asoma por encima y por debajo de su cuerpo.

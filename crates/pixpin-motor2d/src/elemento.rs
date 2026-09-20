@@ -603,6 +603,17 @@ impl Elemento {
                     puntos.iter().map(|p| p.y).fold(f32::MIN, f32::max) + mitad,
                 )
             }
+            // **La caja del trozo que se ve, no la del ovalo del que salio.**
+            // Un arco guarda el ovalo entero y aparte su tramo, asi que con
+            // la caja cruda una una de trazo se seleccionaba por el recuadro
+            // del circulo completo: encerrarla con el raton no la cogia
+            // nunca, porque el recuadro tenia que contener una caja que no se
+            // veia por ninguna parte.
+            Figura::Arco { inicio, barrido } => crate::arco::caja_del_arco(
+                (self.x, self.y, self.ancho, self.alto),
+                *inicio,
+                *barrido,
+            ),
             // La region NO tiene caja propia en el fichero: `width` y
             // `height` del movil son los de su contorno encontrado, y si se
             // usaran aqui un anillo recortado se seleccionaria por un
