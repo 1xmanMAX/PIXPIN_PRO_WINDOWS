@@ -30,11 +30,6 @@
 //! de `pixpin-render`, como el overlay.
 
 #![forbid(unsafe_code)]
-// QUITAR ESTO al enganchar el visor: mientras nadie llame a `lanzar`, todo
-// el modulo es codigo muerto para el compilador y la puerta comun
-// (`clippy -D warnings`) no pasaria. En cuanto el menu del chat, «Abrir
-// con» o la bandeja llamen a `visor::lanzar`, esta linea sobra.
-#![allow(dead_code)]
 
 use anyhow::{Context, Result};
 use pixpin_docs::documento::{Clase, TramoDoc, texto_y_tramos};

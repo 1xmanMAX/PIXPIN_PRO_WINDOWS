@@ -70,6 +70,7 @@ mod scroll;
 mod sincronizar;
 mod universo;
 mod ventana_ajustes;
+mod visor;
 mod ventana_chat;
 mod ventana_editor;
 
@@ -115,6 +116,8 @@ const _: () = assert!(
 /// editor, fuera del catalogo de comandos: no tiene atajo global (con el
 /// chat enfocado es Ctrl+U) y fuera del tramo de los grupos ocultos.
 const ID_VENTANA_UNIVERSO: u32 = 901;
+/// «Abrir documento…»: el visor de Word, libros y paginas (tanda 2).
+const ID_ABRIR_DOCUMENTO: u32 = 902;
 
 const _: () = assert!(
     ID_VENTANA_UNIVERSO >= pixpin_shell::ventana::ID_MENU_GRUPO_TOPE,
@@ -147,6 +150,7 @@ fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
     }
     // El editor avanzado (tarea 11): sin catalogo ni traduccion todavia, es
     // lo minimo para abrirlo desde la bandeja y probarlo a mano.
+    v.push((ID_ABRIR_DOCUMENTO, t("bandeja-abrir-documento")));
     v.push((ID_VENTANA_EDITOR, "Editor".to_string()));
     v
 }
@@ -849,6 +853,23 @@ fn arrancar(
                     opciones_lienzo,
                     universo::Pedido::Cosmos,
                 );
+                Continuar::Si
+            }
+            Evento::Menu(id) if id == ID_ABRIR_DOCUMENTO => {
+                // El visor recibe una ruta y no sabe de donde sale; desde la
+                // bandeja la elige el usuario. Lo que no sepa abrir se salta:
+                // mas vale no abrir nada que abrir una ventana en blanco.
+                for ruta in pixpin_shell::elegir::pedir_ficheros(
+                    windows::Win32::Foundation::HWND(std::ptr::null_mut()),
+                )
+                .iter()
+                .filter(|r| {
+                    r.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(visor::se_abre)
+                }) {
+                    visor::lanzar(lengua, ubicacion.clone(), ruta);
+                }
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_VENTANA_EDITOR => {
