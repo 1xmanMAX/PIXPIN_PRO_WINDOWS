@@ -230,7 +230,6 @@ chat-ya-en-marcha = PixPin is already running on Windows: pins come out with its
 chat-ajustes-bandeja = Settings open from the PixPin icon in the tray
 chat-proyectos-lista = Projects are the list on the left
 chat-no-hay-voz = Recording voice notes does not exist on Windows yet
-chat-no-hay-recordatorios = Reminders do not exist on Windows yet
 chat-no-hay-transcripcion = Converting audio to text does not exist on Windows yet
 chat-no-hay-letra = Audio lyrics do not exist on Windows yet
 chat-no-hay-aligerar = Making a PDF lighter does not exist on Windows yet
@@ -657,3 +656,15 @@ pdf-aligerar-sin-fotos = It has no photos to lower: the weight is text or vector
 pdf-aligerar-ya-al-minimo = The photos are already at the minimum.
 pdf-aligerar-no-compensa = It would only drop from { $antes } to { $despues }: not worth it.
 pdf-aligerar-no-se-lee = The shrunk file didn't read back properly; the original stays.
+
+# Reminders: the time set on a message and the notice that shows up when it
+# arrives. The same times the phone offers, plus ten minutes.
+chat-recordar-10-min = In 10 minutes
+chat-recordar-1-hora = In 1 hour
+chat-recordar-3-horas = In 3 hours
+chat-recordar-esta-tarde = This evening (18:00)
+chat-recordar-manana = Tomorrow (9:00)
+chat-recordatorio-puesto = I will remind you at { $cuando }
+chat-recordatorio-quitar = Remove the reminder
+chat-recordatorio-quitado = Reminder removed
+chat-recordatorio-titulo = Reminder

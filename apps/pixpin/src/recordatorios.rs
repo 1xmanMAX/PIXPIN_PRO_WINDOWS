@@ -46,7 +46,8 @@
 //!   avisa por una llamada de vuelta. Quien la engancha es la pantalla.
 
 use pixpin_proyecto::cuaderno::{self, Cuaderno, Mensaje};
-use std::sync::{Arc, Condvar, Mutex};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::Duration;
 
 /// El nombre del campo en el JSONL. Es el de Android y **no se traduce ni se
@@ -402,6 +403,218 @@ pub fn agenda_de(carpeta: &std::path::Path) -> std::io::Result<Agenda> {
     Ok(Agenda::de_cuaderno(&Cuaderno::leer_de(carpeta)?))
 }
 
+// ─────────────── El enganche con el resto del programa ───────────────
+//
+// Todo lo de arriba no sabe de ventanas, ni de donde viven los proyectos, ni
+// de que hay mas de una conversacion. Lo de aqui es el cable entre ese hilo y
+// las dos pantallas que lo usan: el chat, que pone y quita horas, y el bucle
+// principal, que es el unico que tiene la bandeja y los pines.
+
+/// El vigia del programa: uno solo, desde que arranca hasta que termina.
+///
+/// Vive en un estatico y no en una variable de `main` porque **el chat corre
+/// en otro hilo** (`ventana_chat::lanzar`) y no tiene forma de alcanzar lo que
+/// este en la pila del principal. Es el mismo trato que ya tienen `ABIERTA` y
+/// `REFRESCAR` del chat.
+///
+/// No se suelta nunca, asi que su hilo muere con el proceso. Es lo correcto
+/// aqui: un recordatorio que se cancela porque el programa se esta cerrando no
+/// lo quiere nadie, y el hilo esta dormido.
+static VIGIA: OnceLock<Vigia> = OnceLock::new();
+
+/// De que carpeta salio cada recordatorio.
+///
+/// Hay una conversacion por carpeta y el `id` de un mensaje solo dice cual es
+/// **dentro de la suya**; sin esto, al vencer habria que buscarlo por todos los
+/// cuadernos para poder quitarle la hora. Es una lista y no un mapa por lo
+/// mismo que [`Agenda`]: son pocos, y `HashMap::new` no es `const`, asi que un
+/// mapa pediria envolverlo en otro `OnceLock` para nada.
+static CARPETAS: Mutex<Vec<(String, PathBuf)>> = Mutex::new(Vec::new());
+
+/// Lo que ya vencio y espera a que el bucle principal lo saque.
+static VENCIDOS: Mutex<Vec<Vencido>> = Mutex::new(Vec::new());
+
+/// Un recordatorio que acaba de vencer, con la carpeta en la que hay que
+/// [`olvidar`] su hora.
+///
+/// `carpeta` puede faltar si el proyecto se borro entre que se puso la hora y
+/// que llego: el aviso sale igual —es lo que el usuario pidio— y no hay nada
+/// que reescribir.
+#[derive(Debug, Clone)]
+pub struct Vencido {
+    pub carpeta: Option<PathBuf>,
+    pub recordatorio: Recordatorio,
+}
+
+/// La agenda de **todas** las conversaciones, y de que carpeta sale cada una.
+///
+/// Se juntan todas en una sola agenda y no una por chat porque el vigia es uno
+/// y el usuario tambien: lo que quiere es que suene lo siguiente, venga del
+/// proyecto que venga. Un cuaderno ilegible se salta en vez de tumbar la
+/// lista: es lo mismo que hace `Indice::leer` con un indice roto.
+pub fn de_todos_los_proyectos(raiz: &Path) -> (Agenda, Vec<(String, PathBuf)>) {
+    let mut agenda = Agenda::nueva();
+    let mut carpetas = Vec::new();
+    for ficha in pixpin_proyecto::almacen::Indice::leer(raiz).proyectos {
+        let carpeta = pixpin_proyecto::almacen::carpeta(raiz, &ficha.id);
+        let Ok(suya) = agenda_de(&carpeta) else {
+            continue;
+        };
+        for r in suya.pendientes().to_vec() {
+            carpetas.push((r.id.clone(), carpeta.clone()));
+            agenda.programar(r);
+        }
+    }
+    (agenda, carpetas)
+}
+
+/// Arranca el vigia con lo que haya puesto en los cuadernos. Una vez, al
+/// abrir el programa.
+///
+/// `hwnd` es la ventana principal **como entero**, porque `HWND` no cruza
+/// hilos (igual que en [`pixpin_shell::overlay::despertar`]). Lo unico que
+/// hace la llamada de vuelta es apuntar lo vencido y dar un toque a esa
+/// ventana: el pin y el globo los saca su bucle, que es quien tiene la bandeja
+/// y los pines. Sacarlos desde aqui seria tocar Windows desde un hilo que no
+/// es el de la interfaz.
+pub fn vigilar(raiz: &Path, hwnd: isize) {
+    if VIGIA.get().is_some() {
+        tracing::warn!("el vigia de los recordatorios ya estaba puesto");
+        return;
+    }
+    let (agenda, carpetas) = de_todos_los_proyectos(raiz);
+    tracing::info!(cuantos = agenda.pendientes().len(), "recordatorios puestos");
+    anotar_carpetas(carpetas);
+    let _ = VIGIA.set(Vigia::nuevo(agenda, move |r| {
+        anotar_vencido(r);
+        pixpin_shell::despertar(windows::Win32::Foundation::HWND(hwnd as *mut _));
+    }));
+}
+
+/// Vuelve a leer todos los cuadernos y deja eso como agenda.
+///
+/// Es lo que hay que llamar **tras sincronizar**: un recordatorio puesto en el
+/// movil llega aqui como un campo mas del mensaje, y sin esto no sonaria hasta
+/// el siguiente arranque.
+pub fn releer(raiz: &Path) {
+    let Some(v) = VIGIA.get() else {
+        return;
+    };
+    let (agenda, carpetas) = de_todos_los_proyectos(raiz);
+    anotar_carpetas(carpetas);
+    v.refrescar(agenda);
+    // Queda escrito cuantos hay: es lo primero que hace falta saber el dia que
+    // alguien diga «puse la hora en el movil y aqui no sono».
+    tracing::info!(cuantos = v.pendientes().len(), "agenda releida");
+}
+
+/// Le da al vigia una hora recien puesta. **No escribe en disco**: eso lo hace
+/// quien la pone, que es el que tiene el mensaje a la vista y lo actualiza
+/// tambien en la pantalla.
+pub fn programar(carpeta: &Path, id: &str, texto: &str, cuando_utc_ms: i64) {
+    anotar_carpeta(id, carpeta);
+    if let Some(v) = VIGIA.get() {
+        v.programar(Recordatorio {
+            id: id.to_string(),
+            cuando_utc_ms,
+            texto: texto.to_string(),
+        });
+    }
+}
+
+/// Le quita al vigia una hora. Tampoco escribe en disco.
+pub fn cancelar(id: &str) {
+    if let Some(v) = VIGIA.get() {
+        v.cancelar(id);
+    }
+}
+
+/// Lo que vencio desde la ultima vez, y deja la cola vacia.
+///
+/// La vacia entera de una vez: dos recordatorios para el mismo minuto tienen
+/// que salir los dos, y la ventana da una sola vuelta por los dos toques.
+pub fn tomar_vencidos() -> Vec<Vencido> {
+    VENCIDOS
+        .lock()
+        .map(|mut v| std::mem::take(&mut *v))
+        .unwrap_or_default()
+}
+
+fn anotar_vencido(r: Recordatorio) {
+    let vencido = Vencido {
+        carpeta: carpeta_de(&r.id),
+        recordatorio: r,
+    };
+    if let Ok(mut v) = VENCIDOS.lock() {
+        v.push(vencido);
+    }
+}
+
+fn anotar_carpetas(nuevas: Vec<(String, PathBuf)>) {
+    if let Ok(mut g) = CARPETAS.lock() {
+        *g = nuevas;
+    }
+}
+
+fn anotar_carpeta(id: &str, carpeta: &Path) {
+    if let Ok(mut g) = CARPETAS.lock() {
+        g.retain(|(i, _)| i != id);
+        g.push((id.to_string(), carpeta.to_path_buf()));
+    }
+}
+
+fn carpeta_de(id: &str) -> Option<PathBuf> {
+    let g = CARPETAS.lock().ok()?;
+    g.iter().find(|(i, _)| i == id).map(|(_, c)| c.clone())
+}
+
+/// Las horas que se ofrecen al poner un recordatorio, **en hora local** y en
+/// el orden en que salen.
+///
+/// Son las cuatro del movil (`MensajesActivity.atajosDeRecordatorio`) mas
+/// «dentro de diez minutos», que alli no hace falta —el movil lo tienes en la
+/// mano— y aqui es el caso mas comun: apartar algo que estas mirando ahora.
+pub fn atajos(ahora_local_ms: i64) -> Vec<(&'static str, i64)> {
+    vec![
+        ("chat-recordar-10-min", ahora_local_ms + 10 * 60 * 1000),
+        ("chat-recordar-1-hora", ahora_local_ms + 60 * 60 * 1000),
+        ("chat-recordar-3-horas", ahora_local_ms + 3 * 60 * 60 * 1000),
+        ("chat-recordar-esta-tarde", a_las(ahora_local_ms, 18, 0)),
+        ("chat-recordar-manana", a_las(ahora_local_ms, 9, 1)),
+    ]
+}
+
+/// La proxima vez que el reloj de la pared marque `hora` en punto, `dias`
+/// despues de hoy.
+///
+/// Si esa hora **ya paso**, es la de manana: «esta tarde» pulsado a las ocho
+/// de la noche no puede ser una hora que ya fue, que saltaria en el acto. Es
+/// la misma correccion que hace el movil.
+fn a_las(ahora_local_ms: i64, hora: i64, dias: i64) -> i64 {
+    const DIA: i64 = 86_400_000;
+    let mut cuando = (ahora_local_ms.div_euclid(DIA) + dias) * DIA + hora * 3_600_000;
+    if cuando <= ahora_local_ms {
+        cuando += DIA;
+    }
+    cuando
+}
+
+/// Una hora local escrita para que el usuario la lea: «18:00» si es de hoy y
+/// «21/09 09:00» si no.
+///
+/// La hora sola bastaria para hoy y mentiria para manana, que es justo el caso
+/// que mas se usa.
+pub fn cuando_legible(local_ms: i64, ahora_local_ms: i64) -> String {
+    const DIA: i64 = 86_400_000;
+    let del_dia = local_ms.rem_euclid(DIA) / 1000;
+    let reloj = format!("{:02}:{:02}", del_dia / 3600, (del_dia % 3600) / 60);
+    if local_ms.div_euclid(DIA) == ahora_local_ms.div_euclid(DIA) {
+        return reloj;
+    }
+    let fecha = pixpin_ui::chat::etiqueta_hora(local_ms, ahora_local_ms);
+    format!("{fecha} {reloj}")
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -662,6 +875,166 @@ mod pruebas {
             recibe.recv_timeout(Duration::from_millis(200)).is_err(),
             "no debia sonar nada"
         );
+    }
+
+    /// Un dia entero en milisegundos, para escribir las pruebas de las horas
+    /// sin contar ceros.
+    const DIA: i64 = 86_400_000;
+
+    /// Las nueve y media de la manana de un dia cualquiera, en hora local.
+    const MANANA: i64 = 20_000 * DIA + 9 * 3_600_000 + 30 * 60_000;
+
+    #[test]
+    fn ninguna_de_las_horas_que_se_ofrecen_cae_en_el_pasado() {
+        // A las nueve y media, a las seis y media de la tarde (con «esta
+        // tarde» a punto de pasar) y a las once y media de la noche, que es
+        // cuando «esta tarde» y «manana» se cruzan.
+        for ahora in [MANANA, MANANA + 9 * 3_600_000, MANANA + 14 * 3_600_000] {
+            for (clave, cuando) in atajos(ahora) {
+                assert!(
+                    cuando > ahora,
+                    "«{clave}» a las {ahora} sale en el pasado ({cuando}): sonaria en el acto"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn esta_tarde_pulsado_de_noche_es_la_tarde_de_manana() {
+        let noche = 20_000 * DIA + 22 * 3_600_000;
+        let tarde = a_las(noche, 18, 0);
+        assert_eq!(
+            tarde,
+            20_001 * DIA + 18 * 3_600_000,
+            "las seis de hoy ya pasaron: toca las de manana"
+        );
+    }
+
+    #[test]
+    fn manana_por_la_manana_es_el_dia_siguiente_a_las_nueve() {
+        assert_eq!(a_las(MANANA, 9, 1), 20_001 * DIA + 9 * 3_600_000);
+    }
+
+    #[test]
+    fn la_hora_se_lee_con_su_fecha_cuando_no_es_de_hoy() {
+        assert_eq!(cuando_legible(MANANA, MANANA - 60_000), "09:30");
+        // De otro dia: sin la fecha, «09:00» pareceria de hoy.
+        let manana = a_las(MANANA, 9, 1);
+        assert!(
+            cuando_legible(manana, MANANA).ends_with(" 09:00"),
+            "{}",
+            cuando_legible(manana, MANANA)
+        );
+    }
+
+    #[test]
+    fn la_agenda_junta_las_conversaciones_y_se_salta_las_que_no_tienen_cuaderno() {
+        use pixpin_proyecto::almacen;
+        let raiz = carpeta("todos");
+        let uno = almacen::Ficha::nueva("Obra", 1, "pc");
+        let otro = almacen::Ficha::nueva("Casa", 1, "pc");
+        // Un tercero apuntado en el indice pero sin carpeta en el disco: es lo
+        // que queda tras borrar un proyecto a mano, y no puede tumbar la lista.
+        let fantasma = almacen::Ficha::nueva("Fantasma", 1, "pc");
+        almacen::Indice {
+            proyectos: vec![uno.clone(), otro.clone(), fantasma],
+            ..Default::default()
+        }
+        .guardar(&raiz)
+        .unwrap();
+        let c1 = almacen::carpeta(&raiz, &uno.id);
+        let c2 = almacen::carpeta(&raiz, &otro.id);
+        cuaderno::anadir(&c1, &nota("m1", Some(9_000), "llamar al arquitecto")).unwrap();
+        cuaderno::anadir(&c1, &nota("m2", None, "sin hora")).unwrap();
+        cuaderno::anadir(&c2, &nota("m3", Some(1_000), "sacar la basura")).unwrap();
+
+        let (agenda, carpetas) = de_todos_los_proyectos(&raiz);
+        let ids: Vec<&str> = agenda.pendientes().iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["m3", "m1"],
+            "del mas proximo al mas lejano, mezclados"
+        );
+        assert_eq!(carpetas.len(), 2, "solo los que tienen hora");
+        assert!(carpetas.contains(&("m3".to_string(), c2)));
+        assert!(carpetas.contains(&("m1".to_string(), c1)));
+
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn poner_dos_veces_la_hora_al_mismo_mensaje_no_lo_duplica_en_el_disco() {
+        use pixpin_proyecto::almacen;
+        let raiz = carpeta("dosveces");
+        let ficha = almacen::Ficha::nueva("Obra", 1, "pc");
+        almacen::Indice {
+            proyectos: vec![ficha.clone()],
+            ..Default::default()
+        }
+        .guardar(&raiz)
+        .unwrap();
+        let c = almacen::carpeta(&raiz, &ficha.id);
+        cuaderno::anadir(&c, &nota("m1", None, "llamar")).unwrap();
+
+        assert!(guardar(&c, "m1", Some(9_000)).unwrap());
+        assert!(guardar(&c, "m1", Some(4_000)).unwrap());
+
+        let (agenda, carpetas) = de_todos_los_proyectos(&raiz);
+        assert_eq!(
+            agenda.pendientes().len(),
+            1,
+            "cambiar la hora no anade otra"
+        );
+        assert_eq!(
+            agenda.pendientes()[0].cuando_utc_ms,
+            4_000,
+            "vale la ultima"
+        );
+        assert_eq!(carpetas.len(), 1);
+
+        // Y quitarla la deja sin nada que sonar.
+        assert!(olvidar(&c, "m1").unwrap());
+        assert!(de_todos_los_proyectos(&raiz).0.pendientes().is_empty());
+
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn lo_que_vence_espera_en_la_cola_a_que_la_ventana_lo_saque() {
+        // El camino de verdad, pero con el reloj clavado y sin ventana: el
+        // vigia apunta, y la cola se vacia de una vez.
+        let mut a = Agenda::nueva();
+        a.programar(rec("ya", 1_000));
+        let _v = Vigia::con_reloj(a, Arc::new(|| 5_000), anotar_vencido);
+        let mut salieron = Vec::new();
+        for _ in 0..500 {
+            salieron = tomar_vencidos();
+            if !salieron.is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(salieron.len(), 1, "el vigia no llego a apuntar nada");
+        assert_eq!(salieron[0].recordatorio.id, "ya");
+        assert!(
+            tomar_vencidos().is_empty(),
+            "la cola se vacia al tomarla: si no, sonaria dos veces"
+        );
+    }
+
+    #[test]
+    fn programar_y_cancelar_sin_vigia_no_revienta() {
+        // Es lo que pasa en las pruebas y en cualquier ventana abierta antes
+        // de que `vigilar` corra: se escribe en el cuaderno y ya esta.
+        let c = carpeta("sinvigia");
+        programar(&c, "m1", "hola", 1_000);
+        cancelar("m1");
+        assert_eq!(
+            carpeta_de("m1").as_deref(),
+            Some(c.as_path()),
+            "la carpeta queda apuntada aunque no haya vigia"
+        );
+        let _ = std::fs::remove_dir_all(&c);
     }
 
     #[test]

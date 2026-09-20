@@ -1142,6 +1142,7 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
     // tiraria la vuelta.
     flujo.set_read_timeout(Some(Duration::from_secs(30 * 60)))?;
     let de = flujo.peer_addr().ok();
+    let raiz_suya = raiz.to_path_buf();
     let disco = DiscoPc::nuevo(raiz).con_avisos(move |c| {
         if c == pixpin_sincro::disco::Cambio::Identidad {
             presencia::difundir(presencia::Novedad::Identidad);
@@ -1150,6 +1151,13 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
             // escribir DEBAJO de una ventana de chat abierta. Sin avisarla,
             // lo recien llegado no sale hasta cerrarla y volver a abrirla.
             crate::ventana_chat::refrescar();
+            // Y una hora puesta en el movil llega como un campo mas del
+            // mensaje: sin releer la agenda no sonaria aqui hasta el
+            // siguiente arranque. Solo con los mensajes, que es donde vive
+            // la hora, y no con cada archivo que entra.
+            if c == pixpin_sincro::disco::Cambio::Mensajes {
+                crate::recordatorios::releer(&raiz_suya);
+            }
         }
     });
     let r = Respondedor {
@@ -1507,7 +1515,13 @@ fn una_vuelta(
     let flujo = conectar(host, puerto)?;
     // La vuelta que se pide desde aqui tambien escribe lo del otro aparato,
     // asi que el chat abierto tiene que enterarse igual que en `responder`.
-    let disco = DiscoPc::nuevo(raiz).con_avisos(|_| crate::ventana_chat::refrescar());
+    let raiz_suya = raiz.to_path_buf();
+    let disco = DiscoPc::nuevo(raiz).con_avisos(move |c| {
+        crate::ventana_chat::refrescar();
+        if c == pixpin_sincro::disco::Cambio::Mensajes {
+            crate::recordatorios::releer(&raiz_suya);
+        }
+    });
     let mut s = Sesion::conectar(
         flujo,
         &disco,

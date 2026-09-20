@@ -68,6 +68,7 @@ mod panel_dibujo;
 mod pin_vivo;
 mod pines;
 mod recibir;
+mod recordatorios;
 mod reproductor;
 mod scroll;
 mod sincronizar;
@@ -509,6 +510,13 @@ fn arrancar(
         medir_fotogramas: config.rendimiento.medir_fotogramas,
     };
     ventana_chat::lanzar(lengua, ubicacion.clone(), opciones_lienzo);
+
+    // 8e. Los recordatorios. Su hilo duerme hasta que vence el proximo y solo
+    // da un toque a ESTA ventana: el pin y el globo los saca el bucle de
+    // abajo, que es quien tiene la bandeja y los pines. Se arranca despues
+    // del chat porque lo que vencio con el programa cerrado sale de golpe, y
+    // asi el primer pin nace con la ventana ya en pie.
+    recordatorios::vigilar(ubicacion.raiz(), hwnd.0 as isize);
 
     ventana.ejecutar(|evento| {
         // Todo lo que abre el overlay de captura, en un sitio: los atajos,
@@ -1365,11 +1373,92 @@ fn arrancar(
                 }
             }
         }
+        // Lo que haya vencido mientras tanto. Va AQUI, tras el match y no
+        // dentro de `Evento::Despertar`, por lo mismo que `purgar`: el toque
+        // del vigia y otro evento cualquiera pueden llegar juntos, y entonces
+        // el bucle da una sola vuelta. Mirar una lista vacia no cuesta nada.
+        atender_recordatorios(
+            &mut recursos_overlay,
+            &mut pines,
+            &ubicacion,
+            &textos,
+            hwnd,
+            ritmo_video,
+        );
         seguir
     });
 
     tracing::info!("PixPin Max terminado limpiamente");
     Ok(())
+}
+
+/// Saca a la pantalla lo que se le pidio recordar y le quita la hora.
+///
+/// **El pin es lo que de verdad avisa**, y el globo va de propina: Windows
+/// silencia los globos con la concentracion puesta, en modo presentacion o si
+/// el usuario apago las notificaciones, y un recordatorio que solo sale por
+/// ahi es un recordatorio que se pierde. Es la misma decision del movil
+/// (`pin/RecordatorioReceiver.kt`: «no una notificacion... el pin vuelve a la
+/// pantalla»).
+///
+/// Y acto seguido se le quita la hora al mensaje: si no, la conversacion queda
+/// con una alarma fantasma que ya sono y volveria a sonar en el proximo
+/// arranque. El movil hace lo mismo poniendo `recuerdaEn = null`.
+fn atender_recordatorios(
+    recursos: &mut Option<Recursos>,
+    pines: &mut Option<Pines>,
+    ubicacion: &Ubicacion,
+    textos: &Catalogo,
+    hwnd: windows::Win32::Foundation::HWND,
+    ritmo_video: u32,
+) {
+    let vencidos = recordatorios::tomar_vencidos();
+    if vencidos.is_empty() {
+        return;
+    }
+    // El monitor se busca UNA vez para todos: enumerar monitores es una
+    // llamada al sistema y dos recordatorios para el mismo minuto son
+    // normales (los de «lo que vencio con el programa cerrado» salen juntos).
+    let monitor = pixpin_capture::enumerar_monitores().ok().and_then(|d| {
+        d.monitor_en(pixpin_shell::posicion_del_cursor())
+            .or_else(|| d.principal())
+            .map(|m| m.to_owned())
+    });
+    let mut aviso = pixpin_shell::aviso::Aviso::sobre_la_bandeja(hwnd);
+    let mut hubo = false;
+    for v in vencidos {
+        let r = v.recordatorio;
+        tracing::info!(id = %r.id, "vencio un recordatorio");
+        if let Some(monitor) = &monitor {
+            let pineado = preparar_pines(recursos, pines, ubicacion, textos, hwnd, ritmo_video)
+                .and_then(|p| p.pinear_nota(&r.texto, monitor));
+            if let Err(e) = pineado {
+                tracing::warn!(?e, "no se pudo sacar el pin del recordatorio");
+            }
+        } else {
+            tracing::warn!("sin monitor donde sacar el pin del recordatorio");
+        }
+        if let Err(e) = aviso.mostrar(&textos.t("chat-recordatorio-titulo"), &r.texto) {
+            tracing::warn!(?e, "no se pudo avisar del recordatorio");
+        }
+        match &v.carpeta {
+            Some(carpeta) => {
+                if let Err(e) = recordatorios::olvidar(carpeta, &r.id) {
+                    tracing::warn!(?e, "no se pudo quitar la hora ya sonada");
+                } else {
+                    hubo = true;
+                }
+            }
+            // El proyecto se borro entre que se puso la hora y que llego: no
+            // hay cuaderno que tocar, pero el aviso ya salio, que es lo suyo.
+            None => tracing::warn!(id = %r.id, "recordatorio sin carpeta conocida"),
+        }
+    }
+    // El chat tiene el reloj de esa burbuja pintado: sin esto seguiria ahi
+    // hasta que el usuario entrara y saliera del proyecto.
+    if hubo {
+        ventana_chat::refrescar();
+    }
 }
 
 /// Recursos y Pines comparten creacion perezosa: los pines necesitan el

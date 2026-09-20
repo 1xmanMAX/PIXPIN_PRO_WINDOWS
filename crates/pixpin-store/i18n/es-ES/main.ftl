@@ -250,7 +250,6 @@ chat-ya-en-marcha = PixPin ya está en marcha en Windows: los pines salen con su
 chat-ajustes-bandeja = Los ajustes se abren desde el icono de PixPin en la bandeja
 chat-proyectos-lista = Los proyectos son la lista de la izquierda
 chat-no-hay-voz = Grabar notas de voz todavía no existe en Windows
-chat-no-hay-recordatorios = Los recordatorios todavía no existen en Windows
 chat-no-hay-transcripcion = Pasar audio a texto todavía no existe en Windows
 chat-no-hay-letra = La letra de un audio todavía no existe en Windows
 chat-no-hay-aligerar = Aligerar un PDF todavía no existe en Windows
@@ -658,3 +657,15 @@ pdf-aligerar-sin-fotos = No lleva fotos que se puedan bajar: lo que pesa es el t
 pdf-aligerar-ya-al-minimo = Las fotos ya están al mínimo.
 pdf-aligerar-no-compensa = Solo bajaría de { $antes } a { $despues }: no compensa.
 pdf-aligerar-no-se-lee = El fichero aligerado no se leía bien; se queda el original.
+
+# Los recordatorios: la hora que se le pone a un mensaje y el aviso que sale
+# cuando llega. Las mismas horas que ofrece el móvil, más diez minutos.
+chat-recordar-10-min = Dentro de 10 minutos
+chat-recordar-1-hora = Dentro de 1 hora
+chat-recordar-3-horas = Dentro de 3 horas
+chat-recordar-esta-tarde = Esta tarde (18:00)
+chat-recordar-manana = Mañana (9:00)
+chat-recordatorio-puesto = Te aviso a las { $cuando }
+chat-recordatorio-quitar = Quitar el recordatorio
+chat-recordatorio-quitado = Recordatorio quitado
+chat-recordatorio-titulo = Recordatorio

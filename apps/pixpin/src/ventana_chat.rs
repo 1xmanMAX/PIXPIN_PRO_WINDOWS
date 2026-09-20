@@ -3815,6 +3815,23 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             p.texto(emoji, x, y_hora, HORA_TAM * e, color_texto);
             x += w + 3.0 * e;
         }
+        // El despertador va ANTES de la chincheta, como en el movil, y dice
+        // solo que hay hora puesta: la hora en si se lee en el menu, que es
+        // donde se cambia.
+        if crate::recordatorios::hora_de(m).is_some() {
+            let lado = HORA_TAM * e;
+            p.icono(
+                &mi::ALARM,
+                RectF {
+                    x,
+                    y: y_hora + (alto_hora - lado) / 2.0,
+                    ancho: lado,
+                    alto: lado,
+                },
+                tema.enviar,
+            );
+            x += lado + 3.0 * e;
+        }
         if m.fijado {
             let lado = HORA_TAM * e;
             p.icono(
@@ -4445,6 +4462,12 @@ fn medir_mensaje(
     }
     if let Some(emoji) = m.emoji.as_deref().filter(|s| !s.is_empty()) {
         renglon += p.medir_texto(emoji, HORA_TAM * e).0 + 3.0 * e;
+    }
+    // El despertador y la chincheta ocupan lo mismo. Sumarlos aqui es lo que
+    // evita que el renglon de abajo se coma la ultima palabra del texto: en
+    // el movil ese mismo olvido dejaba el hueco corto.
+    if crate::recordatorios::hora_de(m).is_some() {
+        renglon += (HORA_TAM + 3.0) * e;
     }
     if m.fijado {
         renglon += (HORA_TAM + 3.0) * e;
@@ -9227,6 +9250,13 @@ enum Accion {
     Etiquetas(usize),
     Etiquetar(usize, Option<String>),
     Hilo(usize),
+    /// Ofrecer las horas a las que avisar de este mensaje.
+    Recordar(usize),
+    /// Ponerle la hora elegida, **en milisegundos de hora local**: es lo que
+    /// el usuario leyo en el menu, y a UTC se pasa justo antes de guardarlo.
+    RecordarEn(usize, i64),
+    /// Quitarle la hora que tenia.
+    Olvidar(usize),
     Ir(usize),
     Reenviar(Vec<usize>),
     ReenviarA(Vec<usize>, String),
@@ -9533,6 +9563,26 @@ fn menu_de_etiquetas(textos: &Catalogo, i: usize, puesta: Option<&str>) -> Vec<E
     v
 }
 
+/// Las horas a las que se puede pedir el aviso, como el dialogo del movil
+/// (`DialogoDeRecordatorio`): unos cuantos atajos y nada de teclear.
+///
+/// Se ofrecen horas hechas y no un reloj donde escribir porque el movil hace
+/// exactamente esto y porque escribir aqui pediria una ventana aparte: el
+/// menu no tiene donde teclear. Lo que no cabe en cinco atajos se apunta a la
+/// hora mas cercana y se corrige, que es un toque mas.
+fn menu_de_recordatorio(i: usize, textos: &Catalogo) -> Vec<EntradaMenu> {
+    crate::recordatorios::atajos(pixpin_shell::entorno::ahora_local_ms())
+        .into_iter()
+        .map(|(clave, cuando)| {
+            entrada(
+                Some(&mi::ALARM),
+                textos.t(clave),
+                Accion::RecordarEn(i, cuando),
+            )
+        })
+        .collect()
+}
+
 /// Los demas proyectos, para mandarles algo: todos menos el abierto.
 fn menu_de_proyectos(
     fichas: &[pixpin_proyecto::almacen::Ficha],
@@ -9658,10 +9708,22 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             }),
         ));
     }
+    // La hora a la que avisar. Con una puesta, la entrada pasa a quitarla en
+    // vez de volver a preguntar, como en el movil (`guardados_recordar_quitar`):
+    // el que ya tiene hora solo quiere una cosa de este menu.
+    let recordado = crate::recordatorios::hora_de(m).is_some();
     v.push(entrada(
         Some(&mi::ALARM),
-        textos.t("chat-recordar"),
-        Accion::Aviso("chat-no-hay-recordatorios"),
+        textos.t(if recordado {
+            "chat-recordatorio-quitar"
+        } else {
+            "chat-recordar"
+        }),
+        if recordado {
+            Accion::Olvidar(i)
+        } else {
+            Accion::Recordar(i)
+        },
     ));
     if m.en_buzon {
         v.push(entrada(
@@ -9821,6 +9883,39 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         Accion::Fijar(i) => reescribir(a, i, &|m| m.fijado = !m.fijado),
         Accion::Rescatar(i) => reescribir(a, i, &|m| m.en_buzon = false),
         Accion::Etiquetar(i, emoji) => reescribir(a, i, &|m| m.emoji = emoji.clone()),
+        Accion::Recordar(i) => Efecto::Menu(menu_de_recordatorio(i, cx.textos)),
+        // La hora viaja en el mensaje, como en el movil, asi que ponerla es
+        // reescribirlo; al vigia se le dice aparte porque vive en el hilo
+        // principal y no lee cuadernos.
+        Accion::RecordarEn(i, cuando_local) => {
+            let cuando = crate::recordatorios::de_local_a_utc(cuando_local);
+            let hecho = reescribir(a, i, &|m| crate::recordatorios::poner_hora(m, cuando));
+            if !matches!(hecho, Efecto::Cambio) {
+                return hecho;
+            }
+            if let Some(m) = a.mensajes.get(i) {
+                crate::recordatorios::programar(&carpeta, &m.id, &m.resumen(), cuando);
+            }
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set(
+                "cuando",
+                crate::recordatorios::cuando_legible(
+                    cuando_local,
+                    pixpin_shell::entorno::ahora_local_ms(),
+                ),
+            );
+            Efecto::Aviso(cx.textos.t_args("chat-recordatorio-puesto", &args))
+        }
+        Accion::Olvidar(i) => {
+            let hecho = reescribir(a, i, &|m| crate::recordatorios::quitar_hora(m));
+            if !matches!(hecho, Efecto::Cambio) {
+                return hecho;
+            }
+            if let Some(m) = a.mensajes.get(i) {
+                crate::recordatorios::cancelar(&m.id);
+            }
+            Efecto::Aviso(cx.textos.t("chat-recordatorio-quitado"))
+        }
         Accion::Etiquetas(i) => {
             let puesta = a.mensajes.get(i).and_then(|m| m.emoji.as_deref());
             Efecto::Menu(menu_de_etiquetas(cx.textos, i, puesta))

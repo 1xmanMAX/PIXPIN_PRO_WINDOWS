@@ -489,6 +489,9 @@ pub(crate) fn guardar_lo_recibido(
     // DEBAJO de ella y sin este aviso no sale hasta cerrarla y reabrirla.
     if !guardados.is_empty() {
         crate::ventana_chat::refrescar();
+        // Un `.pixpin` puede traer mensajes con hora puesta desde el movil:
+        // se vuelve a leer la agenda para que suenen aqui tambien.
+        crate::recordatorios::releer(raiz);
     }
     guardados
 }
