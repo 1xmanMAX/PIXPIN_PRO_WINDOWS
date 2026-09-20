@@ -711,4 +711,87 @@ mod pruebas {
         // SAFETY: la ventana la creo este test y nadie mas la usa.
         unsafe { DestroyWindow(hwnd).unwrap() };
     }
+
+    /// A3 de punta a punta contra la GPU de verdad: la superficie con
+    /// colchon y capa de interfaz se crea, se pinta la escena, se pinta la
+    /// interfaz, se desplaza el visual y se estira, todo sin error.
+    ///
+    /// Es la unica forma de comprobar sin abrir la aplicacion que
+    /// `CreateSurface`, `AddVisual`, `BeginDraw`/`EndDraw` y las matrices
+    /// del visual funcionan en este equipo: las cuentas de
+    /// `transformada_de_camara` se prueban sin GPU, pero que
+    /// DirectComposition acepte el arbol de dos capas no se puede deducir.
+    #[test]
+    #[ignore = "necesita GPU y sesion de escritorio; ejecutar con --ignored"]
+    fn una_superficie_con_capas_se_crea_se_pinta_se_desplaza_y_se_estira() {
+        // SAFETY: igual que en el test de arriba: clase del sistema, y la
+        // ventana se destruye al final.
+        let hwnd = unsafe {
+            CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                w!("STATIC"),
+                w!("prueba capas"),
+                WS_POPUP,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                256,
+                256,
+                None,
+                None,
+                Some(GetModuleHandleW(None).unwrap().into()),
+                None,
+            )
+            .expect("ventana de prueba")
+        };
+        let d3d = d3d();
+        let motor = MotorRender::nuevo(&d3d).unwrap();
+        let superficie = Superficie::nueva_con_capas(&motor, &d3d, hwnd, 256, 256, 64)
+            .expect("la superficie con capas deberia crearse");
+        assert!(superficie.tiene_capas());
+        assert_eq!(superficie.margen(), 64.0);
+        // La superficie de escena lleva el colchon por cada lado; la de la
+        // interfaz, no: es del tamano de la ventana.
+        assert_eq!(superficie.tamano_interfaz(), Some((256, 256)));
+
+        let destino = superficie.empezar(&motor).unwrap();
+        motor
+            .dibujar(&destino, |p| p.limpiar(Color::ACENTO))
+            .expect("la escena se pinta");
+        let mut pintada = false;
+        superficie
+            .pintar_interfaz(&motor, |p, _base| {
+                p.rellenar(
+                    crate::lienzo::RectF {
+                        x: 0.0,
+                        y: 0.0,
+                        ancho: 64.0,
+                        alto: 16.0,
+                    },
+                    Color::NEGRO,
+                );
+                pintada = true;
+            })
+            .expect("la interfaz se pinta");
+        assert!(pintada, "el cierre de la interfaz tiene que ejecutarse");
+        superficie
+            .presentar_sincronizado(None)
+            .expect("present de la escena");
+
+        // Y lo que hace A3 en cada fotograma de paneo: mover el visual.
+        superficie.desplazar_escena(30.0, -12.0);
+        assert_eq!(superficie.desplazamiento(), (30.0, -12.0));
+        assert!(superficie.desplazamiento_valido(30.0, -12.0));
+        // Caso negativo: pasado el colchon ya no vale, y quien llama tiene
+        // que repintar en vez de ensenar el borde vacio.
+        assert!(!superficie.desplazamiento_valido(65.0, 0.0));
+        superficie.estirar(1.2, 1.2, -10.0, -10.0);
+        assert!(superficie.esta_estirada());
+        superficie.dejar_de_estirar();
+        superficie.reponer_escena();
+        assert_eq!(superficie.desplazamiento(), (0.0, 0.0));
+
+        drop(superficie);
+        // SAFETY: la ventana la creo este test y nadie mas la usa.
+        unsafe { DestroyWindow(hwnd).unwrap() };
+    }
 }
