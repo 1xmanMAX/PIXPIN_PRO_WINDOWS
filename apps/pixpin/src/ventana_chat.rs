@@ -1220,11 +1220,43 @@ pub fn abrir(
                             .contiene(l)
                     }) {
                         if let Some(a) = abierto.as_mut() {
-                            if a.borrador.trim().is_empty() {
-                                // Sin nada escrito es el microfono, y grabar
-                                // todavia no existe aqui: se dice.
-                                aviso =
-                                    Some((textos.t("chat-no-hay-voz"), std::time::Instant::now()));
+                            if a.grabando.is_some() {
+                                // Ya se estaba grabando: este clic la cierra.
+                                // Una nota de menos de 700 ms no se guarda y
+                                // no deja fichero: fue un resbalon del raton.
+                                let rotulo = match terminar_de_grabar(ubicacion, a, &identidad) {
+                                    Ok(()) => {
+                                        a.scroll = None;
+                                        None
+                                    }
+                                    Err(pixpin_audio::ErrorAudio::DemasiadoCorta { .. }) => {
+                                        Some(textos.t("chat-voz-muy-corta"))
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(?e, "no se pudo cerrar la nota de voz");
+                                        Some(textos.t("chat-voz-fallo"))
+                                    }
+                                };
+                                if let Some(t) = rotulo {
+                                    aviso = Some((t, std::time::Instant::now()));
+                                }
+                            } else if a.borrador.trim().is_empty() {
+                                // Sin nada escrito, el boton es el microfono.
+                                if let Err(e) = empezar_a_grabar(ubicacion, a) {
+                                    tracing::warn!(?e, "no se pudo abrir el microfono");
+                                    aviso = Some((
+                                        textos.t(match e {
+                                            pixpin_audio::ErrorAudio::SinMicrofono => {
+                                                "chat-voz-sin-microfono"
+                                            }
+                                            pixpin_audio::ErrorAudio::SinCodificadorAac => {
+                                                "chat-voz-sin-codec"
+                                            }
+                                            _ => "chat-voz-fallo",
+                                        }),
+                                        std::time::Instant::now(),
+                                    ));
+                                }
                             } else {
                                 match guardar_nota(ubicacion, a, &identidad) {
                                     Ok(()) => {
@@ -2503,11 +2535,18 @@ pub fn abrir(
             hay_que_pintar = true;
         }
         let hasta_el_reproductor = hay_audio.then_some(pixpin_audio::MS_ENTRE_LATIDOS as u32);
+        // Grabando se repinta mas a menudo: el nivel del microfono tiene que
+        // moverse con la voz o no dice si esta cogiendo algo.
+        let hasta_el_nivel = abierto
+            .as_ref()
+            .and_then(|a| a.grabando.as_ref())
+            .map(|_| 100u32);
         let dormir = [
             hasta_el_aviso,
             hasta_el_resalte,
             hasta_el_latido,
             hasta_el_reproductor,
+            hasta_el_nivel,
         ]
         .into_iter()
         .flatten()
@@ -2653,6 +2692,8 @@ struct Abierto {
     /// La biblioteca de audio, si esta abierta. Ocupa el mismo sitio que las
     /// otras dos, y por eso las tres se cierran por `cerrar_panel`.
     biblioteca: Option<BibliotecaAbierta>,
+    /// La nota de voz que se esta grabando, si hay alguna.
+    grabando: Option<Grabando>,
     /// El lienzo que esta vivo dentro de su burbuja, si hay alguno.
     vivo: Option<LienzoVivo>,
     /// La burbuja que se esta arrastrando a la derecha para comentarla: cual
@@ -5037,6 +5078,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         hoja: None,
         mini: None,
         biblioteca: None,
+        grabando: None,
         vivo: None,
         busqueda: None,
         por_etiqueta: None,
@@ -6664,6 +6706,14 @@ fn cerrar_panel(ubicacion: &Ubicacion, a: &mut Abierto) {
     cerrar_mini(ubicacion, a);
     // La biblioteca no guarda nada: es una vista sobre los cuadernos.
     a.biblioteca = None;
+    // Una grabacion a medias se tira, con su fichero. Se llega aqui al
+    // volver, al cambiar de proyecto y al cerrar la ventana, que son
+    // justamente los momentos en que nadie va a pulsar «parar»: guardarla a
+    // escondidas dejaria una nota que el usuario no sabe que existe.
+    if let Some(g) = a.grabando.take() {
+        g.grabadora.cancelar();
+        let _ = std::fs::remove_file(&g.temporal);
+    }
 }
 
 /// Cierra la hoja, guardandola si se toco.
@@ -7033,6 +7083,96 @@ struct MiniAbierta {
     /// (`mini/Contador.kt:68-91` no tiene donde ponerlo): vive mientras el
     /// panel esta abierto y se pierde al cerrarlo.
     elegido: Option<String>,
+}
+
+/// Una nota de voz grabandose ahora mismo.
+///
+/// Se pulsa para empezar y se vuelve a pulsar para terminar, no se mantiene
+/// pulsado: en el movil se sujeta con el pulgar porque el dedo ya esta en la
+/// pantalla, pero aqui tener el boton del raton apretado medio minuto deja la
+/// mano agarrotada y no se puede hacer nada mas mientras tanto.
+struct Grabando {
+    grabadora: pixpin_audio::Grabadora,
+    /// Donde escribe la grabadora. Al terminar, el fichero se mete en el
+    /// proyecto por el mismo camino que cualquier adjunto y este se borra.
+    temporal: std::path::PathBuf,
+}
+
+/// Empieza a grabar, o dice por que no se puede.
+///
+/// El fallo se cuenta **en el acto** y no despues: que no haya microfono, o
+/// que el permiso este quitado en los ajustes de Windows, es un caso normal,
+/// y un boton rojo que no graba nada es peor que un aviso.
+fn empezar_a_grabar(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+) -> Result<(), pixpin_audio::ErrorAudio> {
+    // El temporal vive en la carpeta del proyecto y no en la del sistema: si
+    // la aplicacion se cierra a mitad, lo que quedo esta al lado de su
+    // conversacion y no perdido en `%TEMP%`.
+    let temporal = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id).join(format!(
+        "voz-{}.m4a.parcial",
+        pixpin_shell::entorno::ahora_utc_ms()
+    ));
+    let grabadora = pixpin_audio::Grabadora::empezar(&temporal)?;
+    a.grabando = Some(Grabando {
+        grabadora,
+        temporal,
+    });
+    Ok(())
+}
+
+/// Para de grabar y deja la nota de voz en la conversacion.
+///
+/// El mensaje lleva `duracionMs` y los `picos` con el contrato del movil
+/// —enteros crudos de 0 a 32767, como mucho 256—, que es lo que hace que la
+/// onda se vea igual alli. Los picos van en `resto` porque el `Mensaje` de
+/// aqui no declara ese campo, igual que al leerlos.
+fn terminar_de_grabar(
+    ubicacion: &Ubicacion,
+    a: &mut Abierto,
+    aparato: &str,
+) -> Result<(), pixpin_audio::ErrorAudio> {
+    let Some(g) = a.grabando.take() else {
+        return Ok(());
+    };
+    let temporal = g.temporal.clone();
+    let grabacion = g.grabadora.parar()?;
+    let leido = std::fs::read(&grabacion.ruta);
+    let _ = std::fs::remove_file(&temporal);
+    let bytes = leido.map_err(|_| pixpin_audio::ErrorAudio::NoEsAudio {
+        ruta: grabacion.ruta.display().to_string(),
+    })?;
+
+    let nombre = format!("voz_{}.m4a", pixpin_shell::entorno::ahora_utc_ms());
+    let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let mut mensaje = adjuntar_en_proyecto(
+        ubicacion.raiz(),
+        &a.ficha.id,
+        aparato,
+        &nombre,
+        &bytes,
+        numero,
+    )
+    .map_err(|_| pixpin_audio::ErrorAudio::NoEsAudio {
+        ruta: nombre.clone(),
+    })?;
+    mensaje.duracion_ms = grabacion.duracion_ms;
+    mensaje
+        .resto
+        .insert("picos".into(), serde_json::json!(grabacion.picos));
+    // Se reescribe la linea que acaba de escribir `adjuntar_en_proyecto`: es
+    // una sola pasada mas y evita duplicar ahi el camino de la voz.
+    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
+    if let Err(e) = pixpin_proyecto::cuaderno::reemplazar(&carpeta, &mensaje) {
+        tracing::warn!(?e, "la nota quedo sin duracion ni picos");
+    }
+    a.vistas.push(None);
+    a.ficha.tocado = mensaje.cuando;
+    a.ficha.resumen = nombre;
+    a.mensajes.push(mensaje);
+    a.colocado.borrow_mut().ancho = 0;
+    Ok(())
 }
 
 /// La biblioteca de audio abierta: todas las notas de voz y toda la musica,
@@ -8831,9 +8971,49 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
         tema.campo,
     );
 
+    // Grabando, la caja de escribir deja su sitio al nivel del microfono y
+    // al cronometro: mientras se graba no se escribe, y hace falta ver que
+    // el microfono de verdad esta cogiendo voz y no silencio.
+    let icono = 24.0 * e;
+    if let Some(g) = a.grabando.as_ref() {
+        let boton = d.boton_enviar(alto_texto, escala);
+        icono_centrado(p, &mi::STOP, boton, icono, hex(0xe5534b));
+        let tam = chat::REDACCION_TAM * e;
+        let zona = d.texto_redaccion(alto_texto, escala);
+        let llevado = pixpin_audio::duracion_legible(g.grabadora.llevado_ms());
+        let (ancho_t, alto_t) = p.medir_texto(&llevado, tam);
+        let y = zona.y as f32;
+        p.texto(&llevado, zona.x as f32, y, tam, hex(0xe5534b));
+        // El nivel, en barras que suben y bajan con la voz. Sobre el maximo
+        // de la escala del movil (32767) para que una nota grabada aqui y
+        // otra alli se vean con la misma altura.
+        let x0 = zona.x as f32 + ancho_t + 12.0 * e;
+        let nivel = (g.grabadora.nivel() as f32 / pixpin_audio::PICO_MAXIMO as f32).clamp(0.0, 1.0);
+        let paso = pixpin_ui::chat::ONDA_PASO as f32 * e;
+        let grueso = (pixpin_ui::chat::ONDA_GRUESO as f32 * e).max(1.0);
+        let eje = y + alto_t / 2.0;
+        let cuantas = (((zona.ancho as f32 - ancho_t - 12.0 * e) / paso).floor() as i32).max(0);
+        for n in 0..cuantas {
+            // Las de en medio mas altas: un nivel plano de lado a lado
+            // parece un dibujo y no una voz.
+            let centro = 1.0 - ((n as f32 / cuantas.max(1) as f32) - 0.5).abs() * 2.0;
+            let medio = (alto_t * 0.5 * nivel * centro).max(0.5);
+            p.rellenar_redondeado(
+                RectF {
+                    x: x0 + n as f32 * paso,
+                    y: eje - medio,
+                    ancho: grueso,
+                    alto: medio * 2.0,
+                },
+                grueso / 2.0,
+                tema.enviar,
+            );
+        }
+        return;
+    }
+
     // Un sitio, dos caras: el microfono, o enviar si hay algo escrito. Y el
     // clip se retira al escribir, como en el movil.
-    let icono = 24.0 * e;
     let hay_texto = !a.borrador.trim().is_empty();
     if hay_texto {
         icono_centrado(

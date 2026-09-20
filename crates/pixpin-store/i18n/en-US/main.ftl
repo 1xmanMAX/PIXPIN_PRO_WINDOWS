@@ -638,3 +638,9 @@ mini-alarma-apagar = Turn off
 chat-biblioteca-vacia = No voice notes or songs yet.
 chat-biblioteca-musica = Music
 chat-biblioteca-notas = Voice notes
+
+# Recording a voice note from the chat.
+chat-voz-muy-corta = Too short: hold it a little longer.
+chat-voz-sin-microfono = No microphone, or PixPin isn't allowed to use it. Check Settings › Privacy › Microphone.
+chat-voz-sin-codec = This Windows has no audio encoder (usually an N edition without the media feature pack).
+chat-voz-fallo = The voice note couldn't be recorded.

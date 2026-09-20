@@ -639,3 +639,9 @@ mini-alarma-apagar = Desactivar
 chat-biblioteca-vacia = Todavía no hay ninguna nota de voz ni ninguna canción.
 chat-biblioteca-musica = Música
 chat-biblioteca-notas = Notas de voz
+
+# Grabar una nota de voz desde el chat.
+chat-voz-muy-corta = Demasiado corta: mantén pulsado un poco más.
+chat-voz-sin-microfono = No hay micrófono, o PixPin no tiene permiso para usarlo. Mira en Configuración › Privacidad › Micrófono.
+chat-voz-sin-codec = Este Windows no trae el codificador de audio (suele ser una edición N sin el paquete multimedia).
+chat-voz-fallo = No se pudo grabar la nota de voz.
