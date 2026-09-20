@@ -182,10 +182,41 @@ impl ImagenesLienzo {
         zoom_efectivo: f32,
         opacidad: f32,
     ) {
-        let Some(b) = self.imagenes.get(&id).and_then(|i| i.bitmap.as_ref()) else {
+        self.pintar_recortada(p, id, destino, zoom_efectivo, opacidad, None);
+    }
+
+    /// Lo mismo, ensenando **solo un trozo** de la imagen (`crop`).
+    ///
+    /// El recorte de Excalidraw no encoge la imagen: la caja del elemento
+    /// sigue siendo la misma y lo que cambia es que parte del original se
+    /// estira dentro de ella. Ninguna herramienta de Android lo crea —solo
+    /// llega de un `.excalidraw` importado de la web— pero el movil **si lo
+    /// pinta** (`Renderer.kt:2983`), asi que una imagen recortada abierta
+    /// aqui sin esto ensena lo que el recorte habia quitado.
+    ///
+    /// Con un recorte que no se entiende se pinta la imagen entera, no nada:
+    /// ensenar de mas es feo, pero no ensenar la imagen es perderla.
+    pub fn pintar_recortada(
+        &self,
+        p: &Pintor<'_>,
+        id: u64,
+        destino: RectF,
+        zoom_efectivo: f32,
+        opacidad: f32,
+        recorte: Option<&Recorte>,
+    ) {
+        let Some(i) = self.imagenes.get(&id) else {
             return;
         };
-        p.bitmap_translucido(b, destino, None, modo_nitidez(zoom_efectivo), opacidad);
+        let Some(b) = i.bitmap.as_ref() else {
+            return;
+        };
+        // La fuente va en pixeles del bitmap SUBIDO, que puede ser mas
+        // pequeno que el original (D139, `lado_de_subida`): por eso el
+        // recorte se guarda contra `naturalWidth`/`naturalHeight` y aqui se
+        // traduce al tamano que de verdad tiene el bitmap.
+        let fuente = recorte.and_then(|r| r.fuente_en(i.imagen.ancho, i.imagen.alto));
+        p.bitmap_translucido(b, destino, fuente, modo_nitidez(zoom_efectivo), opacidad);
     }
 
     /// Olvida los bitmaps (dispositivo perdido): el siguiente `asegurar` los
@@ -195,6 +226,65 @@ impl ImagenesLienzo {
             i.bitmap = None;
             i.fallo = false;
         }
+    }
+}
+
+/// **El recorte de una imagen** (`crop` de Excalidraw, `Element.kt:1008`).
+///
+/// Los cuatro primeros campos van en pixeles del ORIGINAL, y por eso hacen
+/// falta los dos ultimos: sin saber contra que tamano se midieron, un recorte
+/// no se puede traducir al bitmap que se subio, que puede ser mas pequeno.
+///
+/// Es un tipo propio y no una `RectF` por eso mismo: una `RectF` suelta no
+/// dice en que unidades esta, y aqui hay tres sistemas de coordenadas a la
+/// vez —la caja del documento, el original y el bitmap subido—.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Recorte {
+    pub x: f32,
+    pub y: f32,
+    pub ancho: f32,
+    pub alto: f32,
+    /// Lo que media el original cuando se hizo el recorte.
+    pub ancho_natural: f32,
+    pub alto_natural: f32,
+}
+
+impl Recorte {
+    /// El rectangulo de la fuente, en pixeles del bitmap de `ancho` x `alto`.
+    ///
+    /// `None` cuando el recorte no dice nada util —area cero, tamano natural
+    /// cero— y entonces se pinta la imagen entera: un recorte roto no puede
+    /// hacer desaparecer la foto.
+    pub fn fuente_en(&self, ancho: u32, alto: u32) -> Option<RectF> {
+        if self.ancho <= 0.0
+            || self.alto <= 0.0
+            || self.ancho_natural <= 0.0
+            || self.alto_natural <= 0.0
+            || ancho == 0
+            || alto == 0
+        {
+            return None;
+        }
+        let (kx, ky) = (
+            ancho as f32 / self.ancho_natural,
+            alto as f32 / self.alto_natural,
+        );
+        // Se recorta a lo que existe: un `crop` que se sale del original
+        // —los hay, de documentos editados a mano— pediria pixeles que no
+        // estan y Direct2D dibujaria basura en el borde.
+        let x0 = (self.x * kx).clamp(0.0, ancho as f32);
+        let y0 = (self.y * ky).clamp(0.0, alto as f32);
+        let x1 = ((self.x + self.ancho) * kx).clamp(0.0, ancho as f32);
+        let y1 = ((self.y + self.alto) * ky).clamp(0.0, alto as f32);
+        if x1 - x0 < 1.0 || y1 - y0 < 1.0 {
+            return None;
+        }
+        Some(RectF {
+            x: x0,
+            y: y0,
+            ancho: x1 - x0,
+            alto: y1 - y0,
+        })
     }
 }
 
@@ -297,6 +387,64 @@ mod pruebas {
             alto,
             pixeles: vec![255; ancho as usize * alto as usize * 4],
         }
+    }
+
+    fn recorte(x: f32, y: f32, ancho: f32, alto: f32) -> Recorte {
+        Recorte {
+            x,
+            y,
+            ancho,
+            alto,
+            ancho_natural: 400.0,
+            alto_natural: 200.0,
+        }
+    }
+
+    #[test]
+    fn un_recorte_pide_el_trozo_del_original_que_le_toca() {
+        // La imagen se subio a su tamano natural: el recorte va tal cual.
+        let f = recorte(100.0, 50.0, 200.0, 100.0)
+            .fuente_en(400, 200)
+            .expect("el recorte tiene area");
+        assert_eq!((f.x, f.y, f.ancho, f.alto), (100.0, 50.0, 200.0, 100.0));
+    }
+
+    #[test]
+    fn un_recorte_se_traduce_al_bitmap_reducido_que_admitio_la_gpu() {
+        // El fallo que esto impide (D139): la imagen se subio a la mitad
+        // porque no cabia, y el recorte —medido contra el original— pedia el
+        // doble de pixeles de los que hay. Se veia el trozo equivocado.
+        let f = recorte(100.0, 50.0, 200.0, 100.0)
+            .fuente_en(200, 100)
+            .unwrap();
+        assert_eq!((f.x, f.y, f.ancho, f.alto), (50.0, 25.0, 100.0, 50.0));
+    }
+
+    #[test]
+    fn un_recorte_que_se_sale_del_original_se_queda_en_el_borde() {
+        // Los hay, de documentos editados a mano: pedir pixeles que no estan
+        // hace que Direct2D dibuje basura en el borde.
+        let f = recorte(300.0, 150.0, 400.0, 400.0).fuente_en(400, 200).unwrap();
+        assert_eq!((f.x, f.y, f.ancho, f.alto), (300.0, 150.0, 100.0, 50.0));
+    }
+
+    #[test]
+    fn un_recorte_roto_no_hace_desaparecer_la_foto() {
+        // Caso negativo, y el que manda: sin area, sin tamano natural o
+        // contra un bitmap vacio se devuelve `None`, que quien pinta lee como
+        // «la imagen entera». Ensenar de mas es feo; no ensenarla, peor.
+        assert!(recorte(0.0, 0.0, 0.0, 100.0).fuente_en(400, 200).is_none());
+        assert!(recorte(0.0, 0.0, 100.0, -5.0).fuente_en(400, 200).is_none());
+        assert!(recorte(0.0, 0.0, 100.0, 100.0).fuente_en(0, 200).is_none());
+        let mut r = recorte(0.0, 0.0, 100.0, 100.0);
+        r.ancho_natural = 0.0;
+        assert!(r.fuente_en(400, 200).is_none());
+        // Y un recorte del todo fuera tampoco: menos de un pixel no se pinta.
+        assert!(
+            recorte(500.0, 0.0, 100.0, 100.0)
+                .fuente_en(400, 200)
+                .is_none()
+        );
     }
 
     #[test]

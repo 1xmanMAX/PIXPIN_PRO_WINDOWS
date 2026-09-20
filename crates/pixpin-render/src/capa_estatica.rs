@@ -23,14 +23,16 @@
 //! medir en la tarea 15, no para prometer.
 
 use windows::Win32::Graphics::Direct2D::Common::{
-    D2D_SIZE_U, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_PIXEL_FORMAT,
+    D2D_POINT_2U, D2D_RECT_U, D2D_SIZE_U, D2D1_ALPHA_MODE_PREMULTIPLIED, D2D1_PIXEL_FORMAT,
 };
 use windows::Win32::Graphics::Direct2D::{
-    D2D1_BITMAP_OPTIONS_TARGET, D2D1_BITMAP_PROPERTIES1, ID2D1Bitmap1,
+    D2D1_BITMAP_OPTIONS_NONE, D2D1_BITMAP_OPTIONS_TARGET, D2D1_BITMAP_PROPERTIES1, ID2D1Bitmap1,
+    ID2D1RenderTarget,
 };
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM;
+use windows::core::Interface;
 
-use crate::lienzo::{Pintor, RectF};
+use crate::lienzo::{Interpolacion, Pintor, RectF};
 use crate::motor::{ErrorRender, MotorRender};
 
 /// Con que se preparo la capa.
@@ -224,6 +226,151 @@ impl Default for CapaEstatica {
     fn default() -> Self {
         Self::nueva()
     }
+}
+
+/// **Tapa un trozo de lo ya pintado: el mosaico de verdad.**
+///
+/// Esta aqui, junto a la capa estatica, porque es la misma idea llevada mas
+/// lejos: leer lo que ya se pinto en vez de volver a pintarlo. La diferencia
+/// es que la capa lo copia tal cual y esto lo **remuestrea**.
+///
+/// El camino es el mismo del movil (`Renderer.kt:1319-1425`), con la GPU
+/// haciendo las dos escalas: se recorta la zona de lo ya pintado, se encoge a
+/// la resolucion del grano —lo que promedia cada cuadro— y se vuelve a
+/// estirar. Sin filtrar al estirar salen los bloques de canto duro; con filtro
+/// bilineal, los mismos bloques se convierten en mancha. Dos efectos por un
+/// solo camino, y **ninguno inventa pixeles**: lo que tapa el mosaico es lo
+/// que habia debajo, promediado hasta no leerse.
+///
+/// Reducir SIEMPRE va con filtro, tambien al pixelar: asi cada bloque sale del
+/// promedio de lo que tapa y no del pixel que caiga en la rejilla. Sin
+/// promediar, mover el mosaico un pixel puede cambiar el bloque entero, y
+/// sobre texto pequeno llegan a leerse letras dentro de un bloque.
+///
+/// `zona` va en **pixeles de pantalla**, que es donde estan los pixeles; el
+/// grano del movil va en pixeles de la escena y lo traduce
+/// `pixpin_motor2d::mosaico::lado_en_pantalla`. Y aqui **no hay opacidad**: un
+/// mosaico a medio tapar no tapa (ver `mosaico.rs`).
+///
+/// Quien llama tiene que haber pintado ya lo que va **debajo** del mosaico y
+/// no haber pintado todavia lo de encima; y no puede pasar aqui la caja de
+/// otro mosaico, o se pixelaria lo ya pixelado y se degradaria en cada pasada.
+pub fn tapar(
+    motor: &mut MotorRender,
+    destino: &ID2D1Bitmap1,
+    zona: (i32, i32, i32, i32),
+    lado: u32,
+    desenfoque: bool,
+) -> Result<(), ErrorRender> {
+    let (x0, y0, x1, y1) = zona;
+    let (ancho, alto) = ((x1 - x0).max(0) as u32, (y1 - y0).max(0) as u32);
+    // Una zona vacia no es un error: es un mosaico que quedo fuera de la
+    // pantalla, y lo que hay que hacer con el es nada.
+    if ancho == 0 || alto == 0 {
+        return Ok(());
+    }
+    let lado = lado.max(1).min(ancho).min(alto);
+    // Hacia arriba: con la division entera, una zona de 30 con grano 16 daria
+    // un solo cuadro y el mosaico taparia mas grueso de lo pedido.
+    let (mini_ancho, mini_alto) = (ancho.div_ceil(lado), alto.div_ceil(lado));
+
+    let propiedades = |opciones| D2D1_BITMAP_PROPERTIES1 {
+        pixelFormat: D2D1_PIXEL_FORMAT {
+            format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
+        },
+        dpiX: 96.0,
+        dpiY: 96.0,
+        bitmapOptions: opciones,
+        colorContext: std::mem::ManuallyDrop::new(None),
+    };
+
+    let contexto = motor.contexto().clone();
+    // SAFETY: el contexto esta vivo (lo mantiene `motor`) y el tamano es el de
+    // la zona, que ya se comprobo no vacia. Sin datos iniciales, D2D solo
+    // reserva memoria.
+    let copia = unsafe {
+        contexto.CreateBitmap(
+            D2D_SIZE_U {
+                width: ancho,
+                height: alto,
+            },
+            None,
+            0,
+            &propiedades(D2D1_BITMAP_OPTIONS_NONE),
+        )?
+    };
+
+    // El recorte de lo ya pintado. `CopyFromRenderTarget` necesita que el
+    // destino de dibujo sea el que se quiere leer, asi que se pone y se
+    // quita aqui mismo: no se puede hacer dentro de `MotorRender::dibujar`,
+    // que abre un fotograma y no expone el contexto.
+    let como_destino: ID2D1RenderTarget = contexto.cast()?;
+    // SAFETY: `destino` es un bitmap de destino del llamante y `copia` es de
+    // este dispositivo, del tamano exacto del rectangulo que se le copia, que
+    // a su vez cae dentro del destino porque el llamante ya lo recorto. El
+    // destino se suelta antes de salir.
+    unsafe {
+        contexto.SetTarget(destino);
+        let r = copia.CopyFromRenderTarget(
+            Some(&D2D_POINT_2U { x: 0, y: 0 }),
+            &como_destino,
+            Some(&D2D_RECT_U {
+                left: x0.max(0) as u32,
+                top: y0.max(0) as u32,
+                right: x1.max(0) as u32,
+                bottom: y1.max(0) as u32,
+            }),
+        );
+        contexto.SetTarget(None);
+        r?;
+    }
+
+    // SAFETY: lo mismo que arriba, con el tamano de la miniatura, que nunca
+    // es cero (`div_ceil` sobre un ancho no nulo).
+    let mini = unsafe {
+        contexto.CreateBitmap(
+            D2D_SIZE_U {
+                width: mini_ancho,
+                height: mini_alto,
+            },
+            None,
+            0,
+            &propiedades(D2D1_BITMAP_OPTIONS_TARGET),
+        )?
+    };
+    motor.dibujar(&mini, |p| {
+        p.bitmap_con(
+            &copia,
+            RectF {
+                x: 0.0,
+                y: 0.0,
+                ancho: mini_ancho as f32,
+                alto: mini_alto as f32,
+            },
+            None,
+            // Al reducir, siempre con filtro: es lo que promedia el cuadro.
+            Interpolacion::Lineal,
+        );
+    })?;
+
+    motor.dibujar(destino, |p| {
+        p.bitmap_con(
+            &mini,
+            RectF {
+                x: x0 as f32,
+                y: y0 as f32,
+                ancho: ancho as f32,
+                alto: alto as f32,
+            },
+            None,
+            if desenfoque {
+                Interpolacion::Lineal
+            } else {
+                Interpolacion::Vecino
+            },
+        );
+    })
 }
 
 #[cfg(test)]
@@ -441,6 +588,85 @@ mod pruebas {
         capa.soltar();
         assert!(!capa.lista(), "soltar tiene que dejar caer el bitmap");
         assert_eq!(capa.bytes(), 0, "sin capa no hay memoria ocupada");
+    }
+
+    #[test]
+    #[ignore = "necesita GPU real; ejecutar con --ignored"]
+    fn el_mosaico_coge_los_pixeles_de_debajo_y_los_promedia_en_cuadros() {
+        // **La prueba del mosaico contra la GPU.** Se pinta un damero de un
+        // pixel —el peor caso, porque cualquier resto de detalle se ve— y se
+        // tapa la mitad izquierda con cuadros de ocho.
+        //
+        // Lo que se comprueba es lo unico que dice que el mosaico tapa: que
+        // dentro de un cuadro no queda un pixel distinto de otro, y que el
+        // color que sale es el PROMEDIO de lo que habia —gris medio— y no un
+        // color inventado. Y de paso, que la mitad de la derecha sigue siendo
+        // el damero, porque un mosaico que se come lo que no es suyo tapa de
+        // mas.
+        let (d3d, ctx) = dispositivo();
+        let mut motor = MotorRender::nuevo(&d3d).unwrap();
+        let tex = textura(&d3d, 64, 64);
+        let destino = motor.destino_desde_textura(&tex).unwrap();
+
+        motor
+            .dibujar(&destino, |p| {
+                p.limpiar(Color::BLANCO);
+                for y in 0..64 {
+                    for x in 0..64 {
+                        if (x + y) % 2 == 0 {
+                            p.rellenar(
+                                RectF {
+                                    x: x as f32,
+                                    y: y as f32,
+                                    ancho: 1.0,
+                                    alto: 1.0,
+                                },
+                                Color::NEGRO,
+                            );
+                        }
+                    }
+                }
+            })
+            .unwrap();
+        // Antes de tapar, el damero es damero: dos pixeles vecinos distintos.
+        assert_ne!(
+            pixel(&d3d, &ctx, &tex, 4, 4),
+            pixel(&d3d, &ctx, &tex, 5, 4),
+            "el damero no se pinto"
+        );
+
+        tapar(&mut motor, &destino, (0, 0, 32, 64), 8, false).expect("deberia tapar");
+
+        // Dentro de un cuadro, todo igual; y ese igual es gris medio.
+        let base = pixel(&d3d, &ctx, &tex, 0, 0);
+        for y in 0..8 {
+            for x in 0..8 {
+                assert_eq!(pixel(&d3d, &ctx, &tex, x, y), base, "({x},{y})");
+            }
+        }
+        assert!(
+            (100..=155).contains(&base[0]),
+            "no es el promedio del damero: {base:?}"
+        );
+        // Caso negativo: fuera de la zona el damero sigue intacto.
+        assert_ne!(
+            pixel(&d3d, &ctx, &tex, 40, 4),
+            pixel(&d3d, &ctx, &tex, 41, 4),
+            "el mosaico tapo mas alla de su caja"
+        );
+    }
+
+    #[test]
+    #[ignore = "necesita GPU real; ejecutar con --ignored"]
+    fn un_mosaico_fuera_de_la_pantalla_no_es_un_error() {
+        // Un mosaico que quedo fuera del encuadre no tiene nada que tapar, y
+        // eso no puede tumbar el fotograma.
+        let (d3d, _ctx) = dispositivo();
+        let mut motor = MotorRender::nuevo(&d3d).unwrap();
+        let tex = textura(&d3d, 64, 64);
+        let destino = motor.destino_desde_textura(&tex).unwrap();
+        assert!(tapar(&mut motor, &destino, (10, 10, 10, 40), 8, false).is_ok());
+        assert!(tapar(&mut motor, &destino, (0, 0, 0, 0), 8, true).is_ok());
     }
 
     #[test]
