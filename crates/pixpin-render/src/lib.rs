@@ -20,7 +20,7 @@ pub mod superficie;
 pub mod tinta;
 pub mod trayecto_svg;
 
-pub use superficie::Superficie;
+pub use superficie::{RitmoComposicion, Superficie};
 
 pub use capa_estatica::{CapaEstatica, Estampa, sigue_valiendo};
 pub use lienzo::{EstiloTexto, Interpolacion, Pintor, RectF, Tramo};

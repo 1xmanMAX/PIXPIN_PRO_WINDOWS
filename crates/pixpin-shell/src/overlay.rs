@@ -635,6 +635,116 @@ pub fn senal_disparada(senal: isize) -> bool {
     unsafe { WaitForSingleObjectEx(HANDLE(senal as *mut _), 0, false) == WAIT_OBJECT_0 }
 }
 
+/// Un temporizador de espera de alta resolucion, para dormir tramos cortos
+/// con precision de menos de un milisegundo.
+///
+/// **Para que.** El plan B1 del 2026-09-19: el fotograma no se empieza nada
+/// mas poder, sino en `plazo de DWM − lo que cuesta pintar − margen`, para
+/// que los puntos del lapiz que entran en el sean los mas frescos posibles.
+/// Eso exige dormir 6, 8 u 11 ms **de verdad**: un `Sleep` normal se rige
+/// por el reloj del planificador (15,6 ms sin `timeBeginPeriod`), asi que
+/// «duerme 8» y despierta a los 15, que es justo perder el refresco que se
+/// venia a ganar.
+///
+/// `CREATE_WAITABLE_TIMER_HIGH_RESOLUTION` (Windows 10 1803+) da esa
+/// precision **sin** subir la resolucion global del sistema con
+/// `timeBeginPeriod(1)`, que la sube para todos los procesos y gasta
+/// bateria. En un Windows mas viejo la bandera falla y `nuevo` devuelve
+/// `None`: el llamante se queda con el comportamiento de siempre.
+pub struct TemporizadorFino {
+    handle: windows::Win32::Foundation::HANDLE,
+}
+
+impl Drop for TemporizadorFino {
+    fn drop(&mut self) {
+        // SAFETY: el handle lo creo `nuevo`, es nuestro y se cierra una vez.
+        unsafe {
+            let _ = windows::Win32::Foundation::CloseHandle(self.handle);
+        }
+    }
+}
+
+impl TemporizadorFino {
+    /// `None` si el sistema no tiene temporizadores de alta resolucion.
+    pub fn nuevo() -> Option<Self> {
+        use windows::Win32::System::Threading::{
+            CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, CreateWaitableTimerExW, TIMER_ALL_ACCESS,
+        };
+        // SAFETY: sin atributos ni nombre; la bandera es la documentada y el
+        // handle que sale es nuestro (lo cierra `Drop`).
+        let handle = unsafe {
+            CreateWaitableTimerExW(
+                None,
+                None,
+                CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+                TIMER_ALL_ACCESS.0,
+            )
+            .ok()?
+        };
+        Some(Self { handle })
+    }
+
+    /// Duerme `ms` milisegundos sin sacar nada de la cola de mensajes.
+    ///
+    /// Que NO se saque nada es el objetivo, no un descuido: lo que llegue
+    /// mientras se duerme se queda en la cola de Windows y lo recoge la
+    /// vuelta siguiente del bucle, que es la que pinta. Esa es toda la idea
+    /// de B1: retrasar la lectura hasta el ultimo momento.
+    ///
+    /// Aun asi la espera es `MsgWaitForMultipleObjectsEx` y no un
+    /// `WaitForSingleObject` a secas: con `QS_SENDMESSAGE` vuelve tambien si
+    /// otro hilo le manda un mensaje SINCRONO a esta ventana (un
+    /// `SendMessage` del sistema, por ejemplo al cambiar de tema o al
+    /// consultar accesibilidad). Bloquear ahi cuelga al que envia hasta que
+    /// pase el tope, y con el editor dibujando eso pasaria sesenta veces por
+    /// segundo.
+    pub fn dormir(&self, ms: f32) {
+        use windows::Win32::Foundation::WAIT_OBJECT_0;
+        use windows::Win32::System::Threading::{INFINITE, SetWaitableTimer};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            MSG, MSG_WAIT_FOR_MULTIPLE_OBJECTS_EX_FLAGS, MsgWaitForMultipleObjectsEx, PM_NOREMOVE,
+            PeekMessageW, QS_SENDMESSAGE,
+        };
+        if !ms.is_finite() || ms <= 0.0 {
+            return;
+        }
+        // En unidades de 100 ns y en negativo: tiempo RELATIVO, que es lo
+        // que documenta `SetWaitableTimer`.
+        let plazo = -((ms as f64 * 10_000.0) as i64);
+        // SAFETY: el handle es nuestro y esta vivo; `plazo` vive durante la
+        // llamada; sin rutina de finalizacion.
+        if unsafe { SetWaitableTimer(self.handle, &plazo, 0, None, None, false) }.is_err() {
+            return;
+        }
+        let handles = [self.handle];
+        // Tope de vueltas: si algo mandara mensajes sincronos sin parar, esto
+        // no puede girar para siempre dentro de un bucle de fotograma.
+        for _ in 0..64 {
+            // SAFETY: el handle vive durante la espera y la cola es la de
+            // este hilo.
+            let r = unsafe {
+                MsgWaitForMultipleObjectsEx(
+                    Some(&handles),
+                    INFINITE,
+                    QS_SENDMESSAGE,
+                    MSG_WAIT_FOR_MULTIPLE_OBJECTS_EX_FLAGS(0),
+                )
+            };
+            if r == WAIT_OBJECT_0 {
+                return;
+            }
+            // Un `PeekMessage` con `PM_NOREMOVE` basta: al mirar la cola,
+            // Windows entrega los mensajes sincronos pendientes. No se saca
+            // ninguno de los nuestros.
+            let mut msg = MSG::default();
+            // SAFETY: `msg` es local y valido; no se retira nada.
+            unsafe {
+                let _ = PeekMessageW(&mut msg, None, 0, 0, PM_NOREMOVE);
+            }
+        }
+    }
+}
+
 pub fn esperar_eventos_o_senal(senal: Option<isize>, tope_ms: Option<u32>) -> bool {
     use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
     use windows::Win32::System::Threading::INFINITE;

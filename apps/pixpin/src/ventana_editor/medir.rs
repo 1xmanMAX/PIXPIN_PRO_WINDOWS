@@ -177,6 +177,82 @@ impl Banco {
     }
 }
 
+impl Banco {
+    /// El mismo guion de cámara, pero con A3: se pinta solo cuando
+    /// `transformada_de_camara` dice que el colchón ya no da.
+    ///
+    /// Devuelve la medida REPARTIDA entre los `VUELTAS` fotogramas del
+    /// guion (que es lo que cuesta de media un fotograma de paneo) y cuántos
+    /// repintados hubo. Los fotogramas compuestos no se miden porque no hay
+    /// nada que medir: ni recorrido de escena, ni primitivas, ni present.
+    ///
+    /// **Lo que este número se deja fuera, dicho claro:** el repintado de
+    /// verdad cubre la ventana MÁS el colchón (a 3000x2000 con 256 px de
+    /// colchón, un 47 % más de superficie y de candidatos), y aquí se pinta
+    /// solo la ventana, porque el destino del banco es del tamaño de la
+    /// pantalla. Así que el coste por repintado está subestimado en ese
+    /// orden; el número de repintados, que es donde está la ganancia, no.
+    fn medir_por_composicion(
+        &self,
+        escena: &Escena,
+        camara: impl Fn(usize) -> Camara,
+    ) -> (Medida, usize) {
+        let mut rejilla = Rejilla::nueva();
+        rejilla.sincronizar(escena);
+        let mut cache = Cache::nueva();
+        let mut cache_tinta = pixpin_render::CacheTinta::nueva();
+        cache_tinta.fijar_escala(crate::navegacion::vista_efectiva(&camara(0), ESCALA).zoom);
+        for i in 0..3 {
+            self.fotograma(
+                escena,
+                &rejilla,
+                &mut cache,
+                &mut cache_tinta,
+                &camara(i),
+                true,
+            );
+        }
+        let mut m = Medida::default();
+        let mut repintados = 0usize;
+        let mut pintada = crate::navegacion::vista_efectiva(&camara(0), ESCALA);
+        for i in 0..VUELTAS {
+            let efectiva = crate::navegacion::vista_efectiva(&camara(i), ESCALA);
+            if crate::ventana_editor::transformada_de_camara(
+                &pintada,
+                &efectiva,
+                ANCHO as f32,
+                ALTO as f32,
+                MARGEN_ESCENA as f32,
+            )
+            .is_some()
+            {
+                continue;
+            }
+            repintados += 1;
+            pintada = efectiva;
+            let (a, b, t, o) = self.fotograma(
+                escena,
+                &rejilla,
+                &mut cache,
+                &mut cache_tinta,
+                &camara(i),
+                true,
+            );
+            m.preparar += a;
+            m.encargar += b;
+            m.total += t;
+            m.objetos += o as f64;
+            m.peor = m.peor.max(t);
+        }
+        let n = VUELTAS as f64;
+        m.preparar /= n;
+        m.encargar /= n;
+        m.total /= n;
+        m.objetos /= n;
+        (m, repintados)
+    }
+}
+
 /// Un elemento con todo lo que no interesa puesto a lo de siempre.
 fn base(id: u64, figura: Figura, x: f32, y: f32, ancho: f32, alto: f32) -> Elemento {
     Elemento {
@@ -335,6 +411,19 @@ fn medir_todo(b: &Banco, escena: &Escena, que: &str) {
             b.medir(escena, cacheadas, zoom),
         );
     }
+    // A3: el mismo paneo, pero pintando SOLO cuando el colchon se agota.
+    // Los fotogramas que no se pintan cuestan una matriz y un `Commit`, que
+    // no se miden aquí porque no tocan ni la CPU del recorrido ni la GPU:
+    // la media por fotograma es la de los repintados dividida entre los 60
+    // fotogramas del guion, que es exactamente lo que siente la mano.
+    let m = b.medir_por_composicion(escena, paneo);
+    escribir(&format!("[A3] {que} paneo por composicion"), m.0);
+    println!(
+        "{:<38} {} repintados de {VUELTAS} fotogramas (colchon {} px)",
+        format!("[A3] {que} paneo por composicion"),
+        m.1,
+        MARGEN_ESCENA
+    );
 }
 
 #[test]

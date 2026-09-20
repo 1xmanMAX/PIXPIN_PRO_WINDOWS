@@ -62,7 +62,7 @@ pub enum PreferenciaNivel {
 }
 
 /// Seccion `[rendimiento]` del fichero de ajustes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Rendimiento {
     /// `auto` deja decidir a los hechos; `completo` y `ligero` fuerzan el
@@ -73,6 +73,30 @@ pub struct Rendimiento {
     /// cola, pintar, presentar y esperar (D129). Es para diagnosticar en el
     /// equipo del usuario sin entrada sintetizada; apagado no registra nada.
     pub medir_fotogramas: bool,
+    /// Empezar el fotograma JUSTO ANTES del plazo de DWM en vez de nada mas
+    /// poder (B1 de la investigacion del 2026-09-19). Los puntos del lapiz
+    /// entran mas frescos y la punta va menos retrasada, a cambio de que un
+    /// calculo fallado pierda un refresco.
+    ///
+    /// Apagado de fabrica: es un cambio de ritmo del bucle y una regresion
+    /// se apaga con esta linea, sin volver a compilar.
+    pub ritmo: bool,
+    /// Desplazar y acercar moviendo el visual de la escena en el compositor
+    /// en vez de repintarla (A3). Encendido de fabrica: es la diferencia
+    /// entre panear a 15-83 ms por fotograma y no pintar nada hasta parar.
+    /// A `false` vuelve el repintado por fotograma de siempre.
+    pub paneo_por_composicion: bool,
+}
+
+impl Default for Rendimiento {
+    fn default() -> Self {
+        Self {
+            nivel: PreferenciaNivel::default(),
+            medir_fotogramas: false,
+            ritmo: false,
+            paneo_por_composicion: true,
+        }
+    }
 }
 
 /// Como se suaviza el trazo a mano (`[tinta] suavizado`).
@@ -414,6 +438,7 @@ mod pruebas {
             rendimiento: Rendimiento {
                 nivel: PreferenciaNivel::Ligero,
                 medir_fotogramas: true,
+                ..Rendimiento::default()
             },
             ..Ajustes::default()
         }
@@ -691,6 +716,26 @@ arranque_con_windows = true
         // Caso negativo: un fichero de antes no tiene la clave y no mide nada.
         let viejo: Ajustes = toml::from_str("[rendimiento]\nnivel = \"ligero\"").unwrap();
         assert!(!viejo.rendimiento.medir_fotogramas);
+    }
+
+    #[test]
+    fn el_ritmo_y_el_paneo_por_composicion_se_leen_del_toml() {
+        // Las dos palancas de la tarea A3/B1: una regresion se apaga con una
+        // linea del fichero, sin volver a compilar.
+        let a: Ajustes =
+            toml::from_str("[rendimiento]\nritmo = true\npaneo_por_composicion = false").unwrap();
+        assert!(a.rendimiento.ritmo);
+        assert!(!a.rendimiento.paneo_por_composicion);
+    }
+
+    #[test]
+    fn un_fichero_viejo_no_enciende_el_ritmo_pero_si_el_paneo_por_composicion() {
+        // Caso negativo: el ritmo cambia CUANDO se pinta, asi que nace
+        // apagado; el paneo por composicion solo cambia COMO se mueve lo ya
+        // pintado y es la mejora que se viene a dar, asi que nace encendido.
+        let viejo: Ajustes = toml::from_str("[rendimiento]\nnivel = \"ligero\"").unwrap();
+        assert!(!viejo.rendimiento.ritmo);
+        assert!(viejo.rendimiento.paneo_por_composicion);
     }
 
     #[test]
