@@ -466,18 +466,30 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
         // significaba ensenar en el escritorio el numero de cuenta que el
         // usuario habia tapado en el telefono. Entre parecerse y tapar, tapa.
         Figura::Mosaico { .. } => {
-            let tapa = e.relleno.filter(|c| c.a > 0.0).unwrap_or(ColorRgba {
-                r: 0.42,
-                g: 0.42,
-                b: 0.45,
-                a: 1.0,
-            });
+            let tapa = e
+                .relleno
+                .filter(|c| c.a > 0.0)
+                .unwrap_or(crate::mosaico::TAPA_MACIZA);
+            // **Girada con el elemento.** El mosaico lleva tirador de giro
+            // como cualquier otro y el marco de seleccion si giraba, asi que
+            // la banda sin girar dejaba asomar las cuatro puntas de lo que el
+            // usuario habia tapado. Se giran los cuatro puntos, no la caja
+            // envolvente: el relleno es un poligono y tapa exactamente lo que
+            // el marco promete.
+            let centro = Punto2::nuevo(e.x + e.ancho / 2.0, e.y + e.alto / 2.0);
+            let girar = |p: Punto2| {
+                if e.angulo == 0.0 {
+                    p
+                } else {
+                    p.girar(centro, e.angulo)
+                }
+            };
             salida.push(Orden::Relleno {
                 puntos: vec![
-                    Punto2::nuevo(e.x, e.y),
-                    Punto2::nuevo(e.x + e.ancho, e.y),
-                    Punto2::nuevo(e.x + e.ancho, e.y + e.alto),
-                    Punto2::nuevo(e.x, e.y + e.alto),
+                    girar(Punto2::nuevo(e.x, e.y)),
+                    girar(Punto2::nuevo(e.x + e.ancho, e.y)),
+                    girar(Punto2::nuevo(e.x + e.ancho, e.y + e.alto)),
+                    girar(Punto2::nuevo(e.x, e.y + e.alto)),
                 ],
                 // **Sin la opacidad del elemento**: un mosaico a medio tapar
                 // no tapa. Es la unica figura del lienzo a la que la

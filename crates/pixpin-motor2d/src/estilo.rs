@@ -261,7 +261,16 @@ pub fn propiedades_de(figura: &Figura) -> &'static [Propiedad] {
         // boton que no puede cambiar nada de lo que se ve.
         Figura::Region { .. } => &[Fondo, Relleno, Opacidad],
         // En el mosaico el grosor hace de tamano de grano.
-        Figura::Mosaico { .. } => &[Grosor, Material, Opacidad],
+        //
+        // **Sin opacidad, y a proposito.** Es la unica figura del lienzo a la
+        // que la opacidad no se le aplica (regla 1 de `mosaico.rs`): un
+        // mosaico al 20 % no es discreto, es un dato legible. Esta tabla
+        // decide tambien que se ESCRIBE al pegar un estilo, asi que con
+        // `Opacidad` aqui, copiar el estilo de un rectangulo al 20 % y
+        // pegarlo sobre un mosaico persistia `opacity: 20` en el
+        // `.excalidraw`. Aqui no se ve a traves —`pintado.rs` fuerza `a: 1`—
+        // pero el valor viajaba, y cualquier visor que lo respete lo revela.
+        Figura::Mosaico { .. } => &[Grosor, Material],
         // La imagen y el emoji: solo lo que los tapa o los redondea.
         Figura::Imagen { .. } => &[Esquinas, Opacidad],
         Figura::Emoji { .. } => &[Opacidad],
@@ -444,6 +453,47 @@ mod pruebas {
             material: Default::default(),
             extras: Default::default(),
         })
+    }
+
+    #[test]
+    fn pegar_un_estilo_translucido_sobre_un_mosaico_no_le_baja_la_opacidad() {
+        // **Privacidad.** Esta tabla decide tambien que se escribe al pegar
+        // un estilo, asi que con `Opacidad` entre las del mosaico, copiar el
+        // estilo de un rectangulo al 20 % y pegarlo sobre un mosaico dejaba
+        // `opacity: 20` guardado en el `.excalidraw`. Aqui no se ve a traves
+        // porque `pintado.rs` fuerza el alfa a uno, pero el valor viajaba al
+        // movil y a cualquier visor, y el que lo respete ensena lo tapado.
+        let mut escena = Escena::nueva();
+        let origen = rect(&mut escena);
+        escena.buscar_mut(origen).unwrap().opacidad = 0.2;
+        let copiado = copiar(escena.buscar(origen).unwrap());
+
+        let mut tapa = Elemento {
+            figura: Figura::Mosaico { desenfoque: false },
+            ..escena.buscar(origen).unwrap().clone()
+        };
+        tapa.id = 0;
+        tapa.opacidad = 1.0;
+        let id = escena.anadir(tapa);
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([id]);
+        pegar_a(&mut escena, &sel, &copiado);
+        assert_eq!(
+            escena.buscar(id).unwrap().opacidad,
+            1.0,
+            "un mosaico a medias no tapa: la opacidad no se le pega"
+        );
+        assert!(
+            !propiedades_de(&Figura::Mosaico { desenfoque: false }).contains(&Propiedad::Opacidad)
+        );
+
+        // El caso negativo: sobre un rectangulo si se pega, o la funcion no
+        // estaria haciendo nada y la prueba pasaria por la razon equivocada.
+        let otro = rect(&mut escena);
+        let mut sel2 = Seleccion::nueva();
+        sel2.poner_todos([otro]);
+        pegar_a(&mut escena, &sel2, &copiado);
+        assert_eq!(escena.buscar(otro).unwrap().opacidad, 0.2);
     }
 
     #[test]

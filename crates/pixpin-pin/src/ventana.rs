@@ -464,6 +464,10 @@ struct PinInterno {
     /// Lo que hay dibujado encima, ya convertido a ordenes por el motor 2D.
     /// El pin solo las pinta: quien las produce es el gestor (S3-B).
     anotaciones: Vec<pixpin_motor2d::Orden>,
+    /// Las cajas de los mosaicos, en pixeles de la imagen original. Lo unico
+    /// que las usa es la lupa, que amplia el bitmap SIN anotaciones y sin
+    /// esto seria una ventana al dato tapado.
+    tapadas: Vec<(f32, f32, f32, f32)>,
     /// En modo anotacion el pin NO se mueve ni se redimensiona: arrastrar
     /// dibuja. Sin un modo explicito, el gesto seria ambiguo (D47).
     anotando: bool,
@@ -693,6 +697,7 @@ impl Pin {
             enfocado: false,
             textos: None,
             anotaciones: Vec::new(),
+            tapadas: Vec::new(),
             anotando: false,
             lupa: None,
             cursor_anotacion: CursorAnotacion::Cruz,
@@ -1113,9 +1118,19 @@ impl Pin {
 
     /// Cambia lo que hay dibujado encima y repinta. Las ordenes vienen del
     /// motor 2D, que es quien sabe convertir elementos en geometria.
-    pub fn poner_anotaciones(&self, ordenes: Vec<pixpin_motor2d::Orden>) {
+    ///
+    /// `tapadas` son las cajas de los mosaicos, en pixeles de la imagen
+    /// original, y van **aparte de las ordenes a proposito**: una `Orden` ya
+    /// no dice de que figura salio, y la lupa necesita saber exactamente que
+    /// trozos no puede ensenar. Ver `pintar`.
+    pub fn poner_anotaciones(
+        &self,
+        ordenes: Vec<pixpin_motor2d::Orden>,
+        tapadas: Vec<(f32, f32, f32, f32)>,
+    ) {
         if let Some(i) = interno_de(self.hwnd) {
             i.anotaciones = ordenes;
+            i.tapadas = tapadas;
             pintar(i);
         }
     }
@@ -1908,6 +1923,33 @@ fn pintar(i: &PinInterno) {
                 alto: l.destino.alto as f32,
             };
             p.bitmap(b, destino, Some(fuente), true);
+            // **Y se vuelve a tapar lo tapado.** `b` es el bitmap ORIGINAL
+            // del pin: las anotaciones se pintan encima de el, no dentro, asi
+            // que el cristal ensenaba el dato que el usuario habia cubierto
+            // con un mosaico. Bastaba pulsar la lupa y pasar el cursor.
+            //
+            // `i.tapadas` va en pixeles de la imagen original, igual que
+            // `fuente` despues de la conversion de arriba.
+            for (x0, y0, x1, y1) in pixpin_motor2d::mosaico::zonas_en_la_lupa(
+                &i.tapadas,
+                (fuente.x, fuente.y, fuente.ancho, fuente.alto),
+                (destino.x, destino.y, destino.ancho, destino.alto),
+            ) {
+                p.rellenar(
+                    RectF {
+                        x: x0,
+                        y: y0,
+                        ancho: x1 - x0,
+                        alto: y1 - y0,
+                    },
+                    Color {
+                        r: pixpin_motor2d::mosaico::TAPA_MACIZA.r,
+                        g: pixpin_motor2d::mosaico::TAPA_MACIZA.g,
+                        b: pixpin_motor2d::mosaico::TAPA_MACIZA.b,
+                        a: 1.0,
+                    },
+                );
+            }
             p.trazar(destino, 2.0 * escala, Color::ACENTO);
         }
     });

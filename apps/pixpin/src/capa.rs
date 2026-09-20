@@ -512,6 +512,41 @@ impl CapaViva {
             }),
             true,
         );
+        // **Y se vuelve a tapar lo tapado.** El bitmap que se acaba de
+        // ampliar es el original SIN anotaciones, asi que el cristal era una
+        // ventana al dato que el usuario habia cubierto con un mosaico:
+        // bastaba pulsar la lupa y pasar el cursor por encima para leerlo.
+        // No se guardaba ni se capturaba, pero en pantalla basta —grabando,
+        // compartiendo pantalla o con alguien detras—.
+        //
+        // Se tapa en opaco y no remuestreando porque aqui no hay acceso a los
+        // pixeles ya compuestos; entre parecerse y tapar, tapa (la misma
+        // decision que `pintado.rs` para la banda del mosaico).
+        for (x0, y0, x1, y1) in pixpin_motor2d::mosaico::zonas_en_la_lupa(
+            &pixpin_motor2d::mosaico::cajas_tapadas(&self.escena.elementos),
+            (
+                fuente.x as f32,
+                fuente.y as f32,
+                fuente.ancho as f32,
+                fuente.alto as f32,
+            ),
+            (destino.x, destino.y, destino.ancho, destino.alto),
+        ) {
+            p.rellenar(
+                RectF {
+                    x: x0,
+                    y: y0,
+                    ancho: x1 - x0,
+                    alto: y1 - y0,
+                },
+                Color {
+                    r: pixpin_motor2d::mosaico::TAPA_MACIZA.r,
+                    g: pixpin_motor2d::mosaico::TAPA_MACIZA.g,
+                    b: pixpin_motor2d::mosaico::TAPA_MACIZA.b,
+                    a: 1.0,
+                },
+            );
+        }
         p.trazar(
             destino,
             2.0 * self.escala_por_cien as f32 / 100.0,

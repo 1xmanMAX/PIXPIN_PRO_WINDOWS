@@ -494,7 +494,10 @@ impl Pines {
         match pixpin_motor2d::cargar(&ruta) {
             Ok(escena) if escena.cuantos_visibles() > 0 => {
                 if let Some(pin) = self.vivos.get(&id) {
-                    pin.poner_anotaciones(pixpin_motor2d::ordenes_de_escena(&escena));
+                    pin.poner_anotaciones(
+                        pixpin_motor2d::ordenes_de_escena(&escena),
+                        pixpin_motor2d::mosaico::cajas_tapadas(&escena.elementos),
+                    );
                 }
             }
             Ok(_) => {}
@@ -1140,7 +1143,10 @@ impl Pines {
 
         pin.poner_modo_anotacion(true);
         pin.poner_cursor_anotacion(cursor_pin_de(anotador.herramienta()));
-        pin.poner_anotaciones(pixpin_motor2d::ordenes_de_escena(&escena));
+        pin.poner_anotaciones(
+            pixpin_motor2d::ordenes_de_escena(&escena),
+            pixpin_motor2d::mosaico::cajas_tapadas(&escena.elementos),
+        );
         self.anotacion = Some(Anotacion {
             id,
             escena,
@@ -1328,7 +1334,10 @@ impl Pines {
                 // esa no toca el pin si el fichero quedo vacio, y lo borrado
                 // en el lienzo seguiria viendose en el pin.
                 if let Some(pin) = self.vivos.get(&id) {
-                    pin.poner_anotaciones(pixpin_motor2d::ordenes_de_escena(&escena));
+                    pin.poner_anotaciones(
+                        pixpin_motor2d::ordenes_de_escena(&escena),
+                        pixpin_motor2d::mosaico::cajas_tapadas(&escena.elementos),
+                    );
                 }
             }
         }
@@ -1459,6 +1468,9 @@ impl Pines {
             return;
         };
         let ordenes = a.ordenes();
+        // Lo que la lupa no puede ensenar, aparte de las ordenes: una `Orden`
+        // ya no dice de que figura salio.
+        let tapadas = pixpin_motor2d::mosaico::cajas_tapadas(&a.escena.elementos);
         let escribiendo = a.anotador.editando_texto();
         let con_lupa = a.anotador.herramienta() == Herramienta::Lupa;
         let aumento = a.anotador.lupa();
@@ -1503,7 +1515,7 @@ impl Pines {
                 None
             };
             pin.poner_lupa(lupa);
-            pin.poner_anotaciones(ordenes);
+            pin.poner_anotaciones(ordenes, tapadas);
         }
     }
 

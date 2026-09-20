@@ -355,3 +355,165 @@ fn el_cuadro_se_encoge_con_la_camara_pero_nunca_desaparece() {
     // Y con la camara metida crece con el dibujo, sin tope.
     assert_eq!(mosaico::lado_en_pantalla(g, 40.0), 320);
 }
+
+/// Amplia `fuente` de `origen` sobre `destino`, como hace `p.bitmap(..)` con
+/// un bitmap de origen y un rectangulo de destino: vecino mas cercano, que es
+/// lo peor que puede hacer el interpolado para la privacidad —y por eso es lo
+/// que hay que probar—.
+fn ampliar_encima(
+    lienzo: &mut [u8],
+    origen: &[u8],
+    fuente: (f32, f32, f32, f32),
+    destino: (f32, f32, f32, f32),
+) {
+    let (fx, fy, fa, fal) = fuente;
+    let (dx, dy, da, dal) = destino;
+    for j in 0..dal as u32 {
+        for i in 0..da as u32 {
+            let sx = (fx + (i as f32 + 0.5) * fa / da) as u32;
+            let sy = (fy + (j as f32 + 0.5) * fal / dal) as u32;
+            if sx >= ANCHO || sy >= ALTO {
+                continue;
+            }
+            let s = ((sy * ANCHO + sx) * 4) as usize;
+            let c = [origen[s], origen[s + 1], origen[s + 2], origen[s + 3]];
+            punto(lienzo, dx as u32 + i, dy as u32 + j, c);
+        }
+    }
+}
+
+/// Rellena una caja en opaco, como el gris macizo con el que quien pinta
+/// vuelve a tapar dentro del cristal.
+fn rellenar(lienzo: &mut [u8], caja: (f32, f32, f32, f32)) {
+    let (x0, y0, x1, y1) = caja;
+    for y in y0 as u32..y1 as u32 {
+        for x in x0 as u32..x1 as u32 {
+            punto(lienzo, x, y, [107, 107, 115, 255]);
+        }
+    }
+}
+
+#[test]
+fn la_lupa_no_deja_leer_por_dentro_lo_que_el_mosaico_tapa() {
+    // **El fallo de privacidad que esta prueba guarda.** La lupa amplia el
+    // bitmap de ORIGEN —la foto congelada, el bitmap del pin—, y ese bitmap
+    // no lleva las anotaciones: el mosaico se pinta encima de el, no dentro.
+    // Asi que bastaba pulsar la lupa y pasar el cursor por encima de un
+    // mosaico para leer el numero tapado. No se guardaba ni se capturaba,
+    // pero en pantalla basta.
+    //
+    // Aqui se reproduce el fotograma entero a mano en CPU: se tapa, se
+    // amplia el original encima, y se mira si el numero vuelve.
+    let original = captura();
+    let caja_mosaico = (16.0f32, 44.0f32, 464.0f32, 96.0f32);
+    let lado = mosaico::lado_en_pantalla(mosaico::grano(2.0), 1.0);
+
+    let mut compuesto = original.clone();
+    assert!(mosaico::tapar_rgba(
+        &mut compuesto,
+        ANCHO,
+        ALTO,
+        caja_mosaico,
+        lado,
+        false
+    ));
+
+    // El cristal: dos aumentos sobre un trozo que cae de lleno en el
+    // mosaico, colocado en una esquina libre de la muestra.
+    let fuente = (100.0f32, 50.0f32, 60.0f32, 20.0f32);
+    let destino = (300.0f32, 4.0f32, 120.0f32, 40.0f32);
+    let zona_cristal = (
+        destino.0 as u32,
+        destino.1 as u32,
+        (destino.0 + destino.2) as u32,
+        (destino.1 + destino.3) as u32,
+    );
+
+    // **El caso negativo primero**: sin volver a tapar, el cristal ensena el
+    // numero. Si esto dejara de ser cierto, la prueba de abajo no probaria
+    // nada y habria que rehacer la muestra.
+    let mut sin_arreglo = compuesto.clone();
+    ampliar_encima(&mut sin_arreglo, &original, fuente, destino);
+    guardar("lupa-sin-arreglo.png", &sin_arreglo);
+    let filtrado = tinta_pura(&sin_arreglo, zona_cristal);
+    assert!(
+        filtrado > 200,
+        "el montaje de la prueba no reproduce la fuga: solo {filtrado} pixeles de tinta"
+    );
+
+    // Y ahora con el arreglo: las zonas que dice `zonas_en_la_lupa` se
+    // vuelven a tapar despues de ampliar.
+    let mut con_arreglo = compuesto.clone();
+    ampliar_encima(&mut con_arreglo, &original, fuente, destino);
+    let zonas = mosaico::zonas_en_la_lupa(&[caja_mosaico], fuente, destino);
+    assert_eq!(zonas.len(), 1, "el mosaico cae dentro del cristal");
+    for z in &zonas {
+        rellenar(&mut con_arreglo, *z);
+    }
+    guardar("lupa-con-arreglo.png", &con_arreglo);
+    assert_eq!(
+        tinta_pura(&con_arreglo, zona_cristal),
+        0,
+        "por el cristal de la lupa se sigue leyendo lo tapado"
+    );
+
+    // Y no se ha tapado de mas: fuera del cristal, el fotograma es el que
+    // ya estaba compuesto y tapado.
+    for y in 0..ALTO {
+        for x in 0..ANCHO {
+            if (zona_cristal.0..zona_cristal.2).contains(&x)
+                && (zona_cristal.1..zona_cristal.3).contains(&y)
+            {
+                continue;
+            }
+            let i = ((y * ANCHO + x) * 4) as usize;
+            assert_eq!(
+                &con_arreglo[i..i + 4],
+                &compuesto[i..i + 4],
+                "la lupa toco el pixel ({x},{y}), que esta fuera de su cristal"
+            );
+        }
+    }
+}
+
+#[test]
+fn una_lupa_lejos_del_mosaico_no_tapa_nada_y_una_esquina_si() {
+    // El caso negativo de `zonas_en_la_lupa`: sin mosaico a la vista, el
+    // cristal se queda limpio. Si tapara siempre, la lupa seria inutil.
+    let caja = (200.0f32, 200.0f32, 260.0f32, 240.0f32);
+    let lejos =
+        mosaico::zonas_en_la_lupa(&[caja], (0.0, 0.0, 50.0, 50.0), (0.0, 0.0, 100.0, 100.0));
+    assert!(lejos.is_empty(), "tapo sin tener nada que tapar");
+
+    // Y un mosaico que entra solo por una esquina si da zona, recortada al
+    // cristal: media esquina sin tapar es media cifra legible.
+    let esquina =
+        mosaico::zonas_en_la_lupa(&[caja], (180.0, 180.0, 40.0, 40.0), (0.0, 0.0, 80.0, 80.0));
+    assert_eq!(esquina.len(), 1);
+    let (x0, y0, x1, y1) = esquina[0];
+    assert!(
+        x0 >= 0.0 && y0 >= 0.0 && x1 <= 80.0 && y1 <= 80.0,
+        "sin recortar al cristal"
+    );
+    assert!(x1 > x0 && y1 > y0);
+    // Con dos aumentos, el trozo de mosaico que entra (20x20 de la fuente)
+    // ocupa la esquina baja-derecha del cristal.
+    assert!(
+        (x0 - 40.0).abs() < 1.5 && (y0 - 40.0).abs() < 1.5,
+        "la esquina cayo en ({x0},{y0})"
+    );
+
+    // Una fuente o un cristal sin area no dan nada en vez de dividir por cero.
+    assert!(
+        mosaico::zonas_en_la_lupa(&[caja], (0.0, 0.0, 0.0, 10.0), (0.0, 0.0, 10.0, 10.0))
+            .is_empty()
+    );
+    assert!(
+        mosaico::zonas_en_la_lupa(&[caja], (0.0, 0.0, 10.0, 10.0), (0.0, 0.0, 10.0, 0.0))
+            .is_empty()
+    );
+    assert!(
+        mosaico::zonas_en_la_lupa(&[caja], (f32::NAN, 0.0, 10.0, 10.0), (0.0, 0.0, 10.0, 10.0))
+            .is_empty()
+    );
+}

@@ -68,6 +68,17 @@ pub fn lado_en_pantalla(grano_escena: f32, zoom: f32) -> u32 {
     (l.round().max(LADO_MINIMO as f32) as u32).max(LADO_MINIMO)
 }
 
+/// **El gris con el que se tapa cuando no hay pixeles que remuestrear.**
+///
+/// Es el mismo de la banda maciza de `pintado.rs`, para que el trozo tapado
+/// dentro del cristal de la lupa no cante como un parche de otro color.
+pub const TAPA_MACIZA: crate::elemento::ColorRgba = crate::elemento::ColorRgba {
+    r: 0.42,
+    g: 0.42,
+    b: 0.45,
+    a: 1.0,
+};
+
 /// Lo que hay que tapar: una caja del documento y con que grano.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Tapado {
@@ -78,6 +89,36 @@ pub struct Tapado {
     /// `mosaicBlur` del movil: con el puesto se tapa con mancha; sin el, con
     /// bloques.
     pub desenfoque: bool,
+}
+
+/// **La caja que de verdad hay que tapar, contando el giro.**
+///
+/// `Elemento::caja()` devuelve `(x, y, x+ancho, y+alto)` e **ignora el
+/// angulo**, pero el mosaico se puede girar como cualquier otro elemento
+/// (`tiradores.rs` le da tirador de giro y nada lo excluye) y el marco de
+/// seleccion si gira. Tapando la caja sin girar, las cuatro puntas de lo que
+/// el usuario quiso tapar se quedaban fuera: un mosaico sobre un texto,
+/// girado 30°, dejaba asomar las esquinas del texto.
+///
+/// Se devuelve la caja **de las cuatro esquinas ya giradas**, que tapa de mas
+/// y nunca de menos. De mas es feo; de menos es un numero de cuenta legible.
+pub fn caja_girada(e: &Elemento) -> (f32, f32, f32, f32) {
+    let (x0, y0, x1, y1) = e.caja();
+    if e.angulo == 0.0 || !e.angulo.is_finite() {
+        return (x0, y0, x1, y1);
+    }
+    // El giro va alrededor del centro de la caja CRUDA, que es la convencion
+    // del resto del motor (ver `perimetros::contornos_de`).
+    let centro =
+        crate::vector::Punto2::nuevo((e.x + e.x + e.ancho) / 2.0, (e.y + e.y + e.alto) / 2.0);
+    let esquinas = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+        .map(|(x, y)| crate::vector::Punto2::nuevo(x, y).girar(centro, e.angulo));
+    (
+        esquinas.iter().map(|p| p.x).fold(f32::MAX, f32::min),
+        esquinas.iter().map(|p| p.y).fold(f32::MAX, f32::min),
+        esquinas.iter().map(|p| p.x).fold(f32::MIN, f32::max),
+        esquinas.iter().map(|p| p.y).fold(f32::MIN, f32::max),
+    )
 }
 
 /// El tapado de un elemento, si es un mosaico que hay que tapar.
@@ -91,7 +132,7 @@ pub fn tapado_de(e: &Elemento) -> Option<Tapado> {
     if e.borrado {
         return None;
     }
-    let (x0, y0, x1, y1) = e.caja();
+    let (x0, y0, x1, y1) = caja_girada(e);
     if !(x1 > x0 && y1 > y0) {
         return None;
     }
@@ -100,6 +141,67 @@ pub fn tapado_de(e: &Elemento) -> Option<Tapado> {
         grano: grano(e.grosor),
         desenfoque,
     })
+}
+
+/// **Las cajas de todos los mosaicos de una escena, ya giradas.**
+///
+/// Es lo que necesita quien pinta algo que pueda ensenar el original por
+/// encima del tapado —la lupa— sin tener que conocer `Figura`.
+pub fn cajas_tapadas(elementos: &[Elemento]) -> Vec<(f32, f32, f32, f32)> {
+    tapados(elementos)
+        .into_iter()
+        .map(|(_, t)| t.caja)
+        .collect()
+}
+
+/// **Lo que hay que volver a tapar DENTRO del cristal de una lupa.**
+///
+/// La lupa amplia el bitmap de origen —la foto congelada, el ultimo
+/// fotograma, el bitmap del pin—, y ese bitmap **no tiene las anotaciones**:
+/// el mosaico se pinta encima de el, no dentro. Asi que el cristal era,
+/// literalmente, una ventana al original por encima del tapado: bastaba
+/// pulsar la lupa y pasar el cursor para leer lo tapado.
+///
+/// Aqui se traduce cada caja de mosaico desde las coordenadas del documento a
+/// las del cristal, con el mismo aumento que usa el bitmap, y se recorta al
+/// cristal. Quien pinta solo tiene que rellenar esas cajas en opaco **despues**
+/// de dibujar el bitmap ampliado.
+///
+/// `fuente` y `destino` son `(x, y, ancho, alto)`. Una fuente o un destino sin
+/// area no da ninguna zona: no hay cristal donde pintar.
+pub fn zonas_en_la_lupa(
+    cajas: &[(f32, f32, f32, f32)],
+    fuente: (f32, f32, f32, f32),
+    destino: (f32, f32, f32, f32),
+) -> Vec<(f32, f32, f32, f32)> {
+    let (fx, fy, fa, fal) = fuente;
+    let (dx, dy, da, dal) = destino;
+    if !(fa > 0.0 && fal > 0.0 && da > 0.0 && dal > 0.0) {
+        return Vec::new();
+    }
+    if ![fx, fy, fa, fal, dx, dy, da, dal]
+        .iter()
+        .all(|v| v.is_finite())
+    {
+        return Vec::new();
+    }
+    let (kx, ky) = (da / fa, dal / fal);
+    cajas
+        .iter()
+        .filter_map(|&(x0, y0, x1, y1)| {
+            // Primero al cristal, y despues se recorta a el. Al reves se
+            // perderia el caso del mosaico que entra solo por una esquina.
+            let a = (dx + (x0 - fx) * kx, dy + (y0 - fy) * ky);
+            let b = (dx + (x1 - fx) * kx, dy + (y1 - fy) * ky);
+            // Hacia FUERA, como `recortar`: media fila de pixeles sin tapar
+            // en el borde del cristal es media fila legible.
+            let zx0 = a.0.min(b.0).floor().max(dx);
+            let zy0 = a.1.min(b.1).floor().max(dy);
+            let zx1 = a.0.max(b.0).ceil().min(dx + da);
+            let zy1 = a.1.max(b.1).ceil().min(dy + dal);
+            (zx1 > zx0 && zy1 > zy0).then_some((zx0, zy0, zx1, zy1))
+        })
+        .collect()
 }
 
 /// Todos los tapados de una lista de elementos, **en su orden de pintado**.
@@ -362,6 +464,87 @@ mod pruebas {
         assert_eq!(lado_en_pantalla(8.0, f32::NAN), LADO_MINIMO);
         // Y con la camara encima, el cuadro crece con el dibujo.
         assert_eq!(lado_en_pantalla(8.0, 4.0), 32);
+    }
+
+    #[test]
+    fn un_mosaico_girado_tapa_las_cuatro_puntas_y_no_su_caja_sin_girar() {
+        // **El fallo:** `Elemento::caja()` ignora el angulo, pero el mosaico
+        // lleva tirador de giro como cualquier otro y el marco de seleccion
+        // SI giraba. Tapando la caja cruda, las cuatro puntas de lo que el
+        // usuario quiso tapar asomaban por las esquinas.
+        let mut e = mosaico(2.0, false);
+        // Cuadrado, para que el cuarto de vuelta se vea de un vistazo.
+        e.ancho = 40.0;
+        e.alto = 40.0;
+        let sin_girar = caja_girada(&e);
+        assert_eq!(sin_girar, (10.0, 20.0, 50.0, 60.0));
+
+        // Un cuarto de vuelta de un cuadrado da la MISMA caja: si esto
+        // cambiara, el giro estaria tomando otro centro.
+        e.angulo = std::f32::consts::FRAC_PI_2;
+        let cuarto = caja_girada(&e);
+        for (a, b) in [
+            (cuarto.0, 10.0),
+            (cuarto.1, 20.0),
+            (cuarto.2, 50.0),
+            (cuarto.3, 60.0),
+        ] {
+            assert!(
+                (a - b).abs() < 1e-3,
+                "el cuarto de vuelta movio la caja: {cuarto:?}"
+            );
+        }
+
+        // A 45° la caja crece por las puntas: es justo lo que antes se
+        // quedaba fuera. Un cuadrado de lado 40 girado 45° mide 40*sqrt(2).
+        e.angulo = std::f32::consts::FRAC_PI_4;
+        let (x0, y0, x1, y1) = caja_girada(&e);
+        let diagonal = 40.0 * std::f32::consts::SQRT_2;
+        assert!(
+            (x1 - x0 - diagonal).abs() < 1e-2 && (y1 - y0 - diagonal).abs() < 1e-2,
+            "la caja girada mide {}x{} y tenia que medir {diagonal}",
+            x1 - x0,
+            y1 - y0
+        );
+        // Y **contiene** a la de antes: tapar de mas es feo, tapar de menos
+        // es un numero de cuenta legible.
+        assert!(x0 <= sin_girar.0 && y0 <= sin_girar.1);
+        assert!(x1 >= sin_girar.2 && y1 >= sin_girar.3);
+
+        // El caso negativo: sin angulo no se toca nada, para no tapar de mas
+        // en el caso normal, que es el de casi todos los mosaicos.
+        e.angulo = 0.0;
+        assert_eq!(caja_girada(&e), sin_girar);
+        // Un angulo imposible tampoco descoloca la caja.
+        e.angulo = f32::NAN;
+        assert_eq!(caja_girada(&e), sin_girar);
+    }
+
+    #[test]
+    fn el_plan_de_pantalla_de_un_mosaico_girado_cubre_sus_esquinas() {
+        // La misma promesa, ya traducida a pixeles: `plan_en_pantalla` es lo
+        // que usa quien pinta con GPU, y tiene que llevar la caja girada.
+        let mut e = mosaico(2.0, false);
+        e.ancho = 40.0;
+        e.alto = 40.0;
+        let camara = crate::camara::Camara::default();
+        let recto = plan_en_pantalla(std::slice::from_ref(&e), &camara, 400, 400);
+        e.angulo = std::f32::consts::FRAC_PI_4;
+        let girado = plan_en_pantalla(std::slice::from_ref(&e), &camara, 400, 400);
+        assert_eq!(recto.len(), 1);
+        assert_eq!(girado.len(), 1);
+        let (rx0, ry0, rx1, ry1) = recto[0].zona;
+        let (gx0, gy0, gx1, gy1) = girado[0].zona;
+        assert!(
+            gx0 <= rx0 && gy0 <= ry0 && gx1 >= rx1 && gy1 >= ry1,
+            "la zona girada {:?} no cubre la recta {:?}",
+            girado[0].zona,
+            recto[0].zona
+        );
+        assert!(
+            gx1 - gx0 > rx1 - rx0,
+            "a 45° la zona tiene que ser mas ancha, no igual"
+        );
     }
 
     #[test]
