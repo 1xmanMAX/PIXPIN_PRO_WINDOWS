@@ -76,11 +76,21 @@ pub const BOTONES: [BotonCaja; 14] = [
 /// En el orden de la barra de Excalidraw (seleccion, rectangulo, elipse,
 /// flecha, linea, dibujo, texto, borrador) y despues, en su propio grupo,
 /// las que Excalidraw no tiene.
-pub const BOTONES_EDITOR: [BotonCaja; 18] = [
+/// Las doce de la tanda cero van aqui con las demas, cada una en el grupo al
+/// que pertenece y no todas juntas al final: la barra se lee por grupos, y un
+/// cajon de «lo nuevo» deja de tener sentido en cuanto deja de ser nuevo. El
+/// rombo entra entre el rectangulo y la elipse porque es una de las diez
+/// figuras principales de Excalidraw, y las dos flechas nuevas, junto a la
+/// flecha.
+pub const BOTONES_EDITOR: [BotonCaja; 30] = [
     BotonCaja::Elegir(Herramienta::Mano),
+    BotonCaja::Elegir(Herramienta::Lazo),
     BotonCaja::Elegir(Herramienta::Rectangulo),
+    BotonCaja::Elegir(Herramienta::Rombo),
     BotonCaja::Elegir(Herramienta::Elipse),
     BotonCaja::Elegir(Herramienta::Flecha),
+    BotonCaja::Elegir(Herramienta::FlechaCodos),
+    BotonCaja::Elegir(Herramienta::FlechaLibre),
     BotonCaja::Elegir(Herramienta::Linea),
     BotonCaja::Elegir(Herramienta::Lapiz),
     BotonCaja::Elegir(Herramienta::Texto),
@@ -88,10 +98,19 @@ pub const BOTONES_EDITOR: [BotonCaja; 18] = [
     BotonCaja::Elegir(Herramienta::Resaltador),
     BotonCaja::Elegir(Herramienta::Foco),
     BotonCaja::Elegir(Herramienta::Lupa),
+    BotonCaja::Elegir(Herramienta::Mosaico),
+    BotonCaja::Elegir(Herramienta::Arco),
+    BotonCaja::Elegir(Herramienta::Serie),
+    BotonCaja::Elegir(Herramienta::Punto),
     BotonCaja::Elegir(Herramienta::Cota),
     BotonCaja::Elegir(Herramienta::Escalar),
     BotonCaja::Elegir(Herramienta::EscalaGrafica),
     BotonCaja::Elegir(Herramienta::Marco),
+    // Las cuatro que no dibujan nada: miran lo que ya hay y lo cambian.
+    BotonCaja::Elegir(Herramienta::Relleno),
+    BotonCaja::Elegir(Herramienta::Recortar),
+    BotonCaja::Elegir(Herramienta::Extender),
+    BotonCaja::Elegir(Herramienta::CopiarEstilo),
     BotonCaja::Deshacer,
     BotonCaja::Rehacer,
     BotonCaja::Salir,
@@ -111,20 +130,36 @@ pub struct CajaHerramientas {
 }
 
 /// El grupo de un boton en la barra: entre grupos va un separador. Las de
-/// dibujar que tiene Excalidraw, las propias de PixPin y las acciones.
+/// dibujar que tiene Excalidraw, las propias de PixPin, las que trabajan
+/// sobre lo que ya hay, y las acciones.
+///
+/// El tercer grupo es el que mas se agradece de un vistazo: el bote, recortar,
+/// extender y copiar estilo **no dibujan nada**. Mezcladas con las que si
+/// dibujan, un clic con una de ellas puesta parece que no ha hecho nada
+/// cuando lo que ha pasado es que no habia nada cerca sobre lo que actuar.
 pub fn grupo(b: BotonCaja) -> u8 {
     match b {
         BotonCaja::Elegir(
             Herramienta::Resaltador
             | Herramienta::Foco
             | Herramienta::Lupa
+            | Herramienta::Mosaico
+            | Herramienta::Arco
+            | Herramienta::Serie
+            | Herramienta::Punto
             | Herramienta::Cota
             | Herramienta::Escalar
             | Herramienta::EscalaGrafica
             | Herramienta::Marco,
         ) => 1,
+        BotonCaja::Elegir(
+            Herramienta::Relleno
+            | Herramienta::Recortar
+            | Herramienta::Extender
+            | Herramienta::CopiarEstilo,
+        ) => 2,
         BotonCaja::Elegir(_) => 0,
-        BotonCaja::Deshacer | BotonCaja::Rehacer | BotonCaja::Color | BotonCaja::Salir => 2,
+        BotonCaja::Deshacer | BotonCaja::Rehacer | BotonCaja::Color | BotonCaja::Salir => 3,
     }
 }
 
@@ -500,7 +535,7 @@ mod pruebas {
             .iter()
             .filter(|b| matches!(b, BotonCaja::Elegir(_)))
             .count();
-        assert_eq!(herramientas, 15, "faltan o sobran herramientas en la caja");
+        assert_eq!(herramientas, 27, "faltan o sobran herramientas en la caja");
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Elegir(Herramienta::Cota)));
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Elegir(Herramienta::Escalar)));
         assert!(BOTONES_EDITOR.contains(&BotonCaja::Elegir(Herramienta::EscalaGrafica)));
@@ -572,18 +607,15 @@ mod pruebas {
     }
 
     #[test]
-    fn la_caja_con_dieciocho_botones_sigue_cabiendo_entera_en_el_area_de_trabajo() {
+    fn la_columna_del_anotador_cabe_entera_en_el_area_de_trabajo() {
         // `colocar` promete en su documentacion que la caja siempre queda
-        // entera en el area de trabajo. BOTONES_EDITOR es la lista mas
-        // larga de las dos (18, cuatro mas que BOTONES): si la promesa se
-        // sostiene para ella, se sostiene para cualquiera de las dos.
-        //
-        // El area es la de un monitor normal, no la "bajo" de
-        // `la_caja_nunca_se_sale_del_area_de_trabajo`: esa es a proposito
-        // mas baja que dieciocho botones (para probar el tope, no el caso
-        // de uso), asi que no sirve para comprobar que "cabe entera".
-        let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES_EDITOR);
-        assert_eq!(BOTONES_EDITOR.len(), 18);
+        // entera en el area de trabajo. Se mide con `BOTONES`, que es la
+        // lista que de verdad se pinta en columna: el editor —el unico que
+        // usa `BOTONES_EDITOR`— la pone en `barra_superior`, y sus treinta
+        // botones puestos uno encima de otro miden 1270 px, mas alto que un
+        // monitor de 1080. Probar la columna con una lista que nadie pone en
+        // columna seria probar un caso que no existe.
+        let c = CajaHerramientas::colocar(contenido(), area(), 100, &BOTONES);
         assert!(
             c.marco.arriba() >= area().arriba() && c.marco.abajo() <= area().abajo(),
             "se sale por arriba o por abajo: {c:?}"
@@ -592,7 +624,7 @@ mod pruebas {
             c.marco.izquierda() >= area().izquierda() && c.marco.derecha() <= area().derecha(),
             "se sale de lado: {c:?}"
         );
-        for i in 0..BOTONES_EDITOR.len() {
+        for i in 0..BOTONES.len() {
             let r = c.rect_de(i);
             assert!(
                 r.arriba() >= c.marco.arriba() && r.abajo() <= c.marco.abajo(),
@@ -600,6 +632,42 @@ mod pruebas {
             );
         }
     }
+
+    /// **La barra del editor con sus treinta botones cabe en un monitor
+    /// normal**, y sobre todo: Salir cabe.
+    ///
+    /// Es la medida que hay que rehacer cada vez que entra una herramienta
+    /// nueva. `barra_superior` no parte la barra en dos filas: si no cabe, la
+    /// pega a la izquierda y lo que sobra por la derecha —que son justo
+    /// Deshacer, Rehacer y Salir— queda fuera de la pantalla y deja de poder
+    /// pulsarse.
+    #[test]
+    fn los_treinta_botones_del_editor_caben_a_lo_ancho_y_salir_el_ultimo() {
+        assert_eq!(BOTONES_EDITOR.len(), 30);
+        let b = CajaHerramientas::barra_superior(area(), 100, &BOTONES_EDITOR);
+        assert_eq!(b.marco.ancho, 1231, "la barra mide otra cosa: {b:?}");
+        let ultimo = b.rect_de(BOTONES_EDITOR.len() - 1);
+        assert_eq!(BOTONES_EDITOR[BOTONES_EDITOR.len() - 1], BotonCaja::Salir);
+        assert!(
+            ultimo.derecha() <= area().derecha(),
+            "Salir se sale de la pantalla: {ultimo:?}"
+        );
+        // Caso negativo: en un portatil estrecho **no** cabe, y esto lo deja
+        // dicho en vez de descubrirse en pantalla. El dia que la barra sepa
+        // partirse en dos filas, esta mitad de la prueba se cae sola.
+        let estrecha = Rect {
+            x: 0,
+            y: 0,
+            ancho: 1200,
+            alto: 800,
+        };
+        let b = CajaHerramientas::barra_superior(estrecha, 100, &BOTONES_EDITOR);
+        assert!(
+            b.rect_de(BOTONES_EDITOR.len() - 1).derecha() > estrecha.derecha(),
+            "si esto deja de fallar, la barra ya cabe y sobra media prueba"
+        );
+    }
+
     #[test]
     fn la_barra_de_excalidraw_va_centrada_arriba_a_16_px_y_mide_44_de_alto() {
         let b = CajaHerramientas::barra_superior(area(), 100, &BOTONES_EDITOR);
@@ -618,7 +686,11 @@ mod pruebas {
     fn los_botones_de_la_barra_son_de_36_y_no_se_pisan_con_los_separadores() {
         let b = CajaHerramientas::barra_superior(area(), 100, &BOTONES_EDITOR);
         let seps = b.separadores();
-        assert_eq!(seps.len(), 2, "dibujar | propias de PixPin | acciones");
+        assert_eq!(
+            seps.len(),
+            3,
+            "dibujar | propias de PixPin | sobre lo que ya hay | acciones"
+        );
         for i in 0..BOTONES_EDITOR.len() {
             let r = b.rect_de(i);
             assert_eq!((r.ancho, r.alto), (36, 36));
