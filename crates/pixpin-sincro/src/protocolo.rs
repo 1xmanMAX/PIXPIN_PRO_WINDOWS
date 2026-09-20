@@ -489,6 +489,19 @@ impl<D: Disco + ?Sized> Respondedor<'_, D> {
         let ruta = || p.ruta.clone().ok_or_else(|| fallo("Falta la ruta"));
         let nombre = |rel: &str| rel.rsplit('/').next().unwrap_or(rel).to_string();
         match p.t.as_str() {
+            // **Va TODO el catalogo a proposito, no es un descuido.**
+            //
+            // Comprobado contra el movil: `Protocolo.kt:290` (rama `main`)
+            // es esta misma linea, `"catalogo" -> enviar(Respuesta(chats =
+            // disco.chats()))`, sin mirar ningun campo de la peticion; y su
+            // `Disco.chats()` (`Disco.kt:156`) devuelve la general mas todos
+            // los proyectos. Quien recorta es **el que inicia la vuelta**,
+            // con los chats que el usuario marco para ese aparato
+            // (`SincronizarActivity.kt:404-423`, aqui `vuelta::una`).
+            //
+            // Filtrar aqui exigiria un campo nuevo en `Peticion`, y un
+            // movil que no lo manda se quedaria sin catalogo: seria romper
+            // el alambre para adelantar un recorte que el otro lado ya hace.
             "catalogo" => enviar(
                 canal,
                 &Respuesta {
