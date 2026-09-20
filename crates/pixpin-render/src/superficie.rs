@@ -37,19 +37,28 @@ pub struct RitmoComposicion {
     pub periodo_ms: f32,
 }
 
-/// La capa de la INTERFAZ: la barra, el panel y la ruta del universo, en un
-/// visual propio ENCIMA del de la escena.
+/// Una capa de composicion encima de la escena: su visual y su superficie.
 ///
 /// Existe por A3: si la escena se desplaza moviendo su visual, lo que no es
 /// escena no puede ir en la misma superficie o la barra de herramientas se
-/// iria con el lienzo. Es una superficie de composicion y no una segunda
-/// swapchain a proposito: una swapchain tiene dos buffers (el doble de
-/// memoria de video) y la interfaz se repinta cuando cambia, no sesenta
-/// veces por segundo.
-struct CapaInterfaz {
-    _visual: IDCompositionVisual,
+/// iria con el lienzo. Son superficies de composicion y no segundas
+/// swapchains a proposito: una swapchain tiene dos buffers (el doble de
+/// memoria de video) y, sobre todo, en una swapchain el mapa que se pinta
+/// lleva dentro lo de hace DOS presentes, que es lo que obliga a la union de
+/// zonas sucias de D148. Una `IDCompositionSurface` conserva lo que tenia:
+/// se actualiza el trozo que cambia y ya.
+///
+/// Hay dos: la de la INTERFAZ (la barra, el panel y la ruta del universo) y
+/// la de la TINTA viva (B2), que va entre la escena y la interfaz.
+struct CapaDComp {
+    visual: IDCompositionVisual,
     superficie: windows::Win32::Graphics::DirectComposition::IDCompositionSurface,
     tamano: (u32, u32),
+    /// Si el visual tiene la superficie puesta. La capa de tinta se queda
+    /// SIN contenido mientras no se dibuja: un visual transparente de
+    /// pantalla entera le cuesta a DWM una mezcla por composicion aunque no
+    /// tenga ni un pixel pintado.
+    encendida: std::cell::Cell<bool>,
 }
 
 pub struct Superficie {
@@ -83,7 +92,16 @@ pub struct Superficie {
     /// La senal de «ya se puede presentar otro fotograma», solo en la
     /// superficie de baja latencia. Se cierra en `Drop`.
     senal: Option<windows::Win32::Foundation::HANDLE>,
-    interfaz: std::cell::RefCell<Option<CapaInterfaz>>,
+    interfaz: std::cell::RefCell<Option<CapaDComp>>,
+    /// B2: la capa del trazo en curso, entre la escena y la interfaz.
+    tinta: std::cell::RefCell<Option<CapaDComp>>,
+    /// A3 fase 2, DEBAJO de la escena: el degradado del cielo del universo,
+    /// que no se mueve nunca (esta en pixeles de pantalla).
+    cielo: std::cell::RefCell<Option<CapaDComp>>,
+    /// Y las estrellas, que se mueven a su paralaje, no al del lienzo.
+    fondo: std::cell::RefCell<Option<CapaDComp>>,
+    margen_fondo: std::cell::Cell<u32>,
+    desplazamiento_fondo: std::cell::Cell<(f32, f32)>,
 }
 
 impl Drop for Superficie {
@@ -236,39 +254,48 @@ impl Superficie {
         // Con capas, la raiz es un visual vacio del que cuelgan la escena y
         // la interfaz. Sin capas, la raiz ES el visual de la escena, igual
         // que siempre: una superficie de pin no paga ni un objeto de mas.
-        let (objetivo, visual, raiz, interfaz) = unsafe {
+        let (objetivo, visual, raiz, tinta, interfaz) = unsafe {
             let objetivo = dcomp.CreateTargetForHwnd(hwnd, true)?;
             let visual = dcomp.CreateVisual()?;
             visual.SetContent(&swapchain)?;
             if margen == 0 {
                 objetivo.SetRoot(&visual)?;
                 dcomp.Commit()?;
-                (objetivo, visual.clone(), visual, None)
+                (objetivo, visual.clone(), visual, None, None)
             } else {
                 let raiz = dcomp.CreateVisual()?;
                 raiz.AddVisual(&visual, true, None)?;
-                let sup = dcomp.CreateSurface(
-                    ancho,
-                    alto,
-                    DXGI_FORMAT_B8G8R8A8_UNORM,
-                    DXGI_ALPHA_MODE_PREMULTIPLIED,
-                )?;
-                let visual_interfaz = dcomp.CreateVisual()?;
-                visual_interfaz.SetContent(&sup)?;
-                // `true` = encima de todo lo que ya cuelga de la raiz.
-                raiz.AddVisual(&visual_interfaz, true, None)?;
-                objetivo.SetRoot(&raiz)?;
-                dcomp.Commit()?;
-                (
-                    objetivo,
-                    visual,
-                    raiz,
-                    Some(CapaInterfaz {
-                        _visual: visual_interfaz,
+                // Una capa por cada cosa que se mueve a su ritmo, de abajo
+                // arriba: la escena (se desplaza al panear), la tinta viva
+                // (no se mueve: se dibuja donde esta la mano) y la interfaz
+                // (no se mueve nunca). `true` = encima de lo que ya cuelga
+                // de la raiz, asi que el orden de estas dos llamadas ES el
+                // orden en que se ven.
+                let capa = || -> Result<CapaDComp, ErrorRender> {
+                    let sup = dcomp.CreateSurface(
+                        ancho,
+                        alto,
+                        DXGI_FORMAT_B8G8R8A8_UNORM,
+                        DXGI_ALPHA_MODE_PREMULTIPLIED,
+                    )?;
+                    let v = dcomp.CreateVisual()?;
+                    raiz.AddVisual(&v, true, None)?;
+                    Ok(CapaDComp {
+                        visual: v,
                         superficie: sup,
                         tamano: (ancho, alto),
-                    }),
-                )
+                        encendida: std::cell::Cell::new(false),
+                    })
+                };
+                let tinta = capa()?;
+                let interfaz = capa()?;
+                // La interfaz esta siempre puesta; la tinta solo mientras se
+                // traza (ver `CapaDComp::encendida`).
+                interfaz.visual.SetContent(&interfaz.superficie)?;
+                interfaz.encendida.set(true);
+                objetivo.SetRoot(&raiz)?;
+                dcomp.Commit()?;
+                (objetivo, visual, raiz, Some(tinta), Some(interfaz))
             }
         };
 
@@ -286,6 +313,11 @@ impl Superficie {
             banderas,
             senal,
             interfaz: std::cell::RefCell::new(interfaz),
+            tinta: std::cell::RefCell::new(tinta),
+            cielo: std::cell::RefCell::new(None),
+            fondo: std::cell::RefCell::new(None),
+            margen_fondo: std::cell::Cell::new(0),
+            desplazamiento_fondo: std::cell::Cell::new((0.0, 0.0)),
         };
         // El colchon se pone UNA vez y por la misma matriz que el paneo y
         // el estirado. Ponerlo ademas con `SetOffsetX2` lo contaria dos
@@ -416,34 +448,321 @@ impl Superficie {
         motor: &MotorRender,
         dibuja: impl FnOnce(&crate::lienzo::Pintor<'_>, (f32, f32)),
     ) -> Result<(), ErrorRender> {
-        use windows::Win32::Foundation::POINT;
-        let prestamo = self.interfaz.borrow();
+        // Sin rectangulo: la interfaz es casi toda transparente y un trozo
+        // sin repintar dejaria basura del fotograma anterior.
+        self.pintar_capa(&self.interfaz, motor, None, dibuja)
+    }
+
+    /// **B2: el trazo en curso, en su propia capa.**
+    ///
+    /// Pinta SOLO `zona` (pixeles de ventana) de la capa de la tinta: la
+    /// limpia y ejecuta `dibuja` dentro. El resto de la capa se queda como
+    /// estaba, que es lo que deja al trazo seguir ahi sin volver a pintarlo.
+    ///
+    /// Mientras esto dura, la escena NO se toca: ni se hornea al apoyar el
+    /// lapiz —un `ID2D1Bitmap1` de pantalla entera, 33,7 MB a 3000 x 2000
+    /// con colchon, y la escena entera pintada dentro: 194 ms medidos con
+    /// 10.000 elementos—, ni se copia por fotograma (D148), ni se presenta.
+    /// Un fotograma de trazo pasa a ser un rectangulo de esta capa y un
+    /// `Commit`.
+    ///
+    /// `dibuja` recibe el desplazamiento que tiene que sumar a todo lo que
+    /// pinte: DirectComposition puede devolver la superficie dentro de una
+    /// textura mas grande, y no sumarlo pintaria el trazo en el sitio
+    /// equivocado justo en los equipos donde el atlas no empieza en cero.
+    pub fn pintar_tinta(
+        &self,
+        motor: &MotorRender,
+        zona: Option<(i32, i32, i32, i32)>,
+        dibuja: impl FnOnce(&crate::lienzo::Pintor<'_>, (f32, f32)),
+    ) -> Result<(), ErrorRender> {
+        self.pintar_capa(&self.tinta, motor, zona, dibuja)
+    }
+
+    /// Enciende la capa de la tinta: la vacia entera y se la pone al visual.
+    ///
+    /// Es lo unico que cuesta apoyar el lapiz con B2: un `Clear` de pantalla
+    /// entera que la grafica resuelve con su borrado rapido (1,9 ms medidos
+    /// a 3000 x 2000, contra los 20-194 ms de hornear la escena).
+    pub fn encender_tinta(&self, motor: &MotorRender) -> Result<(), ErrorRender> {
+        {
+            let prestamo = self.tinta.borrow();
+            match prestamo.as_ref() {
+                None => return Ok(()),
+                Some(capa) if capa.encendida.get() => return Ok(()),
+                Some(_) => {}
+            }
+        }
+        self.pintar_capa(&self.tinta, motor, None, |_, _| {})?;
+        let prestamo = self.tinta.borrow();
         let Some(capa) = prestamo.as_ref() else {
             return Ok(());
         };
-        let mut offset = POINT::default();
-        // SAFETY: la superficie es propia y esta viva; `offset` es local.
-        // `BeginDraw` sin rectangulo actualiza la superficie entera, que es
-        // lo que hace falta porque la interfaz es casi toda transparente y
-        // un trozo sin pintar dejaria basura del fotograma anterior.
-        let textura: ID3D11Texture2D =
-            unsafe { capa.superficie.BeginDraw(None, &mut offset as *mut POINT)? };
-        let destino = motor.destino_backbuffer(&textura)?;
-        let d = (offset.x as f32, offset.y as f32);
+        // SAFETY: el visual y la superficie son propios y siguen vivos.
+        unsafe {
+            capa.visual.SetContent(&capa.superficie)?;
+            self.dcomp.Commit()?;
+        }
+        capa.encendida.set(true);
+        Ok(())
+    }
+
+    /// Apaga la capa de la tinta: el visual se queda sin contenido.
+    ///
+    /// Se llama al soltar, cuando el trazo ya ha pasado al motor 2D y lo va
+    /// a pintar la escena. Quitar el contenido y no solo vaciarlo importa:
+    /// un visual transparente de pantalla entera le cuesta a DWM una mezcla
+    /// en CADA composicion, tenga pixeles o no.
+    pub fn apagar_tinta(&self) {
+        let prestamo = self.tinta.borrow();
+        let Some(capa) = prestamo.as_ref() else {
+            return;
+        };
+        if !capa.encendida.get() {
+            return;
+        }
+        // SAFETY: el visual es propio y sigue vivo; un error solo dejaria la
+        // capa puesta, que se ve igual (esta vacia) y cuesta una mezcla.
+        unsafe {
+            let _ = capa.visual.SetContent(None);
+            let _ = self.dcomp.Commit();
+        }
+        capa.encendida.set(false);
+    }
+
+    /// **A3 fase 2: el cielo y las estrellas, DEBAJO de la escena.**
+    ///
+    /// Hasta ahora el universo no podia componerse: su cielo, sus estrellas
+    /// con paralaje y sus astros se pintan todos en pixeles de pantalla y en
+    /// la misma superficie, asi que correr la superficie entera los correria
+    /// a todos al mismo paso, y el paralaje es justamente que no van al
+    /// mismo paso. Con esto, cada cosa va en su visual:
+    ///
+    /// - el **cielo** (el degradado y las nebulosas) no se mueve: es fondo de
+    ///   pantalla. Su superficie es chica -el degradado se hornea a 192 px de
+    ///   ancho y se estira- y quien la estira es la composicion, asi que son
+    ///   unos cientos de kilobytes y no los 24 MB de una capa de pantalla
+    ///   entera;
+    /// - las **estrellas** se mueven a SU paralaje (`desplazar_fondo`), con
+    ///   su propio colchon;
+    /// - la **escena** con los astros sigue moviendose al paso del lienzo.
+    ///
+    /// Solo lo monta el universo, y solo si la superficie tiene capas: un
+    /// lienzo normal no paga ni un visual de mas.
+    pub fn montar_fondo(
+        &self,
+        ancho_cielo: u32,
+        alto_cielo: u32,
+        ancho: u32,
+        alto: u32,
+        margen_fondo: u32,
+    ) -> Result<(), ErrorRender> {
+        if self.margen == 0 || self.fondo.borrow().is_some() {
+            return Ok(());
+        }
+        let (ancho_fondo, alto_fondo) = (ancho + margen_fondo * 2, alto + margen_fondo * 2);
+        // SAFETY: el dispositivo y la raiz son propios y siguen vivos.
+        // `AddVisual(..., false, None)` mete el visual al PRINCIPIO de la
+        // lista, o sea DEBAJO de todo lo que ya cuelga: primero las
+        // estrellas, y despues el cielo debajo de ellas.
+        let (cielo, fondo) = unsafe {
+            let nueva = |w: u32, h: u32| -> Result<CapaDComp, ErrorRender> {
+                let sup = self.dcomp.CreateSurface(
+                    w.max(1),
+                    h.max(1),
+                    DXGI_FORMAT_B8G8R8A8_UNORM,
+                    DXGI_ALPHA_MODE_PREMULTIPLIED,
+                )?;
+                let v = self.dcomp.CreateVisual()?;
+                v.SetContent(&sup)?;
+                self._raiz.AddVisual(&v, false, None)?;
+                Ok(CapaDComp {
+                    visual: v,
+                    superficie: sup,
+                    tamano: (w.max(1), h.max(1)),
+                    encendida: std::cell::Cell::new(true),
+                })
+            };
+            let fondo = nueva(ancho_fondo, alto_fondo)?;
+            let cielo = nueva(ancho_cielo, alto_cielo)?;
+            // El cielo se hornea chico y lo estira la composicion, con el
+            // filtro lineal: es un degradado, no hay detalle que perder.
+            cielo.visual.SetTransform2(&windows_numerics::Matrix3x2 {
+                M11: ancho as f32 / ancho_cielo.max(1) as f32,
+                M12: 0.0,
+                M21: 0.0,
+                M22: alto as f32 / alto_cielo.max(1) as f32,
+                M31: 0.0,
+                M32: 0.0,
+            })?;
+            cielo
+                .visual
+                .SetBitmapInterpolationMode(DCOMPOSITION_BITMAP_INTERPOLATION_MODE_LINEAR)?;
+            (cielo, fondo)
+        };
+        *self.cielo.borrow_mut() = Some(cielo);
+        *self.fondo.borrow_mut() = Some(fondo);
+        self.margen_fondo.set(margen_fondo);
+        // El colchon de las estrellas se pone por la misma matriz que su
+        // paneo, como el de la escena (ver `aplicar_transformada`).
+        self.aplicar_transformada_fondo();
+        Ok(())
+    }
+
+    /// Si el cielo y las estrellas viven en sus propios visuales.
+    pub fn tiene_fondo(&self) -> bool {
+        self.fondo.borrow().is_some()
+    }
+
+    /// Pixeles de colchon por lado de la capa de las estrellas.
+    pub fn margen_fondo(&self) -> f32 {
+        self.margen_fondo.get() as f32
+    }
+
+    /// Lo que mide la superficie del cielo, que NO es la ventana: se hornea
+    /// chica y la estira la composicion.
+    pub fn tamano_cielo(&self) -> Option<(u32, u32)> {
+        self.cielo.borrow().as_ref().map(|c| c.tamano)
+    }
+
+    /// Repinta el cielo. Solo hace falta al abrir y al cambiar de tamano la
+    /// ventana: no se mueve ni cambia con la camara.
+    pub fn pintar_cielo(
+        &self,
+        motor: &MotorRender,
+        dibuja: impl FnOnce(&crate::lienzo::Pintor<'_>, (f32, f32)),
+    ) -> Result<(), ErrorRender> {
+        self.pintar_capa(&self.cielo, motor, None, dibuja)
+    }
+
+    /// Repinta las estrellas. Entera y no por trozos: son unas pocas miles
+    /// de teselas ya realizadas, y partirlas costaria mas que rehacerlas.
+    pub fn pintar_fondo(
+        &self,
+        motor: &MotorRender,
+        dibuja: impl FnOnce(&crate::lienzo::Pintor<'_>, (f32, f32)),
+    ) -> Result<(), ErrorRender> {
+        self.pintar_capa(&self.fondo, motor, None, dibuja)
+    }
+
+    /// Corre la capa de las estrellas `dx`/`dy` pixeles de ventana. Quien
+    /// llama pasa ya el paralaje aplicado: la superficie no sabe de cielos.
+    pub fn desplazar_fondo(&self, dx: f32, dy: f32) {
+        if self.fondo.borrow().is_none() || self.desplazamiento_fondo.get() == (dx, dy) {
+            return;
+        }
+        self.desplazamiento_fondo.set((dx, dy));
+        self.aplicar_transformada_fondo();
+    }
+
+    /// Si un desplazamiento de las estrellas sigue cubierto por su colchon.
+    pub fn desplazamiento_fondo_valido(&self, dx: f32, dy: f32) -> bool {
+        let m = self.margen_fondo.get() as f32;
+        self.fondo.borrow().is_some() && dx.abs() <= m && dy.abs() <= m
+    }
+
+    pub fn reponer_fondo(&self) {
+        self.desplazar_fondo(0.0, 0.0);
+    }
+
+    fn aplicar_transformada_fondo(&self) {
+        let prestamo = self.fondo.borrow();
+        let Some(capa) = prestamo.as_ref() else {
+            return;
+        };
+        let (dx, dy) = self.desplazamiento_fondo.get();
+        let m = self.margen_fondo.get() as f32;
+        let t = windows_numerics::Matrix3x2 {
+            M11: 1.0,
+            M12: 0.0,
+            M21: 0.0,
+            M22: 1.0,
+            M31: dx - m,
+            M32: dy - m,
+        };
+        // SAFETY: la matriz vive durante la llamada; el visual y el
+        // dispositivo son propios y siguen vivos. Un error solo significa
+        // que el fotograma sale sin mover las estrellas.
+        unsafe {
+            let _ = capa.visual.SetTransform2(&t);
+            let _ = self.dcomp.Commit();
+        }
+    }
+
+    /// Si la capa de la tinta esta puesta ahora mismo.
+    pub fn tinta_encendida(&self) -> bool {
+        self.tinta
+            .borrow()
+            .as_ref()
+            .is_some_and(|c| c.encendida.get())
+    }
+
+    /// El trozo comun de las dos capas: abrir la superficie, limpiar lo que
+    /// se va a repintar, dibujar y publicarlo.
+    fn pintar_capa(
+        &self,
+        cual: &std::cell::RefCell<Option<CapaDComp>>,
+        motor: &MotorRender,
+        zona: Option<(i32, i32, i32, i32)>,
+        dibuja: impl FnOnce(&crate::lienzo::Pintor<'_>, (f32, f32)),
+    ) -> Result<(), ErrorRender> {
+        use windows::Win32::Foundation::{POINT, RECT};
+        let prestamo = cual.borrow();
+        let Some(capa) = prestamo.as_ref() else {
+            return Ok(());
+        };
         let (w, h) = capa.tamano;
+        // Una zona vacia tras recortar no es «no cambio nada», es «no se
+        // sabe»: se actualiza la capa entera, como sin zona.
+        let rect = zona
+            .map(|(l, t, r, b)| RECT {
+                left: l.clamp(0, w as i32),
+                top: t.clamp(0, h as i32),
+                right: r.clamp(0, w as i32),
+                bottom: b.clamp(0, h as i32),
+            })
+            .filter(|r| r.right > r.left && r.bottom > r.top);
+        let entera = RECT {
+            left: 0,
+            top: 0,
+            right: w as i32,
+            bottom: h as i32,
+        };
+        let usada = rect.unwrap_or(entera);
+        let mut offset = POINT::default();
+        // SAFETY: la superficie es propia y esta viva; `rect` y `offset` son
+        // locales y viven toda la llamada. `BeginDraw` dice donde hay que
+        // dibujar DENTRO de la textura: lo que esta en la capa en
+        // `usada.left/top` cae en `offset`.
+        let textura: ID3D11Texture2D = unsafe {
+            capa.superficie.BeginDraw(
+                rect.as_ref().map(|r| r as *const RECT),
+                &mut offset as *mut POINT,
+            )?
+        };
+        let destino = motor.destino_backbuffer(&textura)?;
+        // De coordenadas de la CAPA a coordenadas de la textura.
+        let d = (
+            offset.x as f32 - usada.left as f32,
+            offset.y as f32 - usada.top as f32,
+        );
         let r = motor.dibujar(&destino, |p| {
             // El recorte va ANTES de limpiar y con la matriz en identidad:
             // `Clear` borra el destino ENTERO dentro del recorte, y el
             // destino puede ser un atlas compartido con otras superficies de
-            // composicion. Sin el recorte, limpiar la interfaz podria borrar
-            // lo que no es nuestro.
+            // composicion. Sin el recorte, limpiar la capa podria borrar lo
+            // que no es nuestro.
             p.empujar_recorte(crate::lienzo::RectF {
-                x: d.0,
-                y: d.1,
-                ancho: w as f32,
-                alto: h as f32,
+                x: offset.x as f32,
+                y: offset.y as f32,
+                ancho: (usada.right - usada.left) as f32,
+                alto: (usada.bottom - usada.top) as f32,
             });
             p.limpiar_transparente();
+            // Puesto ya: lo que pinta la interfaz sale en su sitio sin tener
+            // que saber nada del atlas. Quien pone su propia vista (la
+            // tinta, que pinta en coordenadas del mundo) suma `d` al origen,
+            // que es lo mismo por otro camino.
             p.desplazar(d.0, d.1);
             dibuja(p, d);
             p.desplazar(0.0, 0.0);
@@ -776,6 +1095,39 @@ mod pruebas {
         superficie
             .presentar_sincronizado(None)
             .expect("present de la escena");
+
+        // B2: la capa de la tinta nace apagada, se enciende al apoyar el
+        // lapiz, se pinta por trozos y se apaga al soltar. Que
+        // DirectComposition acepte un `BeginDraw` con rectangulo sobre una
+        // tercera superficie no se puede deducir sin GPU.
+        assert!(!superficie.tinta_encendida(), "apagada hasta que se traza");
+        superficie
+            .encender_tinta(&motor)
+            .expect("la capa de tinta se enciende");
+        assert!(superficie.tinta_encendida());
+        let mut trazada = false;
+        superficie
+            .pintar_tinta(&motor, Some((10, 10, 90, 90)), |p, _base| {
+                p.rellenar(
+                    crate::lienzo::RectF {
+                        x: 20.0,
+                        y: 20.0,
+                        ancho: 30.0,
+                        alto: 30.0,
+                    },
+                    Color::NEGRO,
+                );
+                trazada = true;
+            })
+            .expect("el trozo de tinta se pinta");
+        assert!(trazada, "el cierre de la tinta tiene que ejecutarse");
+        // Caso negativo: una zona vacia tras recortar no deja la capa sin
+        // actualizar, actualiza la capa entera.
+        superficie
+            .pintar_tinta(&motor, Some((50, 50, 10, 10)), |_, _| {})
+            .expect("una zona vacia no revienta");
+        superficie.apagar_tinta();
+        assert!(!superficie.tinta_encendida());
 
         // Y lo que hace A3 en cada fotograma de paneo: mover el visual.
         superficie.desplazar_escena(30.0, -12.0);

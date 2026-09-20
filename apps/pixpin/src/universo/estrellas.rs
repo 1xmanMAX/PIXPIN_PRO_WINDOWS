@@ -139,6 +139,29 @@ impl Estrellas {
         }
     }
 
+    /// A que fraccion de la camara se mueven. Es el mismo para las tres (lo
+    /// que hace que el cielo se sienta lejos sin que las capas se
+    /// descorrelacionen), y 0 en Ligero, que no tiene paralaje.
+    ///
+    /// Lo pregunta A3 fase 2: si las estrellas van en su propio visual, hay
+    /// que saber cuanto correrlo, y es esto, ni 0,35 fijo ni lo que diga la
+    /// constante -en Ligero la constante mentiria-.
+    pub fn paralaje(&self) -> f32 {
+        self.capas.first().map_or(0.0, |c| c.factor)
+    }
+
+    /// El paralaje que TENDRAN unas estrellas de `capas` capas, sin
+    /// crearlas. Hace falta porque el visual de las estrellas se monta al
+    /// abrir la ventana y las capas no existen hasta el primer `preparar`,
+    /// que necesita un motor de dibujo.
+    pub fn paralaje_de(capas: usize) -> f32 {
+        if capas == 1 || capas == 0 {
+            // Una sola capa va quieta (D219); ninguna, tampoco.
+            return 0.0;
+        }
+        CAPAS.first().map_or(0.0, |c| c.1)
+    }
+
     /// Tesela las capas que falten para una pantalla de `ancho` x `alto` a
     /// `escala` pixeles fisicos por logico. Fuera del fotograma, como todo lo
     /// que crea recursos.
@@ -254,5 +277,17 @@ mod pruebas {
         assert!(factores.windows(2).all(|p| p[0] == p[1]), "{factores:?}");
         assert!(CAPAS.windows(2).all(|p| p[0].0 > p[1].0), "menos cuantas");
         assert!(CAPAS.windows(2).all(|p| p[0].2 < p[1].2), "mas gordas");
+    }
+
+    #[test]
+    fn el_paralaje_que_se_pide_para_mover_el_visual_es_el_que_de_verdad_se_pinta() {
+        // Con las tres capas, el de la constante.
+        assert_eq!(Estrellas::nuevas(1, 3).paralaje(), CAPAS[0].1);
+        // Caso negativo: en Ligero hay una sola capa y NO tiene paralaje
+        // (D219), asi que su visual no se mueve. Preguntarle a la constante
+        // en vez de a las capas moveria un cielo que se pinta quieto.
+        assert_eq!(Estrellas::nuevas(1, 1).paralaje(), 0.0);
+        // Y sin capas, nada que mover.
+        assert_eq!(Estrellas::nuevas(1, 0).paralaje(), 0.0);
     }
 }

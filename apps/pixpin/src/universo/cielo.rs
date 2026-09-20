@@ -61,13 +61,24 @@ const NEBULOSAS: [(f32, f32, f32, f32, f32, f32, f32); 2] = [
     ),
 ];
 
-/// Los pixeles RGBA del cielo para una pantalla de `ancho` x `alto`.
+/// Lo que mide el bitmap del cielo para una pantalla de `ancho` x `alto`.
 ///
-/// El bitmap se hace con la MISMA proporcion que la pantalla, asi que al
-/// estirarlo los degradados siguen siendo circulos y no elipses.
-pub fn pixeles(ancho: u32, alto: u32) -> (u32, u32, Vec<u8>) {
+/// Se hace con la MISMA proporcion que la pantalla, asi que al estirarlo los
+/// degradados siguen siendo circulos y no elipses.
+///
+/// Es publico porque A3 fase 2 le da al cielo su propio visual de
+/// composicion, y la superficie de ese visual se crea con este tamano -chico-
+/// y la estira la composicion: 192 px de ancho en vez de 3000 son unos
+/// cientos de kilobytes en vez de 24 MB.
+pub fn tamano(ancho: u32, alto: u32) -> (u32, u32) {
     let w = ANCHO.max(1);
     let h = ((w as f32 * alto.max(1) as f32 / ancho.max(1) as f32).round() as u32).max(1);
+    (w, h)
+}
+
+/// Los pixeles RGBA del cielo para una pantalla de `ancho` x `alto`.
+pub fn pixeles(ancho: u32, alto: u32) -> (u32, u32, Vec<u8>) {
+    let (w, h) = tamano(ancho, alto);
     let (cx, cy) = (w as f32 * CENTRO.0, h as f32 * CENTRO.1);
     // El radio va con el lado mayor **en pixeles de pantalla**, llevado a la
     // rejilla chica por el mismo factor en los dos ejes.

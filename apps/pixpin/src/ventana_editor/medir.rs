@@ -46,6 +46,12 @@ struct Medida {
 struct Banco {
     motor: MotorRender,
     destino: FueraDePantalla,
+    /// B2: la capa de la tinta viva. Fuera de pantalla es otra textura del
+    /// tamano de la VENTANA (la de verdad es una `IDCompositionSurface`, que
+    /// no se puede crear sin ventana); lo que se mide con ella es lo unico
+    /// que cambia entre los dos caminos: sobre que se pinta el trazo y
+    /// cuanto hay que mover antes de pintarlo.
+    tinta: FueraDePantalla,
     imagenes: ImagenesLienzo,
 }
 
@@ -55,10 +61,12 @@ impl Banco {
         let motor = MotorRender::nuevo(dispositivo.d3d()).expect("motor");
         let destino =
             FueraDePantalla::nuevo(&motor, dispositivo.d3d(), ANCHO, ALTO).expect("destino");
+        let tinta = FueraDePantalla::nuevo(&motor, dispositivo.d3d(), ANCHO, ALTO).expect("tinta");
         let imagenes = ImagenesLienzo::nuevo(motor.lado_maximo_bitmap());
         Banco {
             motor,
             destino,
+            tinta,
             imagenes,
         }
     }
@@ -433,6 +441,347 @@ fn medir_fotograma_del_editor_a_3000_por_2000() {
     for cuantos in [200usize, 2_000, 10_000] {
         let escena = escena_sintetica(cuantos);
         medir_todo(&b, &escena, &format!("mezcla {cuantos}"));
+    }
+}
+
+/// Cuantos puntos tiene el trazo que se esta dibujando en el banco de B2.
+/// Un trazo largo de verdad: es donde el coste por fotograma se nota.
+const PUNTOS_DEL_TRAZO: usize = 1_200;
+/// Medio lado de la zona sucia de un fotograma de trazo, en pixeles de
+/// pantalla: el tramo nuevo mas la holgura de la punta predicha.
+const ZONA_TRAZO: i32 = 200;
+
+/// Lo que se prepara una sola vez para medir (y para retratar) un trazo en
+/// curso: la camara, el trazo, su punta y la zona sucia por los dos caminos.
+struct Trazando {
+    camara: Camara,
+    efectiva: Camara,
+    vista: (f32, f32, f32, f32),
+    vivo: Elemento,
+    punta: Option<Punto2>,
+    /// La zona sucia en pixeles de ventana (capa de tinta) y en pixeles de
+    /// la superficie de escena, que va corrida el colchon.
+    zona_ventana: (i32, i32, i32, i32),
+    zona_escena: (i32, i32, i32, i32),
+    estampa: Estampa,
+    candidatos: Vec<u64>,
+}
+
+fn trazando(escena: &Escena, rejilla: &Rejilla) -> Trazando {
+    let camara = camara_de(escena, 4.0);
+    let efectiva = crate::navegacion::vista_efectiva(&camara, ESCALA);
+    let (w, h) = (ANCHO as f32, ALTO as f32);
+    let vista = efectiva.ventana(w, h);
+    // El trazo que se esta dibujando: en medio de lo que se ve, para que la
+    // zona sucia caiga sobre escena de verdad y no sobre papel en blanco.
+    let centro = (
+        efectiva.x + w / (2.0 * efectiva.zoom),
+        efectiva.y + h / (2.0 * efectiva.zoom),
+    );
+    let ancho_mundo = 220.0;
+    let vivo = trazo(
+        u64::from(u32::MAX),
+        centro.0 - ancho_mundo / 2.0,
+        centro.1 - 80.0,
+        PUNTOS_DEL_TRAZO,
+    );
+    // La punta predicha, como la pone el editor: el ultimo punto adelantado.
+    let punta = match &vivo.figura {
+        Figura::Lapiz { puntos, .. } => puntos.last().copied(),
+        _ => None,
+    }
+    .map(|p| Punto2::nuevo(p.x + 12.0, p.y + 6.0));
+    let q = efectiva.a_pantalla(punta.unwrap_or(Punto2::nuevo(centro.0, centro.1)));
+    let zona_ventana = (
+        q.x as i32 - ZONA_TRAZO,
+        q.y as i32 - ZONA_TRAZO,
+        q.x as i32 + ZONA_TRAZO,
+        q.y as i32 + ZONA_TRAZO,
+    );
+    let m = MARGEN_ESCENA as i32;
+    Trazando {
+        camara,
+        efectiva,
+        vista,
+        punta,
+        zona_ventana,
+        zona_escena: (
+            zona_ventana.0 + m,
+            zona_ventana.1 + m,
+            zona_ventana.2 + m,
+            zona_ventana.3 + m,
+        ),
+        estampa: Estampa {
+            camara: (efectiva.x, efectiva.y, efectiva.zoom),
+            tamano: tamano_escena(w, h, MARGEN_ESCENA as f32),
+            excluidos: vec![vivo.id],
+        },
+        candidatos: rejilla.candidatos(vista),
+        vivo,
+    }
+}
+
+fn rect_de(z: (i32, i32, i32, i32)) -> RectF {
+    RectF {
+        x: z.0 as f32,
+        y: z.1 as f32,
+        ancho: (z.2 - z.0) as f32,
+        alto: (z.3 - z.1) as f32,
+    }
+}
+
+/// **B2 medido.** Lo que cuesta APOYAR el lapiz y lo que cuesta cada uno de
+/// los fotogramas siguientes, por los dos caminos, en la misma vuelta y con
+/// la misma GPU.
+///
+/// - «antes»: al pulsar se hornea la capa congelada -un `ID2D1Bitmap1` del
+///   tamano de la superficie de escena, 3512 x 2512 a 3000 x 2000 con
+///   colchon, y toda la escena pintada dentro-, y cada fotograma copia de
+///   ella la zona sucia (D148) antes de pintar el trazo encima.
+/// - «B2»: al pulsar no se hornea nada -la escena ya esta en su visual y no
+///   se toca- y cada fotograma limpia la zona sucia de la capa de tinta y
+///   pinta el trazo ahi.
+///
+/// **Lo que este banco NO ve, dicho claro:** no ve lo que se ahorra al NO
+/// presentar la cadena de intercambio de la escena en cada fotograma del
+/// trazo, ni la recomposicion que DWM se ahorra. Eso solo se mide con la
+/// ventana abierta. O sea, la diferencia de los fotogramas «siguientes» que
+/// sale aqui es el SUELO de la real.
+fn medir_trazo(b: &mut Banco, escena: &Escena, que: &str) {
+    let mut rejilla = Rejilla::nueva();
+    rejilla.sincronizar(escena);
+    let t = trazando(escena, &rejilla);
+    let mut cache = Cache::nueva();
+    let mut cache_tinta = pixpin_render::CacheTinta::nueva();
+    cache_tinta.fijar_escala(t.efectiva.zoom);
+    let ms = |i: Instant| i.elapsed().as_secs_f64() * 1000.0;
+    let vueltas_primer = 5;
+
+    // --- Antes: apoyar el lapiz hornea la escena entera ---
+    let mut capa = CapaEstatica::nueva();
+    let mut hornear = 0.0;
+    for _ in 0..vueltas_primer {
+        capa.soltar();
+        let i = Instant::now();
+        hornear_capa(b, escena, &t, &mut cache, &mut cache_tinta, &mut capa);
+        b.destino.esperar_gpu().expect("GPU");
+        hornear += ms(i);
+    }
+    println!(
+        "{:<44} primer fotograma {:>7.2} ms | {:>5.1} MB de video ({} x {})",
+        format!("[antes] {que} apoyar el lapiz"),
+        hornear / vueltas_primer as f64,
+        capa.bytes() as f64 / (1024.0 * 1024.0),
+        t.estampa.tamano.0,
+        t.estampa.tamano.1
+    );
+
+    // --- Antes: cada fotograma copia su zona de la capa y pinta encima ---
+    let mut seguir = 0.0;
+    for _ in 0..VUELTAS {
+        let i = Instant::now();
+        capa.volcar_zona(
+            &mut b.motor,
+            &b.destino.destino,
+            &t.estampa,
+            Some(t.zona_escena),
+        );
+        fotograma_de_trazo(b, &t, true, false);
+        b.destino.esperar_gpu().expect("GPU");
+        seguir += ms(i);
+    }
+    println!(
+        "{:<44} cada fotograma  {:>7.2} ms",
+        format!("[antes] {que} trazando"),
+        seguir / VUELTAS as f64
+    );
+    capa.soltar();
+
+    // --- B2: apoyar el lapiz solo vacia la capa de tinta ---
+    let mut encender = 0.0;
+    for _ in 0..vueltas_primer {
+        let i = Instant::now();
+        b.motor
+            .dibujar(&b.tinta.destino, |p| p.limpiar_transparente())
+            .expect("vaciar la capa de tinta");
+        b.tinta.esperar_gpu().expect("GPU");
+        encender += ms(i);
+    }
+    println!(
+        "{:<44} primer fotograma {:>7.2} ms | {:>5.1} MB de video ({ANCHO} x {ALTO})",
+        format!("[B2] {que} apoyar el lapiz"),
+        encender / vueltas_primer as f64,
+        (ANCHO as f64 * ALTO as f64 * 4.0) / (1024.0 * 1024.0)
+    );
+
+    // --- B2: cada fotograma limpia su zona de la capa y pinta el trazo ---
+    let mut seguir_b2 = 0.0;
+    for _ in 0..VUELTAS {
+        let i = Instant::now();
+        fotograma_de_trazo(b, &t, false, true);
+        b.tinta.esperar_gpu().expect("GPU");
+        seguir_b2 += ms(i);
+    }
+    println!(
+        "{:<44} cada fotograma  {:>7.2} ms",
+        format!("[B2] {que} trazando"),
+        seguir_b2 / VUELTAS as f64
+    );
+}
+
+/// Hornea la capa congelada como lo hace el editor al apoyar el lapiz.
+fn hornear_capa(
+    b: &mut Banco,
+    escena: &Escena,
+    t: &Trazando,
+    cache: &mut Cache,
+    cache_tinta: &mut pixpin_render::CacheTinta,
+    capa: &mut CapaEstatica,
+) {
+    let m = MARGEN_ESCENA as f32;
+    let imagenes = &b.imagenes;
+    capa.preparar(&mut b.motor, t.estampa.clone(), |p| {
+        p.limpiar(Color::BLANCO);
+        let origen = t.efectiva.a_pantalla(Punto2::nuevo(0.0, 0.0));
+        p.poner_vista((0.0, 0.0), t.efectiva.zoom, (origen.x + m, origen.y + m));
+        for id in &t.candidatos {
+            let Some(e) = escena.buscar(*id) else {
+                continue;
+            };
+            if e.borrado {
+                continue;
+            }
+            let mut indice = 0u32;
+            por_cada_orden(cache, e, t.efectiva.zoom, escena.escala.as_ref(), |orden| {
+                dibujar_orden(
+                    p,
+                    orden,
+                    t.vista,
+                    Some((&mut *cache_tinta, (e.id, e.version, indice))),
+                    imagenes,
+                    t.efectiva.zoom,
+                );
+                indice += 1;
+            });
+        }
+    })
+    .expect("hornear la capa");
+}
+
+/// Un fotograma del trazo: el contorno entero y su punta, recortados a la
+/// zona sucia. `en_escena` lo pinta sobre la superficie de escena (camino de
+/// antes, con el colchon); si no, sobre la capa de tinta, que ademas se
+/// limpia primero porque ahi no hay escena debajo que tape lo anterior.
+fn fotograma_de_trazo(b: &Banco, t: &Trazando, en_escena: bool, limpiar: bool) {
+    let m = if en_escena { MARGEN_ESCENA as f32 } else { 0.0 };
+    let zona = if en_escena {
+        t.zona_escena
+    } else {
+        t.zona_ventana
+    };
+    let destino = if en_escena {
+        &b.destino.destino
+    } else {
+        &b.tinta.destino
+    };
+    b.motor
+        .dibujar(destino, |p| {
+            p.empujar_recorte(rect_de(zona));
+            if limpiar {
+                p.limpiar_transparente();
+            }
+            let origen = t.efectiva.a_pantalla(Punto2::nuevo(0.0, 0.0));
+            p.poner_vista((0.0, 0.0), t.efectiva.zoom, (origen.x + m, origen.y + m));
+            for orden in pixpin_motor2d::pintado::ordenes_a_distancia(&t.vivo, t.efectiva.zoom) {
+                dibujar_orden(p, &orden, t.vista, None, &b.imagenes, t.efectiva.zoom);
+            }
+            if let Some(o) = t.punta.and_then(|q| punta_de_tinta(&t.vivo, q)) {
+                dibujar_orden(p, &o, t.vista, None, &b.imagenes, t.efectiva.zoom);
+            }
+            p.soltar_recorte();
+        })
+        .expect("fotograma de trazo");
+}
+
+#[test]
+#[ignore = "necesita GPU real; ejecutar en --release con --ignored --nocapture"]
+fn medir_apoyar_el_lapiz_y_trazar_a_3000_por_2000() {
+    let mut b = Banco::nuevo();
+    for cuantos in [200usize, 2_000, 10_000] {
+        let escena = escena_sintetica(cuantos);
+        medir_trazo(&mut b, &escena, &format!("mezcla {cuantos}"));
+    }
+}
+
+/// Guarda en PNG lo que ve el usuario con B2: la escena en su visual, la
+/// tinta en el suyo, y las dos compuestas como las compone DWM.
+///
+/// Es la unica forma, sin abrir la aplicacion, de comprobar que el trazo cae
+/// donde tiene que caer: la capa de tinta pinta en pixeles de VENTANA y la
+/// escena en pixeles de superficie (corridos el colchon), y equivocarse en
+/// ese colchon se ve como un trazo 256 px desplazado. La carpeta la da
+/// `PIXPIN_TRAZO_RETRATO`; sin ella no hace nada.
+#[test]
+#[ignore = "necesita GPU real; ejecutar con --ignored"]
+fn retratar_el_trazo_en_su_capa() {
+    let Some(dir) = std::env::var_os("PIXPIN_TRAZO_RETRATO").map(std::path::PathBuf::from) else {
+        return;
+    };
+    std::fs::create_dir_all(&dir).expect("carpeta");
+    let b = Banco::nuevo();
+    let escena = escena_sintetica(200);
+    let mut rejilla = Rejilla::nueva();
+    rejilla.sincronizar(&escena);
+    let t = trazando(&escena, &rejilla);
+    let mut cache = Cache::nueva();
+    let mut cache_tinta = pixpin_render::CacheTinta::nueva();
+    cache_tinta.fijar_escala(t.efectiva.zoom);
+
+    // La escena tal como se ve POR LA VENTANA, que es lo que ensena su
+    // visual: el colchon se lo come la transformada del visual, asi que en
+    // pantalla la escena y la tinta comparten el mismo origen. Si no fuera
+    // asi -si `pintar_tinta_viva` le sumara el colchon-, el trazo saldria
+    // 256 px corrido y este retrato lo ensenaria.
+    b.fotograma(
+        &escena,
+        &rejilla,
+        &mut cache,
+        &mut cache_tinta,
+        &t.camara,
+        true,
+    );
+    b.destino.esperar_gpu().expect("GPU");
+    let (w, h, escena_px) = b.destino.leer_rgba().expect("leer escena");
+
+    // Y la capa de tinta: vacia, y con el fotograma del trazo dentro.
+    b.motor
+        .dibujar(&b.tinta.destino, |p| p.limpiar_transparente())
+        .expect("vaciar");
+    fotograma_de_trazo(&b, &t, false, true);
+    b.tinta.esperar_gpu().expect("GPU");
+    let (_, _, tinta_px) = b.tinta.leer_rgba().expect("leer tinta");
+
+    // Compuestas: la tinta encima, con su alfa. Es lo que hace DWM con los
+    // dos visuales, hecho aqui en CPU para poder mirarlo.
+    let mut juntas = escena_px.clone();
+    for (d, s) in juntas.chunks_exact_mut(4).zip(tinta_px.chunks_exact(4)) {
+        let a = s[3] as f32 / 255.0;
+        for k in 0..3 {
+            d[k] = (s[k] as f32 * a + d[k] as f32 * (1.0 - a)).round() as u8;
+        }
+    }
+    for (nombre, px) in [
+        ("escena", escena_px),
+        ("tinta", tinta_px),
+        ("compuesto", juntas),
+    ] {
+        let png = pixpin_codec::codificar_png(&pixpin_codec::ImagenRgba {
+            ancho: w,
+            alto: h,
+            pixeles: px,
+        })
+        .expect("png");
+        std::fs::write(dir.join(format!("{nombre}.png")), png).expect("escribir");
     }
 }
 

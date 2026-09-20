@@ -210,7 +210,7 @@ const PAUSA_FORMA: std::time::Duration = std::time::Duration::from_millis(450);
 /// gratis por cada repintado, y a 3000x2000 cuesta 22 MB mas de memoria de
 /// video (35 MB frente a 24 por buffer). Subirlo da mas fotogramas gratis y
 /// cuesta mas memoria; bajarlo, al reves.
-const MARGEN_ESCENA: u32 = 256;
+pub(crate) const MARGEN_ESCENA: u32 = 256;
 
 const ESPERA_MAXIMA_SENAL_MS: u32 = 20;
 const ESPERA_MAXIMA_SENAL: std::time::Duration =
@@ -445,6 +445,52 @@ const REPOSO_CAMARA: std::time::Duration = std::time::Duration::from_millis(150)
 /// encima de esto, la textura ampliada se ve claramente borrosa.
 const ESTIRADO_MAXIMO: f32 = 3.0;
 
+/// Cada cuanto compone DWM cuando no lo quiere decir (con la ventana tapada,
+/// por ejemplo): 60 Hz, que es lo que hay en el equipo suelo.
+const PERIODO_SUPUESTO_MS: f32 = 16.7;
+
+/// Parte del periodo de composicion que tiene que haber pasado desde el
+/// ultimo fotograma de tinta para pintar otro.
+///
+/// No es 1,0 porque el reloj del bucle y el de DWM no son el mismo: exigir
+/// el periodo entero haria perder una composicion de cada dos en cuanto
+/// hubiera medio milisegundo de deriva, y el trazo saldria a 30 Hz.
+const PARTE_DEL_PERIODO: f32 = 0.9;
+
+/// **B2.** Cuanto falta para que toque el siguiente fotograma de la capa de
+/// tinta, en milisegundos enteros. `None` = ya toca.
+///
+/// Hace falta porque un fotograma de tinta no presenta: la senal de latencia
+/// de la cadena de intercambio, que es la que marca el ritmo del resto del
+/// bucle, se queda disparada y no frena nada. Sin este freno, un lapiz que
+/// manda 240 muestras por segundo haria cuatro `Commit` por cada composicion
+/// de DWM, y tres de los cuatro no llegarian a verse.
+fn espera_de_tinta(desde_ms: f32, periodo_ms: f32) -> Option<u32> {
+    if !periodo_ms.is_finite() || periodo_ms <= 0.0 {
+        return None;
+    }
+    let plazo = periodo_ms * PARTE_DEL_PERIODO;
+    if !desde_ms.is_finite() || desde_ms >= plazo {
+        return None;
+    }
+    Some((plazo - desde_ms).ceil().max(1.0) as u32)
+}
+
+/// La punta predicha de este fotograma, si hay algo dibujandose y la
+/// prediccion no esta apagada. Horizonte medido (~30 ms de la lectura a la
+/// pantalla en el equipo del usuario) y tope de 80 px de pantalla.
+fn prediccion_de(
+    gesto: &Gesto,
+    predictor: &mut pixpin_motor2d::tinta::prediccion::Predictor,
+    tinta_clasica: bool,
+    zoom: f32,
+) -> Option<Punto2> {
+    gesto
+        .elemento_en_curso()
+        .filter(|_| !tinta_clasica)
+        .and_then(|_| predictor.predecir(HORIZONTE_PREDICCION_MS, TOPE_PREDICCION_PX / zoom, zoom))
+}
+
 /// El tamano de la superficie de la escena: la ventana mas el colchon por
 /// cada lado. Es la unica formula: la usan la `Estampa` de la capa congelada
 /// y el propio `pintar`, y si se separaran, la capa se daria por valida con
@@ -470,7 +516,7 @@ fn tamano_escena(ancho_px: f32, alto_px: f32, margen: f32) -> (u32, u32) {
 ///
 /// Es pura a proposito: la condicion de «¿cabe?» es aritmetica y se prueba
 /// sin GPU, que es justo lo que no se puede improvisar mirando la pantalla.
-fn transformada_de_camara(
+pub(crate) fn transformada_de_camara(
     pintada: &Camara,
     ahora: &Camara,
     ancho_px: f32,
@@ -660,12 +706,12 @@ fn abrir_en_modo(
     // barra en otro encima. `[rendimiento] paneo_por_composicion = false`
     // vuelve a la superficie de siempre, con todo en la misma swapchain.
     //
-    // Con el universo detras NO se monta: su cielo, sus conexiones y sus
-    // rotulos se pintan en pixeles de pantalla con paralaje propio, asi que
-    // correr la superficie entera los correria mal. Eso pide las estrellas
-    // en su propio visual (fase 2 de A3) y no esta hecho; montar las capas
-    // «a medias» solo serviria para romper el universo.
-    let por_composicion = rendimiento.paneo_por_composicion && !tinta_clasica && universo.is_none();
+    // Con el universo detras tambien, desde A3 fase 2: su cielo y sus
+    // estrellas se van a sus propios visuales DEBAJO de la escena, y cada
+    // uno se mueve a SU paralaje (`Superficie::montar_fondo`). Antes no se
+    // montaba porque los tres iban en la misma superficie, y correrla
+    // entera los correria a todos al mismo paso.
+    let por_composicion = rendimiento.paneo_por_composicion && !tinta_clasica;
     let superficie = if por_composicion {
         Superficie::nueva_con_capas(
             &motor,
@@ -740,6 +786,20 @@ fn abrir_en_modo(
         navegador.zoom_minimo = pixpin_universo::ZOOM_MINIMO_UNIVERSO;
         // Y moverse como por un mapa: la rueda acerca (`universo::mapa`).
         navegador.mapa = true;
+        // A3 fase 2: el cielo y las estrellas, cada uno en su visual. El
+        // colchon de las estrellas es el del lienzo por su paralaje: se
+        // mueven menos, asi que necesitan menos. Si falla, la superficie se
+        // queda sin capas de fondo y el universo se pinta como siempre
+        // (`Superficie::tiene_fondo` lo dice).
+        if con_capas {
+            let margen_fondo = s.margen_estrellas(margen_escena);
+            let (cw, ch) = crate::universo::cielo::tamano(area.ancho, area.alto);
+            if let Err(err) =
+                superficie.montar_fondo(cw, ch, area.ancho, area.alto, margen_fondo)
+            {
+                tracing::warn!(?err, "sin capas de fondo para el universo");
+            }
+        }
     }
     // Solo con el universo: el zoom que persigue la rueda y la inercia de
     // un arrastre del cielo (ver `universo::mapa`). En un lienzo normal no
@@ -845,6 +905,16 @@ fn abrir_en_modo(
     // La zona sucia del fotograma anterior (D148): hace falta para la union
     // de dos, porque la cadena de intercambio tiene dos mapas.
     let mut zona_anterior: Option<(i32, i32, i32, i32)> = None;
+    // B2: el trazo en curso se esta pintando en la capa de tinta, y por
+    // tanto la escena no se toca ni se presenta hasta que se suelte.
+    let mut tinta_viva = false;
+    // La zona que se repinto de la capa de tinta en el fotograma anterior.
+    // Aqui basta con UNA (no dos como en D148): una superficie de
+    // composicion conserva lo que tenia, no rota entre dos mapas.
+    let mut zona_tinta_anterior: Option<(i32, i32, i32, i32)> = None;
+    // Cuando se compuso la capa de tinta por ultima vez. Sin `Present` no
+    // hay senal de latencia que marque el ritmo, asi que lo marca el reloj.
+    let mut ultimo_commit_tinta = std::time::Instant::now();
     let mut medidor = crate::medir_fotogramas::MedidorFotogramas::nuevo(medir_fotogramas);
 
     'bucle: loop {
@@ -1616,9 +1686,52 @@ fn abrir_en_modo(
                 // repinta encima; lo demas se copia de la capa.
                 let excluidos = excluidos_de(&gesto);
                 let activo_ahora = !gesto.en_reposo() && !excluidos.is_empty();
+                // **B2: el trazo vivo en su propia capa.** Mientras dura, la
+                // escena no se toca: ni se hornea al apoyar el lapiz
+                // (`capa.preparar`: 20 ms con 200 elementos y 194 ms con
+                // 10.000, medidos a 3000 x 2000, mas 33,7 MB de video), ni
+                // se copia por fotograma (D148), ni se presenta.
+                //
+                // Va con las capas de A3 porque necesita su arbol de
+                // visuales: `[rendimiento] paneo_por_composicion = false` y
+                // PIXPIN_TINTA_CLASICA apagan las dos cosas a la vez, que es
+                // lo que hace falta para comparar en el mismo equipo.
+                //
+                // Y solo entra si lo que hay en la superficie de la escena
+                // es ESTA camara: recien desplazada por composicion, lo que
+                // se ve es la textura corrida y el trazo saldria donde no
+                // es. En ese caso se fuerza el fotograma nitido y la capa
+                // entra en la vuelta siguiente.
+                let quiere_tinta = con_capas && gesto.trazo_en_curso().is_some();
+                let tinta_ahora =
+                    quiere_tinta && camara_pintada == efectiva && !superficie.esta_estirada();
+                if quiere_tinta && !tinta_ahora && !tinta_viva {
+                    todo_sucio = true;
+                    contenido_sucio = true;
+                    ventana.invalidar();
+                }
+                if tinta_ahora && !tinta_viva {
+                    tinta_viva = superficie.encender_tinta(&motor).is_ok();
+                    // Si el trazo empezo con una capa congelada ya horneada
+                    // (por el fotograma nitido de arriba), sus megas no
+                    // pintan nada mientras la tinta vive en su capa.
+                    if tinta_viva {
+                        capa.soltar();
+                        zona_tinta_anterior = None;
+                    }
+                }
+                if !tinta_ahora && tinta_viva {
+                    // Al soltar -o al convertirse en forma rapida-: el trazo
+                    // ya esta en la escena y lo pinta el fotograma nitido.
+                    superficie.apagar_tinta();
+                    tinta_viva = false;
+                    todo_sucio = true;
+                    contenido_sucio = true;
+                    ventana.invalidar();
+                }
                 // Con el universo detras no hay capa congelada: se horneria
                 // sobre blanco y sin astros (ver el plan, «Ajustes», D238).
-                if activo_ahora && en_reposo_antes && universo.is_none() {
+                if activo_ahora && en_reposo_antes && universo.is_none() && !tinta_ahora {
                     rejilla.sincronizar(&escena);
                     // A3: la capa congelada es del tamano de la SUPERFICIE
                     // de escena (ventana mas colchon) y se hornea con el
@@ -1796,23 +1909,26 @@ fn abrir_en_modo(
         // se resuelve con una matriz en el visual de la escena: ni se
         // recorre la escena, ni se emite una primitiva, ni se presenta.
         //
-        // Con el universo detras NO se hace: su cielo, sus conexiones y sus
-        // rotulos se pintan en pixeles de pantalla con paralaje propio, asi
-        // que correr la superficie entera los correria mal. Eso es la fase 2
-        // (las estrellas en su propio visual) y no esta hecha.
+        // Con el universo detras tambien (A3 fase 2), pero solo PANEOS: el
+        // cielo esta quieto y las estrellas van a su paralaje, y eso es una
+        // traslacion; un zoom no se reparte asi -lo que se acerca es el
+        // lienzo, no el cielo-, y estirarlos los descolocaria. Un zoom en el
+        // universo pinta nitido, como siempre.
         //
         // `todo_sucio && sucio.is_none() && !contenido_sucio` es la forma
         // exacta de decir «la unica razon por la que hay que rehacer el
         // fotograma es que la camara se movio»: `sucio` lo pone un gesto
         // (un trazo en curso, por ejemplo) y `contenido_sucio` todo lo
         // demas.
-        if con_capas
-            && hay_que_pintar
-            && todo_sucio
-            && !contenido_sucio
-            && sucio.is_none()
-            && universo.is_none()
-        {
+        if con_capas && hay_que_pintar && todo_sucio && !contenido_sucio && sucio.is_none() {
+            // A3 fase 2: cuanto se mueven las estrellas por cada pixel que
+            // se mueve el lienzo. Sin universo no hay estrellas y no se
+            // mueve nada.
+            let paralaje = universo.as_deref().map_or(0.0, |s| s.paralaje());
+            let compone = |s: f32, dx: f32, dy: f32| {
+                universo.is_none()
+                    || (s == 1.0 && superficie.desplazamiento_fondo_valido(dx * paralaje, dy * paralaje))
+            };
             match transformada_de_camara(
                 &camara_pintada,
                 &efectiva,
@@ -1820,8 +1936,13 @@ fn abrir_en_modo(
                 alto_px,
                 margen_escena,
             ) {
-                Some((s, dx, dy)) => {
+                Some((s, dx, dy)) if compone(s, dx, dy) => {
                     superficie.estirar(s, s, dx, dy);
+                    // Las estrellas, a su paso. El cielo no se toca: es
+                    // fondo de pantalla y no se mueve con nada.
+                    if universo.is_some() {
+                        superficie.desplazar_fondo(dx * paralaje, dy * paralaje);
+                    }
                     hay_que_pintar = false;
                     // `todo_sucio` se queda puesto: el fotograma nitido que
                     // llegue al reposo tiene que ser completo.
@@ -1831,8 +1952,9 @@ fn abrir_en_modo(
                     // MOVERSE, no 150 ms desde que empezo el arrastre.
                     camara_movida = Some(std::time::Instant::now());
                 }
-                // No cabe: se pinta nitido ya, sin esperar al reposo.
-                None => camara_movida = None,
+                // No cabe (o es un zoom con el universo detras): se pinta
+                // nitido ya, sin esperar al reposo.
+                _ => camara_movida = None,
             }
         }
         // Quieta `REPOSO_CAMARA`: el fotograma nitido.
@@ -1855,7 +1977,79 @@ fn abrir_en_modo(
         if fotograma_listo || !hay_que_pintar {
             esperando_senal = None;
         }
-        if hay_que_pintar && fotograma_listo {
+        // **B2: el fotograma del trazo.** No pasa por `pintar`: no sincroniza
+        // la rejilla, no recorre la escena, no copia la capa congelada y no
+        // presenta. Es limpiar un rectangulo de la capa de tinta, pintar el
+        // trazo dentro y un `Commit`.
+        //
+        // Sin `Present` no hay senal de latencia que marque el ritmo, asi que
+        // lo marca el reloj: como mucho un fotograma por composicion de DWM.
+        let mut espera_tinta = None;
+        if tinta_viva && hay_que_pintar {
+            let periodo = superficie
+                .ritmo()
+                .map_or(PERIODO_SUPUESTO_MS, |r| r.periodo_ms);
+            espera_tinta = espera_de_tinta(
+                ultimo_commit_tinta.elapsed().as_secs_f32() * 1000.0,
+                periodo,
+            );
+        }
+        if tinta_viva && hay_que_pintar && espera_tinta.is_none() {
+            let t_pintar = std::time::Instant::now();
+            let prediccion = prediccion_de(&gesto, &mut predictor, tinta_clasica, efectiva.zoom);
+            let holgura = if prediccion.is_some() || habia_prediccion {
+                TOPE_PREDICCION_PX as i32 + 8
+            } else {
+                2
+            };
+            habia_prediccion = prediccion.is_some();
+            // `todo_sucio` no entra aqui: dice que hay que rehacer la ESCENA,
+            // y en la capa de tinta no hay mas que el trazo en curso. Lo que
+            // manda es la zona que dio el gesto.
+            let zona = sucio.map(|(x0, y0, x1, y1)| {
+                (
+                    x0.floor() as i32 - holgura,
+                    y0.floor() as i32 - holgura,
+                    x1.ceil() as i32 + holgura,
+                    y1.ceil() as i32 + holgura,
+                )
+            });
+            // La union con la del fotograma anterior: si la punta predicha se
+            // acorta, lo que se pinto de mas hay que borrarlo, y eso cae
+            // fuera de la zona de ahora.
+            let zona_pintada = match (zona, zona_tinta_anterior) {
+                (Some(a), Some(b)) => {
+                    Some((a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
+                }
+                _ => None,
+            };
+            let hecho = pintar_tinta_viva(
+                &motor,
+                &superficie,
+                &escena,
+                &efectiva,
+                &gesto,
+                &mut cache,
+                &imagenes,
+                zona_pintada,
+                prediccion,
+                ancho_px,
+                alto_px,
+            );
+            ultimo_commit_tinta = std::time::Instant::now();
+            zona_tinta_anterior = zona;
+            if hecho {
+                pintado_medido = Some(crate::medir_fotogramas::Pintado {
+                    pintar: t_pintar.elapsed(),
+                    // No hay present: el fotograma lo publica el `Commit` de
+                    // composicion, que ya va dentro de `pintar_tinta`.
+                    presentar: std::time::Duration::ZERO,
+                });
+                hay_que_pintar = false;
+                sucio = None;
+            }
+        }
+        if hay_que_pintar && fotograma_listo && !tinta_viva {
             // D129: `t_pintar` empieza AQUI, antes de `rejilla.sincronizar`,
             // no despues: sincronizar la rejilla es coste de este fotograma
             // (recorre la escena, O(su tamano)) y si quedara fuera de toda
@@ -1869,16 +2063,7 @@ fn abrir_en_modo(
             // capa horneada, no que `volcar` la vaya a usar ahora mismo.
             // La punta predicha: horizonte medido (~30 ms de la lectura a la
             // pantalla en el equipo del usuario) y tope de 48 px de pantalla.
-            let prediccion = gesto
-                .elemento_en_curso()
-                .filter(|_| !tinta_clasica)
-                .and_then(|_| {
-                    predictor.predecir(
-                        HORIZONTE_PREDICCION_MS,
-                        TOPE_PREDICCION_PX / efectiva.zoom,
-                        efectiva.zoom,
-                    )
-                });
+            let prediccion = prediccion_de(&gesto, &mut predictor, tinta_clasica, efectiva.zoom);
             // Lo que se presenta crece por el tope: la punta nueva y la del
             // fotograma anterior caen, como mucho, a esa distancia.
             let holgura = if prediccion.is_some() || habia_prediccion {
@@ -2043,7 +2228,14 @@ fn abrir_en_modo(
             tope_ms: minimo(
                 minimo(minimo(decision.tope_ms, tope_forma), tope_reposo),
                 minimo(
-                    universo.as_deref().and_then(|s| s.tope_ms()),
+                    minimo(
+                        universo.as_deref().and_then(|s| s.tope_ms()),
+                        // B2: la capa de tinta tiene algo que pintar pero
+                        // todavia no toca; sin este tope, con la mano quieta
+                        // no llegaria ningun evento y el ultimo tramo del
+                        // trazo se quedaria sin salir.
+                        espera_tinta,
+                    ),
                     // Persiguiendo: despertar cada fotograma. Parado, nada.
                     suave.activo().then_some(8),
                 ),
@@ -2222,6 +2414,9 @@ fn pintar(
     // interfaz, que va en su propia capa, no.
     let margen = superficie.margen();
     let con_capas = superficie.tiene_capas();
+    // A3 fase 2: el cielo y las estrellas tienen visual propio, asi que la
+    // escena no los pinta.
+    let con_fondo = superficie.tiene_fondo();
     // La rejilla dice que PUEDE verse; la camara filtra lo que de verdad se
     // ve. Sin la rejilla, esto recorreria los ocho mil elementos.
     //
@@ -2334,10 +2529,21 @@ fn pintar(
             if !capa_vale {
                 match uni {
                     // El cielo en lugar del papel, en pixeles de pantalla:
-                    // la vista del mundo se pone justo despues.
+                    // la vista del mundo se pone justo despues. El colchon
+                    // se suma aqui porque esto se pinta en la superficie de
+                    // la escena, que va corrida ese colchon.
                     Some(s) => {
-                        p.desplazar(0.0, 0.0);
-                        s.pintar_detras(p, camara);
+                        if con_fondo {
+                            // A3 fase 2: el cielo y las estrellas estan en
+                            // sus propios visuales, DEBAJO de este. La
+                            // escena va transparente para que se vean.
+                            p.limpiar_transparente();
+                            p.desplazar(margen, margen);
+                            s.pintar_astros(p, camara);
+                        } else {
+                            p.desplazar(margen, margen);
+                            s.pintar_detras(p, camara);
+                        }
                     }
                     None => p.limpiar(Color::BLANCO),
                 }
@@ -2485,6 +2691,29 @@ fn pintar(
             }
         });
     }
+    // A3 fase 2: el cielo y las estrellas, cada uno en el suyo. Solo en el
+    // fotograma nitido: mientras la camara se mueve, lo que se mueve es la
+    // matriz del visual de las estrellas, no sus pixeles.
+    if con_fondo && interfaz_sucia {
+        let uni = universo.as_deref();
+        if let Some(s) = uni {
+            let (cw, ch) = superficie.tamano_cielo().unwrap_or((1, 1));
+            let _ = superficie.pintar_cielo(motor, |p, _| {
+                // El degradado se hornea del tamano de la PANTALLA y aqui se
+                // pinta del tamano de su superficie chica; la composicion lo
+                // estira al resto. Es la misma imagen, con una pasada de
+                // 192 px en vez de una de 3.000.
+                s.pintar_cielo(p, cw as f32, ch as f32);
+            });
+            let m = superficie.margen_fondo();
+            let _ = superficie.pintar_fondo(motor, |p, base| {
+                p.desplazar(base.0 + m, base.1 + m);
+                s.pintar_estrellas(p, camara);
+            });
+        }
+        // Lo que se acaba de pintar ya esta en la camara nueva.
+        superficie.reponer_fondo();
+    }
     if error.is_err() {
         // Dispositivo perdido: las realizaciones de tinta son del dispositivo
         // viejo y ya no valen (D2D las rechazaria en el siguiente fotograma).
@@ -2505,6 +2734,92 @@ fn pintar(
     let t_presentar = std::time::Instant::now();
     let _ = superficie.presentar_sincronizado(zona);
     Some(t_presentar.elapsed())
+}
+
+/// **B2: un fotograma del trazo en curso, y nada mas.**
+///
+/// Limpia `zona` de la capa de tinta y pinta ahi el elemento que se esta
+/// dibujando, con su punta predicha. La escena no se mira, no se copia y no
+/// se presenta: lo que se ve debajo es el mismo fotograma de escena que ya
+/// estaba en su visual desde antes de apoyar el lapiz.
+///
+/// Lo que se pinta es EXACTAMENTE lo mismo que pintaba `pintar` para el
+/// elemento en curso (las mismas ordenes, la misma punta aparte): lo que
+/// cambia es sobre que. Asi, apagar B2 desde el TOML no cambia la forma de
+/// un trazo, solo donde se dibuja.
+///
+/// Devuelve si llego a pintar: si el gesto dejo de tener elemento en curso
+/// entre la cola de eventos y aqui, no hay fotograma y quien llama tiene que
+/// seguir pidiendolo.
+#[allow(clippy::too_many_arguments)]
+fn pintar_tinta_viva(
+    motor: &MotorRender,
+    superficie: &Superficie,
+    escena: &Escena,
+    camara: &Camara,
+    gesto: &Gesto,
+    cache: &mut Cache,
+    imagenes: &ImagenesLienzo,
+    zona: Option<(i32, i32, i32, i32)>,
+    prediccion: Option<Punto2>,
+    ancho_px: f32,
+    alto_px: f32,
+) -> bool {
+    let Some((id, origen_trazo)) = gesto.elemento_en_curso() else {
+        return false;
+    };
+    let Some(e) = escena.buscar(id) else {
+        return false;
+    };
+    if e.borrado {
+        return false;
+    }
+    let vista = camara.ventana(ancho_px, alto_px);
+    superficie
+        .pintar_tinta(motor, zona, |p, base| {
+            // La capa de tinta va en pixeles de VENTANA (no lleva el colchon
+            // de la escena); `base` es lo que DirectComposition pide sumar.
+            let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
+            p.poner_vista(
+                (0.0, 0.0),
+                camara.zoom,
+                (origen.x + base.0, origen.y + base.1),
+            );
+            // Lo mismo que hace `pintar` con el elemento en curso: la punta
+            // de tinta va aparte (sale de las ultimas muestras, no de clonar
+            // el elemento entero), y lo que no es tinta lleva la punta dentro
+            // de una copia, que ahi son cuatro numeros.
+            let mut punta = None;
+            if let Some(q) = prediccion {
+                match punta_de_tinta(e, q) {
+                    Some(orden) => punta = Some(orden),
+                    None => {
+                        if let Some(copia) =
+                            pixpin_motor2d::tinta::prediccion::con_punta(e, origen_trazo, q)
+                        {
+                            for orden in
+                                pixpin_motor2d::pintado::ordenes_a_distancia(&copia, camara.zoom)
+                            {
+                                dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom);
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+            let mut hubo_tinta = false;
+            // Sin cache de realizaciones: la version del trazo en curso sube
+            // en cada fotograma, asi que teselar para la cache seria pagar y
+            // no cobrar nunca. Es lo mismo que hace `pintar`.
+            por_cada_orden(cache, e, camara.zoom, escena.escala.as_ref(), |orden| {
+                hubo_tinta |= matches!(orden, Orden::Tinta { .. });
+                dibujar_orden(p, orden, vista, None, imagenes, camara.zoom);
+            });
+            if let (Some(orden), true) = (punta, hubo_tinta) {
+                dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom);
+            }
+        })
+        .is_ok()
 }
 
 /// Lo que el usuario teclea al calibrar, convertido a numero.
@@ -3067,6 +3382,25 @@ mod pruebas {
         // de superficie de mas y solo hay 512.
         let lejos = camara_de_prueba(0.0, 0.0, 0.5);
         assert!(transformada_de_camara(&c0, &lejos, 1920.0, 1080.0, 256.0).is_none());
+    }
+
+    #[test]
+    fn recien_compuesto_la_tinta_toca_ya_y_a_mitad_de_periodo_espera() {
+        // Ya paso el periodo: toca pintar sin esperar.
+        assert_eq!(espera_de_tinta(17.0, 16.7), None);
+        // Y justo en el 90 % tambien: el plazo es ese, no el periodo entero
+        // (si no, la deriva entre el reloj del bucle y el de DWM perderia
+        // una composicion de cada dos y el trazo saldria a 30 Hz).
+        assert_eq!(espera_de_tinta(16.7 * 0.9, 16.7), None);
+        // A mitad de periodo se espera lo que falta, redondeado hacia
+        // arriba: dormir de menos es volver a la misma pregunta.
+        let e = espera_de_tinta(8.0, 16.7).expect("todavia no toca");
+        assert!((7..=8).contains(&e), "{e} ms");
+        // Nunca 0: un tope de 0 ms es girar en vacio.
+        assert_eq!(espera_de_tinta(16.7 * 0.9 - 0.01, 16.7), Some(1));
+        // Caso negativo: sin periodo que valga no se frena nada.
+        assert_eq!(espera_de_tinta(0.0, 0.0), None);
+        assert_eq!(espera_de_tinta(f32::NAN, 16.7), None);
     }
 
     #[test]

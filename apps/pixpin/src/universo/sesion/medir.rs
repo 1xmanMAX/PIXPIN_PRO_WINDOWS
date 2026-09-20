@@ -101,6 +101,69 @@ impl Banco {
     }
 }
 
+impl Banco {
+    /// **A3 fase 2 medido.** El mismo guion de paneo, pero pintando solo
+    /// cuando el colchon de la superficie ya no da de si. Los fotogramas que
+    /// no se pintan no se miden porque no hay nada que medir: son dos
+    /// matrices (la de la escena y la de las estrellas, a su paralaje) y un
+    /// `Commit`.
+    ///
+    /// Devuelve la medida REPARTIDA entre los `VUELTAS` fotogramas del guion
+    /// -que es lo que cuesta de media un fotograma de paneo- y cuantos
+    /// repintados hubo.
+    ///
+    /// **Lo que este numero se deja fuera:** el repintado de verdad cubre la
+    /// ventana MAS el colchon, y aqui se pinta solo la ventana, porque el
+    /// destino del banco es del tamano de la pantalla. Asi que el coste por
+    /// repintado esta subestimado en ese orden; el numero de repintados, que
+    /// es donde esta la ganancia, no.
+    pub fn medir_por_composicion(
+        &self,
+        s: &mut Sesion,
+        camara: impl Fn(usize) -> Camara,
+    ) -> (Medida, usize) {
+        for _ in 0..3 {
+            self.fotograma(s, &camara(0));
+        }
+        let escala = crate::ventana_editor::MARGEN_ESCENA as f32;
+        let mut m = Medida::default();
+        let mut repintados = 0usize;
+        let mut pintada = crate::navegacion::vista_efectiva(&camara(0), ESCALA);
+        for i in 0..VUELTAS {
+            let efectiva = crate::navegacion::vista_efectiva(&camara(i), ESCALA);
+            // Con el universo detras solo se componen paneos puros: la
+            // escala tiene que salir 1, y las estrellas tienen que caber en
+            // su colchon, que es el del lienzo por su paralaje.
+            let cabe = crate::ventana_editor::transformada_de_camara(
+                &pintada,
+                &efectiva,
+                ANCHO as f32,
+                ALTO as f32,
+                escala,
+            )
+            .is_some_and(|(e, dx, dy)| {
+                let p = s.paralaje();
+                e == 1.0 && (dx * p).abs() <= escala * p && (dy * p).abs() <= escala * p
+            });
+            if cabe {
+                continue;
+            }
+            repintados += 1;
+            pintada = efectiva;
+            let (a, b, t) = self.fotograma(s, &camara(i));
+            m.preparar += a;
+            m.encargar += b;
+            m.total += t;
+            m.peor = m.peor.max(t);
+        }
+        let n = VUELTAS as f64;
+        m.preparar /= n;
+        m.encargar /= n;
+        m.total /= n;
+        (m, repintados)
+    }
+}
+
 pub(super) fn sesion_de(
     raiz: PathBuf,
     u: Universo,
@@ -275,6 +338,26 @@ pub(super) fn medir_todo(b: &Banco, s: &mut Sesion, que: &str) -> [Medida; 4] {
         ..galaxia
     });
     escribir(&format!("{que} paneo dentro de galaxia"), m_paneo_g);
+    // A3 fase 2: los mismos dos paneos, pero componiendo.
+    let compuesto = |b: &Banco, s: &mut Sesion, nombre: &str, guion: &dyn Fn(usize) -> Camara| {
+        let (m, repintados) = b.medir_por_composicion(s, guion);
+        escribir(&format!("[A3-2] {que} paneo {nombre}"), m);
+        println!(
+            "{:<34} {repintados} repintados de {VUELTAS} fotogramas (colchon {} px, paralaje {:.2})",
+            format!("[A3-2] {que} paneo {nombre}"),
+            crate::ventana_editor::MARGEN_ESCENA,
+            s.paralaje()
+        );
+    };
+    compuesto(b, s, "entre galaxias compuesto", &|i: usize| Camara {
+        x: intermedio.x + i as f32 * 30.0 / intermedio.zoom,
+        y: intermedio.y + i as f32 * 12.0 / intermedio.zoom,
+        ..intermedio
+    });
+    compuesto(b, s, "dentro de galaxia compuesto", &|i: usize| Camara {
+        x: galaxia.x + i as f32 * 30.0 / galaxia.zoom,
+        ..galaxia
+    });
     [m_cosmos, m_galaxia, m_paneo, m_paneo_g]
 }
 
