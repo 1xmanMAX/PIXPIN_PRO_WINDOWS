@@ -75,6 +75,35 @@ pub struct Rendimiento {
     pub medir_fotogramas: bool,
 }
 
+/// Como se suaviza el trazo a mano (`[tinta] suavizado`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Suavizado {
+    /// Lo de siempre: solo el `streamline` de perfect-freehand, que es lo
+    /// que hace Excalidraw. Los ficheros salen identicos a los de antes.
+    #[default]
+    Excalidraw,
+    /// Ademas, el filtro de 1 euro delante (`pixpin-tinta`). Quita el
+    /// temblor de la mano parada sin retrasar la punta cuando se va deprisa,
+    /// que es donde `streamline` se siente como una goma. Cambia un poco la
+    /// forma del trazo: por eso no es el de por defecto.
+    Natural,
+}
+
+/// Seccion `[tinta]` del fichero de ajustes.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Tinta {
+    pub suavizado: Suavizado,
+    /// `mincutoff` del filtro de 1 euro, en hercios: el corte con el lapiz
+    /// quieto. Bajarlo quita mas temblor y retrasa mas al arrancar.
+    /// `None` = el valor conservador del propio motor.
+    pub corte_minimo: Option<f32>,
+    /// `beta`: cuanto sube el corte con la velocidad. Subirlo pega mas la
+    /// punta al cursor a costa de dejar pasar mas temblor.
+    pub beta: Option<f32>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum FormatoColor {
@@ -168,6 +197,8 @@ pub struct Ajustes {
     pub carpeta_capturas: Option<PathBuf>,
     pub formato_color: FormatoColor,
     pub rendimiento: Rendimiento,
+    /// Como se siente el lapiz (`[tinta]`). Vacio = como siempre.
+    pub tinta: Tinta,
     pub arranque_con_windows: bool,
     /// Tope de altura de la captura con scroll. Sin el, una pagina infinita
     /// capturaria hasta agotar la memoria.
@@ -215,6 +246,7 @@ impl Default for Ajustes {
             carpeta_capturas: None,
             formato_color: FormatoColor::default(),
             rendimiento: Rendimiento::default(),
+            tinta: Tinta::default(),
             arranque_con_windows: false,
             limite_scroll_px: 30_000,
             gif: Gif::default(),
@@ -614,6 +646,29 @@ arranque_con_windows = true
         // de "todo campo que falte se rellena" tambien vale para secciones.
         let vacios: Ajustes = toml::from_str("").unwrap();
         assert_eq!(vacios.rendimiento.nivel, PreferenciaNivel::Auto);
+    }
+
+    #[test]
+    fn la_tinta_nace_como_siempre_y_el_toml_la_puede_poner_natural() {
+        // Lo que no se escribe no cambia el trazo: un fichero sin `[tinta]`
+        // tiene que dar exactamente el lapiz de antes.
+        let vacios: Ajustes = toml::from_str("").unwrap();
+        assert_eq!(vacios.tinta.suavizado, Suavizado::Excalidraw);
+        assert_eq!(vacios.tinta.corte_minimo, None);
+
+        let a: Ajustes = toml::from_str("[tinta]\nsuavizado = \"natural\"\nbeta = 0.05").unwrap();
+        assert_eq!(a.tinta.suavizado, Suavizado::Natural);
+        assert_eq!(a.tinta.beta, Some(0.05));
+        // Lo que no se nombra sigue en `None`, que significa «el valor
+        // conservador del motor», no cero.
+        assert_eq!(a.tinta.corte_minimo, None);
+    }
+
+    #[test]
+    fn un_suavizado_desconocido_da_error_en_vez_de_adivinar() {
+        // Caso negativo: si "suabe" pasara por bueno, el usuario creeria
+        // haber encendido algo que no esta pasando.
+        assert!(toml::from_str::<Ajustes>("[tinta]\nsuavizado = \"suabe\"").is_err());
     }
 
     #[test]

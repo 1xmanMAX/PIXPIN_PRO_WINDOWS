@@ -26,6 +26,7 @@ pixpin-render = { version = "0.1.0", path = "../../crates/pixpin-render" }
 pixpin-shell = { version = "0.1.0", path = "../../crates/pixpin-shell" }
 pixpin-sincro = { version = "0.1.0", path = "../../crates/pixpin-sincro" }
 pixpin-store = { version = "0.1.0", path = "../../crates/pixpin-store" }
+pixpin-tinta = { version = "0.1.0", path = "../../crates/pixpin-tinta" }
 pixpin-ui = { version = "0.1.0", path = "../../crates/pixpin-ui" }
 pixpin-universo = { workspace = true }
 qrcodegen = "1.8.0"

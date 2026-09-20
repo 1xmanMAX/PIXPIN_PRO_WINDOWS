@@ -43,7 +43,7 @@ use pixpin_motor2d::gesto::{
 use pixpin_motor2d::indice::Rejilla;
 use pixpin_motor2d::pintado::Orden;
 use pixpin_motor2d::vector::Punto2;
-use pixpin_motor2d::{ColorRgba, Elemento, Escala, EstiloTrazo};
+use pixpin_motor2d::{ColorRgba, Elemento, Escala, EstiloTrazo, Figura};
 use pixpin_render::{CapaEstatica, Color, Estampa, MotorRender, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, FormaCursorWin, VentanaOverlay};
 use pixpin_ui::{BOTONES_EDITOR, BotonCaja, CajaHerramientas, DestinoClic};
@@ -256,6 +256,36 @@ fn pulsar_boton(boton: BotonCaja, gesto: &mut Gesto, escena: &mut Escena) -> boo
         // Sin paleta de colores en el editor todavia.
         BotonCaja::Color => true,
         BotonCaja::Salir => false,
+    }
+}
+
+/// La seccion `[tinta]` del TOML, fijada al arrancar (ver
+/// `fijar_ajustes_tinta`). Sin fijar, lo de siempre.
+static AJUSTES_TINTA: std::sync::OnceLock<pixpin_store::Tinta> = std::sync::OnceLock::new();
+
+/// La llama `main` una sola vez, antes de que exista ningun editor.
+///
+/// Es un `OnceLock` y no un parametro porque el editor se abre desde cinco
+/// sitios que no tienen nada que ver entre si y a ninguno le importa como se
+/// siente el lapiz. Llamarla dos veces no hace nada: el ajuste no cambia
+/// mientras el programa viva, y asi las pruebas pueden abrir un editor sin
+/// haberla llamado.
+pub fn fijar_ajustes_tinta(t: pixpin_store::Tinta) {
+    let _ = AJUSTES_TINTA.set(t);
+}
+
+fn ajustes_tinta() -> pixpin_store::Tinta {
+    AJUSTES_TINTA.get().copied().unwrap_or_default()
+}
+
+/// Los mandos del filtro de 1 euro: lo que diga el TOML y, para lo que no
+/// diga, el valor conservador del propio motor.
+fn mandos_de(t: pixpin_store::Tinta) -> pixpin_tinta::Mandos {
+    let d = pixpin_tinta::Mandos::default();
+    pixpin_tinta::Mandos {
+        corte_minimo: t.corte_minimo.unwrap_or(d.corte_minimo),
+        beta: t.beta.unwrap_or(d.beta),
+        ..d
     }
 }
 
@@ -618,6 +648,10 @@ fn abrir_en_modo(
     // La punta predicha del trazo en curso (ver `tinta::prediccion`): se
     // pinta donde estara el cursor cuando el fotograma llegue a pantalla.
     let mut predictor = pixpin_motor2d::tinta::prediccion::Predictor::nuevo();
+    // C1, apagado de fabrica: el filtro de 1 euro de `pixpin-tinta`.
+    let ajustes_tinta = ajustes_tinta();
+    let suavizado_natural = ajustes_tinta.suavizado == pixpin_store::Suavizado::Natural;
+    let mut filtro_tinta = pixpin_tinta::FiltroUnEuro::nuevo(mandos_de(ajustes_tinta));
     let reloj = std::time::Instant::now();
     // Si el fotograma anterior pinto una punta predicha: la zona que se
     // presenta tiene que cubrir tambien donde estaba, o quedaria un resto.
@@ -1313,8 +1347,38 @@ fn abrir_en_modo(
                     y: area.y,
                 },
             ) {
-                let g = con_modificadores(g);
+                let mut g = con_modificadores(g);
                 let ms = reloj.elapsed().as_secs_f64() * 1000.0;
+                // C1: con `[tinta] suavizado = "natural"`, la posicion pasa
+                // por el filtro de 1 euro antes de llegar al gesto. Se filtra
+                // en PIXELES DE PANTALLA y no en unidades de mundo: los
+                // hercios del filtro describen el temblor de la mano, que no
+                // cambia porque el lienzo este mas o menos acercado.
+                //
+                // Solo mientras se traza a mano: filtrar un arrastre de la
+                // seleccion o el simple mover el raton se sentiria como que
+                // la aplicacion va pegajosa.
+                if suavizado_natural
+                    && matches!(
+                        gesto.herramienta,
+                        Herramienta::Lapiz | Herramienta::Resaltador
+                    )
+                {
+                    match &mut g {
+                        EventoGesto::Pulsar { p, .. } => {
+                            filtro_tinta.reiniciar();
+                            let s = efectiva.a_pantalla(*p);
+                            let (x, y) = filtro_tinta.filtrar(s.x, s.y, ms);
+                            *p = efectiva.a_mundo(Punto2::nuevo(x, y));
+                        }
+                        EventoGesto::Mover { p, .. } if gesto.elemento_en_curso().is_some() => {
+                            let s = efectiva.a_pantalla(*p);
+                            let (x, y) = filtro_tinta.filtrar(s.x, s.y, ms);
+                            *p = efectiva.a_mundo(Punto2::nuevo(x, y));
+                        }
+                        _ => {}
+                    }
+                }
                 match g {
                     EventoGesto::Pulsar { p, .. } => {
                         predictor.reiniciar();
@@ -1927,18 +1991,32 @@ fn pintar(
                     continue;
                 }
                 // Lo que se esta dibujando (trazo, linea, flecha, rectangulo,
-                // elipse) con su punta en el punto predicho: se pinta una copia.
-                // La escena no se toca, asi que al soltar queda lo real.
+                // elipse) con su punta en el punto predicho. La escena no se
+                // toca, asi que al soltar queda lo real.
                 let en_curso = gesto.elemento_en_curso().filter(|(id, _)| *id == e.id);
+                let mut punta = None;
                 if let (Some(q), Some((_, origen))) = (prediccion, en_curso) {
-                    if let Some(copia) = pixpin_motor2d::tinta::prediccion::con_punta(e, origen, q)
-                    {
-                        for orden in
-                            pixpin_motor2d::pintado::ordenes_a_distancia(&copia, camara.zoom)
-                        {
-                            dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom);
+                    match punta_de_tinta(e, q) {
+                        // Lapiz y resaltador: la punta se pinta APARTE, encima
+                        // del trazo real, a partir de su cola. Ver
+                        // `punta_de_tinta`.
+                        Some(orden) => punta = Some(orden),
+                        // Las demas figuras tienen punta barata (una linea son
+                        // dos puntos, una caja cuatro numeros): la copia
+                        // entera sigue siendo lo mas simple y no cuesta nada.
+                        None => {
+                            if let Some(copia) =
+                                pixpin_motor2d::tinta::prediccion::con_punta(e, origen, q)
+                            {
+                                for orden in pixpin_motor2d::pintado::ordenes_a_distancia(
+                                    &copia,
+                                    camara.zoom,
+                                ) {
+                                    dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom);
+                                }
+                                continue;
+                            }
                         }
-                        continue;
                     }
                 }
                 // Lo excluido es lo que se arrastra o el trazo en curso: su
@@ -1948,12 +2026,22 @@ fn pintar(
                 // antes de esta tarea.
                 let mut indice = 0u32;
                 let clave_tinta = !ahora_excluidos.contains(&e.id);
+                let mut hubo_tinta = false;
                 por_cada_orden(cache, e, camara.zoom, escena.escala.as_ref(), |orden| {
+                    hubo_tinta |= matches!(orden, Orden::Tinta { .. });
                     let tinta =
                         clave_tinta.then_some((&mut *cache_tinta, (e.id, e.version, indice)));
                     dibujar_orden(p, orden, vista, tinta, imagenes, camara.zoom);
                     indice += 1;
                 });
+                // La punta va encima, y SOLO si el trazo se esta pintando como
+                // tinta: a zoom muy bajo `ordenes_a_distancia` lo degrada a una
+                // polilinea fina (`TINTA_MINIMA_PX`), y una mancha de tinta
+                // pegada a una raya se veria como un borron. A ese aumento la
+                // punta predicha mide menos de un pixel de todos modos.
+                if let (Some(orden), true) = (punta, hubo_tinta) {
+                    dibujar_orden(p, &orden, vista, None, imagenes, camara.zoom);
+                }
             }
 
             // Encima de todo: el marco de la seleccion, sus tiradores y la
@@ -2339,6 +2427,80 @@ fn dibujar_orden(
     }
 }
 
+/// La punta predicha de un trazo a mano, como una mancha de tinta APARTE.
+///
+/// Antes se clonaba el elemento entero y se recalculaba su contorno completo
+/// (`prediccion::con_punta` + `ordenes_a_distancia`): con la prediccion
+/// encendida, un trazo de n puntos costaba 2 x O(n) por fotograma y dos
+/// reservas de n, y se notaba justo al final de un trazo largo. La punta solo
+/// necesita el final del trazo, asi que se hace con las ultimas
+/// `PUNTOS_DE_PUNTA` muestras mas el punto predicho: coste fijo, no importa
+/// lo largo que sea el trazo. Lo que sobra por detras cae dentro de la mancha
+/// del trazo real, que ya esta pintada debajo.
+///
+/// Los puntos del lapiz estan en coordenadas del mundo (`pintado::ordenes`
+/// no los desplaza; solo los gira, y un trazo en curso no esta girado), asi
+/// que el contorno de la cola cae exactamente donde tiene que caer.
+///
+/// `None` para lo que no es tinta: la punta de una linea o de una caja es
+/// barata y se sigue haciendo con la copia entera.
+fn punta_de_tinta(e: &Elemento, q: Punto2) -> Option<Orden> {
+    // Con dos puntos o menos, perfect-freehand no tiene trazo del que sacar
+    // una cola: se deja la copia entera, que ahi tampoco cuesta nada.
+    let cola = |v: &[Punto2]| -> Option<(Vec<Punto2>, usize)> {
+        if v.len() <= 2 {
+            return None;
+        }
+        let desde = v.len() - pixpin_tinta::PUNTOS_DE_PUNTA.min(v.len());
+        let mut c = v[desde..].to_vec();
+        c.push(q);
+        Some((c, desde))
+    };
+    let opacidad = e.opacidad.clamp(0.0, 1.0);
+    match &e.figura {
+        Figura::Lapiz {
+            puntos,
+            presiones,
+            opciones,
+        } => {
+            let (c, desde) = cola(puntos)?;
+            // Las presiones solo valen si son de verdad (una lista de otra
+            // longitud es «simuladas», y entonces no se pasa ninguna: es la
+            // misma regla que sigue `contorno_de_lapiz`).
+            let mut pr: Vec<f32> = if presiones.len() == puntos.len() {
+                presiones[desde..].to_vec()
+            } else {
+                Vec::new()
+            };
+            if let Some(&u) = pr.last() {
+                // El punto predicho hereda la presion del ultimo real: naciendo
+                // a cero se veria como un pico afilado.
+                pr.push(u);
+            }
+            let contorno = pixpin_motor2d::tinta::contorno_de_lapiz(&c, &pr, e.grosor, *opciones);
+            (!contorno.is_empty()).then(|| Orden::Tinta {
+                contorno,
+                color: ColorRgba {
+                    a: e.trazo.a * opacidad,
+                    ..e.trazo
+                },
+            })
+        }
+        Figura::Resaltador { puntos } => {
+            let (c, _) = cola(puntos)?;
+            let contorno = pixpin_motor2d::tinta::contorno_de_resaltador(&c, e.grosor);
+            (!contorno.is_empty()).then(|| Orden::Tinta {
+                contorno,
+                color: ColorRgba {
+                    a: 0.35 * opacidad,
+                    ..e.trazo
+                },
+            })
+        }
+        _ => None,
+    }
+}
+
 fn a_tuplas(puntos: &[Punto2]) -> Vec<(f32, f32)> {
     puntos.iter().map(|p| (p.x, p.y)).collect()
 }
@@ -2370,6 +2532,96 @@ mod medir;
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    /// Un trazo a mano de `n` puntos en linea recta.
+    fn trazo_de(n: usize) -> Elemento {
+        let mut e = elemento_de_prueba();
+        e.figura = Figura::Lapiz {
+            puntos: (0..n).map(|i| Punto2::nuevo(i as f32, 0.0)).collect(),
+            presiones: (0..n).map(|_| 0.5).collect(),
+            opciones: Some(Default::default()),
+        };
+        e
+    }
+
+    fn elemento_de_prueba() -> Elemento {
+        Elemento {
+            id: 1,
+            figura: Figura::Rectangulo,
+            x: 0.0,
+            y: 0.0,
+            ancho: 10.0,
+            alto: 10.0,
+            angulo: 0.0,
+            trazo: ColorRgba::opaco(0.0, 0.0, 0.0),
+            estilo_relleno: Default::default(),
+            relleno: None,
+            grosor: 2.0,
+            estilo: EstiloTrazo::Solido,
+            rugosidad: 1.0,
+            opacidad: 1.0,
+            semilla: 1,
+            version: 0,
+            borrado: false,
+            grupos: Vec::new(),
+            bloqueado: false,
+            enlace: None,
+            redondo: false,
+        }
+    }
+
+    #[test]
+    fn la_punta_predicha_cuesta_lo_mismo_con_un_trazo_corto_que_con_uno_larguisimo() {
+        // B3: antes, la punta clonaba el elemento y recalculaba su contorno
+        // entero, asi que al final de un trazo largo costaba una segunda
+        // pasada por los 5.000 puntos. Ahora sale de la cola y su contorno
+        // tiene el mismo tamano venga de donde venga.
+        let q = Punto2::nuevo(9_000.0, 0.0);
+        let corto = punta_de_tinta(&trazo_de(40), q).expect("un trazo de 40 tiene punta");
+        let largo = punta_de_tinta(&trazo_de(5_000), q).expect("y uno de 5.000 tambien");
+        let cuantos = |o: &Orden| match o {
+            Orden::Tinta { contorno, .. } => contorno.len(),
+            _ => unreachable!("un lapiz da tinta"),
+        };
+        assert_eq!(cuantos(&corto), cuantos(&largo));
+    }
+
+    #[test]
+    fn la_punta_acaba_en_el_punto_predicho_y_no_en_el_ultimo_real() {
+        let q = Punto2::nuevo(500.0, 0.0);
+        let Some(Orden::Tinta { contorno, .. }) = punta_de_tinta(&trazo_de(100), q) else {
+            unreachable!("un lapiz da tinta")
+        };
+        let mas_lejos = contorno.iter().fold(0.0f32, |m, p| m.max(p.x));
+        assert!(mas_lejos > 490.0, "la punta llega hasta {mas_lejos}");
+    }
+
+    #[test]
+    fn lo_que_no_es_tinta_no_tiene_punta_aparte() {
+        // Caso negativo: una caja o una flecha siguen usando la copia
+        // entera, que en su caso son cuatro numeros y no cuesta nada.
+        let q = Punto2::nuevo(5.0, 5.0);
+        assert!(punta_de_tinta(&elemento_de_prueba(), q).is_none());
+        let mut flecha = elemento_de_prueba();
+        flecha.figura = Figura::Flecha {
+            puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(1.0, 1.0)],
+            punta_inicio: false,
+            punta_fin: true,
+        };
+        assert!(punta_de_tinta(&flecha, q).is_none());
+        // Y un trazo de dos puntos tampoco: no hay cola de la que tirar.
+        assert!(punta_de_tinta(&trazo_de(2), q).is_none());
+    }
+
+    #[test]
+    fn sin_fijar_nada_el_lapiz_se_comporta_como_siempre() {
+        // El ajuste de C1 va apagado de fabrica: abrir un editor sin haber
+        // llamado a `fijar_ajustes_tinta` no puede cambiar el trazo.
+        assert_eq!(
+            ajustes_tinta().suavizado,
+            pixpin_store::Suavizado::Excalidraw
+        );
+    }
 
     #[test]
     fn la_tecla_pintada_en_cada_boton_elige_esa_herramienta() {

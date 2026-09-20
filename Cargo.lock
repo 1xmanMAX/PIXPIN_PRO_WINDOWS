@@ -542,6 +542,7 @@ dependencies = [
  "pixpin-shell",
  "pixpin-sincro",
  "pixpin-store",
+ "pixpin-tinta",
  "pixpin-ui",
  "pixpin-universo",
  "qrcodegen",

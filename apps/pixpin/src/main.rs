@@ -251,6 +251,13 @@ fn arrancar(
 
     // 4. Que nos han configurado.
     let mut config = ajustes::cargar(&ubicacion).context("no se pudieron leer los ajustes")?;
+    // Como se siente el lapiz (`[tinta]`). Va por aqui y no como parametro de
+    // `ventana_editor::abrir` porque el editor se abre desde cinco sitios
+    // distintos (la bandeja, el «abrir con», el chat, el universo) y ninguno
+    // de ellos tiene por que enterarse de un ajuste que solo mira el bucle de
+    // dibujo. Se fija una vez, antes de que exista el primer editor, y no
+    // vuelve a cambiar mientras el programa viva.
+    ventana_editor::fijar_ajustes_tinta(config.tinta);
 
     // 5. Reflejar en el registro de Windows lo que digan los ajustes.
     //
