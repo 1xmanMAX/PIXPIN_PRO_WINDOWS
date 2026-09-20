@@ -397,19 +397,44 @@ pub struct Extras {
     /// La pauta impresa de la hoja (`pauta`).
     #[serde(default)]
     pub pauta: PautaHoja,
+    /// **El id de TEXTO con el que este elemento entro o salio del fichero**
+    /// (`id` de Excalidraw).
+    ///
+    /// Aqui el id es un `u64` que se deriva del texto, y esa cuenta no se
+    /// puede deshacer. Mientras solo se leyeran dibujos del movil daba igual,
+    /// porque su id venia en el fichero; pero un enganche nacido AQUI, entre
+    /// dos elementos que creo el PC, apuntaba a un texto inventado para la
+    /// sesion, y al guardar el elemento estrenaba otro con la hora dentro
+    /// (`w<hora><id>`). Al reabrir, el enganche apuntaba a un id que ya no
+    /// existia y la flecha dejaba de seguir a su caja.
+    ///
+    /// Recordandolo, el id se escribe una vez y no cambia nunca mas: el
+    /// enganche que se hizo hoy sigue atado manana.
+    #[serde(default)]
+    pub id_de_fichero: Option<String>,
 }
 
 impl Extras {
     /// Si no hay nada que escribir. Lo usa el puente para no ensuciar el
     /// JSON de un elemento que nunca tuvo ninguno de estos campos.
+    ///
+    /// **`id_de_fichero` no cuenta**: no es un campo del movil, es la memoria
+    /// de con que id entro este elemento, y se escribe por la clave `id` como
+    /// siempre. Contandolo, todo elemento leido de un fichero tendria extras
+    /// «no vacios» y estrenaria las diez claves del movil al moverlo, que es
+    /// justo el ensuciado que esta funcion viene a evitar.
     pub fn vacios(&self) -> bool {
-        *self == Extras::default()
+        Extras {
+            id_de_fichero: None,
+            ..self.clone()
+        } == Extras::default()
     }
 
     /// Lo que ocupa de verdad, contando lo que hay al otro lado de los
     /// punteros. Lo usa `Elemento::bytes`.
     pub fn bytes(&self) -> usize {
         self.contenedor.as_ref().map_or(0, String::len)
+            + self.id_de_fichero.as_ref().map_or(0, String::len)
             + self
                 .enganche_inicio
                 .iter()

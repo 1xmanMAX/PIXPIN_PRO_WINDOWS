@@ -33,15 +33,17 @@
 //! cuenta que usa `excalidraw::leer`.
 //!
 //! Para un enganche nacido **aqui**, entre dos elementos que el PC creo, el
-//! texto se inventa (`pc<hex>`) y vale mientras dura la sesion, pero **no
-//! sobrevive a guardar y reabrir**: `excalidraw.rs` le pone al elemento un id
-//! de texto con la hora dentro (`w<hora><id>`) y no lo guarda en ninguna
-//! parte, asi que al releer el enganche apunta a un id que ya no existe.
-//! Arreglarlo es una linea en `excalidraw.rs` —que un elemento recuerde el id
-//! de texto con el que entro o salio— y ese fichero no es de este grupo. Lo
-//! que si esta garantizado desde ya es que **un enganche que no resuelve no
-//! rompe nada**: [`recolocar`] deja la flecha donde esta y el enganche viaja
-//! intacto al movil.
+//! texto se inventa ([`id_de_texto`], `pc<hex>`) y **sobrevive a guardar y
+//! reabrir**: `excalidraw::sellar` escribe ese mismo texto como `id` del
+//! elemento, y al releer [`id_del_fichero`] devuelve el numero de vuelta. No
+//! siempre fue asi —el id se inventaba con la hora dentro y cambiaba en cada
+//! guardado, con lo que la flecha dejaba de seguir a su caja—; la prueba que
+//! lo vigila es `un_enganche_hecho_en_el_pc_sigue_atado_despues_de_guardar_y_
+//! reabrir`, en `excalidraw.rs`.
+//!
+//! Y, pase lo que pase, **un enganche que no resuelve no rompe nada**:
+//! [`recolocar`] deja la flecha donde esta y el enganche viaja intacto al
+//! movil.
 
 use crate::elemento::{Elemento, Enganche, Figura, ModoEnganche};
 use crate::escena::Escena;

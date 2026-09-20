@@ -240,11 +240,21 @@ fn sellar(mapa: &mut Map<String, Value>, e: &Elemento, original: &Value) {
         "versionNonce".into(),
         Value::from((ahora as u64 ^ e.id.wrapping_mul(0x9e37_79b9)) & 0x7fff_ffff),
     );
+    // **El id de texto tiene que ser SIEMPRE el mismo.** Antes se inventaba
+    // uno con la hora dentro (`w<hora><id>`), asi que cambiaba en cada
+    // guardado: un enganche nacido aqui entre dos elementos del PC apuntaba
+    // al reabrir a un id que ya no existia y la flecha dejaba de seguir a su
+    // caja. Ahora sale, por este orden, del id con el que el elemento entro
+    // —si vino de un fichero— o de su id interno, con la misma forma `pc<hex>`
+    // que usa `enlace` para nombrar lo que nace aqui. Las dos direcciones son
+    // la misma cuenta (ver `id_estable`), asi que reabrir devuelve el mismo
+    // numero y el enganche sigue atado.
     if !mapa.contains_key("id") {
-        mapa.insert(
-            "id".into(),
-            Value::String(format!("w{:x}{:x}", ahora, e.id)),
-        );
+        let texto = match &e.extras.id_de_fichero {
+            Some(suyo) => suyo.clone(),
+            None => crate::enlace::id_de_texto(e.id),
+        };
+        mapa.insert("id".into(), Value::String(texto));
     }
     if !mapa.contains_key("type") {
         let tipo = match &e.figura {
@@ -827,6 +837,15 @@ fn extras_desde(v: &Value) -> Extras {
             .and_then(Value::as_str)
             .and_then(PautaHoja::desde_palabra)
             .unwrap_or_default(),
+        // **Con que id entro.** Nuestro `id` es un `u64` derivado de este
+        // texto, y esa cuenta no se puede deshacer: sin guardarlo, un
+        // enganche nacido aqui apuntaria a un id que al reabrir ya no
+        // existe. Ver `Extras::id_de_fichero`.
+        id_de_fichero: v
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
     }
 }
 
@@ -1235,16 +1254,13 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
 /// reversible —el original vuelve del JSON— pero SI que el mismo texto de
 /// siempre el mismo numero: si cambiara entre dos lecturas del mismo
 /// fichero, deshacer y seleccionar dejarian de encontrar sus elementos.
+/// **Una sola cuenta, y vive en `enlace`.** Aqui habia una copia de la FNV-1a
+/// sin la puerta del prefijo `pc`, asi que el id de un elemento nacido en el
+/// escritorio y el id al que apuntaba su enganche se calculaban de dos
+/// maneras distintas: al reabrir, la flecha buscaba una caja que segun esta
+/// cuenta no era esa caja. Dos verdades sobre el mismo texto.
 fn id_estable(texto: &str) -> u64 {
-    // FNV-1a de 64 bits. Cabe en cuatro lineas, no necesita dependencias y
-    // reparte bien para lo que hace falta aqui, que es no chocar dentro de
-    // un dibujo de unos cientos de elementos.
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in texto.as_bytes() {
-        h ^= *b as u64;
-        h = h.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    h
+    crate::enlace::id_del_fichero(texto)
 }
 
 // --- Colores ---
@@ -2004,6 +2020,97 @@ mod pruebas {
             let vuelta: Value = serde_json::from_str(&escribir(&l)).unwrap();
             assert_eq!(vuelta["elements"][0]["fillStyle"], palabra);
         }
+    }
+
+    /// **Un enganche nacido AQUI sobrevive a guardar y reabrir.**
+    ///
+    /// Es el fallo que dejo apuntado el grupo B en la cabecera de `enlace.rs`.
+    /// El elemento estrenaba un id de texto con la hora dentro en cada
+    /// guardado, asi que al reabrir el enganche apuntaba a un id que ya no
+    /// existia: la caja se movia y la flecha se quedaba donde estaba, sin que
+    /// nada avisara.
+    #[test]
+    fn un_enganche_hecho_en_el_pc_sigue_atado_despues_de_guardar_y_reabrir() {
+        use crate::elemento::Enganche;
+
+        // **Las DOS nacen aqui**, y eso es lo que hace de esto una prueba:
+        // una caja que viniera del movil ya trae su id en el fichero y
+        // sobrevivia de antes. La que se rompia era esta.
+        let mut l = leer(
+            r#"{"elements":[{"id":"x","type":"rectangle","x":0,"y":0,
+            "width":10,"height":10}]}"#,
+        )
+        .unwrap();
+        let caja = 77;
+        l.entradas.push(Entrada::Nuestro {
+            elemento: Elemento {
+                id: caja,
+                figura: Figura::Rectangulo,
+                x: 0.0,
+                y: 0.0,
+                ancho: 80.0,
+                alto: 40.0,
+                ..Default::default()
+            },
+            original: Box::new(Value::Object(Map::new())),
+        });
+        let flecha = Elemento {
+            id: 4242,
+            figura: Figura::Flecha {
+                puntos: vec![Punto2::nuevo(200.0, 20.0), Punto2::nuevo(90.0, 20.0)],
+                punta_inicio: TipoPunta::Ninguna,
+                punta_fin: TipoPunta::Flecha,
+                codos: false,
+            },
+            extras: crate::elemento::Extras {
+                enganche_fin: Some(Enganche {
+                    elemento: crate::enlace::id_de_texto(caja),
+                    foco: 0.0,
+                    hueco: 1.0,
+                    punto_fijo: None,
+                    modo: Default::default(),
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        l.entradas.push(Entrada::Nuestro {
+            elemento: flecha,
+            original: Box::new(Value::Object(Map::new())),
+        });
+
+        // Dos vueltas, no una: con una sola, un id que cambia en cada
+        // guardado podria acertar de casualidad la primera vez.
+        let mut texto = escribir(&l);
+        for vuelta in 0..2 {
+            let releido = leer(&texto).unwrap();
+            let elementos = releido.elementos();
+            let flecha = elementos
+                .iter()
+                .find(|e| matches!(e.figura, Figura::Flecha { .. }))
+                .expect("la flecha sigue ahi");
+            let atada = flecha.extras.enganche_fin.as_ref().expect("y su enganche");
+            assert!(
+                crate::enlace::resolver(&elementos, atada).is_some(),
+                "vuelta {vuelta}: el enganche apunta a un id que ya no existe"
+            );
+            texto = escribir(&releido);
+        }
+    }
+
+    #[test]
+    fn el_id_de_un_elemento_del_movil_no_se_reescribe_nunca() {
+        // Caso negativo, y la regla de oro: lo que viene del movil se edita
+        // partiendo de su JSON. Si al mover una caja le cambiara el id, el
+        // telefono la veria como una caja NUEVA y se quedaria con las dos.
+        let mut l = leer(
+            r#"{"elements":[{"id":"aBcDeF123","type":"rectangle","x":0,"y":0,
+            "width":80,"height":40}]}"#,
+        )
+        .unwrap();
+        movido(&mut l);
+        let vuelta: Value = serde_json::from_str(&escribir(&l)).unwrap();
+        assert_eq!(vuelta["elements"][0]["id"], "aBcDeF123");
     }
 
     /// El primer elemento nuestro del lienzo, para poder tocarlo.
