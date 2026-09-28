@@ -97,3 +97,66 @@ pub fn pedir_ruta_guardado(
         texto.map(PathBuf::from)
     }
 }
+
+/// **«Guardar como» para un fichero ya hecho**, de cualquier tipo: la salida
+/// «Guardar» de la hoja de compartir. `tipo` es como se llama el tipo en la
+/// lista del dialogo («Página web», «Documento PDF») y `extension` la suya,
+/// sin punto.
+///
+/// Solo ese tipo en la lista, como con el MP4: lo que se guarda ya esta
+/// hecho, y dejar elegir otro formato aqui guardaria un PDF con nombre de
+/// `.png`. `None` si se cancela o el dialogo falla.
+pub fn pedir_ruta_para(
+    hwnd_padre: HWND,
+    nombre_sugerido: &str,
+    tipo: &str,
+    extension: &str,
+) -> Option<PathBuf> {
+    let tipo = HSTRING::from(tipo);
+    let patron = HSTRING::from(format!("*.{extension}"));
+    let ext = HSTRING::from(extension);
+    let nombre = HSTRING::from(nombre_sugerido);
+    // SAFETY: COM esta iniciado en el hilo que llama (la hoja de compartir lo
+    // inicia en el suyo); el dialogo es un objeto local que muere al salir.
+    // Las cadenas viven hasta despues de `Show`: el dialogo guarda los
+    // punteros de los filtros, no los copia.
+    unsafe {
+        let dialogo: IFileSaveDialog =
+            CoCreateInstance(&FileSaveDialog, None, CLSCTX_INPROC_SERVER).ok()?;
+        let filtros = [COMDLG_FILTERSPEC {
+            pszName: PCWSTR(tipo.as_ptr()),
+            pszSpec: PCWSTR(patron.as_ptr()),
+        }];
+        dialogo.SetFileTypes(&filtros).ok()?;
+        dialogo.SetDefaultExtension(PCWSTR(ext.as_ptr())).ok()?;
+        dialogo.SetFileName(PCWSTR(nombre.as_ptr())).ok()?;
+        dialogo.Show(Some(hwnd_padre)).ok()?;
+        let item = dialogo.GetResult().ok()?;
+        let ruta = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let texto = ruta.to_string().ok();
+        // La misma regla de arriba: se libera antes de cualquier `?`.
+        CoTaskMemFree(Some(ruta.as_ptr() as *const _));
+        texto.map(PathBuf::from)
+    }
+}
+
+/// **Elegir una carpeta**, para guardar varios ficheros de una vez (los
+/// originales de varios mensajes). Es el mismo dialogo de abrir en modo
+/// carpeta, el que Windows usa para eso. `None` si se cancela.
+pub fn pedir_carpeta(hwnd_padre: HWND) -> Option<PathBuf> {
+    use windows::Win32::UI::Shell::{FOS_PICKFOLDERS, FileOpenDialog, IFileOpenDialog};
+    // SAFETY: como en `pedir_ruta_para`: COM iniciado en el hilo, dialogo
+    // local, y la cadena del resultado se libera antes de cualquier `?`.
+    unsafe {
+        let dialogo: IFileOpenDialog =
+            CoCreateInstance(&FileOpenDialog, None, CLSCTX_INPROC_SERVER).ok()?;
+        let opciones = dialogo.GetOptions().unwrap_or_default();
+        dialogo.SetOptions(opciones | FOS_PICKFOLDERS).ok()?;
+        dialogo.Show(Some(hwnd_padre)).ok()?;
+        let item = dialogo.GetResult().ok()?;
+        let ruta = item.GetDisplayName(SIGDN_FILESYSPATH).ok()?;
+        let texto = ruta.to_string().ok();
+        CoTaskMemFree(Some(ruta.as_ptr() as *const _));
+        texto.map(PathBuf::from)
+    }
+}

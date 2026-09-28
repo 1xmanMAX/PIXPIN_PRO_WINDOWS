@@ -91,6 +91,45 @@ impl Paleta {
         Ok(Paleta { hwnd })
     }
 
+    /// La lleva a otro sitio y otro tamano, o la esconde con `None`. Es lo
+    /// que necesita el panel de propiedades del pin: crece con lo que ensena
+    /// (una paleta de colores desplegada) y desaparece con la mano, que no
+    /// tiene nada que ajustar. Una ventana del tamano maximo, casi toda
+    /// transparente, se tragaria los clics de lo que hay debajo.
+    pub fn recolocar(&self, rect: Option<Rect>) {
+        let Some(i) = interno_de(self.hwnd) else {
+            return;
+        };
+        match rect.filter(|r| r.ancho > 0 && r.alto > 0) {
+            None => {
+                // SAFETY: esconder una ventana propia desde su hilo.
+                unsafe {
+                    let _ = ShowWindow(self.hwnd, SW_HIDE);
+                }
+            }
+            Some(r) => {
+                if let Err(e) = i.superficie.redimensionar(r.ancho, r.alto) {
+                    tracing::warn!(?e, "no se pudo redimensionar la paleta");
+                    return;
+                }
+                // SAFETY: mover y ensenar una ventana propia sin activarla:
+                // el teclado se queda en el pin.
+                unsafe {
+                    let _ = SetWindowPos(
+                        self.hwnd,
+                        Some(HWND_TOPMOST),
+                        r.x,
+                        r.y,
+                        r.ancho as i32,
+                        r.alto as i32,
+                        SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                    );
+                }
+                pintar(i);
+            }
+        }
+    }
+
     /// Cambia como se pinta y repinta ya. El mismo pintor sirve para los
     /// `WM_PAINT` que vengan despues.
     pub fn poner_pintor(&self, pintor: PintorPaleta) {

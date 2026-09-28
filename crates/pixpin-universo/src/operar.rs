@@ -166,6 +166,8 @@ impl Universo {
         self.apuntar_astro(id);
         self.astros.push(luna);
         self.terminar(propio);
+        // Vuelve porque el usuario la trajo: ya no esta quitada (H2).
+        self.quitados.retain(|c| c != codigo);
         Ok(id)
     }
 
@@ -216,6 +218,16 @@ impl Universo {
             .collect();
         for c in &lineas {
             self.apuntar_conexion(*c);
+        }
+        // H2: lo quitado a mano no lo repone el armado del chat. Fuera del
+        // deshacer a proposito: deshacer devuelve la luna, y una luna que
+        // esta en el cielo no cuenta como quitada (`desde_el_chat::armar`).
+        for a in self.astros.iter().filter(|a| quitar.contains(&a.id)) {
+            if let Some(c) = a.codigo()
+                && !self.quitados.iter().any(|q| q == c)
+            {
+                self.quitados.push(c.to_string());
+            }
         }
         self.astros.retain(|a| !quitar.contains(&a.id));
         self.conexiones.retain(|c| !lineas.contains(&c.id));

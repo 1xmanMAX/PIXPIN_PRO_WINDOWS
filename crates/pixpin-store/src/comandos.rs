@@ -185,14 +185,16 @@ pub const CATALOGO: &[Descriptor] = &[
         nombre: "anotar",
         clave_titulo: "comando-anotar",
         atajo_por_defecto: None,
-        en_bandeja: false,
+        // Desde la bandeja: es el anotador de pantalla (el editor encima del
+        // escritorio). Sin atajo de fabrica, como todo salvo el general.
+        en_bandeja: true,
     },
     Descriptor {
         comando: Comando::AnotarCongelada,
         nombre: "anotar-congelada",
         clave_titulo: "comando-anotar-congelada",
         atajo_por_defecto: None,
-        en_bandeja: false,
+        en_bandeja: true,
     },
     Descriptor {
         comando: Comando::PinearSeleccion,
@@ -232,7 +234,11 @@ pub const CATALOGO: &[Descriptor] = &[
         comando: Comando::AlternarPines,
         nombre: "alternar-pines",
         clave_titulo: "comando-alternar-pines",
-        atajo_por_defecto: None,
+        // Lo pidio el usuario el 2026-09-22: «ocultar pines en pantalla con
+        // Control 2, y Control 2 para mostrar de nuevo». Es la excepcion a
+        // «nada nace con atajo»; el precio sabido es que Ctrl+2 deja de
+        // llegar a los programas que lo usan (la pestana 2 del navegador).
+        atajo_por_defecto: Some("Ctrl+2"),
         en_bandeja: true,
     },
     // Los otros dos de pines nacen SIN atajo: son de uso ocasional y meter
@@ -630,7 +636,10 @@ mod pruebas {
         let e = Enlaces::default();
         let ids: Vec<u32> = e.registrables().iter().map(|(id, _)| *id).collect();
         assert!(ids.contains(&Comando::CapturarRegion.id()));
-        assert_eq!(ids.len(), 1, "un solo atajo de fabrica (D140)");
+        // El atajo general (D140) y Ctrl+2 para ocultar y mostrar los pines,
+        // que el usuario pidio por su nombre el 2026-09-22. Ninguno mas.
+        assert!(ids.contains(&Comando::AlternarPines.id()));
+        assert_eq!(ids.len(), 2, "solo esos dos atajos de fabrica");
         assert!(
             !ids.contains(&Comando::Cuentagotas.id()),
             "el cuentagotas nace sin atajo (D81)"
@@ -687,6 +696,20 @@ mod pruebas {
             e.atajo_de(Comando::Pinear).unwrap().to_string(),
             "Ctrl+Shift+F8"
         );
+    }
+
+    #[test]
+    fn el_anotador_de_pantalla_se_abre_desde_la_bandeja_y_nace_sin_atajo() {
+        // El usuario quiere gestos y un solo atajo general: el anotador se
+        // abre desde la bandeja, y el atajo lo pone quien lo quiera.
+        for c in [Comando::Anotar, Comando::AnotarCongelada] {
+            let d = c.descriptor();
+            assert!(d.en_bandeja, "{}", d.nombre);
+            assert_eq!(d.atajo_por_defecto, None, "{}", d.nombre);
+        }
+        // Y los nombres del TOML no cambian.
+        assert_eq!(Comando::Anotar.descriptor().nombre, "anotar");
+        assert_eq!(Comando::AnotarCongelada.descriptor().nombre, "anotar-congelada");
     }
 
     #[test]

@@ -10,9 +10,13 @@ use crate::ficha::FichaLuna;
 pub const POR_PAGINA: usize = 60;
 pub const COLUMNAS: usize = 10;
 pub const CELDA: f32 = 120.0;
-/// Donde empieza la rejilla, en radios bajo el centro. Con 10 x 6 celdas
-/// de 120 cabe entera en el circulo (lo comprueba una prueba).
-const DESDE: f32 = 0.55;
+/// Lo que se separa la rejilla del borde de abajo de su galaxia.
+///
+/// Iba DENTRO del circulo, en su mitad de abajo. Desde que la galaxia se
+/// arma sola con el chat (H2, `desde_el_chat`) el circulo entero es de las
+/// orbitas, y una rejilla dentro caia encima de los cuerpos. Debajo, fuera,
+/// no pisa nada; y colocar se sigue haciendo arrastrando la celda adentro.
+const HOLGURA: f32 = CELDA * 0.75;
 
 pub fn sin_colocar<'a>(fichas: &'a [FichaLuna], colocadas: &HashSet<&str>) -> Vec<&'a FichaLuna> {
     let mut v: Vec<&FichaLuna> = fichas
@@ -38,7 +42,7 @@ pub fn pagina(total: usize, n: usize) -> Range<usize> {
 pub fn celda(g: &Astro, i: usize) -> (f32, f32, f32, f32) {
     let (col, fila) = ((i % COLUMNAS) as f32, (i / COLUMNAS) as f32);
     let x0 = g.x - CELDA * COLUMNAS as f32 / 2.0 + col * CELDA;
-    let y0 = g.y + g.radio * DESDE + fila * CELDA;
+    let y0 = g.y + g.radio + HOLGURA + fila * CELDA;
     (x0, y0, x0 + CELDA, y0 + CELDA)
 }
 
@@ -98,11 +102,19 @@ mod pruebas {
     }
 
     #[test]
-    fn toda_la_rejilla_cabe_dentro_de_la_galaxia() {
-        let g = Astro::galaxia(IdAstro(1), "p", 0.0, 0.0);
-        for i in 0..POR_PAGINA {
-            let (x0, y0, x1, y1) = celda(&g, i);
-            assert!(g.contiene_caja((x0, y0, x1, y1)), "la celda {i} se sale");
+    fn la_rejilla_va_debajo_de_la_galaxia_sin_pisar_su_circulo_ni_la_siguiente() {
+        let mut g = Astro::galaxia(IdAstro(1), "p", 0.0, 0.0);
+        for radio in [crate::RADIO_GALAXIA, 3500.0] {
+            g.radio = radio;
+            for i in 0..POR_PAGINA {
+                let (x0, y0, x1, y1) = celda(&g, i);
+                // Ninguna esquina dentro del circulo: ahi van las orbitas.
+                for (x, y) in [(x0, y0), (x1, y0), (x0, y1), (x1, y1)] {
+                    assert!(!g.contiene(x, y), "la celda {i} pisa la galaxia");
+                }
+                // Y pegada a ella: a menos de mil del borde de abajo.
+                assert!(y1 <= g.y + g.radio + 1000.0, "la celda {i} se aleja");
+            }
         }
     }
 

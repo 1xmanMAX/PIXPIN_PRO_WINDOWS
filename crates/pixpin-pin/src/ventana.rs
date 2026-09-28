@@ -27,7 +27,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, VK_CONTROL, VK_DOWN, VK_ESCAPE, VK_LEFT, VK_RIGHT,
     VK_SHIFT, VK_UP,
 };
-use windows::Win32::UI::Input::KeyboardAndMouse::{VK_BACK, VK_RETURN, VK_SPACE};
+use windows::Win32::UI::Input::KeyboardAndMouse::{VK_BACK, VK_MENU, VK_RETURN, VK_SPACE};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
@@ -124,6 +124,28 @@ pub enum CambioPin {
         delta: i32,
         cursor: Punto,
     },
+    /// Un clic sobre un pin en vivo que maneja su zona a distancia. El punto
+    /// va en pixeles DE LA ZONA (0,0 es su esquina): la ventana sabe que
+    /// pixel se ve bajo el cursor, pero no donde esta la zona en la pantalla;
+    /// eso lo sabe el gestor, que es quien manda el clic de verdad.
+    ClicRemoto {
+        x: i32,
+        y: i32,
+    },
+    /// Pulsar, arrastrar y soltar sobre un pin en vivo que maneja su zona:
+    /// de `(x0, y0)` a `(x1, y1)`, en pixeles de la zona.
+    ArrastreRemoto {
+        x0: i32,
+        y0: i32,
+        x1: i32,
+        y1: i32,
+    },
+    /// La rueda sobre un pin en vivo que maneja su zona: igual que el clic.
+    RuedaRemota {
+        x: i32,
+        y: i32,
+        delta: i32,
+    },
     /// Escape mientras se anota: lo interpreta la maquina, no la ventana.
     EscapeAnotando,
     /// Un caracter escrito mientras se anota, ya compuesto (WM_CHAR, IME
@@ -137,12 +159,47 @@ pub enum CambioPin {
     /// (D58). Lo produce la paleta, no esta ventana, pero viaja por la
     /// misma cola del gestor.
     PaletaPulsada(Punto),
+    /// Un clic en el panel de propiedades que acompana a la barra mientras
+    /// se anota (el color y el grosor, como en el lienzo), en coordenadas de
+    /// su ventana. Tambien lo produce una `Paleta`, no esta ventana.
+    PanelPulsado(Punto),
     /// Media Foundation no pudo con el video (D72): el gestor vuelve a
     /// crear el pin como documento o ficha.
     VideoFallido,
     /// Menu de un pin en vivo: dejar lo que se ve como pin de imagen.
     /// Lo resuelve el gestor, que tiene la fuente y el almacen.
     CongelarPedido,
+    /// Menu de una nota: convertirla en la herramienta de ese indice de
+    /// `magia::MiniApp::TODAS` (C3).
+    ConvertirPedido(u8),
+    /// Menu de una pizarra: su fondo nuevo, color y pauta (C4).
+    PizarraPedida {
+        color: u8,
+        pauta: u8,
+    },
+    /// Un clic dentro de una herramienta, en pixeles del contenido tal como
+    /// se ve ahora (el margen de sombra ya descontado). El pin no sabe que
+    /// hay pintado ahi: lo sabe el gestor, que pinto la disposicion.
+    ClicInterior {
+        x: i32,
+        y: i32,
+    },
+    /// La rueda sobre una herramienta: desplaza su lista.
+    RuedaInterior {
+        delta: i32,
+    },
+    /// Una tecla con la herramienta enfocada (flechas, Intro, Supr, F2...).
+    TeclaInterior {
+        vk: u32,
+        shift: bool,
+        ctrl: bool,
+        alt: bool,
+    },
+    /// Un caracter escrito con la herramienta enfocada, ya compuesto.
+    CaracterInterior(char),
+    /// El latido de una herramienta que se mueve sola (cronometro,
+    /// temporizador): el pin ya se repinto, y el gestor mira si vencio algo.
+    Latido,
 }
 
 /// La lupa dentro del pin (D52): que trozo del contenido se amplia y donde
@@ -178,7 +235,17 @@ const ID_TEMPORIZADOR_ZOOM: usize = 3;
 /// Un disparo tras el ultimo cambio de un gesto continuo (Ctrl + arrastrar),
 /// para dibujar nitido sin esperar a que el usuario suelte el boton.
 const ID_TEMPORIZADOR_REPOSO: usize = 4;
+/// El latido de una herramienta que cambia sola (el cronometro que corre,
+/// la cuenta atras). Solo mientras el gestor lo pida: parada, no despierta
+/// a nadie, como `esperaDelReloj` del movil.
+const ID_TEMPORIZADOR_LATIDO: usize = 5;
 const RITMO_ZOOM_MS: u32 = 16;
+
+/// Lo que pinta dentro de una herramienta. Lo cuelga el gestor y el pin lo
+/// llama en cada pintado con la caja del contenido, en las coordenadas del
+/// pintor de ese momento: tiene que pintar dentro de ella y no tocar el
+/// desplazamiento del pintor, que es el del pin.
+pub type PintorInterior = Box<dyn Fn(&pixpin_render::Pintor, RectF)>;
 /// Lo que dura ir de un tamano al siguiente. Corto: la rueda encadena
 /// muescas y una persecucion lenta iria por detras de la mano.
 ///
@@ -464,6 +531,13 @@ struct PinInterno {
     /// Lo que hay dibujado encima, ya convertido a ordenes por el motor 2D.
     /// El pin solo las pinta: quien las produce es el gestor (S3-B).
     anotaciones: Vec<pixpin_motor2d::Orden>,
+    /// **El grafito de lo anotado**, cocido aparte y con su sitio entre las
+    /// ordenes (`tinta::grafito::GrafitoSuelto`). Sin esto el grafito del
+    /// editor o del movil salia liso en el pin.
+    grafitos: Vec<pixpin_motor2d::tinta::grafito::GrafitoSuelto>,
+    /// Los bitmaps de esos mapas: el pin repinta con cada movimiento de la
+    /// lupa, y resubir los mapas cada vez seria pagar megas por nada.
+    cache_grafito: std::cell::RefCell<pixpin_render::CacheGrafito>,
     /// Las cajas de los mosaicos, en pixeles de la imagen original. Lo unico
     /// que las usa es la lupa, que amplia el bitmap SIN anotaciones y sin
     /// esto seria una ventana al dato tapado.
@@ -559,6 +633,21 @@ struct PinInterno {
     fuente_viva: Option<Box<dyn FuenteViva>>,
     /// En pausa, los avisos de fotograma se ignoran y queda el ultimo.
     vivo_pausado: bool,
+    /// El pin en vivo maneja su zona a distancia: el clic y la rueda van a
+    /// lo que se ve, no al pin. Arrastrar sigue moviendolo.
+    remoto: bool,
+    /// Donde estaba el cursor (pantalla) al pulsar con el modo encendido. Al
+    /// soltar se compara: si apenas se movio fue un clic y se reenvia; si
+    /// no, fue mover el pin y no se reenvia nada.
+    pulsado_remoto: Option<(i32, i32)>,
+    /// Lo que pinta el gestor dentro de una herramienta.
+    pintor_interior: Option<PintorInterior>,
+    /// Donde se pulso (pantalla) sobre una herramienta. Al soltar, si apenas
+    /// se movio, fue un clic para lo de dentro; si no, fue mover el pin.
+    pulsado_interior: Option<(i32, i32)>,
+    /// El color y la pauta de una pizarra, para su submenu; `None` si el pin
+    /// no es una.
+    pizarra: Option<(u8, u8)>,
     al_cambiar: Box<dyn Fn(CambioPin)>,
 }
 
@@ -627,8 +716,12 @@ impl Pin {
             Contenido::Imagen(img) => Some(img),
             Contenido::Archivo { icono, .. } => icono.as_ref(),
             Contenido::Documento { vista, .. } => Some(vista),
-            // El video no tiene bitmap fijo: lo trae cada fotograma.
-            Contenido::Nota { .. } | Contenido::Video { .. } | Contenido::Vivo { .. } => None,
+            // El video no tiene bitmap fijo: lo trae cada fotograma. La
+            // herramienta la pinta el gestor.
+            Contenido::Nota { .. }
+            | Contenido::Video { .. }
+            | Contenido::Vivo { .. }
+            | Contenido::Herramienta { .. } => None,
         };
         let bitmap = match fuente_bitmap {
             Some(img) => Some(motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles)?),
@@ -697,6 +790,8 @@ impl Pin {
             enfocado: false,
             textos: None,
             anotaciones: Vec::new(),
+            grafitos: Vec::new(),
+            cache_grafito: std::cell::RefCell::new(pixpin_render::CacheGrafito::nueva()),
             tapadas: Vec::new(),
             anotando: false,
             lupa: None,
@@ -729,6 +824,11 @@ impl Pin {
             ritmo_video_ms,
             fuente_viva: None,
             vivo_pausado: false,
+            remoto: false,
+            pulsado_remoto: None,
+            pintor_interior: None,
+            pulsado_interior: None,
+            pizarra: None,
             al_cambiar,
         });
         // SAFETY: la ventana es propia y viva; el Box se cede al USERDATA y
@@ -962,6 +1062,55 @@ impl Pin {
         interno_de(self.hwnd).map(|i| i.pdf_pagina).unwrap_or(0)
     }
 
+    /// Cuelga lo que pinta el gestor dentro de una herramienta y repinta ya.
+    /// Se vuelve a colgar cada vez que cambia lo de dentro: el pintor lleva
+    /// COPIAS, no prestamos, porque se llama en cada `WM_PAINT`.
+    pub fn poner_pintor_interior(&self, pintor: PintorInterior) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.pintor_interior = Some(pintor);
+            pintar(i);
+        }
+    }
+
+    /// Enciende (`Some(ms)`) o apaga el latido de una herramienta. Cada
+    /// latido repinta el pin y avisa al gestor con `CambioPin::Latido`.
+    pub fn poner_latido(&self, cada_ms: Option<u32>) {
+        // SAFETY: temporizadores de la ventana propia, desde su hilo. Matar
+        // uno que no existe no hace nada.
+        unsafe {
+            match cada_ms {
+                Some(ms) => {
+                    SetTimer(Some(self.hwnd), ID_TEMPORIZADOR_LATIDO, ms.max(15), None);
+                }
+                None => {
+                    let _ = KillTimer(Some(self.hwnd), ID_TEMPORIZADOR_LATIDO);
+                }
+            }
+        }
+    }
+
+    /// Dice que el pin es una pizarra, con su color y su pauta de ahora,
+    /// para que el menu ofrezca cambiarlos.
+    pub fn poner_pizarra(&self, pizarra: Option<(u8, u8)>) {
+        if let Some(i) = interno_de(self.hwnd) {
+            i.pizarra = pizarra;
+        }
+    }
+
+    /// Cambia la imagen de un pin de imagen por otra DEL MISMO USO (el fondo
+    /// nuevo de una pizarra), sin tocar lo anotado encima ni su sitio.
+    pub fn poner_imagen(&self, imagen: pixpin_codec::ImagenRgba) {
+        if let Some(i) = interno_de(self.hwnd) {
+            if let Contenido::Imagen(img) = &mut i.contenido {
+                i.tapa_la_tarjeta = imagen.es_opaca();
+                i.imagen_nativa = (imagen.ancho, imagen.alto);
+                *img = imagen;
+                rehacer_bitmap(i);
+                pintar(i);
+            }
+        }
+    }
+
     pub fn poner_ruta(&self, ruta: Option<std::path::PathBuf>) {
         if let Some(i) = interno_de(self.hwnd) {
             i.ruta_origen = ruta;
@@ -1037,6 +1186,20 @@ impl Pin {
         (r.ancho as f32 / nw as f32, r.alto as f32 / nh as f32)
     }
 
+    /// Quita el pin de la pantalla o lo devuelve, sin cerrarlo. Es lo que
+    /// usa Ctrl+2 con los pines en vivo, que no tienen entrada en el almacen
+    /// y cerrados no se podrian traer de vuelta. Oculto, un pin en vivo no
+    /// copia ni pinta fotogramas (ver `MSG_FOTOGRAMA_VIVO`).
+    pub fn esconder(&self, esconder: bool) {
+        // SAFETY: ventana propia y viva mientras viva `self`.
+        unsafe {
+            let _ = ShowWindow(
+                self.hwnd,
+                if esconder { SW_HIDE } else { SW_SHOWNOACTIVATE },
+            );
+        }
+    }
+
     /// Si es un pin en vivo y esta en pausa.
     pub fn vivo_pausado(&self) -> bool {
         interno_de(self.hwnd).is_some_and(|i| i.vivo_pausado)
@@ -1065,6 +1228,29 @@ fn alternar_vivo(i: &mut PinInterno) {
         i.vivo_pausado = !i.vivo_pausado;
         tracing::info!(pausado = i.vivo_pausado, "pin en vivo alternado");
     }
+}
+
+/// El pixel de la zona que se ve bajo un punto de PANTALLA, si este pin esta
+/// manejando su zona a distancia. `None` si no lo esta, o si el punto cae en
+/// la sombra: entonces el clic es del pin, como siempre.
+fn punto_remoto(i: &PinInterno, pantalla: (i32, i32)) -> Option<(i32, i32)> {
+    if !i.remoto || !matches!(i.contenido, Contenido::Vivo { .. }) {
+        return None;
+    }
+    // `estado.rect()` es el contenido en coordenadas de pantalla, que es lo
+    // mismo que usa el zoom anclado: no depende de como este recortada la
+    // ventana contra el borde del escritorio.
+    let r = i.estado.rect();
+    crate::remoto::punto_en_la_zona(
+        ((pantalla.0 - r.x) as f32, (pantalla.1 - r.y) as f32),
+        (r.ancho, r.alto),
+        crate::remoto::Vista {
+            escala: i.vista_escala,
+            dx: i.vista_dx,
+            dy: i.vista_dy,
+        },
+        i.imagen_nativa,
+    )
 }
 
 /// Reproducir o pausar (D68): el temporizador va con el estado, asi que un
@@ -1128,8 +1314,27 @@ impl Pin {
         ordenes: Vec<pixpin_motor2d::Orden>,
         tapadas: Vec<(f32, f32, f32, f32)>,
     ) {
+        self.poner_anotaciones_con_grafito(ordenes, Vec::new(), tapadas);
+    }
+
+    /// Como [`Self::poner_anotaciones`], con el grafito aparte: cada mapa se
+    /// pinta en su sitio entre las ordenes (`GrafitoSuelto::antes_de`). Las
+    /// saca `tinta::grafito::ordenes_con_grafito`.
+    pub fn poner_anotaciones_con_grafito(
+        &self,
+        ordenes: Vec<pixpin_motor2d::Orden>,
+        grafitos: Vec<pixpin_motor2d::tinta::grafito::GrafitoSuelto>,
+        tapadas: Vec<(f32, f32, f32, f32)>,
+    ) {
         if let Some(i) = interno_de(self.hwnd) {
             i.anotaciones = ordenes;
+            // Los bitmaps de mapas que ya no estan, fuera: cada mapa nuevo
+            // trae un id nuevo y la cache no los reconoceria nunca.
+            let siguen = |id: u64| grafitos.iter().any(|g| g.mapa.id == id);
+            if !i.grafitos.iter().all(|g| siguen(g.mapa.id)) {
+                i.cache_grafito.borrow_mut().vaciar();
+            }
+            i.grafitos = grafitos;
             i.tapadas = tapadas;
             pintar(i);
         }
@@ -1377,7 +1582,10 @@ fn rehacer_bitmap(i: &mut PinInterno) {
         Contenido::Imagen(img) => Some(img),
         Contenido::Archivo { icono, .. } => icono.as_ref(),
         Contenido::Documento { vista, .. } => Some(vista),
-        Contenido::Nota { .. } | Contenido::Video { .. } | Contenido::Vivo { .. } => None,
+        Contenido::Nota { .. }
+        | Contenido::Video { .. }
+        | Contenido::Vivo { .. }
+        | Contenido::Herramienta { .. } => None,
     };
     let Some(original) = fuente else { return };
     let filtrada = pixpin_codec::filtros::aplicar(original, i.filtros);
@@ -1799,6 +2007,14 @@ fn pintar(i: &PinInterno) {
                 );
             }
 
+            // La herramienta la pinta el gestor, recortada a la tarjeta: una
+            // lista larga no puede asomar por fuera del pin.
+            Contenido::Herramienta { .. } => {
+                if let Some(f) = &i.pintor_interior {
+                    p.con_recorte(caja, |p| f(p, caja));
+                }
+            }
+
             Contenido::Archivo {
                 nombre,
                 detalle,
@@ -1858,6 +2074,13 @@ fn pintar(i: &PinInterno) {
         if con_vista {
             p.desplazar(ox as f32 - m, oy as f32 - m);
             p.soltar_recorte();
+        }
+
+        // Manejando a distancia, un marco de acento: con el modo encendido
+        // un clic sobre el pin ACTUA en otra parte de la pantalla, y eso
+        // tiene que verse antes de pulsar, no despues.
+        if i.remoto {
+            p.trazar(caja, 2.0 * escala, Color::ACENTO);
         }
 
         // El texto marcado, entre la imagen y las anotaciones: es una
@@ -2060,7 +2283,16 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
         a: c.a,
     };
 
-    for orden in &i.anotaciones {
+    // El grafito, cada mapa justo antes de la orden que le toca: lo que se
+    // dibujo despues va encima, como en el editor.
+    let mut grafitos = i.grafitos.iter().peekable();
+    let mut pintar_grafitos_hasta = |k: usize| {
+        while let Some(g) = grafitos.next_if(|g| g.antes_de <= k) {
+            pintar_grafito(p, &mut i.cache_grafito.borrow_mut(), g, (fx, fy), margen);
+        }
+    };
+    for (k, orden) in i.anotaciones.iter().enumerate() {
+        pintar_grafitos_hasta(k);
         match orden {
             Orden::Poligono { puntos, color: c } | Orden::Relleno { puntos, color: c } => {
                 let v: Vec<(f32, f32)> = puntos.iter().map(mover).collect();
@@ -2083,20 +2315,35 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
                 // pin reducido se veria igual de gordo y taparia el dibujo.
                 p.polilinea(&v, *grosor * (fx + fy) / 2.0, color(*c));
             }
+            // Con su letra, como en el lienzo (`dibujo::pintar::letra_de`):
+            // familia, cara e interlineado de Excalidraw. Un texto suelto no
+            // se parte, tampoco encogido.
             Orden::Texto {
                 texto,
                 x,
                 y,
                 tam,
+                familia,
                 color: c,
                 ancho_max,
-                ..
-            } => p.texto_ajustado(
+                negrita,
+                cursiva,
+            } => p.texto_con_letra(
                 texto,
                 x * fx + margen,
                 y * fy + margen,
                 *tam * (fx + fy) / 2.0,
-                *ancho_max * fx,
+                if *ancho_max >= pixpin_motor2d::texto::SIN_PARTIR {
+                    *ancho_max
+                } else {
+                    *ancho_max * fx
+                },
+                &pixpin_render::letras::Letra {
+                    familia,
+                    negrita: *negrita,
+                    cursiva: *cursiva,
+                    interlineado: pixpin_motor2d::texto::interlineado_de(familia),
+                },
                 color(*c),
             ),
             // El velo del foco (D51) cubre el CONTENIDO del pin, no la
@@ -2117,6 +2364,37 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
             Orden::Imagen { .. } => {}
         }
     }
+    // Lo que va despues de la ultima orden.
+    pintar_grafitos_hasta(usize::MAX);
+}
+
+/// **Un mapa de grafito en el pin**, escalado con el como todo lo anotado.
+///
+/// La caja y el centro de giro se llevan con la misma escala y el mismo
+/// margen que los puntos (`mover` de [`pintar_anotaciones`]); el aumento que
+/// decide si las casillas se ven de canto vivo es el del pin.
+fn pintar_grafito(
+    p: &pixpin_render::Pintor,
+    cache: &mut pixpin_render::CacheGrafito,
+    g: &pixpin_motor2d::tinta::grafito::GrafitoSuelto,
+    (fx, fy): (f32, f32),
+    margen: f32,
+) {
+    let m = &g.mapa;
+    let (x, y, w, h) = m.caja();
+    let mapa = pixpin_render::MapaGrafito {
+        rgba: &m.rgba,
+        ancho: m.ancho,
+        alto: m.alto,
+        caja: (x * fx + margen, y * fy + margen, w * fx, h * fy),
+        huella: m.huella,
+        angulo: m.angulo,
+        centro: (m.centro.x * fx + margen, m.centro.y * fy + margen),
+        id: m.id,
+        generacion: m.generacion,
+        sucio: None,
+    };
+    p.grafito(Some(cache), &mapa, g.opacidad, (fx + fy) / 2.0);
 }
 
 /// Aplica un efecto de la maquina pura sobre la ventana real.
@@ -2461,7 +2739,29 @@ extern "system" fn procedimiento_pin(
                     // anunciado: la rueda sigue siendo el zoom de siempre.
                     // SAFETY: consulta pura del estado del teclado.
                     let ctrl = unsafe { GetKeyState(VK_CONTROL.0 as i32) } < 0;
-                    let evento = if ctrl {
+                    // Manejando a distancia el boton izquierdo es DE LA ZONA:
+                    // se apunta donde se pulso y al soltar se reenvia como
+                    // clic o como arrastre. El pin no se mueve. Lo pidio el
+                    // usuario asi: «como el clic se transmite a la zona real,
+                    // para mover se mantiene Control mas clic».
+                    let remoto = i.remoto && matches!(i.contenido, Contenido::Vivo { .. });
+                    if remoto && !ctrl {
+                        let c = cursor_de_pantalla();
+                        i.pulsado_remoto = Some((c.x, c.y));
+                        return LRESULT(0);
+                    }
+                    // Y con `Ctrl`, manejando, se MUEVE (no el zoom por
+                    // arrastre de abajo): es el unico gesto que le queda al
+                    // pin para cambiar de sitio.
+                    // Sobre una herramienta el pulsado se apunta para lo de
+                    // dentro Y el pin sigue pudiendo moverse: al soltar se
+                    // decide si fue un toque (pulsar un boton, tachar una
+                    // tarea) o un arrastre, como en el pin del movil.
+                    if i.contenido.interactivo() && !ctrl {
+                        let c = cursor_de_pantalla();
+                        i.pulsado_interior = Some((c.x, c.y));
+                    }
+                    let evento = if ctrl && !remoto {
                         EventoPin::EscalarPulsado(punto(lparam))
                     } else {
                         EventoPin::BotonPulsado(punto(lparam))
@@ -2563,7 +2863,20 @@ extern "system" fn procedimiento_pin(
                 // Con Ctrl la rueda NO cambia el tamano de la ventana: mira
                 // el contenido de cerca dentro de la caja que ya hay. Es lo
                 // que se quiere en una nota, donde agrandar la caja no cabe.
-                if tecla_pulsada(VK_CONTROL) && !i.anotando {
+                // Manejando a distancia los papeles se cruzan, porque la rueda
+                // sola es de la zona: `Ctrl + rueda` pasa a ser el zoom de
+                // SIEMPRE (agrandar el pin), que es lo que pidio el usuario,
+                // y el zoom interior se queda sin gesto mientras dure el modo.
+                let remoto = i.remoto && matches!(i.contenido, Contenido::Vivo { .. });
+                // Sobre una herramienta la rueda baja por su lista, que es lo
+                // unico que se desplaza; con `Ctrl`, agranda el pin como
+                // siempre (lo de dentro se recoloca, no hay zoom interior).
+                if i.contenido.interactivo() && !i.anotando {
+                    if !tecla_pulsada(VK_CONTROL) {
+                        (i.al_cambiar)(CambioPin::RuedaInterior { delta });
+                        return LRESULT(0);
+                    }
+                } else if tecla_pulsada(VK_CONTROL) && !i.anotando && !remoto {
                     let paso = 1.15f32.powf(delta as f32 / 120.0);
                     ajustar_vista(i, paso, lparam);
                     pintar(i);
@@ -2576,6 +2889,15 @@ extern "system" fn procedimiento_pin(
                     x: (lparam.0 & 0xFFFF) as i16 as i32,
                     y: ((lparam.0 >> 16) & 0xFFFF) as i16 as i32,
                 };
+                // Manejando a distancia, la rueda sola es para la zona (hacer
+                // scroll en lo que se ve); con `Ctrl` sigue hasta abajo y
+                // agranda el pin.
+                if !tecla_pulsada(VK_CONTROL)
+                    && let Some((x, y)) = punto_remoto(i, (cursor.x, cursor.y))
+                {
+                    (i.al_cambiar)(CambioPin::RuedaRemota { x, y, delta });
+                    return LRESULT(0);
+                }
                 (i.al_cambiar)(CambioPin::RuedaGirada { delta, cursor });
             }
             LRESULT(0)
@@ -2698,6 +3020,36 @@ extern "system" fn procedimiento_pin(
                     aplicar(hwnd, e);
                 }
             }
+            // El clic a distancia, DESPUES de cerrar el arrastre del pin y
+            // con el prestamo pedido de nuevo (`aplicar` pide el suyo).
+            if let Some(i) = interno_de(hwnd)
+                && let Some(pulsado) = i.pulsado_remoto.take()
+            {
+                let c = cursor_de_pantalla();
+                // Un arrastre que empieza o acaba fuera de lo que se ve no se
+                // reenvia: a medias seria pulsar sin soltar en la zona.
+                if let (Some((x0, y0)), Some((x, y))) =
+                    (punto_remoto(i, pulsado), punto_remoto(i, (c.x, c.y)))
+                {
+                    if crate::remoto::fue_clic(pulsado, (c.x, c.y)) {
+                        (i.al_cambiar)(CambioPin::ClicRemoto { x, y });
+                    } else {
+                        (i.al_cambiar)(CambioPin::ArrastreRemoto { x0, y0, x1: x, y1: y });
+                    }
+                }
+            }
+            // El toque sobre una herramienta, tambien DESPUES de cerrar el
+            // arrastre del pin: si fue un arrastre, el pin ya se movio y aqui
+            // no se manda nada.
+            if let Some(i) = interno_de(hwnd)
+                && let Some(pulsado) = i.pulsado_interior.take()
+            {
+                let c = cursor_de_pantalla();
+                if crate::remoto::fue_clic(pulsado, (c.x, c.y)) {
+                    let p = punto_contenido(i, lparam);
+                    (i.al_cambiar)(CambioPin::ClicInterior { x: p.x, y: p.y });
+                }
+            }
             LRESULT(0)
         }
         // Las muestras buenas del lapiz (E1): tinta de verdad con presion, o
@@ -2760,7 +3112,13 @@ extern "system" fn procedimiento_pin(
                 // En una ficha, doble clic ABRE el archivo (spec 4.1). En
                 // imagen y nota entra a ANOTAR (D47): alternar tamano pasa
                 // al menu, donde ya estaba "Tamano original".
-                if matches!(
+                if i.contenido.interactivo() {
+                    // En una herramienta la segunda pulsacion es otro toque:
+                    // dos veces «+1» son dos, como dos toques en el movil.
+                    // Anotar encima de una lista no significa nada.
+                    let c = cursor_de_pantalla();
+                    i.pulsado_interior = Some((c.x, c.y));
+                } else if matches!(
                     i.contenido,
                     Contenido::Archivo { .. } | Contenido::Documento { .. }
                 ) {
@@ -2769,8 +3127,17 @@ extern "system" fn procedimiento_pin(
                     // El doble clic en un video reproduce o pausa (D68/D70).
                     alternar_video(hwnd, i);
                 } else if matches!(i.contenido, Contenido::Vivo { .. }) {
-                    // Y en un pin en vivo, igual: es un video de la pantalla.
-                    alternar_vivo(i);
+                    if i.remoto {
+                        // Manejando a distancia, la segunda pulsacion de un
+                        // doble clic es otro clic para la zona: llegan dos
+                        // seguidos al mismo punto y alli SI es un doble clic.
+                        let c = cursor_de_pantalla();
+                        i.pulsado_remoto = Some((c.x, c.y));
+                    } else {
+                        // Y en un pin en vivo, igual: es un video de la
+                        // pantalla.
+                        alternar_vivo(i);
+                    }
                 } else if !i.anotando {
                     (i.al_cambiar)(CambioPin::AnotarPedido);
                 }
@@ -2810,9 +3177,40 @@ extern "system" fn procedimiento_pin(
                     con_ocr: i.con_ocr,
                     paginas: i.pdf_paginas,
                     pagina: i.pdf_pagina,
+                    remoto: i.remoto,
+                    pizarra: i.pizarra,
                 };
                 match crate::menu::mostrar(hwnd, &i.contenido, estado, &t) {
                     None => {}
+                    // Tambien de esta ventana y de nadie mas: es como se
+                    // interpretan SUS clics.
+                    Some(crate::menu::CMD_REMOTO) => {
+                        i.remoto = !i.remoto;
+                        i.pulsado_remoto = None;
+                        // Encenderlo REANUDA el pin. Al usuario le paso a la
+                        // primera: un doble clic de antes lo habia dejado en
+                        // pausa, y manejando a distancia veia una foto fija
+                        // mientras sus clics si actuaban en la ventana. Un
+                        // mando a distancia sobre una imagen parada es
+                        // manejar a ciegas.
+                        if i.remoto && i.vivo_pausado {
+                            i.vivo_pausado = false;
+                            // Y un aviso de fotograma ya: con la pantalla
+                            // quieta la captura no manda ninguno, y el pin se
+                            // quedaria con la foto de cuando se pauso.
+                            // SAFETY: mensaje propio a la ventana propia.
+                            unsafe {
+                                let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                                    Some(hwnd),
+                                    MSG_FOTOGRAMA_VIVO,
+                                    WPARAM(0),
+                                    LPARAM(0),
+                                );
+                            }
+                        }
+                        tracing::info!(remoto = i.remoto, "manejo a distancia alternado");
+                        pintar(i);
+                    }
                     // Las dos que puede resolver la propia ventana se
                     // resuelven aqui: pedirselas al gestor solo daria un
                     // rodeo para volver al mismo sitio.
@@ -2871,6 +3269,39 @@ extern "system" fn procedimiento_pin(
                                     (c - crate::menu::CMD_COLOR_BASE) as u8,
                                 )))
                             }
+                            c if (crate::menu::CMD_CONVERTIR_BASE
+                                ..crate::menu::CMD_CONVERTIR_BASE
+                                    + crate::magia::MiniApp::TODAS.len() as u32)
+                                .contains(&c) =>
+                            {
+                                Some(CambioPin::ConvertirPedido(
+                                    (c - crate::menu::CMD_CONVERTIR_BASE) as u8,
+                                ))
+                            }
+                            // Cambiar el color deja la pauta y al reves: son
+                            // dos decisiones sobre el mismo papel.
+                            c if (crate::menu::CMD_PIZARRA_COLOR_BASE
+                                ..crate::menu::CMD_PIZARRA_COLOR_BASE
+                                    + crate::menu::COLORES_PIZARRA as u32)
+                                .contains(&c) =>
+                            {
+                                let (_, pauta) = i.pizarra.unwrap_or((0, 0));
+                                Some(CambioPin::PizarraPedida {
+                                    color: (c - crate::menu::CMD_PIZARRA_COLOR_BASE) as u8,
+                                    pauta,
+                                })
+                            }
+                            c if (crate::menu::CMD_PIZARRA_PAUTA_BASE
+                                ..crate::menu::CMD_PIZARRA_PAUTA_BASE
+                                    + crate::menu::PAUTAS_PIZARRA as u32)
+                                .contains(&c) =>
+                            {
+                                let (color, _) = i.pizarra.unwrap_or((0, 0));
+                                Some(CambioPin::PizarraPedida {
+                                    color,
+                                    pauta: (c - crate::menu::CMD_PIZARRA_PAUTA_BASE) as u8,
+                                })
+                            }
                             _ => None,
                         };
                         if let Some(c) = cambio {
@@ -2885,6 +3316,58 @@ extern "system" fn procedimiento_pin(
             if let Some(i) = interno_de(hwnd) {
                 i.enfocado = mensaje == WM_SETFOCUS;
                 pintar(i);
+            }
+            LRESULT(0)
+        }
+        // Con una herramienta enfocada, el teclado es de lo de dentro: sus
+        // flechas eligen fila, Intro anade, Supr borra, Esc deshace (lo
+        // decide `mini_panel` en el gestor). Van ANTES que los atajos del
+        // pin: una «r» escrita en la caja de una tarea no puede girar el pin.
+        // `Ctrl + C` sigue siendo copiar el pin.
+        WM_CHAR
+            if interno_de(hwnd).is_some_and(|i| i.contenido.interactivo() && !i.anotando) =>
+        {
+            let unidad = wparam.0 as u16;
+            let caracter = MITAD_ALTA.with(|alta| {
+                if (0xD800..0xDC00).contains(&unidad) {
+                    alta.set(Some(unidad));
+                    None
+                } else if (0xDC00..0xE000).contains(&unidad) {
+                    let a = alta.take()?;
+                    char::decode_utf16([a, unidad]).next()?.ok()
+                } else {
+                    alta.set(None);
+                    char::from_u32(unidad as u32)
+                }
+            });
+            // Los de control (Intro, Retroceso, Esc, Tab) ya llegaron como
+            // tecla: mandarlos tambien como caracter los haria dos veces.
+            if let (Some(i), Some(c)) = (interno_de(hwnd), caracter)
+                && !c.is_control()
+            {
+                (i.al_cambiar)(CambioPin::CaracterInterior(c));
+            }
+            LRESULT(0)
+        }
+        WM_KEYDOWN | WM_SYSKEYDOWN
+            if interno_de(hwnd).is_some_and(|i| i.contenido.interactivo() && !i.anotando)
+                && !(tecla_pulsada(VK_CONTROL) && wparam.0 as u32 == b'C' as u32)
+                && (mensaje == WM_KEYDOWN || es_flecha(wparam.0 as u32)) =>
+        {
+            if let Some(i) = interno_de(hwnd) {
+                (i.al_cambiar)(CambioPin::TeclaInterior {
+                    vk: wparam.0 as u32,
+                    shift: tecla_pulsada(VK_SHIFT),
+                    ctrl: tecla_pulsada(VK_CONTROL),
+                    alt: tecla_pulsada(VK_MENU),
+                });
+            }
+            LRESULT(0)
+        }
+        WM_TIMER if wparam.0 == ID_TEMPORIZADOR_LATIDO => {
+            if let Some(i) = interno_de(hwnd) {
+                pintar(i);
+                (i.al_cambiar)(CambioPin::Latido);
             }
             LRESULT(0)
         }
@@ -3095,7 +3578,11 @@ extern "system" fn procedimiento_pin(
         }
         m if m == MSG_FOTOGRAMA_VIVO => {
             if let Some(i) = interno_de(hwnd) {
-                if i.vivo_pausado {
+                // Oculto con Ctrl+2 cuenta como en pausa: nadie lo ve, y
+                // copiar y pintar treinta fotogramas por segundo para nadie
+                // es gastar en balde.
+                // SAFETY: consulta pura sobre la ventana propia.
+                if i.vivo_pausado || !unsafe { IsWindowVisible(hwnd) }.as_bool() {
                     return LRESULT(0);
                 }
                 // La captura manda un aviso por fotograma y no espera: si el

@@ -33,6 +33,22 @@ use crate::fusion::{self, Criterio, Cuenta};
 /// (`Proyectos.MARCAS_DE_QUITADAS`).
 pub const MARCAS_DE_QUITADAS: usize = 400;
 
+/// Quien decide cuando los dos lados no dicen lo mismo.
+///
+/// Puerto de `Sesion.loMioManda` (`sincro/Protocolo.kt:404-412`, del
+/// 21-sep-2026). Existe para un caso raro que la fusion normal empeora: el
+/// usuario vacio el portatil creyendo que el telefono lo volveria a llenar,
+/// y como los borrados del portatil eran lo mas reciente, juntar los hizo
+/// ganar. Con [Mando::LoMioManda] aqui no se borra ni se cambia nada.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Mando {
+    /// Lo de siempre: las hojas se suman y los empates los decide la hora.
+    #[default]
+    Acordar,
+    /// Una sola direccion: si aqui hay proyecto, ese queda tal cual.
+    LoMioManda,
+}
+
 /// El proyecto juntado, o None si no hay ninguno.
 ///
 /// `cambiadas_aqui` son las hojas (por id) y croquis cuyos archivos cambiaron
@@ -47,6 +63,38 @@ pub fn proyecto(
     cambiadas_alli: &HashSet<String>,
     desfase: i64,
 ) -> Option<Json> {
+    proyecto_con(
+        mio,
+        suyo,
+        base,
+        cambiadas_aqui,
+        cambiadas_alli,
+        desfase,
+        Mando::Acordar,
+    )
+}
+
+/// Lo mismo, diciendo quien manda. Ver [Mando].
+///
+/// Con [Mando::LoMioManda] no se junta nada: el proyecto de aqui queda tal
+/// cual, con sus hojas, sus croquis, su nombre y sus marcas de quitadas, y
+/// lo del otro no entra ni siquiera para ganar un empate por la hora. Es lo
+/// que hace Android, que ni llama a la mezcla en ese modo
+/// (`Protocolo.kt:563-575`: `var junto = mio ?: suyo` y luego solo junta
+/// `if (... && !loMioManda)`). Lo que solo tiene el otro si viaja, porque un
+/// proyecto que aqui no existe no puede pisar a nadie.
+pub fn proyecto_con(
+    mio: Option<&Json>,
+    suyo: Option<&Json>,
+    base: Option<&Json>,
+    cambiadas_aqui: &HashSet<String>,
+    cambiadas_alli: &HashSet<String>,
+    desfase: i64,
+    mando: Mando,
+) -> Option<Json> {
+    if mando == Mando::LoMioManda {
+        return mio.or(suyo).cloned();
+    }
     let (Some(mio), Some(suyo)) = (mio, suyo) else {
         return mio.or(suyo).cloned();
     };
@@ -538,6 +586,107 @@ mod pruebas {
         assert_eq!(q.len(), MARCAS_DE_QUITADAS);
         assert_eq!(q.first().map(String::as_str), Some("q50"));
         assert_eq!(q.last().map(String::as_str), Some("q449"));
+    }
+
+    /// Los dos lados del caso del portatil vaciado: aqui quedo una hoja y se
+    /// quito otra a mano; alli estan las dos y ademas una suya, y alli se
+    /// toco despues.
+    fn el_portatil_y_el_telefono() -> (Json, Json, Json) {
+        let h1 = hoja_json("h1", "Uno", Some("d1"), None);
+        let h2 = hoja_json("h2", "Dos", Some("d2"), None);
+        let base = proyecto_json("p", "obra", &[h1.clone(), h2.clone()], 100, &["c1"], &[]);
+        let mio = proyecto_json("p", "obra mia", &[h1], 200, &["c1"], &["h2"]);
+        let suyo = proyecto_json(
+            "p",
+            "obra suya",
+            &[
+                hoja_json("h1", "Uno", Some("d1"), None),
+                h2,
+                hoja_json("h3", "Tres", Some("d3"), None),
+            ],
+            900,
+            &["c1", "c2"],
+            &[],
+        );
+        (base, mio, suyo)
+    }
+
+    fn manda_lo_mio(mio: Option<&Json>, suyo: Option<&Json>, base: Option<&Json>) -> Option<Json> {
+        proyecto_con(mio, suyo, base, &nada(), &nada(), 0, Mando::LoMioManda)
+    }
+
+    #[test]
+    fn con_lo_mio_manda_el_proyecto_de_aqui_queda_tal_cual_y_lo_del_otro_no_se_cuela() {
+        let (base, mio, suyo) = el_portatil_y_el_telefono();
+        let r = manda_lo_mio(Some(&mio), Some(&suyo), Some(&base)).unwrap();
+        // Ni una hoja suya, ni su croquis, ni su nombre, ni su hora: el mio
+        // entero, byte a byte, que es lo que Android guarda en ese modo.
+        assert_eq!(r, mio);
+        assert_eq!(ids_de_hojas(&r), vec!["h1"]);
+        assert_eq!(nombre_de(&r), "obra mia");
+        assert_eq!(textos_de(r.como_objeto().unwrap(), "croquis"), vec!["c1"]);
+    }
+
+    #[test]
+    fn con_lo_mio_manda_la_hoja_que_yo_quite_sigue_quitada_aunque_alli_la_tocaran_despues() {
+        let (base, mio, suyo) = el_portatil_y_el_telefono();
+        let alli: HashSet<String> = ["h2".to_string()].into_iter().collect();
+        // Acordar la rescata, porque lo modificado gana a lo borrado.
+        let acordando = proyecto(Some(&mio), Some(&suyo), Some(&base), &nada(), &alli, 0).unwrap();
+        assert_eq!(ids_de_hojas(&acordando), vec!["h1", "h2", "h3"]);
+        // Lo mio manda no la rescata, y la marca de quitada se queda para que
+        // la proxima vuelta tampoco la vuelva a traer.
+        let mandando = proyecto_con(
+            Some(&mio),
+            Some(&suyo),
+            Some(&base),
+            &nada(),
+            &alli,
+            0,
+            Mando::LoMioManda,
+        )
+        .unwrap();
+        assert_eq!(ids_de_hojas(&mandando), vec!["h1"]);
+        assert_eq!(
+            textos_de(mandando.como_objeto().unwrap(), "quitadas"),
+            vec!["h2"]
+        );
+    }
+
+    #[test]
+    fn con_lo_mio_manda_lo_que_solo_tiene_el_otro_llega_entero() {
+        let (_, mio, suyo) = el_portatil_y_el_telefono();
+        // Un proyecto que aqui no existe no pisa nada, asi que viaja.
+        assert_eq!(manda_lo_mio(None, Some(&suyo), None), Some(suyo));
+        assert_eq!(manda_lo_mio(Some(&mio), None, None), Some(mio));
+        assert_eq!(manda_lo_mio(None, None, None), None);
+    }
+
+    #[test]
+    fn acordar_es_exactamente_lo_de_siempre_y_no_lo_cambia_el_mando() {
+        let (base, mio, suyo) = el_portatil_y_el_telefono();
+        let aqui: HashSet<String> = ["c1".to_string()].into_iter().collect();
+        let alli: HashSet<String> = ["h2".to_string()].into_iter().collect();
+        let viejo = proyecto(Some(&mio), Some(&suyo), Some(&base), &aqui, &alli, 7);
+        let nuevo = proyecto_con(
+            Some(&mio),
+            Some(&suyo),
+            Some(&base),
+            &aqui,
+            &alli,
+            7,
+            Mando::Acordar,
+        );
+        assert_eq!(viejo, nuevo);
+        assert_eq!(Mando::default(), Mando::Acordar);
+        // Y sigue juntando: estan las hojas de los dos y el croquis que solo
+        // anadio el otro.
+        let r = nuevo.unwrap();
+        assert_eq!(ids_de_hojas(&r), vec!["h1", "h2", "h3"]);
+        assert_eq!(
+            textos_de(r.como_objeto().unwrap(), "croquis"),
+            vec!["c1", "c2"]
+        );
     }
 
     #[test]

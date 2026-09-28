@@ -26,6 +26,7 @@ use crate::kotlin;
 use crate::mensajes::{
     Aparato, ArchivoInfo, Chat, Hola, LapidaDeChat, OCUPADO, Peticion, Respuesta,
 };
+use crate::mezcla::Mando;
 
 /// Lo que puede salir mal hablando con el otro.
 #[derive(Debug, thiserror::Error)]
@@ -864,6 +865,9 @@ pub struct Sesion<'a, D: Disco + ?Sized, F: Read + Write> {
     conocidos: HashMap<String, ArchivoInfo>,
     chat_de_la_vuelta: String,
     terminada: bool,
+    /// Quien decide cuando los dos lados no dicen lo mismo. Se pone desde la
+    /// pantalla antes de `preparar`; ver [Sesion::quien_manda].
+    mando: Mando,
 }
 
 impl<D: Disco + ?Sized, F: Read + Write> Drop for Sesion<'_, D, F> {
@@ -956,6 +960,7 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                 conocidos: HashMap::new(),
                 chat_de_la_vuelta: String::new(),
                 terminada: false,
+                mando: Mando::default(),
             })
         })();
         match abierta {
@@ -968,6 +973,27 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                 Err(e)
             }
         }
+    }
+
+    /// **Lo mio manda** (`Sesion.loMioManda`, `sincro/Protocolo.kt:404-412`):
+    /// sincronizar en una sola direccion, para los casos raros. El usuario
+    /// vacio su portatil creyendo que el telefono lo volveria a llenar, y
+    /// juntar —que es lo normal— hizo lo contrario: los borrados del portatil
+    /// eran lo mas reciente y ganaron. Con [Mando::LoMioManda] aqui no se
+    /// borra ni se cambia nada: mis mensajes vivos vuelven al otro aunque
+    /// alli esten borrados, lo cambiado en los dos queda como aqui, el
+    /// proyecto es el mio y mis archivos pisan a los suyos. Lo que solo tiene
+    /// el otro se conserva y se trae.
+    ///
+    /// Los proyectos borrados (lapidas) se deciden antes, en la vuelta y
+    /// preguntando: ver `vuelta::decidir_borrados`.
+    pub fn quien_manda(&mut self, mando: Mando) {
+        self.mando = mando;
+    }
+
+    /// Quien manda ahora mismo. Recien conectada es [Mando::Acordar].
+    pub fn mando(&self) -> Mando {
+        self.mando
     }
 
     pub fn enviados(&self) -> u64 {
@@ -1079,6 +1105,21 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             }
         }
         let borrado = |m: &HashMap<String, Apunte>, k: &str| m.get(k).map(|a| a.borrado);
+        // Lo mio manda: lo cambiado en los dos no se junta, se manda; y lo
+        // borrado alli que aqui sigue vivo no se borra aqui, vuelve alli.
+        // Ver [Sesion::quien_manda] (`Protocolo.kt:520-524`).
+        if self.mando == Mando::LoMioManda {
+            mandar.append(&mut fusionar);
+            let vuelven: Vec<String> = traer
+                .iter()
+                .filter(|k| {
+                    borrado(&prep.suyos, k) == Some(true) && borrado(&prep.mios, k) == Some(false)
+                })
+                .cloned()
+                .collect();
+            traer.retain(|k| !vuelven.contains(k));
+            mandar.extend(vuelven);
+        }
         let traer_vivos: Vec<String> = traer
             .iter()
             .filter(|k| borrado(&prep.suyos, k) == Some(false))
@@ -1163,8 +1204,12 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             .as_deref()
             .and_then(kotlin::proyecto_de_texto);
         let mut junto = mio.clone().or(suyo.clone());
+        // Con `LoMioManda` ni se pregunta por los archivos del otro: el
+        // proyecto de aqui queda entero y solo viaja el suyo si aqui no hay
+        // ninguno (`Protocolo.kt:563-575`).
         if let (Some(m), Some(s)) = (&mio, &suyo)
             && m != s
+            && self.mando == Mando::Acordar
         {
             let alli: HashMap<String, ArchivoInfo> = self
                 .pedir(&Peticion::sobre("archivos", chat))?
@@ -1185,13 +1230,14 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
                 .proyecto
                 .as_deref()
                 .and_then(kotlin::proyecto_de_texto);
-            junto = crate::mezcla::proyecto(
+            junto = crate::mezcla::proyecto_con(
                 Some(m),
                 Some(s),
                 base.as_ref(),
                 &crate::mezcla::cambiadas(Some(m), &de_aqui, &acordado),
                 &crate::mezcla::cambiadas(Some(s), &de_alli, &acordado),
                 self.desfase,
+                self.mando,
             )
             .and_then(|j| kotlin::normalizar_proyecto(&j));
         }
@@ -1323,6 +1369,11 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             let suyo = prep.suyos.get(rel);
             let acordado = prep.acordado.get(rel).map(String::as_str);
             let puesto = match p {
+                // Lo mio manda: lo que tengo yo, va; solo se trae lo que aqui
+                // no existe (`Protocolo.kt:680`).
+                _ if self.mando == Mando::LoMioManda && mio.is_some() => {
+                    self.mandar_archivo(rel, suyo, acordado, avance, hecho)?
+                }
                 Paso::Fusionar(_) if texto && mio.is_some() && suyo.is_some() => self
                     .fusionar_archivo(
                         rel,

@@ -55,6 +55,33 @@ pub fn desempaquetar(unidades: &[u16]) -> Vec<PathBuf> {
 
 use std::os::windows::ffi::OsStrExt;
 
+/// Le pide a la copia que ya corre que saque su ventana principal.
+///
+/// Devuelve si habia alguien escuchando. `id_comando` es el del catalogo
+/// (`pixpin_store::comandos`), que este crate no conoce: lo pone quien llama.
+///
+/// Es lo que hace que volver a abrir PixPin lleve al chat en vez de no hacer
+/// nada. Antes, la segunda copia se iba en silencio —correcto para no abrir
+/// dos— y el usuario pulsaba el icono y no pasaba nada: «cuando abro la app
+/// me lleve ahi directamente», con sus palabras.
+pub fn pedir_ventana_principal(id_comando: u32) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_COMMAND};
+    // SAFETY: la clase es un literal estatico terminado en cero; devuelve
+    // una ventana nula si no hay ninguna, que se descarta abajo.
+    let Ok(destino) = (unsafe { FindWindowW(w!("PixPinMaxVentanaMensajes"), None) }) else {
+        return false;
+    };
+    if destino.0.is_null() {
+        return false;
+    }
+    // `Post` y no `Send`: aqui no viaja memoria prestada (a diferencia de
+    // `WM_COPYDATA`), y esta copia se va a morir enseguida; esperar a que la
+    // otra termine de abrir una ventana entera seria esperar por nada.
+    // SAFETY: mensaje sin punteros a una ventana de otro proceso propio.
+    unsafe { PostMessageW(Some(destino), WM_COMMAND, WPARAM(id_comando as usize), LPARAM(0)) }
+        .is_ok()
+}
+
 /// Manda las rutas a la instancia que ya corre. Devuelve si llegaron.
 ///
 /// `false` significa que no hay nadie escuchando, y entonces quien llama

@@ -130,6 +130,16 @@ pub enum EventoOverlay {
     /// al que precede, y solo a ventanas que llamaron a
     /// `pedir_entrada_fina`. Coordenadas del escritorio virtual.
     Muestra(crate::puntero::Muestra),
+    /// La rueda con su hora y sus modificadores, en vez de `Rueda` y
+    /// `RuedaHorizontal`, SOLO para las ventanas que llamaron a
+    /// `pedir_gestos_tactiles`: quien la recibe decide si es un raton o un
+    /// panel tactil viejo (`gestos_tactiles::RuedaCruda`).
+    RuedaFina(crate::gestos_tactiles::RuedaCruda),
+    /// Dos dedos en el panel tactil de precision (DirectManipulation), solo
+    /// para las ventanas que llamaron a `pedir_gestos_tactiles`.
+    DeslizTactil(crate::gestos_tactiles::Desliz),
+    /// Pellizco en el panel tactil de precision, idem.
+    PellizcoTactil(crate::gestos_tactiles::Pellizco),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -176,6 +186,10 @@ thread_local! {
     /// firma que el lapiz salvo un bit), por un lapiz cuyo
     /// GetPointerPenInfoHistory fallo, o por el borrador del lapiz (D107) no
     /// se distinguiria de uno que el camino del lapiz ya cubrio de verdad.
+    /// Ventanas que pidieron gestos tactiles, con su DirectManipulation si
+    /// Windows lo dio (`None`: solo la rueda con hora, `RuedaFina`).
+    static GESTOS: RefCell<Vec<(HWND, Option<crate::gestos_tactiles::GestosTactiles>)>> =
+        const { RefCell::new(Vec::new()) };
     static ENTRADA_FINA: RefCell<Vec<(HWND, crate::puntero::HistorialRaton, crate::puntero::EstadoLapiz)>> =
         const { RefCell::new(Vec::new()) };
 }
@@ -233,6 +247,44 @@ impl VentanaOverlay {
         let hwnd = unsafe {
             CreateWindowExW(
                 WS_EX_NOREDIRECTIONBITMAP | WS_EX_APPWINDOW,
+                w!("PixPinOverlay"),
+                windows::core::PCWSTR(titulo.as_ptr()),
+                WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU,
+                area.x,
+                area.y,
+                area.ancho as i32,
+                area.alto as i32,
+                None,
+                None,
+                Some(
+                    GetModuleHandleW(None)
+                        .map_err(ErrorOverlay::Creacion)?
+                        .into(),
+                ),
+                None,
+            )
+            .map_err(ErrorOverlay::Creacion)?
+        };
+        Ok(Self { hwnd, area })
+    }
+
+    /// Como `nueva_normal`, pero SIN `WS_EX_NOREDIRECTIONBITMAP`.
+    ///
+    /// Esa bandera le dice a Windows que la ventana no tiene superficie de
+    /// redibujado porque la pinta DirectComposition: es lo correcto para
+    /// todo lo que dibuja PixPin con Direct2D, y lo que hace que no parpadee.
+    /// Pero una ventana asi es mal sitio para meter dentro un control de
+    /// Windows —un WebView2, por ejemplo—: el control tiene que componer por
+    /// su cuenta contra una ventana que no le ofrece donde, y se nota en el
+    /// desplazamiento. Para esos casos, esta.
+    pub fn nueva_llana(area: Rect, titulo: &str) -> Result<Self, ErrorOverlay> {
+        REGISTRO.call_once(registrar_clase);
+        let titulo: Vec<u16> = titulo.encode_utf16().chain(std::iter::once(0)).collect();
+        // SAFETY: la clase quedo registrada en call_once; el titulo es una
+        // cadena terminada en cero que vive hasta despues de la llamada.
+        let hwnd = unsafe {
+            CreateWindowExW(
+                WS_EX_APPWINDOW,
                 w!("PixPinOverlay"),
                 windows::core::PCWSTR(titulo.as_ptr()),
                 WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU,
@@ -315,6 +367,31 @@ impl VentanaOverlay {
 
     pub fn area(&self) -> Rect {
         self.area
+    }
+
+    /// El rectangulo que la ventana ocupa DE VERDAD ahora mismo, preguntado
+    /// a Windows. `None` si no se puede preguntar.
+    ///
+    /// `area()` devuelve lo ULTIMO que pidio la aplicacion, que no siempre es
+    /// lo que hay: Windows cambia el tamano por su cuenta al pasar a un
+    /// monitor con otro DPI, al ajustar la ventana a un lado con Win+flecha o
+    /// al maximizarla desde la barra de tareas. Quedarse con el valor viejo
+    /// deja la ventana pintando y repartiendo los clics en un sitio distinto
+    /// del que ocupa, que es como se queda «sin poder pulsar nada».
+    pub fn rect_del_sistema(&self) -> Option<Rect> {
+        use windows::Win32::Foundation::RECT;
+        use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+        let mut r = RECT::default();
+        // SAFETY: GetWindowRect escribe en un RECT propio; la ventana es
+        // propia y esta viva mientras exista este objeto.
+        unsafe { GetWindowRect(self.hwnd, &mut r) }.ok()?;
+        let (ancho, alto) = ((r.right - r.left).max(0), (r.bottom - r.top).max(0));
+        (ancho > 0 && alto > 0).then_some(Rect {
+            x: r.left,
+            y: r.top,
+            ancho: ancho as u32,
+            alto: alto as u32,
+        })
     }
 
     pub fn mostrar(&self) {
@@ -529,6 +606,61 @@ impl VentanaOverlay {
     /// Pide todos los puntos del trazo (`EventoOverlay::Muestra`). Solo para
     /// las ventanas de dibujo: el resto sigue recibiendo un movimiento por
     /// mensaje, que es lo que esperan.
+    /// Pide los gestos del panel tactil para mover un lienzo: dos dedos
+    /// llegan como `DeslizTactil`, el pellizco como `PellizcoTactil`, y la
+    /// rueda como `RuedaFina` (ya no como `Rueda`/`RuedaHorizontal`). Solo
+    /// para lienzos: el lector PDF, los pines y el resto siguen con su
+    /// rueda de siempre porque no lo piden.
+    ///
+    /// Si Windows no da DirectManipulation, queda la `RuedaFina`: el panel
+    /// sigue llegando como rueda y se distingue del raton como se pueda
+    /// (`pixpin::navegacion`). Devuelve si hay DirectManipulation.
+    pub fn pedir_gestos_tactiles(&self) -> bool {
+        if let Some(hay) = GESTOS.with(|g| {
+            g.borrow()
+                .iter()
+                .find(|(h, _)| *h == self.hwnd)
+                .map(|(_, d)| d.is_some())
+        }) {
+            return hay;
+        }
+        let hwnd = self.hwnd;
+        let avisar: crate::gestos_tactiles::Aviso = Box::new(move |s| {
+            let ev = match s {
+                crate::gestos_tactiles::Salida::Desliz { dx, dy } => {
+                    EventoOverlay::DeslizTactil(crate::gestos_tactiles::Desliz::nuevo(dx, dy))
+                }
+                crate::gestos_tactiles::Salida::Pellizco { factor } => {
+                    let mut p = windows::Win32::Foundation::POINT::default();
+                    // SAFETY: consulta pura de la posicion del cursor.
+                    unsafe {
+                        let _ = GetCursorPos(&mut p);
+                    }
+                    EventoOverlay::PellizcoTactil(crate::gestos_tactiles::Pellizco::nuevo(
+                        factor,
+                        Punto { x: p.x, y: p.y },
+                    ))
+                }
+            };
+            PENDIENTES_OVERLAY.with(|p| p.borrow_mut().push_back((hwnd, ev)));
+        });
+        let dm = match crate::gestos_tactiles::GestosTactiles::nuevo(
+            hwnd,
+            self.area.ancho as i32,
+            self.area.alto as i32,
+            avisar,
+        ) {
+            Ok(g) => Some(g),
+            Err(err) => {
+                tracing::warn!(?err, "sin DirectManipulation: el panel tactil ira como rueda");
+                None
+            }
+        };
+        let hay = dm.is_some();
+        GESTOS.with(|g| g.borrow_mut().push((hwnd, dm)));
+        hay
+    }
+
     pub fn pedir_entrada_fina(&self) {
         ENTRADA_FINA.with(|e| {
             let mut e = e.borrow_mut();
@@ -549,6 +681,15 @@ impl Drop for VentanaOverlay {
         HUECO.with(|h| h.borrow_mut().retain(|(w, _)| *w != self.hwnd));
         PENDIENTES_OVERLAY.with(|p| p.borrow_mut().retain(|(h, _)| *h != self.hwnd));
         ENTRADA_FINA.with(|e| e.borrow_mut().retain(|(h, _, _)| *h != self.hwnd));
+        // Se saca de la lista ANTES de soltarlo: al soltarse, DirectManipulation
+        // puede avisar todavia, y el aviso no debe encontrar la lista cogida.
+        let gestos = GESTOS.with(|g| {
+            let mut g = g.borrow_mut();
+            g.iter()
+                .position(|(h, _)| *h == self.hwnd)
+                .map(|i| g.remove(i))
+        });
+        drop(gestos);
         // SAFETY: destruir una ventana propia desde su hilo es valido; si ya
         // fue destruida por el sistema, DestroyWindow falla y se ignora.
         unsafe {
@@ -869,6 +1010,26 @@ extern "system" fn procedimiento_overlay(
     let encolar = |e: EventoOverlay| {
         PENDIENTES_OVERLAY.with(|p| p.borrow_mut().push_back((hwnd, e)));
     };
+    // Una ventana que pidio gestos tactiles recibe la rueda con su hora y
+    // sus teclas; las demas, como siempre.
+    let rueda = |delta: i32, horizontal: bool, (ctrl, shift): (bool, bool)| {
+        let con_gestos = GESTOS.with(|g| g.borrow().iter().any(|(h, _)| *h == hwnd));
+        let ev = if con_gestos {
+            EventoOverlay::RuedaFina(crate::gestos_tactiles::RuedaCruda {
+                delta,
+                horizontal,
+                // SAFETY: hora del mensaje que se esta atendiendo.
+                ms: unsafe { GetMessageTime() } as u32,
+                ctrl,
+                shift,
+            })
+        } else if horizontal {
+            EventoOverlay::RuedaHorizontal(delta)
+        } else {
+            EventoOverlay::Rueda(delta)
+        };
+        PENDIENTES_OVERLAY.with(|p| p.borrow_mut().push_back((hwnd, ev)));
+    };
     // Cliente -> escritorio virtual: la ventana vive en su esquina del
     // escritorio, asi que basta sumar su origen real.
     let punto = |lparam: LPARAM| {
@@ -966,7 +1127,7 @@ extern "system" fn procedimiento_overlay(
         WM_MOUSEHWHEEL => {
             let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as i32;
             avisar_de_horizontal("WM_MOUSEHWHEEL", delta);
-            encolar(EventoOverlay::RuedaHorizontal(delta));
+            rueda(delta, true, teclas_de_rueda(wparam));
             LRESULT(0)
         }
         // El camino VIEJO del desplazamiento de lado: muchos controladores de
@@ -983,14 +1144,35 @@ extern "system" fn procedimiento_overlay(
             };
             avisar_de_horizontal("WM_HSCROLL", delta);
             if delta != 0 {
-                encolar(EventoOverlay::RuedaHorizontal(delta));
+                // Este wparam no trae teclas: es el codigo de la barra.
+                rueda(delta, true, (false, false));
             }
             LRESULT(0)
         }
         WM_MOUSEWHEEL => {
             // La palabra alta del wparam trae el giro con signo.
             let delta = ((wparam.0 >> 16) & 0xFFFF) as i16 as i32;
-            encolar(EventoOverlay::Rueda(delta));
+            rueda(delta, false, teclas_de_rueda(wparam));
+            LRESULT(0)
+        }
+        // El panel tactil de precision pone dos dedos: si esta ventana pidio
+        // gestos tactiles, DirectManipulation se queda el contacto y el gesto
+        // ya no llega como rueda (`gestos_tactiles`).
+        m if m == crate::gestos_tactiles::DM_POINTERHITTEST => {
+            GESTOS.with(|g| {
+                if let Some((_, Some(dm))) = g.borrow().iter().find(|(h, _)| *h == hwnd) {
+                    dm.tocar(wparam);
+                }
+            });
+            // SAFETY: reenvio estandar del mensaje recibido.
+            unsafe { DefWindowProcW(hwnd, mensaje, wparam, lparam) }
+        }
+        WM_TIMER if wparam.0 == crate::gestos_tactiles::ID_TEMPORIZADOR => {
+            GESTOS.with(|g| {
+                if let Some((_, Some(dm))) = g.borrow().iter().find(|(h, _)| *h == hwnd) {
+                    dm.latido();
+                }
+            });
             LRESULT(0)
         }
         // El boton derecho vale lo mismo que el izquierdo: el gesto de
@@ -1230,6 +1412,16 @@ extern "system" fn procedimiento_overlay(
     }
 }
 
+/// Ctrl y Shift segun el propio `WM_MOUSEWHEEL` (`MK_CONTROL`, `MK_SHIFT`
+/// en la palabra baja). El pellizco de un panel sin DirectManipulation
+/// llega como rueda con Ctrl fingido: el mensaje lo dice seguro, sondear
+/// el teclado despues quiza no.
+fn teclas_de_rueda(wparam: WPARAM) -> (bool, bool) {
+    const MK_SHIFT: usize = 0x0004;
+    const MK_CONTROL: usize = 0x0008;
+    (wparam.0 & MK_CONTROL != 0, wparam.0 & MK_SHIFT != 0)
+}
+
 /// Apunta en el registro las primeras veces que llega un desplazamiento de
 /// lado, y por que camino. Es para diagnosticar en el equipo del usuario: que
 /// mensaje manda su panel tactil no se puede saber desde aqui, y sin verlo se
@@ -1246,6 +1438,16 @@ fn avisar_de_horizontal(camino: &'static str, delta: i32) {
 mod pruebas {
     use super::*;
     use pixpin_geom::Rect;
+
+    #[test]
+    fn ctrl_y_shift_de_la_rueda_salen_del_propio_mensaje() {
+        // Palabra alta: el giro; baja: MK_*. 120 con MK_CONTROL (0x08).
+        assert_eq!(teclas_de_rueda(WPARAM((120 << 16) | 0x0008)), (true, false));
+        assert_eq!(teclas_de_rueda(WPARAM((120 << 16) | 0x0004)), (false, true));
+        // Caso negativo: el boton izquierdo pulsado (MK_LBUTTON) no es Ctrl,
+        // ni lo es un giro cuyo valor tenga el bit 3 puesto en la palabra alta.
+        assert_eq!(teclas_de_rueda(WPARAM((8 << 16) | 0x0001)), (false, false));
+    }
 
     #[test]
     #[ignore = "necesita sesion de escritorio; ejecutar con --ignored"]

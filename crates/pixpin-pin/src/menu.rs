@@ -40,8 +40,23 @@ pub const CMD_ABRIR_LIENZO: u32 = 16;
 /// Dejar el fotograma que se ve de un pin en vivo como pin de imagen
 /// normal, guardado en el almacen.
 pub const CMD_CONGELAR: u32 = 17;
+/// Encender o apagar el manejo a distancia de un pin en vivo: los clics y
+/// la rueda sobre el pin van a la zona que se esta viendo. La etiqueta dice
+/// lo que hara, como la de reproducir.
+pub const CMD_REMOTO: u32 = 18;
 pub const CMD_SIN_GRUPO: u32 = 100;
 pub const CMD_COLOR_BASE: u32 = 101;
+/// «Convertir en…» una nota: 200 + el indice en `MiniApp::TODAS`. En el PC
+/// el pin ya existe, y sacar la herramienta desde el es mas directo que
+/// volver a copiar la palabra magica.
+pub const CMD_CONVERTIR_BASE: u32 = 200;
+/// El fondo de la pizarra: 300 + uno de los cuatro colores del movil, y
+/// 310 + una de sus cinco pautas.
+pub const CMD_PIZARRA_COLOR_BASE: u32 = 300;
+pub const CMD_PIZARRA_PAUTA_BASE: u32 = 310;
+/// Cuantos colores y pautas tiene la pizarra (`BOARD_COLORS`, `BoardGrid`).
+pub const COLORES_PIZARRA: u8 = 4;
+pub const PAUTAS_PIZARRA: u8 = 5;
 
 /// Textos del pin, YA traducidos: este crate no conoce Fluent (vive en
 /// `pixpin-store`, su misma capa).
@@ -77,6 +92,26 @@ pub struct TextosPin {
     pub abrir_en_lienzo: String,
     /// El de congelar un pin en vivo como imagen.
     pub congelar: String,
+    /// Los de manejar a distancia la zona de un pin en vivo.
+    pub manejar: String,
+    pub dejar_de_manejar: String,
+    /// «Convertir en…» y el nombre de cada herramienta, en el orden de
+    /// `MiniApp::TODAS`.
+    pub convertir_en: String,
+    pub herramientas: [String; 9],
+    /// «Fondo de la pizarra», sus cuatro colores y sus cinco pautas.
+    pub fondo_pizarra: String,
+    pub colores_pizarra: [String; 4],
+    pub pautas_pizarra: [String; 5],
+}
+
+/// Una linea de un submenu. `None` en la lista es un separador.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpcionSubmenu {
+    pub id: u32,
+    pub etiqueta: String,
+    /// Con la marca de «esto es lo que hay ahora».
+    pub marcada: bool,
 }
 
 /// Una linea del menu, ya decidida. `Separador` no lleva texto.
@@ -89,6 +124,11 @@ pub enum EntradaMenu {
     Separador,
     /// El submenu de grupos: sin grupo mas los ocho colores.
     SubmenuGrupo,
+    /// Cualquier otro submenu, ya decidido entero.
+    Submenu {
+        etiqueta: String,
+        opciones: Vec<Option<OpcionSubmenu>>,
+    },
 }
 
 /// Lo que el menu necesita saber del pin, aparte de su contenido.
@@ -108,6 +148,60 @@ pub struct EstadoMenu {
     pub paginas: Option<u32>,
     /// La pagina que se ve ahora, desde 0.
     pub pagina: u32,
+    /// El pin en vivo esta manejando su zona a distancia.
+    pub remoto: bool,
+    /// Si el pin es una pizarra, su color y su pauta de ahora.
+    pub pizarra: Option<(u8, u8)>,
+}
+
+/// El submenu «Convertir en…» de una nota: todas las herramientas.
+fn submenu_convertir(t: &TextosPin) -> EntradaMenu {
+    EntradaMenu::Submenu {
+        etiqueta: t.convertir_en.clone(),
+        opciones: t
+            .herramientas
+            .iter()
+            .enumerate()
+            .map(|(i, nombre)| {
+                Some(OpcionSubmenu {
+                    id: CMD_CONVERTIR_BASE + i as u32,
+                    etiqueta: nombre.clone(),
+                    marcada: false,
+                })
+            })
+            .collect(),
+    }
+}
+
+/// El submenu del fondo de la pizarra: los cuatro colores, una raya y las
+/// cinco pautas, con lo de ahora marcado. En el movil es una paleta que se
+/// queda abierta; aqui, un menu nativo que se vuelve a abrir, que es lo
+/// que se espera de un escritorio.
+fn submenu_pizarra(t: &TextosPin, color: u8, pauta: u8) -> EntradaMenu {
+    let mut opciones: Vec<Option<OpcionSubmenu>> = t
+        .colores_pizarra
+        .iter()
+        .enumerate()
+        .map(|(i, nombre)| {
+            Some(OpcionSubmenu {
+                id: CMD_PIZARRA_COLOR_BASE + i as u32,
+                etiqueta: nombre.clone(),
+                marcada: i as u8 == color,
+            })
+        })
+        .collect();
+    opciones.push(None);
+    opciones.extend(t.pautas_pizarra.iter().enumerate().map(|(i, nombre)| {
+        Some(OpcionSubmenu {
+            id: CMD_PIZARRA_PAUTA_BASE + i as u32,
+            etiqueta: nombre.clone(),
+            marcada: i as u8 == pauta,
+        })
+    }));
+    EntradaMenu::Submenu {
+        etiqueta: t.fondo_pizarra.clone(),
+        opciones,
+    }
 }
 
 /// Que entradas tiene el menu de este pin. PURA y probada en CI.
@@ -123,6 +217,8 @@ pub fn entradas_del_menu(
         con_ocr,
         paginas,
         pagina,
+        remoto,
+        pizarra,
     } = estado;
     let mut v = Vec::new();
 
@@ -142,6 +238,17 @@ pub fn entradas_del_menu(
         v.push(EntradaMenu::Accion {
             id: CMD_CONGELAR,
             etiqueta: t.congelar.clone(),
+        });
+        // Arriba, con la pausa: es lo que distingue a este pin de una foto,
+        // y el unico sitio por donde se apaga (con el modo encendido el clic
+        // izquierdo ya no es del pin).
+        v.push(EntradaMenu::Accion {
+            id: CMD_REMOTO,
+            etiqueta: if remoto {
+                t.dejar_de_manejar.clone()
+            } else {
+                t.manejar.clone()
+            },
         });
         v.push(EntradaMenu::Separador);
         v.push(EntradaMenu::Accion {
@@ -228,7 +335,13 @@ pub fn entradas_del_menu(
     // referencia no hay pixeles que leer— y solo si el equipo sabe
     // reconocer texto: ofrecerlo sin motor daria un error en vez de una
     // funcion.
-    if con_ocr && contenido.redimensionable() && !matches!(contenido, Contenido::Nota { .. }) {
+    if con_ocr
+        && contenido.redimensionable()
+        && !matches!(
+            contenido,
+            Contenido::Nota { .. } | Contenido::Herramienta { .. }
+        )
+    {
         v.push(EntradaMenu::Accion {
             id: CMD_TEXTO,
             etiqueta: t.copiar_texto.clone(),
@@ -242,6 +355,17 @@ pub fn entradas_del_menu(
             id: CMD_ABRIR_LIENZO,
             etiqueta: t.abrir_en_lienzo.clone(),
         });
+        // El fondo de la pizarra, junto al lienzo: los dos cambian el papel
+        // sobre el que se dibuja.
+        if let Some((color, pauta)) = pizarra {
+            v.push(submenu_pizarra(t, color, pauta));
+        }
+    }
+
+    // Una nota se convierte en herramienta: sus lineas pasan a ser las
+    // tareas, los gastos o los nombres de la ruleta (C3, propio del PC).
+    if matches!(contenido, Contenido::Nota { .. }) {
+        v.push(submenu_convertir(t));
     }
 
     match contenido {
@@ -315,7 +439,8 @@ pub fn mostrar(
 ) -> Option<u32> {
     use windows::Win32::Foundation::POINT;
     use windows::Win32::UI::WindowsAndMessaging::{
-        AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, MF_POPUP, MF_SEPARATOR, MF_STRING,
+        AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, MF_CHECKED, MF_POPUP,
+        MF_SEPARATOR, MF_STRING,
         SetForegroundWindow, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu,
     };
     use windows::core::HSTRING;
@@ -363,6 +488,33 @@ pub fn mostrar(
                         id as usize,
                         &HSTRING::from(etiqueta.as_str()),
                     )?,
+                    EntradaMenu::Submenu { etiqueta, opciones } => {
+                        // Se cuelga del padre en cuanto se crea: desde ese
+                        // momento lo destruye el `DestroyMenu` de abajo, y
+                        // un fallo a medias no deja un menu huerfano.
+                        let hijo = CreatePopupMenu()?;
+                        AppendMenuW(
+                            menu,
+                            MF_POPUP,
+                            hijo.0 as usize,
+                            &HSTRING::from(etiqueta.as_str()),
+                        )?;
+                        for o in opciones {
+                            match o {
+                                None => AppendMenuW(hijo, MF_SEPARATOR, 0, None)?,
+                                Some(o) => AppendMenuW(
+                                    hijo,
+                                    if o.marcada {
+                                        MF_STRING | MF_CHECKED
+                                    } else {
+                                        MF_STRING
+                                    },
+                                    o.id as usize,
+                                    &HSTRING::from(o.etiqueta.as_str()),
+                                )?,
+                            }
+                        }
+                    }
                 }
             }
             Ok(())
@@ -433,7 +585,147 @@ mod pruebas {
             extraer_pagina: "Extraer esta pagina".into(),
             extraer_todas: "Extraer todas las paginas".into(),
             congelar: "Congelar como imagen".into(),
+            manejar: "Manejar a distancia".into(),
+            dejar_de_manejar: "Dejar de manejar".into(),
+            convertir_en: "Convertir en".into(),
+            herramientas: [
+                "Temporizador".into(),
+                "Cronometro".into(),
+                "Tareas".into(),
+                "Contador".into(),
+                "Gastos".into(),
+                "Pizarra".into(),
+                "Ruleta".into(),
+                "Lienzo".into(),
+                "Hoja".into(),
+            ],
+            fondo_pizarra: "Fondo de la pizarra".into(),
+            colores_pizarra: [
+                "Blanco".into(),
+                "Negro".into(),
+                "Azul".into(),
+                "Verde".into(),
+            ],
+            pautas_pizarra: [
+                "Lisa".into(),
+                "Cuadros".into(),
+                "Rayas".into(),
+                "Columnas".into(),
+                "Puntos".into(),
+            ],
         }
+    }
+
+    fn submenu<'a>(v: &'a [EntradaMenu], etiqueta: &str) -> Option<&'a [Option<OpcionSubmenu>]> {
+        v.iter().find_map(|e| match e {
+            EntradaMenu::Submenu {
+                etiqueta: t,
+                opciones,
+            } if t == etiqueta => Some(opciones.as_slice()),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn una_nota_se_puede_convertir_en_cualquier_herramienta() {
+        let nota = Contenido::Nota {
+            texto: "pan\nleche".into(),
+        };
+        let v = entradas_del_menu(&nota, EstadoMenu::default(), &textos());
+        let s = submenu(&v, "Convertir en").expect("la nota ofrece convertir");
+        assert_eq!(s.len(), 9);
+        assert_eq!(
+            s[2],
+            Some(OpcionSubmenu {
+                id: CMD_CONVERTIR_BASE + 2,
+                etiqueta: "Tareas".into(),
+                marcada: false
+            })
+        );
+        // Caso negativo: una imagen no tiene lineas que convertir.
+        let i = entradas_del_menu(&imagen(), EstadoMenu::default(), &textos());
+        assert!(submenu(&i, "Convertir en").is_none());
+    }
+
+    #[test]
+    fn la_pizarra_ofrece_su_fondo_con_lo_de_ahora_marcado() {
+        let v = entradas_del_menu(
+            &imagen(),
+            EstadoMenu {
+                pizarra: Some((2, 4)),
+                ..Default::default()
+            },
+            &textos(),
+        );
+        let s = submenu(&v, "Fondo de la pizarra").expect("una pizarra ofrece su fondo");
+        let marcadas: Vec<u32> = s.iter().flatten().filter(|o| o.marcada).map(|o| o.id).collect();
+        assert_eq!(marcadas, vec![CMD_PIZARRA_COLOR_BASE + 2, CMD_PIZARRA_PAUTA_BASE + 4]);
+        assert_eq!(s.iter().filter(|o| o.is_none()).count(), 1, "una raya entre las dos");
+        // Caso negativo: una imagen corriente no es una pizarra.
+        let normal = entradas_del_menu(&imagen(), EstadoMenu::default(), &textos());
+        assert!(submenu(&normal, "Fondo de la pizarra").is_none());
+    }
+
+    #[test]
+    fn una_herramienta_no_ofrece_leer_su_texto_ni_convertirse() {
+        let h = Contenido::Herramienta {
+            ancho: 300,
+            alto: 300,
+        };
+        let v = entradas_del_menu(
+            &h,
+            EstadoMenu {
+                con_ocr: true,
+                ..Default::default()
+            },
+            &textos(),
+        );
+        let ids = ids(&v);
+        assert!(ids.contains(&CMD_COPIAR) && ids.contains(&CMD_CERRAR));
+        assert!(!ids.contains(&CMD_TEXTO));
+        assert!(!ids.contains(&CMD_ABRIR_LIENZO));
+        assert!(submenu(&v, "Convertir en").is_none());
+    }
+
+    #[test]
+    fn el_pin_en_vivo_ofrece_manejar_y_encendido_ofrece_dejarlo() {
+        let vivo = Contenido::Vivo {
+            ancho: 300,
+            alto: 200,
+        };
+        let etiqueta = |remoto: bool| {
+            entradas_del_menu(
+                &vivo,
+                EstadoMenu {
+                    remoto,
+                    ..Default::default()
+                },
+                &textos(),
+            )
+            .into_iter()
+            .find_map(|e| match e {
+                EntradaMenu::Accion { id, etiqueta } if id == CMD_REMOTO => Some(etiqueta),
+                _ => None,
+            })
+        };
+        assert_eq!(etiqueta(false).as_deref(), Some("Manejar a distancia"));
+        assert_eq!(
+            etiqueta(true).as_deref(),
+            Some("Dejar de manejar"),
+            "encendido, el menu es la unica salida y tiene que decirlo"
+        );
+    }
+
+    #[test]
+    fn una_imagen_quieta_no_ofrece_manejar_a_distancia() {
+        // Caso negativo: detras de una foto no hay zona viva que manejar.
+        let imagen = Contenido::Imagen(ImagenRgba {
+            ancho: 1,
+            alto: 1,
+            pixeles: vec![0, 0, 0, 255],
+        });
+        let e = entradas_del_menu(&imagen, EstadoMenu::default(), &textos());
+        assert!(!ids(&e).contains(&CMD_REMOTO));
     }
 
     #[test]

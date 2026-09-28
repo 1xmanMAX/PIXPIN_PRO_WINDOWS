@@ -127,6 +127,12 @@ ajustes-nivel = Rendimiento
 ajustes-nivel-auto = Automático
 ajustes-nivel-completo = Completo
 ajustes-nivel-ligero = Ligero
+ajustes-pdf-aligerar = Aligerar los PDF al meterlos al chat
+ajustes-pdf-nivel = Cuánto se aligera (Chico y Máx.: solo a mano)
+ajustes-pdf-nivel-sin-perdida = Exacto
+ajustes-pdf-nivel-equilibrado = Medio
+ajustes-pdf-nivel-pequeno = Chico
+ajustes-pdf-nivel-extremo = Máx.
 ajustes-retardo-captura = Segundos de cuenta atrás antes de capturar
 ajustes-limite-scroll = Alto máximo de la captura con scroll, en píxeles
 ajustes-gif-ritmo = Fotogramas por segundo al grabar
@@ -143,6 +149,8 @@ pin-copiar-texto = Copiar el texto de la imagen
 # Abrir un pin de imagen en el lienzo del editor.
 pin-abrir-en-lienzo = Abrir en lienzo
 pin-congelar = Congelar como imagen
+pin-manejar = Manejar a distancia
+pin-dejar-de-manejar = Dejar de manejar a distancia
 
 # Paginas de un PDF pineado.
 pin-pagina-siguiente = Página siguiente
@@ -202,7 +210,7 @@ chat-comentar = Comentar esto
 chat-copiar = Copiar
 chat-fijar = Fijar arriba
 chat-soltar = Quitar de arriba
-chat-compartir = Compartir
+chat-compartir = Compartir…
 chat-abrir-con = Abrir con otra app
 chat-aligerar = Aligerar el PDF
 chat-renombrar = Cambiar el nombre
@@ -214,7 +222,7 @@ chat-ver-hilo = Ver comentarios
 chat-etiquetar = Poner una etiqueta
 chat-quitar-etiqueta = Quitar la etiqueta
 chat-reenviar = Reenviar
-chat-unir = Unir al proyecto
+chat-unir = Añadir al proyecto
 chat-transcribir = Pasar a texto
 chat-letra = Letra o texto
 chat-elegir = Elegir
@@ -225,6 +233,9 @@ chat-conversaciones = Conversaciones de proyectos
 chat-proyectos = Proyectos
 chat-comenzar = Comenzar
 chat-fondo = Fondo del chat
+chat-escala = Escala de la interfaz
+chat-escala-normal = la del monitor
+chat-escala-puesta = Escala de la interfaz: { $cuanto } %
 chat-ajustes = Ajustes
 chat-fondo-mar = Mar
 chat-fondo-arena = Arena
@@ -242,6 +253,7 @@ chat-adj-miniapp = Una mini-app
 chat-reenviado = Reenviado
 chat-copiado = Copiado
 chat-compartido = Copiado al portapapeles: pégalo donde quieras compartirlo
+chat-compartir-sin-panel = Windows no abrió el panel Compartir: lo he dejado en el portapapeles para que lo pegues donde quieras
 chat-pineado = Puesto en la pantalla
 chat-sin-archivo = Este mensaje no tiene un archivo en este equipo
 chat-sin-origen = No encuentro ese lienzo en este proyecto
@@ -250,16 +262,14 @@ chat-ya-en-marcha = PixPin ya está en marcha en Windows: los pines salen con su
 chat-ajustes-bandeja = Los ajustes se abren desde el icono de PixPin en la bandeja
 chat-proyectos-lista = Los proyectos son la lista de la izquierda
 chat-no-hay-voz = Grabar notas de voz todavía no existe en Windows
-chat-no-hay-letra = La letra de un audio todavía no existe en Windows
 chat-no-hay-aligerar = Aligerar un PDF todavía no existe en Windows
 chat-no-hay-unir = En Windows cada chat ya es un proyecto: usa Reenviar para llevarlo a otro
 chat-no-hay-biblioteca = La biblioteca de audio todavía no existe en Windows
-chat-no-hay-recorte = Ver solo la foto todavía no existe en Windows
+chat-ver-dibujo-entero = Ver el dibujo entero
 chat-no-hay-pagina = Adjuntar una página de un proyecto todavía no existe en Windows
-chat-no-hay-conversacion = Grabar una conversación todavía no existe en Windows
 chat-no-hay-telepronter = El teleprónter todavía no existe en Windows
-chat-no-hay-pronunciar = Practicar la pronunciación todavía no existe en Windows
 chat-no-se-pudo = No se pudo: mira el registro de PixPin
+info-galeria = Galería
 info-todo = Todo
 info-fotos = Fotos
 info-archivos = Archivos
@@ -295,9 +305,27 @@ comando-recibir-del-movil = Recibir del movil…
 comando-sincronizar = Sincronizar
 adjuntar-del-movil = Traer del movil…
 menu-foto-aqui = Dibujar aqui mismo
+proyecto-renombrar = Cambiar nombre
 proyecto-borrar = Borrar proyecto
 proyecto-borrar-varios = Borrar los marcados
 proyecto-borrar-aviso = Se quitara de la lista y su carpeta ira a la papelera de PixPin. ¿Seguir?
+proyecto-papelera = Proyectos borrados…
+# Donde se guarda cada proyecto: su carpeta elegida o la zona habitual.
+ubicacion-cambiar = Cambiar ubicación…
+ubicacion-habitual = Volver a la ubicación habitual
+ubicacion-abrir = Abrir carpeta del proyecto
+ubicacion-elegir-titulo = Elige dónde guardar el proyecto
+ubicacion-nuevo = Proyecto nuevo
+ubicacion-nuevo-en = Proyecto nuevo en una carpeta…
+ubicacion-no-disponible = Ubicación no disponible
+ubicacion-no-disponible-abrir = La carpeta de este proyecto no está disponible ({ $ruta }). Conecta el disco y vuelve a intentarlo.
+ubicacion-movido = Proyecto guardado en { $ruta }
+ubicacion-vuelto = El proyecto está otra vez en la ubicación habitual
+ubicacion-error-red = Solo se puede guardar en un disco de este equipo, no en una unidad de red.
+ubicacion-error-no-es-carpeta = Esa carpeta no existe en este equipo.
+ubicacion-error-dentro = Esa carpeta está dentro del propio proyecto o de los datos de PixPin.
+ubicacion-error-mover = No se pudo mover el proyecto; sigue donde estaba.
+ubicacion-error-abrir = No se pudo abrir la carpeta del proyecto.
 
 ## Sincronizar (copia de SincronizarActivity.kt del movil)
 sinc-titulo = Sincronizar
@@ -358,6 +386,15 @@ sinc-todo = Todo
 sinc-nada = Nada
 sinc-sincronizar-n = Sincronizar { $n }
 sinc-sincronizando = Sincronizando
+sincro-borrado-alli-vuelve = Borrado en { $otro } · se le vuelve a mandar
+sincro-borrado-alli-se-borra = Borrado en { $otro } · SE BORRARÁ AQUÍ (queda copia)
+sincro-borrado-alli-se-queda = Borrado en { $otro } · sin marcar: se queda aquí
+sincro-se-borran-aqui = Se borrará AQUÍ, porque se borró en { $otro }: { $lista }. Desmárcalo para dejarlo, o elige «Lo mío manda» para volver a mandárselo.
+sincro-se-borran-alli = Se borrará en { $otro }, porque lo borraste aquí: { $lista }.
+sincro-juntar = Juntar
+sincro-lo-mio-manda = Lo mío manda
+sincro-lo-mio-manda-como = De una sola dirección: lo de { $yo } pisa a { $otro }. Aquí no se borra ni se cambia nada; allí, lo que sea distinto queda como aquí y lo que borraron vuelve. Lo que solo tenga { $otro } se conserva. Queda copia de lo pisado.
+sincro-mandar-n = Mandar { $n }
 
 ## El universo
 universo-titulo = Universo
@@ -386,7 +423,7 @@ universo-carpeta = Mostrar en carpeta
 universo-devolver = Devolver a la nebulosa
 universo-nota = Nota
 universo-conexiones = Conexiones
-universo-notas-chat = Incluir notas del chat
+universo-notas-chat = Notas sueltas en la nebulosa
 universo-ordenar = Ordenar planetas
 universo-limpiar = Limpiar huérfanas
 universo-agrupar = Agrupar en planeta nuevo
@@ -504,6 +541,24 @@ chat-unir-nada = No hay nada que se pueda unir: solo fotos, dibujos, notas y PDF
 chat-devolver = Volver a añadir al proyecto
 chat-devuelto = De vuelta en «{ $nombre }»
 chat-devolver-no = No se pudo volver a añadir
+unir-pdf-como-imagenes = Añadir como imágenes
+unir-pdf-empezado = Añadiendo el PDF al proyecto…
+unir-pdf-ya-va = Ese PDF ya se está añadiendo
+unir-pdf-no = No se pudo añadir el PDF
+unir-pdf-hecho = { $hojas ->
+    [one] Añadida 1 hoja al proyecto
+   *[other] Añadidas { $hojas } hojas al proyecto
+}
+unir-pdf-pintadas = { $hojas ->
+    [one] Añadida 1 hoja (el PDF no se dejaba copiar: va pintada)
+   *[other] Añadidas { $hojas } hojas (el PDF no se dejaba copiar: van pintadas)
+}
+unir-pdf-fotos = { $hojas ->
+    [one] Añadida 1 página como imagen
+   *[other] Añadidas { $hojas } de { $paginas } páginas como imágenes
+}
+unir-pdf-pintando = Pintando páginas… { $hechas } de { $total }
+unir-pdf-imagenes-progreso = Pasando a imágenes… { $hechas } de { $total }
 
 ## Copias de seguridad (copia de sincro/CopiasActivity.kt del movil)
 cop-titulo = Copias de seguridad
@@ -521,9 +576,18 @@ cop-volver-titulo = ¿Volver a esta copia?
 cop-volver-texto = «{ $nombre }» vuelve a como estaba el { $cuando } ({ $motivo }): { $hojas } hojas. Los lienzos que añadiste después se quedan. Antes se guarda una copia de cómo está ahora, así que puedes deshacerlo.
 cop-ha-vuelto = «{ $nombre }» ha vuelto a la copia
 cop-no-se-pudo = No se pudo volver a la copia: { $motivo }
+papelera-titulo = Proyectos borrados
+papelera-como = Se recuperan enteros: con su nombre, sus hojas en su orden, su PDF y su chat. Y dejan de estar borrados, así que sincronizar no los vuelve a quitar.
+papelera-detalle = { $hojas } hojas · { $mensajes } mensajes · borrado el { $cuando }
+papelera-recuperar = Recuperar
+papelera-recuperar-todos = Recuperar todos
+papelera-ha-vuelto = «{ $nombre }» ha vuelto entero
+papelera-no-se-pudo = No se pudo recuperar «{ $nombre }»: { $motivo }
+papelera-recuperados = Recuperados { $n } de { $total } proyectos
 
 ## El visor de documentos: Word, libros EPUB y páginas (tarea 2.1)
-visor-titulo = Visor de PixPin
+visor-html-titulo = PixPin — página
+visor-titulo =Visor de PixPin
 visor-marcador = Marcador aquí
 visor-ajustes = Ajustes de lectura
 visor-tamano = Tamaño de la letra
@@ -537,6 +601,25 @@ visor-vacio = Este documento no tiene texto que enseñar
 visor-ayuda = Rueda para leer · +/− tamaño · M marcador · G ajustes · Esc salir
 visor-elige-emoticono = ¿Con qué lo marcas?
 visor-sin-marcadores = Todavía no hay marcadores
+
+## Los lectores: leer a gusto, anotar encima y el lector de PDF
+lector-listo = Listo
+lector-indice = Índice
+lector-letra-fijada = La letra está fijada: hay cosas anotadas encima
+lector-letra-normal = Letra normal
+lector-letra-fija = Ancho fijo
+lector-grosor-normal = Normal
+lector-grosor-gruesa = Gruesa
+lector-quitar-tinta = Quitar lo anotado
+lector-tinta-quitada = Anotado quitado (Ctrl+Z lo devuelve mientras sigas aquí)
+lector-ayuda-docs = Rueda leer · Ctrl+rueda acercar · A anotar · M marcador · I índice · +/− letra · T tipo · B grosor · Esc salir
+lector-pdf-titulo = Lector de PDF de PixPin
+lector-pdf-no-se-abre = No se pudo abrir el PDF
+lector-pdf-abriendo = Abriendo el PDF…
+lector-exportando = Guardando el PDF anotado… { $hechas } de { $total }
+lector-exportar-pdf = Guardar el PDF con lo anotado
+lector-anotado = anotado
+lector-ayuda-pdf = Rueda pasar hojas · Ctrl+rueda acercar · Ctrl+[ Ctrl+] espacio para anotar · A anotar · M marcador · Esc salir
 sinc-presencia-apagada = La presencia está apagada en los ajustes ([sincro] presencia = false): desde aquí puedes sincronizar, pero el móvil no podrá encontrar este equipo ni llamarlo.
 bandeja-abrir-documento = Abrir documento…
 
@@ -623,9 +706,9 @@ mini-temporizador = Temporizador
 mini-contador = Contador
 mini-ruleta = Ruleta
 mini-alarma = Alarma
-mini-tarea-nueva = Escribe algo que hacer y pulsa Intro
-mini-gasto-nuevo = Concepto e importe, por ejemplo: Cena 42,50
-mini-nombre-nuevo = Un nombre y pulsa Intro
+mini-tarea-nueva = Algo que hacer e Intro · ↑↓ elegir, Espacio tachar, F2 corregir
+mini-gasto-nuevo = Concepto e importe (Cena 42,50) e Intro · ↑↓ elegir, F2 corregir
+mini-nombre-nuevo = Un nombre e Intro · Intro sin nada sortea, Supr quita
 mini-limpiar-hechas = Quitar las hechas
 mini-arrancar = Arrancar
 mini-parar = Parar
@@ -634,6 +717,10 @@ mini-reiniciar = Reiniciar
 mini-sortear = Sortear
 mini-alarma-encender = Activar
 mini-alarma-apagar = Desactivar
+mini-guia-titulo = Nuevo nombre y pulsa Intro (Esc deja el de antes)
+mini-guia-cambiar = Corrígelo y pulsa Intro (Esc lo deja como estaba)
+mini-guia-duracion = Minutos o m:ss y pulsa Intro · Espacio arranca
+mini-guia-hora = Hora (7:30) y pulsa Intro · Espacio la activa
 chat-biblioteca-vacia = Todavía no hay ninguna nota de voz ni ninguna canción.
 chat-biblioteca-musica = Música
 chat-biblioteca-notas = Notas de voz
@@ -657,6 +744,9 @@ pdf-aligerar-sin-fotos = No lleva fotos que se puedan bajar: lo que pesa es el t
 pdf-aligerar-ya-al-minimo = Las fotos ya están al mínimo.
 pdf-aligerar-no-compensa = Solo bajaría de { $antes } a { $despues }: no compensa.
 pdf-aligerar-no-se-lee = El fichero aligerado no se leía bien; se queda el original.
+aligerar-progreso = Aligerando… { $por } %
+aligerar-empezado = Aligerando el PDF…
+aligerar-sin-mejora = Este PDF ya estaba ligero: se queda como estaba.
 
 # Los recordatorios: la hora que se le pone a un mensaje y el aviso que sale
 # cuando llega. Las mismas horas que ofrece el móvil, más diez minutos.
@@ -680,6 +770,15 @@ chat-transcribir-hecha = Nota pasada a texto
 chat-transcribir-en-marcha = Ya se está pasando otra nota a texto; espera a que acabe
 chat-transcribir-sin-mensaje = La nota ya no está en la conversación: el texto no tiene dónde ir
 chat-transcribir-cancelada = Se canceló el paso a texto
+chat-transcribir-otra-vez = Volver a pasar a texto
+chat-transcripcion-no = No se pudo pasar a texto: no se entendió nada del audio.
+chat-letra-vacia = Esta nota todavía no tiene texto.
+chat-letra-copiada = Texto copiado, con sus minutos
+chat-recordar-hora = Elegir la hora…
+chat-recordar-hora-a-las = Avisar a las
+chat-recordar-hora-teclas = Escribe la hora · Intro la pone · Esc la deja
+chat-recordar-hora-queda = Intro: { $cuando }
+chat-recordar-hora-mal = Eso no es una hora: escríbela como 18:30
 chat-voz-sin-motor = Falta el reconocedor de voz: copia { $motor } en { $donde }
 chat-voz-sin-modelo = Falta el modelo de voz { $modelo }: descárgalo de { $enlace } y descomprímelo dentro de { $donde }
 chat-voz-idioma-sin-modelo = Vosk no tiene modelo de voz para este idioma
@@ -688,6 +787,16 @@ chat-voz-modelo-ilegible = El modelo de { $donde } está incompleto o no se pudo
 chat-voz-no-es-audio = No se pudo leer el audio de esta nota
 chat-voz-audio-vacio = El audio está vacío: no hay nada que pasar a texto
 chat-voz-no-se-entiende = No se entendió nada de lo que se dice en la nota
+chat-voz-sin-reconocedor = Windows no trae reconocedor de voz para este idioma: añádelo en Configuración › Hora e idioma › Voz.
+chat-voz-bajar-whisper = Para pasar a texto hace falta el modelo de voz Whisper (unos { $megas } MB). Se baja ahora, solo esta vez, y después se transcribe la nota.
+chat-voz-bajando-whisper = Bajando el modelo de voz… { $pct } %
+chat-voz-sin-modelo-whisper = Falta el modelo de voz Whisper (unos { $megas } MB): vuelve a pulsar «Pasar a texto» para bajarlo.
+chat-voz-sin-onnx = Este Windows no trae el motor de IA (onnxruntime.dll): cópialo en { $donde } o junto a PixPin.
+chat-voz-descarga = No se pudo bajar el modelo de voz ({ $que }). Comprueba la conexión y vuelve a pulsar «Pasar a texto».
+chat-voz-onnx = El motor de voz Whisper falló: { $detalle }
+chat-dictado-oyendo = Te escucho… habla y pulsa el micrófono al terminar
+chat-dictado-fallo = No se pudo dictar: { $razon }
+chat-dictado-preparando = Preparando el micrófono…
 
 # El teleprónter: el texto baja solo y uno lo lee en voz alta, grabándose.
 # No hay voz sintética en ninguna parte, igual que en el móvil.
@@ -705,3 +814,462 @@ chat-telepronter-borrador = Lo escrito en la caja
 chat-telepronter-sin-texto = No hay ningún texto que leer: escribe algo en la caja o adjunta un .txt o un .md
 chat-telepronter-abierto = El teleprónter ya está abierto
 chat-telepronter-hecha = Lectura guardada como nota de voz
+
+# La pila de capturas: el montoncito de la esquina (icono y panel).
+pila-titulo-una = 1 captura
+pila-titulo-varias = { $cuantas } capturas apiladas
+pila-copiar-elegidas = Copiar elegidas
+pila-copiar-todas = Copiar todas
+pila-quitar = Quitar
+pila-copiadas = { $cuantas } capturas copiadas: pégalas con Ctrl+V
+
+# El panel de propiedades del editor de dibujo (el de Excalidraw).
+panel-trazo = Trazo
+panel-fondo = Fondo
+panel-relleno = Relleno
+panel-grosor = Grosor del trazo
+panel-estilo-trazo = Estilo del trazo
+panel-presion = Presión
+panel-trazo-a-mano = Estilo de trazo a mano
+panel-bordes = Bordes
+panel-tipo-flecha = Tipo de flecha
+panel-fuente = Tipo de fuente
+panel-tamano-fuente = Tamaño de la fuente
+panel-alineacion-texto = Alineado de texto
+panel-puntas = Puntas de flecha
+panel-opacidad = Opacidad
+panel-capas = Capas
+panel-alinear = Alinear
+panel-acciones = Acciones
+panel-colores = Colores
+panel-tonos = Tonos
+panel-codigo-hex = Código hexadecimal
+
+## El papel del lienzo (el viewBackgroundColor de Excalidraw)
+fondo-lienzo = Fondo del lienzo
+fondo-papeles-del-movil = Papeles del móvil
+fondo-lienzo-menu = Fondo del lienzo…
+
+## Exportar e imprimir el lienzo (G1, G2, G3, F11)
+exportar-menu = Exportar…	Ctrl+Mayús+E
+exportar-copiar-png = Copiar como PNG	Ctrl+Mayús+C
+exportar-titulo = Exportar el lienzo
+exportar-que = Qué
+exportar-todo = Todo el lienzo
+exportar-seleccion = Lo elegido
+exportar-marcos = Cada marco
+exportar-escala = Escala
+exportar-transparente = Fondo transparente
+exportar-tipo-png = Imagen PNG
+exportar-tipo-svg = Dibujo SVG
+exportar-tipo-pdf = Documento PDF
+exportar-tipo-html = Página web de un solo archivo
+exportar-vacio = No hay nada que exportar con esto.
+exportar-fallo = No se pudo exportar el lienzo.
+exportar-hecho = Exportado: { $nombre }
+imprimir-menu = Imprimir…	Ctrl+P
+imprimir-vacio = No hay nada que imprimir.
+imprimir-fallo = No se pudo imprimir el lienzo.
+exportar-chat = Exportar…
+imprimir-chat = Imprimir…
+# F11: imprimir con vista previa (el dialogo de Windows y el boton de la barra)
+imprimir-pista = Imprimir… (Ctrl+P)
+imprimir-que = Qué imprimir
+imprimir-que-marcos = Cada marco en su hoja
+imprimir-que-todo = Todo el lienzo en una hoja
+imprimir-que-seleccion = Solo lo elegido
+marca-elige = ¿Con qué lo marcas? (1-9, 0) · Esc para dejarlo
+marca-plantar = Pulsa en el lienzo donde va la marca · Esc cancela
+hojita-borrar = Borrar
+hojita-insertar = Insertar
+hojita-pegar = Como pin
+
+# La hoja de compartir (compartir.rs): una sola para todo, como la del móvil.
+compartir-titulo = Compartir
+compartir-menu = Compartir…	Ctrl+Mayús+S
+compartir-proyecto = Compartir…
+compartir-lector = Compartir…  (Ctrl+Mayús+S)
+compartir-boton = Compartir
+compartir-guardar = Guardar como…
+compartir-copiar = Copiar al portapapeles
+compartir-wifi = Enviar por Wi-Fi
+compartir-web = Página web
+compartir-pdf = PDF
+compartir-png = PNG
+compartir-jpg = JPG
+compartir-svg = SVG
+compartir-original = Original
+compartir-originales = Originales
+compartir-editable = Editable
+compartir-texto = Texto
+compartir-csv = CSV
+compartir-paginas-de = Qué incluir · { $marcadas } de { $total }
+compartir-una-pagina = Qué página
+compartir-va-entero = Va entero, tal cual
+compartir-todas = Todas
+compartir-ninguna = Ninguna
+compartir-preparando = Preparando…
+compartir-marca-alguna = Marca alguna página
+compartir-en-cuanto-este = En cuanto esté preparado
+compartir-peso-ficheros = { $peso } · { $n } archivos
+compartir-panel-abierto = Elige dónde mandarlo
+compartir-guardado = Guardado: { $nombre }
+compartir-copiado = Copiado al portapapeles
+compartir-no-se-pudo = No se pudo preparar
+compartir-nada = No hay nada que compartir aquí.
+compartir-coma-decimal = ,
+compartir-lienzo = Lienzo
+compartir-lienzo-entero = Lienzo completo
+compartir-marco = Marco
+compartir-pagina = Página
+compartir-anotada = Con lo anotado
+compartir-sin-nombre = Sin nombre
+compartir-tipo-lienzo = Lienzo
+compartir-tipo-pagina = Página del PDF
+compartir-tipo-foto = Foto
+compartir-tipo-tabla = Tabla
+compartir-tipo-miniapp = Mini-app
+compartir-tipo-voz = Nota de voz
+compartir-tipo-nota = Nota
+
+# Herramientas de dibujo: las que salen en el lienzo, el lector, los pines y
+# el anotador de pantalla. Apagar una la quita de la barra y de su tecla.
+ajustes-pestana-herramientas = Herramientas
+herramientas-lazo = Lazo
+herramientas-rectangulo = Rectángulo
+herramientas-rombo = Rombo
+herramientas-elipse = Elipse
+herramientas-flecha = Flecha
+herramientas-flecha-codos = Flecha de codos
+herramientas-flecha-libre = Flecha a mano alzada
+herramientas-linea = Línea
+herramientas-lapiz = Lápiz
+herramientas-grafito = Grafito
+herramientas-texto = Texto
+herramientas-borrador = Goma
+herramientas-resaltador = Resaltador
+herramientas-foco = Foco
+herramientas-lupa = Lupa
+herramientas-mosaico = Mosaico
+herramientas-arco = Arco
+herramientas-serie = Pasos numerados
+herramientas-punto = Punto con letra
+herramientas-cota = Cota
+herramientas-escalar = Calibrar la escala
+herramientas-escala-grafica = Escala gráfica
+herramientas-marco = Marco
+herramientas-relleno = Bote de relleno
+herramientas-recortar = Recortar
+herramientas-extender = Extender
+herramientas-copiar-estilo = Copiar estilo
+
+## D10: un PowerPoint en el chat (diapositivas.rs)
+diapositivas-titulo = Presentación
+diapositivas-no-es = Esto no es una presentación
+diapositivas-keynote = Keynote no se lee directamente: expórtalo a PowerPoint o PDF
+diapositivas-sin-powerpoint = Para presentar un PowerPoint hace falta tener PowerPoint instalado
+diapositivas-abrir-con-otra = ¿Abrirlo con otra aplicación?
+diapositivas-preparando = Preparando la presentación con PowerPoint…
+diapositivas-no-se-pudo = No se pudo preparar la presentación
+diapositivas-no-esta = La presentación ya no está en este equipo
+
+## Chat: una pagina de un proyecto, la tarjeta del enlace, «Recibido de» y el buzon
+chat-sin-paginas = Ningún proyecto tiene páginas que adjuntar
+chat-recibido-de = Recibido de { $de }
+chat-fecha-corta = { $dia } { $mes }
+chat-enlace-no-abre = No se pudo abrir el enlace
+
+## D11: un Excel del chat es un libro de tablas (ventana_chat/libro.rs)
+libro-titulo = Hoja de cálculo
+libro-xls-antiguo = Los .xls antiguos no se pueden leer: ábrelo y guárdalo como .xlsx
+libro-abrir-fuera = ¿Abrirlo con otra aplicación?
+libro-no-es = El archivo no es un libro de hojas de cálculo válido
+libro-sin-hojas = El libro no tiene ninguna hoja con datos
+
+## D9: buscar dentro del documento (buscador.rs, visor.rs, lector_pdf.rs)
+buscar-pista = Buscar en el documento
+buscar-cuenta = { $n } de { $total }
+buscar-nada = Sin resultados
+buscar-leyendo = Leyendo el texto…
+buscar-sin-texto = Este PDF no tiene texto (es una imagen)
+buscar-cifrado = No se puede buscar en un PDF cifrado
+
+## D5: cambiar el nombre desde el lector (renombrar_doc.rs)
+renombrar-hecho = Ahora se llama «{ $nombre }»
+renombrar-ya-existe = Ya hay un archivo que se llama «{ $nombre }»
+renombrar-no-se-pudo = No se pudo cambiar el nombre
+
+## Lienzo: zona, laser, imagen, figuras, grafica y presentar (F8, F12, F14, G5)
+herramientas-zona = Zona (copia recortada)
+herramientas-laser = Puntero láser
+herramientas-imagen = Imagen
+herramientas-figuras = Figuras
+figuras-grafica = Gráfica de una función…
+figuras-tabla-en-blanco = Tabla en blanco
+figuras-pegar-tabla = Pegar tabla (de Excel)
+figuras-guardar-seleccion = Guardar lo elegido como figura…
+figuras-quitar = Quitar
+figuras-nombre-titulo = Guardar como figura
+figuras-nombre = Nombre
+figuras-nombre-ayuda = Intro: guardar · Esc: cancelar
+figuras-sin-tabla = El portapapeles no trae una tabla
+grafica-titulo = Gráfica de una función
+grafica-formulas = y = (una curva por renglón)
+grafica-x-desde = x desde
+grafica-x-hasta = x hasta
+grafica-y-desde = y desde
+grafica-y-hasta = y hasta
+grafica-escala = Píxeles por unidad
+grafica-ayuda = Intro: insertar · Mayús+Intro: otra curva · Tab: siguiente campo · Esc: cancelar · por partes: x^2 si x<0; 2x si x>=0
+grafica-limites-mal = Los límites no tienen sentido: «desde» tiene que ser menor que «hasta»
+grafica-sin-formula = Escribe una fórmula
+grafica-formula-mal = No se entiende:
+grafica-solo-x = Solo puede usar la x:
+presentar-ayuda = ← → Av Pág: pasar · B: negro · J: láser · L: lápiz · Esc: salir
+vista-mirando = Solo mirar · Alt+R: editar · F5: presentar
+herramientas-cronograma = Cronograma
+cronograma-titulo = Cronograma
+cronograma-filas = Filas
+cronograma-columnas = Columnas de la escala
+cronograma-fila = Fila
+cronograma-ayuda = Intro: aplicar · Tab: siguiente campo · Esc: cancelar · las barras se arrastran encima del dibujo
+cronograma-cuentas-mal = Filas de 0 a 60 y columnas de 1 a 40
+
+## --- Voz: dos idiomas, letra, telepronter, pronunciar, conversacion, llamada (B6-B11) ---
+
+ajustes-voz-segundo = Segundo idioma de las notas de voz
+ajustes-voz-modo = Con dos idiomas
+ajustes-voz-modo-cada-uno = Cada trozo como se dijo
+ajustes-voz-modo-todo-en-uno = Todo en el primero
+ajustes-voz-ninguno = Ninguno
+ajustes-voz-ingles = Inglés
+ajustes-voz-espanol = Español
+ajustes-voz-portugues = Portugués
+chat-letra-editar = Editar la letra
+chat-letra-editando = La letra ya se está editando
+chat-letra-guardar = Guardar
+chat-letra-guardada = Letra guardada
+chat-cancelar-caja = Cancelar
+chat-llamada-secreta = Llamada secreta
+telepronter-pausa = Pausa
+telepronter-seguir = Seguir
+telepronter-velocidad-muy-lenta = muy lenta
+telepronter-velocidad-lenta = lenta
+telepronter-velocidad-normal = normal
+telepronter-velocidad-rapida = rápida
+telepronter-velocidad-muy-rapida = muy rápida
+pronunciar-titulo = Pronunciar
+pronunciar-manten = Mantén pulsada la barra espaciadora (o el micrófono) y habla
+pronunciar-suelta = Suelta para oírte
+pronunciar-otra-vez = Mantén otra vez para repetirla
+pronunciar-guia = Guía
+pronunciar-guia-texto = Escribir un texto
+pronunciar-guia-fichero = Una imagen, un PDF o una nota del equipo
+pronunciar-sin-guia = Sin guía: escribe, o trae una imagen, un PDF o una nota
+pronunciar-repetir = Oír otra vez (R)
+pronunciar-guardar = Guardar en el chat (Ctrl+G)
+pronunciar-ya-guardada = Guardada
+pronunciar-guardado = Guardado; se pasa a texto para que veas qué se entendió
+pronunciar-idioma = Idioma que practicas
+pronunciar-idioma-ajustes = El de siempre
+pronunciar-oir-texto = Oír el texto
+pronunciar-sin-voz = Windows no tiene voz para ese idioma
+pronunciar-no-se-pudo = No se pudo abrir eso
+pronunciar-toma = Última toma: { $duracion }
+pronunciar-pagina = Página { $pagina } de { $paginas }
+pronunciar-abierto = Pronunciar ya está abierto
+conversacion-titulo = Conversación
+conversacion-explicacion = Se graba sin parar; cada uno pulsa su número (1 a 9) cuando empieza a hablar, y el 0 cuando no habla nadie. La transcripción sale con los nombres.
+conversacion-cuantos = ¿Cuántas personas hablan?
+conversacion-persona = Persona { $n }
+conversacion-empezar = Empezar a grabar
+conversacion-terminar = Terminar y transcribir
+conversacion-turnos = { $n } turnos
+conversacion-hablando = Hablando…
+conversacion-teclas = Pulsa el número de quien habla · 0: nadie
+conversacion-transcribiendo = Pasando la conversación a texto…
+conversacion-abierta = La conversación ya está abierta
+llamada-titulo = Llamada
+llamada-entrante = Llamada entrante
+llamada-contestar = Contestar
+llamada-colgar = Colgar
+llamada-altavoz = Altavoz
+llamada-perdida = Llamada perdida
+
+## Zona PDF (E9): fusionar paginas del PDF en un lienzo, como el movil
+fusionar-paginas = Fusionar en un lienzo
+fusionar-paginas-empieza = Juntando las páginas en un lienzo…
+fusionar-paginas-hecho = Listo: «{ $nombre }» ya está en el proyecto
+fusionar-paginas-no = No se pudieron juntar esas páginas
+
+## Zona universo (tanda 2: H2, H3, M1): el tema Cosmos fuera del universo
+ajustes-tema-cosmos = Tema Cosmos (cielo estrellado en el chat)
+
+## Zona pines (tanda 2: C3, C4, L3): palabra magica, pizarra, hoja y herramientas
+pin-convertir-en = Convertir en
+pin-herramienta-temporizador = Temporizador
+pin-herramienta-cronometro = Cronómetro
+pin-herramienta-tareas = Lista de tareas
+pin-herramienta-contador = Contador
+pin-herramienta-gastos = Gastos
+pin-herramienta-pizarra = Pizarra
+pin-herramienta-ruleta = Ruleta
+pin-herramienta-lienzo = Lienzo
+pin-herramienta-hoja = Hoja
+pin-herramienta-tabla = Tabla
+pin-fondo-pizarra = Fondo de la pizarra
+pin-pizarra-blanca = Blanca
+pin-pizarra-negra = Negra
+pin-pizarra-azul = Azul pizarra
+pin-pizarra-verde = Verde pizarra
+pin-pauta-lisa = Lisa
+pin-pauta-cuadros = Cuadrícula
+pin-pauta-rayas = Rayas
+pin-pauta-columnas = Columnas
+pin-pauta-puntos = Puntos
+pin-tiempo-cumplido = Tiempo cumplido
+pin-hoja-nombre = Hoja
+
+## Grupos de ventanas (H9) y editor de notas Markdown (H12)
+bandeja-grupos-ventanas = Grupos de ventanas…
+chat-grupos-ventanas = Grupos de ventanas
+chat-adj-nota-md = Nota
+chat-editar-nota = Abrir en el editor de notas
+grupos-nada-abierto = No hay lienzos, documentos ni notas abiertos que guardar
+grupos-guardar = { $n ->
+    [one] Guardar la ventana abierta como grupo…
+   *[other] Guardar las { $n } ventanas abiertas como grupo…
+}
+grupos-abrir = Abrir «{ $nombre }» · { $n }
+grupos-borrar = Borrar «{ $nombre }»
+grupos-alguna-falta = Alguna ventana del grupo ya no se puede abrir
+grupos-sin-nombre = Grupo
+grupos-nombre = Nombre del grupo de ventanas
+grupos-guardar-boton = Guardar
+nota-md-nueva = Nota nueva
+nota-md-sufijo = Nota de PixPin
+nota-md-negrita = Negrita
+nota-md-cursiva = Cursiva
+nota-md-tachado = Tachado
+nota-md-codigo = Código
+nota-md-enlace = Enlace
+nota-md-titulo1 = Título
+nota-md-titulo2 = Subtítulo
+nota-md-titulo3 = Apartado
+nota-md-lista = Lista
+nota-md-numerada = Lista numerada
+nota-md-casilla = Lista de tareas
+nota-md-marcar = Marcar o desmarcar la tarea
+nota-md-cita = Cita
+nota-md-bloque = Bloque de código
+nota-md-raya = Raya
+nota-md-formula = Fórmula
+nota-md-cortar = Cortar
+nota-md-copiar = Copiar
+nota-md-pegar = Pegar
+nota-md-guardar = Guardar
+nota-md-copia = Guardar una copia .md…
+nota-md-tipo = Nota Markdown
+nota-md-no-guardada = No se pudo guardar la nota. ¿Cerrar igualmente y perder los cambios?
+nota-md-mayus = Mayús
+nota-md-intro = Intro
+
+## Lienzo: soldar vértices y numerar puntos (lienzo-geometria, 26-sep)
+herramientas-nudo = Soldar vértices
+herramientas-bolita = Bolita: pasa por encima para elegir
+lienzo-nudo = Soldar vértices
+lienzo-nudo-ayuda = Pulsa donde se tocan dos figuras y quedan clavadas: ya no se separan y, con un solo clavo, giran sobre él. Pulsa el clavo para quitarlo; con la mano, arrástralo para llevarte lo clavado.
+lienzo-punto-serie = Letras de los puntos
+lienzo-cota-pedir = Pedir la medida al trazar
+lienzo-cota-titulo = ¿Cuánto mide y hacia dónde va? (Tab cambia de casilla)
+lienzo-cota-largo = Largo
+lienzo-cota-angulo = Ángulo
+
+## Lienzo: imagen (zona, lupa, pixelar, compartir y referencia; 26-sep)
+lienzo-referencia-menu = Imagen de referencia…
+lienzo-pista-compartir = Compartir… (Ctrl+Mayús+S)
+lienzo-pista-lupa = Lupa (Q): en el lienzo, toca una figura cerrada y enseña en grande lo de debajo; en la pantalla, amplía bajo el cursor
+lienzo-pista-mosaico = Pixelar (mosaico): arrastra sobre lo que quieras tapar
+lienzo-pista-zona = Zona (Z): arrastra un recuadro y sale una copia recortada para llevarla
+lienzo-panel-mosaico = Tapar
+lienzo-panel-aumento = Aumento
+lienzo-panel-guia = Guía
+# El foco (Propiedad.OSCURECER y Propiedad.ZONA del movil)
+lienzo-panel-oscurecer = Oscurecer
+lienzo-panel-zona-foco = Zona iluminada
+lienzo-pista-foco = Foco (F): toca una figura cerrada y se oscurece alrededor, dentro de su marco
+lienzo-pista-serie = Pasos numerados: cada clic pone el siguiente número
+
+## Pantalla de Proyectos del chat e interruptor Chat / Proyectos (ui/Proyectos.kt del movil)
+proyectos-interruptor-chat = Chat
+proyectos-interruptor-proyectos = Proyectos
+proyectos-hojas = { $total } hojas
+proyectos-hojas-de = { $anotadas } de { $total } hojas anotadas
+proyectos-chat = Chat
+proyectos-hoja = Hoja
+proyectos-nota = Nota
+proyectos-tabla = Tabla
+proyectos-hoja-hecha = Hoja nueva en «{ $nombre }»
+proyectos-renombrar = Cambiar el nombre
+proyectos-renombrar-titulo = Nombre del proyecto
+proyectos-guardar = Guardar
+proyectos-archivar = Archivar
+proyectos-desarchivar = Desarchivar
+proyectos-compartir = Compartir
+proyectos-copias = Copias de seguridad
+proyectos-borrar = Borrar
+proyectos-borrar-titulo = ¿Borrar «{ $nombre }»?
+proyectos-borrar-aviso = Se borra también en tus otros aparatos la próxima vez que sincronices. Queda una copia en el menú del proyecto → «Copias de seguridad» por si te arrepientes.
+
+## --- Lienzo: cajetines de la gráfica y de la tabla, meter en una celda (F12/F14) ---
+cajetin-cancelar = Cancelar
+grafica-insertar = Insertar
+figuras-guardar = Guardar
+figuras-editar-tabla = Editar la tabla… (Intro)
+figuras-meter-en-celda = Meter lo elegido en su celda
+tabla-blanco-titulo = Tabla en blanco
+tabla-pegada-titulo = Tabla pegada
+tabla-editar-titulo = Editar la tabla
+tabla-insertar = Insertar
+tabla-aplicar = Aplicar
+tabla-mas-fila = + Fila
+tabla-menos-fila = − Fila
+tabla-mas-columna = + Columna
+tabla-menos-columna = − Columna
+tabla-cabecera = Cabecera
+tabla-pegar = Pegar
+tabla-ayuda = Tab y flechas: otra celda · − quita la fila o la columna de la celda activa · Intro: aceptar · Esc: cancelar
+
+## --- Lienzo: la Zona al chat del proyecto (F8, mandarLaZona del movil) ---
+zona-arrastra-copia = Arrastra: sale una copia
+zona-arrastra-chat = Arrastra: va al chat del proyecto
+zona-al-chat = Al chat
+zona-mandada = Zona mandada al chat de «{ $proyecto }»
+zona-no-mandada = No se pudo mandar la zona
+zona-viene-pdf = PDF «{ $proyecto }» → página { $pagina }
+zona-viene-lienzo = Lienzo «{ $nombre }»
+zona-nombre-pagina = Zona de la página { $pagina }
+zona-nombre-lienzo = Zona de { $nombre }
+zona-lienzo = lienzo
+zona-hoja-lienzo = Lienzo
+
+## La barra del lienzo agrupada como la del movil (GRUPOS_DE_FABRICA)
+herramientas-mano = Elegir y mover
+herramientas-imprimir = Imprimir
+herramientas-compartir = Compartir
+barra-grupo-elegir = Elegir de otra forma
+barra-grupo-trazar = Trazar a mano
+barra-grupo-formas = Formas
+barra-grupo-flechas = Flechas y líneas
+barra-grupo-arreglar = Arreglar lo trazado
+barra-grupo-nombrar = Texto y nombres
+barra-grupo-tapar = Tapar y señalar
+barra-grupo-medir = Medir
+barra-grupo-laminas = Tablas, gráficas y cronograma
+barra-grupo-marco = Marco e imagen
+barra-grupo-sacar = Compartir e imprimir
+barra-pista-mano = Elegir y mover (M)
+barra-pista-deshacer = Deshacer (Ctrl+Z)
+barra-pista-rehacer = Rehacer (Ctrl+Y)
+barra-pista-salir = Salir (Esc)
+ajustes-herramientas-sueltas = Siempre a la vista

@@ -38,6 +38,13 @@ pub struct Universo {
     /// del editor (ver el plan, «Ajustes»).
     pub anotaciones: Escena,
     pub encuadre: Encuadre,
+    /// Los codigos que el usuario quito del cielo a mano: el armado del chat
+    /// (H2) no los repone. Sin esto, quitar algo no serviria de nada mientras
+    /// siga en el chat. Es el `quitados` del movil, pero apuntado al quitar y
+    /// no deducido: deducirlo («esta en el chat y en ningun espacio») toma
+    /// por quitado todo lo que llega nuevo al chat.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub quitados: Vec<String>,
     #[serde(flatten)]
     pub resto: Map<String, Value>,
     #[serde(skip)]
@@ -66,6 +73,7 @@ impl Universo {
             conexiones: Vec::new(),
             anotaciones: Escena::nueva(),
             encuadre: Encuadre::default(),
+            quitados: Vec::new(),
             resto: Map::new(),
             historia: Default::default(),
             cambios: 0,

@@ -124,6 +124,37 @@ mod pruebas {
     }
 
     #[test]
+    fn los_textos_de_la_pila_estan_en_los_dos_idiomas() {
+        // La paridad comprueba que las claves coinciden; esto, que existen.
+        let es = Catalogo::nuevo(Idioma::Espanol);
+        let en = Catalogo::nuevo(Idioma::Ingles);
+        for clave in [
+            "pila-titulo-una",
+            "pila-titulo-varias",
+            "pila-copiar-elegidas",
+            "pila-copiar-todas",
+            "pila-quitar",
+            "pila-copiadas",
+        ] {
+            assert_ne!(es.t(clave), clave, "falta {clave} en es-ES");
+            assert_ne!(en.t(clave), clave, "falta {clave} en en-US");
+        }
+    }
+
+    #[test]
+    fn el_titulo_de_la_pila_interpola_cuantas_son() {
+        let es = Catalogo::nuevo(Idioma::Espanol);
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("cuantas", 5);
+        let texto = es.t_args("pila-titulo-varias", &args);
+        assert!(texto.contains('5'), "deberia decir cuantas son: {texto:?}");
+        assert!(
+            !texto.contains('\u{2068}'),
+            "sin marcas de aislamiento: {texto:?}"
+        );
+    }
+
+    #[test]
     fn los_textos_de_la_barra_estan_en_los_dos_idiomas() {
         let es = Catalogo::nuevo(Idioma::Espanol);
         let en = Catalogo::nuevo(Idioma::Ingles);

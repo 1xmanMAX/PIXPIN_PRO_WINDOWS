@@ -24,13 +24,18 @@ use windows::core::{HSTRING, PCWSTR};
 
 /// Las extensiones que decimos saber abrir.
 ///
-/// Imagenes y videos, que es lo que el pin sabe ensenar. Nada de PDF ni de
-/// documentos: esos el pin los ensena como ficha con su icono, no abiertos,
-/// y ofrecerse para algo que no se hace bien es peor que no ofrecerse.
+/// Imagenes y videos, que es lo que el pin sabe ensenar; el proyecto entero
+/// del movil; y **los documentos que PixPin ya sabe leer**: el PDF (su
+/// lector continuo, con marcadores y tinta) y el Word y el libro (el visor).
+/// Antes no estaban porque el pin solo los ensenaba como una ficha con su
+/// icono, y ofrecerse para algo que no se hace bien es peor que no
+/// ofrecerse; ahora se leen de verdad. Texto, CSV y demas siguen fuera: su
+/// programa de siempre los hace mejor.
 pub const EXTENSIONES: &[&str] = &[
     ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tif", ".tiff", ".mp4", ".mkv", ".avi",
     ".mov", ".webm", ".wmv", // Y el proyecto entero del movil.
-    ".pixpin",
+    ".pixpin", // Los documentos con lector propio.
+    ".pdf", ".docx", ".epub",
 ];
 
 #[derive(Debug, thiserror::Error)]
@@ -202,14 +207,14 @@ mod pruebas {
     }
 
     #[test]
-    fn solo_se_ofrecen_imagenes_y_videos() {
-        // Caso negativo: ofrecerse para abrir un ejecutable o un fichero
-        // comprimido seria ensuciar el menu del usuario con algo que no
-        // sabemos hacer.
-        for malo in [".exe", ".zip", ".pdf", ".docx", ".txt"] {
+    fn solo_se_ofrece_lo_que_se_ensena_o_se_lee_de_verdad() {
+        // Caso negativo: ofrecerse para abrir un ejecutable, un comprimido o
+        // un texto seria ensuciar el menu del usuario con algo que no
+        // hacemos mejor que su programa.
+        for malo in [".exe", ".zip", ".txt", ".csv", ".doc"] {
             assert!(!EXTENSIONES.contains(&malo), "sobra {malo}");
         }
-        for bueno in [".png", ".mp4", ".pixpin"] {
+        for bueno in [".png", ".mp4", ".pixpin", ".pdf", ".docx", ".epub"] {
             assert!(EXTENSIONES.contains(&bueno), "falta {bueno}");
         }
     }

@@ -61,6 +61,37 @@ pub fn locale_del_sistema() -> String {
     String::from_utf16_lossy(&buffer[..(escritos as usize - 1)])
 }
 
+/// **El separador decimal** que usa este usuario (Configuracion regional
+/// de Windows, `LOCALE_SDECIMAL`): `,` en `es-ES`, `.` en `en-US` o
+/// `es-PE`. Lo que la tabla ensena de una formula va con el mismo que lo
+/// que el usuario escribe a mano. Si Windows no dice nada, el punto.
+pub fn separador_decimal() -> char {
+    separador_decimal_de(None)
+}
+
+/// Lo mismo para una region concreta (`"es-ES"`); `None`, la del usuario.
+pub fn separador_decimal_de(region: Option<&str>) -> char {
+    use windows::Win32::Globalization::{GetLocaleInfoEx, LOCALE_SDECIMAL};
+    let nombre = region.map(windows::core::HSTRING::from);
+    let mut buffer = [0u16; 8];
+    // SAFETY: buffer propio de tamano conocido; el nombre (o NULL, la
+    // region del usuario) vive durante la llamada.
+    let escritos = unsafe {
+        match &nombre {
+            Some(n) => GetLocaleInfoEx(n, LOCALE_SDECIMAL, Some(&mut buffer)),
+            None => GetLocaleInfoEx(windows::core::PCWSTR::null(), LOCALE_SDECIMAL, Some(&mut buffer)),
+        }
+    };
+    if escritos <= 1 {
+        return '.';
+    }
+    match String::from_utf16_lossy(&buffer[..escritos as usize - 1]).chars().next() {
+        // Solo los dos que se entienden al volver a leer un numero.
+        Some(',') => ',',
+        _ => '.',
+    }
+}
+
 /// Donde esta el puntero, en pixeles fisicos del escritorio virtual.
 ///
 /// Decide en que monitor nace un pin del portapapeles: donde estan los ojos
@@ -203,5 +234,16 @@ mod pruebas {
             l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'),
             "locale con forma rara: {l}"
         );
+    }
+
+    #[test]
+    fn el_separador_decimal_es_el_de_la_region() {
+        assert_eq!(separador_decimal_de(Some("es-ES")), ',');
+        assert_eq!(separador_decimal_de(Some("de-DE")), ',');
+        assert_eq!(separador_decimal_de(Some("en-US")), '.');
+        assert_eq!(separador_decimal_de(Some("es-MX")), '.');
+        // Caso negativo: una region que no existe no inventa nada.
+        assert_eq!(separador_decimal_de(Some("xx-NOPE")), '.');
+        assert!(matches!(separador_decimal(), '.' | ','));
     }
 }

@@ -6,11 +6,12 @@
 //! pantalla de cada aparato solo pone la cara: lo que dice y como se decide
 //! es esto, igual en el movil y en el PC.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::io::{Read, Write};
 
 use crate::disco::Disco;
-use crate::mensajes::{Aparato, Chat};
+use crate::mensajes::{Aparato, Chat, LapidaDeChat};
+use crate::mezcla::Mando;
 use crate::protocolo::{Hecho, Resultado, Sesion};
 
 /// Un chat en la lista de elegir: donde esta y cuando se toco en cada lado.
@@ -21,6 +22,9 @@ pub struct Fila {
     pub aqui: Option<Chat>,
     pub alli: Option<Chat>,
     pub marcado: bool,
+    /// Borrado en el otro y aqui sin tocar desde entonces: si se deja
+    /// marcado, la vuelta lo borra AQUI (con copia y a la papelera).
+    pub se_borra_aqui: bool,
 }
 
 impl Fila {
@@ -70,50 +74,108 @@ pub struct Vuelta {
     pub cancelada: bool,
 }
 
+/// Lo que se le pregunta al usuario en «¿Que sincronizar?».
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Pregunta {
+    pub filas: Vec<Fila>,
+    /// Los nombres de lo que se borraria en el otro porque se borro aqui
+    /// (sin casilla: se borro aqui a proposito, y la lista lo avisa en rojo).
+    pub se_borran_alli: Vec<String>,
+    /// Como empieza el interruptor «Juntar / Lo mio manda».
+    pub lo_mio_manda: bool,
+}
+
+/// Lo que contesta el usuario: que chats y si manda lo de aqui.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Eleccion {
+    pub elegidos: BTreeSet<String>,
+    pub lo_mio_manda: bool,
+}
+
 /// Que chats: con `Some`, se pregunta (la pantalla de «¿Que sincronizar?»);
 /// devuelve None si se cancela. Sin ella se va con lo elegido la ultima vez
-/// con ese aparato, o con todo la primera vez.
-pub type Elegir<'a> = &'a mut dyn FnMut(&Aparato, &[Fila]) -> Option<BTreeSet<String>>;
+/// con ese aparato, o con todo la primera vez, y **no se borra ningun
+/// proyecto** (ver [decidir_borrados]).
+pub type Elegir<'a> = &'a mut dyn FnMut(&Aparato, Pregunta) -> Option<Eleccion>;
 
-/// **Los proyectos borrados, antes de sincronizar nada** (`resolverBorrados`).
-/// Devuelve los chats que quedan borrados, que son los que no hay que
-/// sincronizar: hacerlo los resucitaria por sus mensajes.
-pub fn resolver_borrados<D: Disco + ?Sized, F: Read + Write>(
-    s: &mut Sesion<'_, D, F>,
+/// Lo que hay que hacer con los proyectos borrados, **sin hacerlo todavia**
+/// (`Borrados` de `SincronizarActivity.kt`, v0.79).
+///
+/// Un proyecto borrado en un aparato tiene lapida y el otro no lo sabe: si
+/// no se mira esto primero, la vuelta lo devuelve entero. Con la lapida hay
+/// tres casos, y el tercero es el que evita perder trabajo:
+///
+/// - Borrado aqui y alli **no se ha tocado desde entonces** → `alla`.
+/// - Borrado alli y aqui sin tocar desde entonces → `aqui`.
+/// - Borrado aqui pero **tocado alli despues** → `levantar`: vuelve.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PlanDeBorrados {
+    pub alla: Vec<String>,
+    pub aqui: Vec<String>,
+    pub levantar: Vec<String>,
+    /// Borrados en los dos, o aqui y que el otro ya no tiene: no hay nada
+    /// que sincronizar.
+    pub ya_fuera: BTreeSet<String>,
+    /// Todos los que tienen lapida aqui y el otro conserva.
+    pub mios_con_lapida: Vec<String>,
+}
+
+impl PlanDeBorrados {
+    /// Si el chat sale en la lista de elegir. Lo borrado aqui no sale (salvo
+    /// lo que vuelve), porque sincronizarlo lo resucitaria por sus mensajes.
+    pub fn es_candidato(&self, id: &str) -> bool {
+        self.levantar.iter().any(|c| c == id)
+            || !(self.ya_fuera.contains(id) || self.mios_con_lapida.iter().any(|c| c == id))
+    }
+}
+
+/// De cada chat, la ultima lapida, en el sitio de la primera
+/// (`associateBy`): un proyecto borrado, recuperado y vuelto a borrar tiene
+/// dos lineas y manda la mas nueva.
+fn ultima_de_cada(v: &[LapidaDeChat]) -> Vec<LapidaDeChat> {
+    let mut salida: Vec<LapidaDeChat> = Vec::new();
+    for l in v {
+        match salida.iter_mut().find(|x| x.chat == l.chat) {
+            Some(x) => *x = l.clone(),
+            None => salida.push(l.clone()),
+        }
+    }
+    salida
+}
+
+/// **Primero se decide, luego se pregunta y solo entonces se borra**
+/// (`planDeBorrados`, v0.79). Antes se borraba aqui mismo, antes de ensenar
+/// la lista: un usuario vacio su portatil pensando que el telefono lo
+/// volveria a llenar, abrio sincronizar y se le borro todo el telefono sin
+/// que nadie le preguntara. Esto solo hace la cuenta; no toca nada.
+///
+/// El reloj del otro puede ir desviado: sus horas se pasan a la de aqui
+/// restando `desfase` antes de comparar.
+pub fn plan_de_borrados(
+    mis: &[LapidaDeChat],
+    sus: &[LapidaDeChat],
     mios: &HashMap<String, Chat>,
     suyos: &HashMap<String, Chat>,
-    ahora: i64,
-    progreso: &mut dyn FnMut(Trabajo),
-) -> Resultado<HashSet<String>> {
-    let disco = s.disco();
-    let mis: Vec<_> = disco.lapidas();
-    let sus = s.lapidas()?;
-    let mut fuera = HashSet::new();
-    if mis.is_empty() && sus.is_empty() {
-        return Ok(fuera);
-    }
-    // El reloj del otro puede ir desviado: sus horas se pasan a la de aqui
-    // restando el desfase antes de comparar.
-    let desfase = s.desfase;
+    desfase: i64,
+) -> PlanDeBorrados {
+    let mis = ultima_de_cada(mis);
+    let sus = ultima_de_cada(sus);
+    let mut plan = PlanDeBorrados::default();
     for l in &mis {
         let Some(suyo) = suyos.get(&l.chat) else {
-            fuera.insert(l.chat.clone());
+            plan.ya_fuera.insert(l.chat.clone());
             continue;
         };
+        plan.mios_con_lapida.push(l.chat.clone());
         if suyo.tocado - desfase > l.cuando {
-            disco.quitar_lapida(&l.chat)?;
+            plan.levantar.push(l.chat.clone());
         } else {
-            progreso(Trabajo::solo(format!(
-                "Borrando «{}» en {}…",
-                suyo.nombre, s.otro.nombre
-            )));
-            s.borrar_alla(&l.chat)?;
-            fuera.insert(l.chat.clone());
+            plan.alla.push(l.chat.clone());
         }
     }
     for l in &sus {
         if mis.iter().any(|m| m.chat == l.chat) {
-            fuera.insert(l.chat.clone());
+            plan.ya_fuera.insert(l.chat.clone());
             continue;
         }
         let Some(mio) = mios.get(&l.chat) else {
@@ -122,23 +184,176 @@ pub fn resolver_borrados<D: Disco + ?Sized, F: Read + Write>(
         if mio.tocado > l.cuando - desfase {
             continue;
         }
+        plan.aqui.push(l.chat.clone());
+    }
+    plan
+}
+
+/// Lo que se hace de verdad con el plan, segun lo contestado.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Decision {
+    pub borrar_alla: Vec<String>,
+    pub borrar_aqui: Vec<String>,
+    /// Lapidas de aqui que se quitan: el otro lo toco despues de borrarlo.
+    pub levantar: Vec<String>,
+    /// Se iba a borrar aqui y no se borra: ni se toca ni se sincroniza en
+    /// esta vuelta (sincronizarlo borraria sus mensajes uno a uno).
+    pub retenidos_aqui: Vec<String>,
+    /// Se iba a borrar en el otro y no se borra en esta vuelta.
+    pub retenidos_alla: Vec<String>,
+    /// Los que NO se sincronizan: borrados, o pendientes de decidir.
+    pub fuera: BTreeSet<String>,
+}
+
+/// **Decide que se borra**, sin tocar nada (`ejecutarBorrados` sin el disco).
+///
+/// - `elegidos = None` es que nadie ha preguntado («Sincronizar con todos»):
+///   **no se borra ningun proyecto en ningun lado**. El movil si lo hace en
+///   su ronda; el PC no, porque un borrado sin pantalla delante es justo lo
+///   que vacio el telefono del usuario. Lo pendiente se queda fuera de la
+///   vuelta y se avisa: se decide sincronizando con ese aparato solo.
+/// - Preguntando y juntando: lo borrado alli se borra aqui **solo si esta
+///   marcado** en la lista; desmarcado no se borra ni se sincroniza.
+/// - Preguntando con «Lo mio manda»: aqui no se borra nada (lo borrado alli
+///   se le vuelve a mandar entero) y lo borrado aqui se borra alli aunque
+///   alli lo tocaran despues.
+pub fn decidir_borrados(
+    plan: &PlanDeBorrados,
+    elegidos: Option<&BTreeSet<String>>,
+    lo_mio_manda: bool,
+) -> Decision {
+    let mut d = Decision {
+        fuera: plan.ya_fuera.clone(),
+        ..Default::default()
+    };
+    match (elegidos, lo_mio_manda) {
+        (None, false) => {
+            // Volver es no perder nada: lo tocado alli despues de borrarlo
+            // aqui se levanta tambien sin preguntar.
+            d.levantar = plan.levantar.clone();
+            d.retenidos_alla = plan.alla.clone();
+            d.retenidos_aqui = plan.aqui.clone();
+            d.fuera.extend(plan.alla.iter().cloned());
+            d.fuera.extend(plan.aqui.iter().cloned());
+        }
+        (None, true) => {
+            // Con lo mio manda no se levanta nada (manda lo de aqui, y aqui
+            // esta borrado) ni se borra alli sin preguntar: lo borrado aqui
+            // se queda entero fuera de la vuelta. Lo borrado alli y vivo aqui
+            // si viaja: se le vuelve a mandar, y eso aqui no borra nada.
+            d.retenidos_alla = plan.mios_con_lapida.clone();
+            d.fuera.extend(plan.mios_con_lapida.iter().cloned());
+        }
+        (Some(e), false) => {
+            d.levantar = plan.levantar.clone();
+            d.borrar_alla = plan.alla.clone();
+            for c in &plan.aqui {
+                if e.contains(c) {
+                    d.borrar_aqui.push(c.clone());
+                } else {
+                    d.retenidos_aqui.push(c.clone());
+                }
+            }
+            d.fuera.extend(plan.alla.iter().cloned());
+            d.fuera.extend(plan.aqui.iter().cloned());
+        }
+        (Some(_), true) => {
+            d.borrar_alla = plan.mios_con_lapida.clone();
+            d.fuera.extend(plan.mios_con_lapida.iter().cloned());
+        }
+    }
+    d
+}
+
+/// Las filas marcadas que se borrarian AQUI al pulsar «Sincronizar»: lo que
+/// la lista tiene que decir en rojo antes. Con «Lo mio manda», ninguna.
+pub fn se_borrarian_aqui<'f>(
+    filas: &'f [Fila],
+    marcados: &[bool],
+    lo_mio_manda: bool,
+) -> Vec<&'f Fila> {
+    if lo_mio_manda {
+        return Vec::new();
+    }
+    filas
+        .iter()
+        .zip(marcados)
+        .filter(|(f, m)| f.se_borra_aqui && **m)
+        .map(|(f, _)| f)
+        .collect()
+}
+
+/// Los avisos de lo que se quedo sin decidir, para leerlos al final.
+pub fn avisos_de_borrados(
+    d: &Decision,
+    nombre: &dyn Fn(&str) -> String,
+    otro: &str,
+) -> Vec<String> {
+    let lista = |v: &[String]| {
+        v.iter()
+            .map(|c| format!("«{}»", nombre(c)))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let mut v = Vec::new();
+    if !d.retenidos_aqui.is_empty() {
+        v.push(format!(
+            "No se ha borrado {} aquí aunque se borró en {otro}: sigue aquí entero y no se ha sincronizado. Sincroniza solo con {otro} para decidirlo.",
+            lista(&d.retenidos_aqui)
+        ));
+    }
+    if !d.retenidos_alla.is_empty() {
+        v.push(format!(
+            "{} se borró aquí y sigue en {otro}: no se ha borrado allí sin preguntar. Sincroniza solo con {otro} para decidirlo.",
+            lista(&d.retenidos_alla)
+        ));
+    }
+    v
+}
+
+/// Hace lo decidido: primero levanta, luego borra alli y despues aqui (con
+/// copia y a la papelera, que es lo que hace `borrar_chat`).
+fn ejecutar_borrados<D: Disco + ?Sized, F: Read + Write>(
+    s: &mut Sesion<'_, D, F>,
+    d: &Decision,
+    mios: &HashMap<String, Chat>,
+    suyos: &HashMap<String, Chat>,
+    ahora: i64,
+    progreso: &mut dyn FnMut(Trabajo),
+) -> Resultado<()> {
+    let disco = s.disco();
+    for c in &d.levantar {
+        disco.quitar_lapida(c)?;
+    }
+    for c in &d.borrar_alla {
+        let nombre = suyos.get(c).map_or(c.as_str(), |x| x.nombre.as_str());
         progreso(Trabajo::solo(format!(
-            "Borrando «{}», borrado en {}…",
-            mio.nombre, s.otro.nombre
+            "Borrando «{nombre}» en {}…",
+            s.otro.nombre
+        )));
+        s.borrar_alla(c)?;
+    }
+    for c in &d.borrar_aqui {
+        let nombre = mios.get(c).map_or(c.as_str(), |x| x.nombre.as_str());
+        progreso(Trabajo::solo(format!(
+            "Borrando «{nombre}», borrado en {}…",
+            s.otro.nombre
         )));
         disco.borrar_chat(
-            &l.chat,
+            c,
             &format!("Antes de borrarlo, borrado en {}", s.otro.nombre),
             ahora,
             &s.otro.id,
         )?;
-        fuera.insert(l.chat.clone());
     }
-    Ok(fuera)
+    Ok(())
 }
 
 /// **Una vuelta con un aparato ya conectado.** `rotulo` va delante de lo que
 /// se ensena mientras trabaja, para saber por donde va una ronda.
+///
+/// Con `elegir` se pregunta que chats y si manda lo de aqui; sin el, manda
+/// lo que ya tenga puesto la sesion ([Sesion::quien_manda]).
 pub fn una<D: Disco + ?Sized, F: Read + Write>(
     s: &mut Sesion<'_, D, F>,
     elegir: Option<Elegir<'_>>,
@@ -149,19 +364,17 @@ pub fn una<D: Disco + ?Sized, F: Read + Write>(
 ) -> Resultado<Vuelta> {
     let disco = s.disco();
     let otro = s.otro.clone();
-    let mios: HashMap<String, Chat> = disco
-        .chats()?
-        .into_iter()
-        .map(|c| (c.id.clone(), c))
-        .collect();
-    let orden_mio: Vec<String> = disco.chats()?.into_iter().map(|c| c.id).collect();
+    let lista_mia = disco.chats()?;
+    let orden_mio: Vec<String> = lista_mia.iter().map(|c| c.id.clone()).collect();
+    let mios: HashMap<String, Chat> = lista_mia.into_iter().map(|c| (c.id.clone(), c)).collect();
     let catalogo = s.catalogo()?;
     let suyos: HashMap<String, Chat> = catalogo.iter().map(|c| (c.id.clone(), c.clone())).collect();
     let antes = disco.elegidos(&otro.id);
-    let borrados = resolver_borrados(s, &mios, &suyos, ahora(), progreso)?;
+    let sus_lapidas = s.lapidas()?;
+    let plan = plan_de_borrados(&disco.lapidas(), &sus_lapidas, &mios, &suyos, s.desfase);
     let mut ids: Vec<String> = Vec::new();
     for id in orden_mio.iter().chain(catalogo.iter().map(|c| &c.id)) {
-        if !ids.contains(id) && !borrados.contains(id) {
+        if !ids.contains(id) && plan.es_candidato(id) {
             ids.push(id.clone());
         }
     }
@@ -170,6 +383,7 @@ pub fn una<D: Disco + ?Sized, F: Read + Write>(
         .map(|id| {
             let m = mios.get(id).cloned();
             let su = suyos.get(id).cloned();
+            let se_borra_aqui = plan.aqui.contains(id);
             Fila {
                 id: id.clone(),
                 nombre: m
@@ -179,30 +393,69 @@ pub fn una<D: Disco + ?Sized, F: Read + Write>(
                     .unwrap_or_default(),
                 aqui: m,
                 alli: su,
-                marcado: antes.as_ref().is_none_or(|a| a.contains(id)),
+                // Lo que se borraria aqui empieza SIN marcar (el movil lo
+                // marca como lo de la ultima vez): un clic de mas en
+                // «Sincronizar» no puede borrar un proyecto entero.
+                marcado: !se_borra_aqui && antes.as_ref().is_none_or(|a| a.contains(id)),
+                se_borra_aqui,
             }
         })
         .collect();
-    let elegidos: BTreeSet<String> = match elegir {
-        Some(e) => match e(&otro, &filas) {
-            None => {
-                s.adios();
-                return Ok(Vuelta {
-                    nombre: otro.nombre,
-                    cancelada: true,
-                    ..Default::default()
-                });
+    let (elegidos, lo_mio_manda, preguntado) = match elegir {
+        Some(e) => {
+            let pregunta = Pregunta {
+                filas: filas.clone(),
+                se_borran_alli: plan
+                    .alla
+                    .iter()
+                    .map(|c| suyos.get(c).map_or(c.clone(), |x| x.nombre.clone()))
+                    .collect(),
+                lo_mio_manda: s.mando() == Mando::LoMioManda,
+            };
+            match e(&otro, pregunta) {
+                None => {
+                    s.adios();
+                    return Ok(Vuelta {
+                        nombre: otro.nombre,
+                        cancelada: true,
+                        ..Default::default()
+                    });
+                }
+                Some(puesto) => {
+                    // Lo mio manda es cosa de una vez: lo marcado entonces
+                    // no se recuerda como lo de siempre.
+                    if !puesto.lo_mio_manda {
+                        disco.guardar_elegidos(&otro.id, &puesto.elegidos)?;
+                    }
+                    (puesto.elegidos, puesto.lo_mio_manda, true)
+                }
             }
-            Some(puesto) => {
-                disco.guardar_elegidos(&otro.id, &puesto)?;
-                puesto
-            }
-        },
-        None => antes.unwrap_or_else(|| ids.iter().cloned().collect()),
+        }
+        None => (
+            antes.unwrap_or_else(|| ids.iter().cloned().collect()),
+            s.mando() == Mando::LoMioManda,
+            false,
+        ),
     };
+    s.quien_manda(if lo_mio_manda {
+        Mando::LoMioManda
+    } else {
+        Mando::Acordar
+    });
+    let decision = decidir_borrados(&plan, preguntado.then_some(&elegidos), lo_mio_manda);
+    ejecutar_borrados(s, &decision, &mios, &suyos, ahora(), progreso)?;
+    let nombre_de = |c: &str| {
+        mios.get(c)
+            .or(suyos.get(c))
+            .map_or(c.to_string(), |x| x.nombre.clone())
+    };
+    let mut avisos = avisos_de_borrados(&decision, &nombre_de, &otro.nombre);
 
     let empezo = std::time::Instant::now();
-    for chat in ids.iter().filter(|c| elegidos.contains(*c)) {
+    for chat in ids
+        .iter()
+        .filter(|c| elegidos.contains(*c) && !decision.fuera.contains(*c))
+    {
         let nombre = filas
             .iter()
             .find(|f| f.id == *chat)
@@ -237,7 +490,6 @@ pub fn una<D: Disco + ?Sized, F: Read + Write>(
         s.cerrar(&prep, ahora())?;
     }
     s.adios();
-    let mut avisos = Vec::new();
     if !hecho.saltados.is_empty() {
         let mut vistos = Vec::new();
         for n in &hecho.saltados {
@@ -394,6 +646,7 @@ mod pruebas {
             aqui: Some(c(5)),
             alli: Some(c(3)),
             marcado: true,
+            se_borra_aqui: false,
         };
         assert_eq!(f.estado(true, "Móvil"), ("Más reciente".into(), true));
         assert_eq!(f.estado(false, "PC"), ("Anterior".into(), false));
@@ -402,5 +655,183 @@ mod pruebas {
             solo.estado(true, "Móvil").0,
             "Solo aquí · se copiará a Móvil"
         );
+    }
+
+    // ------------------------------------------- borrados: plan y decision
+
+    fn chat(id: &str, tocado: i64) -> (String, Chat) {
+        (
+            id.to_string(),
+            Chat {
+                id: id.into(),
+                nombre: id.to_uppercase(),
+                mensajes: 1,
+                tocado,
+            },
+        )
+    }
+
+    fn lapida(chat: &str, cuando: i64) -> LapidaDeChat {
+        LapidaDeChat {
+            chat: chat.into(),
+            cuando,
+            aparato: String::new(),
+        }
+    }
+
+    fn todos(v: &[&str]) -> BTreeSet<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Los cuatro casos a la vez: `a` borrado aqui y quieto alli, `b`
+    /// borrado aqui y tocado alli despues, `c` borrado alli y quieto aqui,
+    /// `d` borrado alli pero tocado aqui despues.
+    fn plan_de_los_cuatro() -> PlanDeBorrados {
+        let mios: HashMap<_, _> = [chat("c", 100), chat("d", 900)].into();
+        let suyos: HashMap<_, _> = [chat("a", 100), chat("b", 900)].into();
+        plan_de_borrados(
+            &[lapida("a", 500), lapida("b", 500)],
+            &[lapida("c", 500), lapida("d", 500)],
+            &mios,
+            &suyos,
+            0,
+        )
+    }
+
+    #[test]
+    fn el_plan_separa_lo_que_se_borra_alli_aqui_y_lo_que_vuelve() {
+        let p = plan_de_los_cuatro();
+        assert_eq!(p.alla, ["a"]);
+        assert_eq!(p.levantar, ["b"], "tocado alli despues: vuelve");
+        assert_eq!(p.aqui, ["c"]);
+        assert!(
+            !p.aqui.contains(&"d".to_string()),
+            "tocado aqui despues de borrarlo alli: no se borra"
+        );
+        assert!(p.es_candidato("b") && p.es_candidato("c") && p.es_candidato("d"));
+        assert!(!p.es_candidato("a"), "lo borrado aqui no sale en la lista");
+    }
+
+    #[test]
+    fn el_plan_cuenta_con_el_reloj_desviado_del_otro() {
+        // El otro va 1000 ms adelantado: su «tocado 900» es un 900 - 1000 =
+        // -100 de aqui, ANTES de la lapida. Sin restar, volveria.
+        let suyos: HashMap<_, _> = [chat("b", 900)].into();
+        let p = plan_de_borrados(&[lapida("b", 500)], &[], &HashMap::new(), &suyos, 1000);
+        assert_eq!(p.alla, ["b"]);
+        assert!(p.levantar.is_empty());
+    }
+
+    #[test]
+    fn borrado_en_los_dos_o_ya_ido_no_se_sincroniza_ni_se_pregunta() {
+        let mios: HashMap<_, _> = [chat("x", 100)].into();
+        let p = plan_de_borrados(
+            &[lapida("x", 500), lapida("y", 500)],
+            &[lapida("x", 600)],
+            &mios,
+            &HashMap::new(),
+            0,
+        );
+        assert_eq!(p.ya_fuera, todos(&["x", "y"]));
+        assert!(p.alla.is_empty() && p.aqui.is_empty());
+        let d = decidir_borrados(&p, Some(&todos(&["x", "y"])), false);
+        assert!(d.borrar_aqui.is_empty() && d.borrar_alla.is_empty());
+        assert!(d.fuera.contains("x"));
+    }
+
+    #[test]
+    fn de_una_lapida_repetida_manda_la_ultima() {
+        // Borrado, recuperado, tocado y vuelto a borrar: la vieja no cuenta.
+        let suyos: HashMap<_, _> = [chat("a", 700)].into();
+        let p = plan_de_borrados(
+            &[lapida("a", 500), lapida("a", 800)],
+            &[],
+            &HashMap::new(),
+            &suyos,
+            0,
+        );
+        assert_eq!(p.alla, ["a"], "con la de 800, lo de alli (700) es de antes");
+    }
+
+    #[test]
+    fn sin_preguntar_no_se_borra_nada_en_ningun_lado() {
+        let p = plan_de_los_cuatro();
+        let d = decidir_borrados(&p, None, false);
+        assert!(d.borrar_aqui.is_empty(), "nada aqui sin preguntar");
+        assert!(d.borrar_alla.is_empty(), "ni alli");
+        assert_eq!(d.levantar, ["b"], "volver no borra nada: se hace");
+        assert_eq!(d.retenidos_aqui, ["c"]);
+        assert_eq!(d.retenidos_alla, ["a"]);
+        assert!(d.fuera.contains("c"), "y no se sincroniza: lo borraria");
+        assert!(!d.fuera.contains("b") && !d.fuera.contains("d"));
+    }
+
+    #[test]
+    fn sin_preguntar_y_con_lo_mio_manda_tampoco_se_borra_y_lo_mio_viaja() {
+        let p = plan_de_los_cuatro();
+        let d = decidir_borrados(&p, None, true);
+        assert!(d.borrar_aqui.is_empty() && d.borrar_alla.is_empty());
+        assert!(d.levantar.is_empty());
+        assert!(!d.fuera.contains("c"), "lo mio vuelve alla");
+        assert!(d.fuera.contains("a") && d.fuera.contains("b"));
+    }
+
+    #[test]
+    fn preguntando_solo_se_borra_aqui_lo_marcado() {
+        let p = plan_de_los_cuatro();
+        let d = decidir_borrados(&p, Some(&todos(&["c", "d"])), false);
+        assert_eq!(d.borrar_aqui, ["c"]);
+        assert_eq!(d.borrar_alla, ["a"]);
+        assert_eq!(d.levantar, ["b"]);
+        // Caso negativo: desmarcado no se borra, y tampoco se sincroniza.
+        let d = decidir_borrados(&p, Some(&todos(&["d"])), false);
+        assert!(d.borrar_aqui.is_empty());
+        assert_eq!(d.retenidos_aqui, ["c"]);
+        assert!(d.fuera.contains("c"));
+    }
+
+    #[test]
+    fn preguntando_con_lo_mio_manda_aqui_no_se_borra_nada() {
+        let p = plan_de_los_cuatro();
+        let d = decidir_borrados(&p, Some(&todos(&["c", "d"])), true);
+        assert!(d.borrar_aqui.is_empty(), "aunque este marcado");
+        assert_eq!(d.borrar_alla, ["a", "b"], "lo borrado aqui se borra alli");
+        assert!(d.levantar.is_empty());
+        assert!(!d.fuera.contains("c"), "se le vuelve a mandar");
+    }
+
+    #[test]
+    fn la_lista_dice_en_rojo_solo_lo_marcado_que_se_borraria_aqui() {
+        let fila = |id: &str, se_borra_aqui: bool| Fila {
+            id: id.into(),
+            nombre: id.into(),
+            aqui: None,
+            alli: None,
+            marcado: false,
+            se_borra_aqui,
+        };
+        let filas = [fila("c", true), fila("x", false), fila("e", true)];
+        let nombres = |v: Vec<&Fila>| v.iter().map(|f| f.id.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            nombres(se_borrarian_aqui(&filas, &[true, true, false], false)),
+            ["c"]
+        );
+        assert!(se_borrarian_aqui(&filas, &[false, true, false], false).is_empty());
+        assert!(
+            se_borrarian_aqui(&filas, &[true, true, true], true).is_empty(),
+            "con lo mio manda no se borra nada aqui"
+        );
+    }
+
+    #[test]
+    fn los_avisos_nombran_lo_pendiente_y_sin_pendientes_no_hay_aviso() {
+        let p = plan_de_los_cuatro();
+        let d = decidir_borrados(&p, None, false);
+        let v = avisos_de_borrados(&d, &|c: &str| c.to_uppercase(), "Móvil");
+        assert_eq!(v.len(), 2);
+        assert!(v[0].contains("«C»") && v[0].contains("Móvil"), "{v:?}");
+        assert!(v[1].contains("«A»"), "{v:?}");
+        let d = decidir_borrados(&p, Some(&todos(&["c"])), false);
+        assert!(avisos_de_borrados(&d, &|c: &str| c.into(), "Móvil").is_empty());
     }
 }

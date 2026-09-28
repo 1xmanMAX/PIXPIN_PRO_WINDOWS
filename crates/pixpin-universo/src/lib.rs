@@ -11,6 +11,7 @@
 
 pub mod astro;
 pub mod buscar;
+pub mod desde_el_chat;
 pub mod detalle;
 pub mod ficha;
 pub mod formato;
@@ -34,7 +35,7 @@ pub use detalle::{
 pub use ficha::{ClaseLuna, EXTRACTO, FichaLuna, es_colocable, extracto};
 pub use formato::{Cargado, ErrorUniverso, FICHERO, cargar, guardar, ruta};
 pub use galaxias::{DISTANCIA_MINIMA, Informe, SEPARACION, siguiente_hueco, sincronizar};
-pub use herramienta::HerramientaUniverso;
+pub use herramienta::{FIGURAS, FiguraUniverso, HerramientaUniverso};
 pub use jerarquia::{Aterriza, Rechazo};
 pub use operar::Arrastre;
 pub use universo::{Encuadre, Universo, VERSION};

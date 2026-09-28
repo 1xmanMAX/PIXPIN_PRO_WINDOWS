@@ -19,6 +19,7 @@ use crate::disco::{Disco, GENERAL, Marca};
 use crate::disco_android::DiscoAndroid;
 use crate::disco_android::prueba::{Reloj, conectado, crear_grupo, presentar, sincronizar};
 use crate::kotlin;
+use crate::mezcla::Mando;
 use crate::protocolo::{self, ErrorSincro, Hecho};
 
 struct Par {
@@ -72,6 +73,55 @@ impl Par {
 
     fn general(&self) -> Hecho {
         self.sincronizar(&[GENERAL])
+    }
+
+    /// Una vuelta entera desde el telefono, como la de la pantalla. Con
+    /// `responder`, contesta a «¿Que sincronizar?»; sin el, es «con todos».
+    fn vuelta_del_tel(
+        &self,
+        responder: Option<
+            &mut dyn FnMut(crate::vuelta::Pregunta) -> Option<crate::vuelta::Eleccion>,
+        >,
+    ) -> crate::vuelta::Vuelta {
+        conectado(&self.tel, &self.tab, false, None, &self.reloj, |s| {
+            let mut hecho = Hecho::default();
+            match responder {
+                Some(r) => {
+                    let mut elegir = |_: &crate::mensajes::Aparato, pr| r(pr);
+                    crate::vuelta::una(
+                        s,
+                        Some(&mut elegir),
+                        &mut hecho,
+                        "",
+                        &|| self.reloj.ahora(),
+                        &mut |_| {},
+                    )
+                }
+                None => {
+                    crate::vuelta::una(s, None, &mut hecho, "", &|| self.reloj.ahora(), &mut |_| {})
+                }
+            }
+            .unwrap()
+        })
+        .unwrap()
+    }
+
+    /// Lo mismo, pero con el telefono al mando: ver
+    /// [crate::protocolo::Sesion::quien_manda].
+    fn mandando(&self, chats: &[&str]) -> Hecho {
+        conectado(&self.tel, &self.tab, false, None, &self.reloj, |s| {
+            s.quien_manda(Mando::LoMioManda);
+            let mut hecho = Hecho::default();
+            for chat in chats {
+                let prep = s.preparar(chat).unwrap();
+                s.aplicar(&prep, &mut hecho).unwrap();
+                let arch = s.preparar_archivos(&prep).unwrap();
+                s.aplicar_archivos(&arch, &mut hecho, &mut |_| {}).unwrap();
+                s.cerrar(&prep, self.reloj.ahora()).unwrap();
+            }
+            hecho
+        })
+        .unwrap()
     }
 }
 
@@ -924,18 +974,334 @@ fn un_proyecto_borrado_en_un_lado_se_borra_en_el_otro_con_su_lapida() {
     p.tel
         .borrar_chat("pr-9", "prueba", p.reloj.ahora(), "")
         .unwrap();
-    conectado(&p.tel, &p.tab, false, None, &p.reloj, |s| {
-        crate::vuelta::una(
-            s,
-            None,
-            &mut Hecho::default(),
-            "",
-            &|| p.reloj.ahora(),
-            &mut |_| {},
-        )
-        .unwrap()
-    })
-    .unwrap();
+    // Sin preguntar («con todos») no se borra en ningun lado: se avisa.
+    let v = p.vuelta_del_tel(None);
+    assert_eq!(p.tab.leer_proyectos().len(), 1, "sin preguntar no se borra");
+    assert!(
+        v.avisos.iter().any(|a| a.contains("Viejo")),
+        "y se dice que quedo pendiente: {:?}",
+        v.avisos
+    );
+    // Preguntando, la lista lo avisa en rojo y al sincronizar se borra alli.
+    let mut vistos = Vec::new();
+    p.vuelta_del_tel(Some(&mut |pr: crate::vuelta::Pregunta| {
+        vistos = pr.se_borran_alli.clone();
+        Some(crate::vuelta::Eleccion {
+            elegidos: pr.filas.iter().map(|f| f.id.clone()).collect(),
+            lo_mio_manda: false,
+        })
+    }));
+    assert_eq!(vistos, ["Viejo"], "la lista dice lo que se borrara alli");
     assert!(p.tab.leer_proyectos().is_empty(), "borrado alli tambien");
     assert!(senas(&p.tab, "pr-9").is_empty());
+}
+
+/// Un proyecto que la tableta borro y el telefono no ha tocado desde
+/// entonces: una vuelta desde el telefono lo borraria AQUI (en el telefono).
+fn borrado_en_la_tableta(etiqueta: &str) -> Par {
+    let p = montar(etiqueta);
+    p.emparejar();
+    proyecto(&p.tel, json!({"id":"pr-9","nombre":"Tesis","tocado":1}));
+    mensaje(
+        &p.tel,
+        &p.reloj,
+        Nuevo {
+            proyecto: Some("pr-9"),
+            ..nota("t1", "horas de trabajo")
+        },
+    );
+    p.sincronizar(&["pr-9"]);
+    p.reloj.saltar(10_000);
+    p.tab
+        .borrar_chat("pr-9", "prueba", p.reloj.ahora(), "")
+        .unwrap();
+    assert!(p.tab.leer_proyectos().is_empty());
+    p
+}
+
+fn todo_marcado(pr: &crate::vuelta::Pregunta, lo_mio_manda: bool) -> crate::vuelta::Eleccion {
+    crate::vuelta::Eleccion {
+        elegidos: pr.filas.iter().map(|f| f.id.clone()).collect(),
+        lo_mio_manda,
+    }
+}
+
+#[test]
+fn lo_borrado_en_el_otro_llega_sin_marcar_y_desmarcado_no_se_borra_aqui() {
+    // K4: el caso del usuario. Borrar aqui por una lapida solo con la
+    // casilla marcada; y la casilla empieza SIN marcar.
+    let p = borrado_en_la_tableta("k4-desmarcado");
+    let mut fila = None;
+    p.vuelta_del_tel(Some(&mut |pr: crate::vuelta::Pregunta| {
+        fila = pr.filas.iter().find(|f| f.id == "pr-9").cloned();
+        // El usuario pulsa «Sincronizar» sin tocar nada.
+        Some(crate::vuelta::Eleccion {
+            elegidos: pr
+                .filas
+                .iter()
+                .filter(|f| f.marcado)
+                .map(|f| f.id.clone())
+                .collect(),
+            lo_mio_manda: false,
+        })
+    }));
+    let fila = fila.expect("sale en la lista para poder decidir");
+    assert!(fila.se_borra_aqui, "la fila dice que se borraria aqui");
+    assert!(!fila.marcado, "y empieza sin marcar");
+    assert_eq!(p.tel.leer_proyectos().len(), 1, "desmarcado no se borra");
+    assert_eq!(senas(&p.tel, "pr-9").len(), 1, "ni sus mensajes");
+    assert!(
+        p.tab.leer_proyectos().is_empty(),
+        "y tampoco se sincroniza: alli sigue borrado"
+    );
+}
+
+#[test]
+fn lo_borrado_en_el_otro_se_borra_aqui_solo_si_se_marca() {
+    let p = borrado_en_la_tableta("k4-marcado");
+    p.vuelta_del_tel(Some(&mut |pr: crate::vuelta::Pregunta| {
+        Some(todo_marcado(&pr, false))
+    }));
+    assert!(p.tel.leer_proyectos().is_empty(), "marcado: se borra aqui");
+    assert!(senas(&p.tel, "pr-9").is_empty());
+    // Con copia antes: se puede volver.
+    assert!(
+        !crate::copias::lista(&p.tel, "pr-9").is_empty(),
+        "queda copia de lo borrado"
+    );
+}
+
+#[test]
+fn sin_preguntar_lo_borrado_en_el_otro_no_se_borra_aqui_y_se_avisa() {
+    // «Sincronizar con todos» no ensena la lista: nada se borra.
+    let p = borrado_en_la_tableta("k4-sin-preguntar");
+    let v = p.vuelta_del_tel(None);
+    assert_eq!(p.tel.leer_proyectos().len(), 1);
+    assert_eq!(senas(&p.tel, "pr-9").len(), 1, "los mensajes siguen");
+    assert!(
+        v.avisos
+            .iter()
+            .any(|a| a.contains("Tesis") && a.contains("Tableta")),
+        "{:?}",
+        v.avisos
+    );
+    assert!(p.tab.leer_proyectos().is_empty(), "ni resucita alli");
+}
+
+#[test]
+fn con_lo_mio_manda_lo_borrado_en_el_otro_no_se_borra_aqui_y_vuelve_alla() {
+    // El usuario vacio un aparato y quiere que el otro lo vuelva a llenar.
+    let p = borrado_en_la_tableta("k4-mio-manda");
+    let mut guardado_antes = p.tel.elegidos("id-tab");
+    p.vuelta_del_tel(Some(&mut |pr: crate::vuelta::Pregunta| {
+        Some(todo_marcado(&pr, true))
+    }));
+    assert_eq!(p.tel.leer_proyectos().len(), 1, "aqui no se borra nada");
+    assert_eq!(p.tab.leer_proyectos().len(), 1, "y alli vuelve entero");
+    assert_eq!(senas(&p.tab, "pr-9"), senas(&p.tel, "pr-9"));
+    assert!(
+        p.tab.lapidas().iter().all(|l| l.chat != "pr-9"),
+        "alli se levanta la lapida, o la siguiente vuelta lo quitaria"
+    );
+    // Lo mio manda es de una vez: no cambia lo elegido de siempre.
+    assert_eq!(p.tel.elegidos("id-tab"), guardado_antes.take());
+}
+
+// ------------------------------------------------- lo mio manda (una direccion)
+
+#[test]
+fn lo_borrado_en_el_otro_se_borra_aqui_de_siempre_y_con_lo_mio_manda_vuelve_alla() {
+    // El mismo montaje dos veces: primero como siempre, para dejar escrito
+    // que `Acordar` no cambia, y luego con el telefono al mando.
+    let normal = montar("mando-borrado-normal");
+    let mando = montar("mando-borrado-mando");
+    for (p, al_mando) in [(&normal, false), (&mando, true)] {
+        p.emparejar();
+        mensaje(&p.tel, &p.reloj, nota("t1", "la que borran alli"));
+        p.general();
+        assert_eq!(p.tab.leer_mensajes().len(), 1);
+        p.reloj.saltar(10_000);
+        borrar(&p.tab, &p.reloj, "t1");
+        if al_mando {
+            p.mandando(&[GENERAL]);
+        } else {
+            p.general();
+        }
+        if al_mando {
+            assert_eq!(texto_de(&p.tel), ["la que borran alli"], "aqui no se borra");
+            assert_eq!(texto_de(&p.tab), ["la que borran alli"], "y vuelve alla");
+        } else {
+            assert!(texto_de(&p.tel).is_empty(), "de siempre: se borra aqui");
+            assert!(texto_de(&p.tab).is_empty());
+        }
+    }
+}
+
+#[test]
+fn con_lo_mio_manda_lo_que_borre_aqui_no_vuelve_a_entrar_y_lo_que_solo_hay_alli_llega() {
+    let p = montar("mando-borrado-mio");
+    p.emparejar();
+    mensaje(&p.tel, &p.reloj, nota("t1", "la mia borrada"));
+    p.general();
+    p.reloj.saltar(10_000);
+    borrar(&p.tel, &p.reloj, "t1");
+    mensaje(&p.tab, &p.reloj, nota("b1", "solo suya"));
+    p.mandando(&[GENERAL]);
+    let aqui = texto_de(&p.tel);
+    assert!(!aqui.contains(&"la mia borrada".to_string()), "{aqui:?}");
+    assert!(aqui.contains(&"solo suya".to_string()), "lo suyo si llega");
+    assert!(
+        !texto_de(&p.tab).contains(&"la mia borrada".to_string()),
+        "mi borrado va alla"
+    );
+}
+
+#[test]
+fn con_lo_mio_manda_lo_cambiado_en_los_dos_no_se_junta_sino_que_se_manda() {
+    let p = montar("mando-fusion");
+    p.emparejar();
+    mensaje(&p.tel, &p.reloj, nota("t1", "original"));
+    p.general();
+    p.reloj.saltar(10_000);
+    editar(&p.tel, "t1", |m| {
+        kotlin::poner(m, "texto", Json::cadena("mio"))
+    });
+    editar(&p.tab, "t1", |m| {
+        kotlin::poner(m, "texto", Json::cadena("suyo"));
+    });
+    let hecho = p.mandando(&[GENERAL]);
+    assert_eq!(hecho.fusionados, 0, "no se junta nada");
+    assert_eq!(texto_de(&p.tel), ["mio"]);
+    assert_eq!(texto_de(&p.tab), ["mio"]);
+}
+
+#[test]
+fn con_lo_mio_manda_mi_archivo_no_lo_pisa_el_suyo_y_el_que_aqui_no_hay_se_trae() {
+    let p = montar("mando-archivos");
+    p.emparejar();
+    dibujo(&p.tel, "d1", "mio v1", None);
+    mensaje(
+        &p.tel,
+        &p.reloj,
+        Nuevo {
+            clase: "DIBUJO",
+            referencia: Some("d1"),
+            ..nota("t1", "Planta")
+        },
+    );
+    p.general();
+    p.reloj.saltar(10_000);
+    // Solo el otro lo toca: de siempre esto seria un «traer».
+    dibujo(&p.tab, "d1", "suyo v2", None);
+    dibujo(&p.tab, "d2", "solo suyo", None);
+    mensaje(
+        &p.tab,
+        &p.reloj,
+        Nuevo {
+            clase: "DIBUJO",
+            referencia: Some("d2"),
+            ..nota("b1", "Alzado")
+        },
+    );
+    p.mandando(&[GENERAL]);
+    assert!(
+        texto_del_dibujo(&p.tel, "d1").contains("mio v1"),
+        "no me pisa"
+    );
+    assert!(
+        texto_del_dibujo(&p.tab, "d1").contains("mio v1"),
+        "el mio va"
+    );
+    assert!(
+        texto_del_dibujo(&p.tel, "d2").contains("solo suyo"),
+        "lo que aqui no existe si se trae"
+    );
+}
+
+#[test]
+fn de_siempre_el_archivo_que_solo_toco_el_otro_si_me_pisa() {
+    // El caso negativo del de arriba: sin mando, lo tocado alli llega.
+    let p = montar("mando-archivos-normal");
+    p.emparejar();
+    dibujo(&p.tel, "d1", "mio v1", None);
+    mensaje(
+        &p.tel,
+        &p.reloj,
+        Nuevo {
+            clase: "DIBUJO",
+            referencia: Some("d1"),
+            ..nota("t1", "Planta")
+        },
+    );
+    p.general();
+    p.reloj.saltar(10_000);
+    dibujo(&p.tab, "d1", "suyo v2", None);
+    p.general();
+    assert!(texto_del_dibujo(&p.tel, "d1").contains("suyo v2"));
+}
+
+#[test]
+fn con_lo_mio_manda_mi_proyecto_queda_entero_y_el_suyo_solo_viaja_si_aqui_no_hay() {
+    let p = montar("mando-proyecto");
+    p.emparejar();
+    proyecto(
+        &p.tel,
+        json!({"id":"pr-1","nombre":"Reforma","hojas":[{"id":"h1"}],"tocado":5}),
+    );
+    mensaje(
+        &p.tel,
+        &p.reloj,
+        Nuevo {
+            proyecto: Some("pr-1"),
+            ..nota("t1", "algo")
+        },
+    );
+    p.sincronizar(&["pr-1"]);
+    // El otro le anade una hoja mas tarde: de siempre se sumarian.
+    let mut suyo = p.tab.leer_proyectos().pop().unwrap();
+    let mut l = suyo
+        .como_objeto()
+        .unwrap()
+        .obtener("hojas")
+        .unwrap()
+        .como_lista()
+        .unwrap()
+        .to_vec();
+    l.push(Json::de_valor(&json!({"id":"h2"})));
+    kotlin::poner(&mut suyo, "hojas", Json::Lista(l));
+    kotlin::poner(&mut suyo, "tocado", Json::numero(99));
+    p.tab.guardar_proyecto(&suyo).unwrap();
+    // Y un proyecto que aqui no existe.
+    proyecto(
+        &p.tab,
+        json!({"id":"pr-2","nombre":"Solo suyo","hojas":[{"id":"z1"}],"tocado":7}),
+    );
+    mensaje(
+        &p.tab,
+        &p.reloj,
+        Nuevo {
+            proyecto: Some("pr-2"),
+            ..nota("b1", "algo")
+        },
+    );
+    p.mandando(&["pr-1", "pr-2"]);
+    let mio = |d: &DiscoAndroid, id: &str| -> Vec<String> {
+        let pr = d
+            .leer_proyectos()
+            .into_iter()
+            .find(|p| kotlin::cadena(p, "id") == Some(id))
+            .unwrap();
+        pr.como_objeto()
+            .unwrap()
+            .obtener("hojas")
+            .unwrap()
+            .como_lista()
+            .unwrap()
+            .iter()
+            .map(|h| kotlin::cadena(h, "id").unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(mio(&p.tel, "pr-1"), ["h1"], "el mio, entero");
+    assert_eq!(mio(&p.tab, "pr-1"), ["h1"], "y el suyo queda como el mio");
+    assert_eq!(mio(&p.tel, "pr-2"), ["z1"], "el que aqui no hay, llega");
 }

@@ -32,6 +32,14 @@ pub struct Estado {
     /// Donde y de que tamano quedo la ventana de chat: (x, y, ancho, alto)
     /// en pixeles fisicos. `None` la primera vez.
     pub chat_ventana: Option<[i32; 4]>,
+    /// La escala de la interfaz del chat, en por ciento, como la de
+    /// Telegram: cuanto agrandar o encoger sobre lo que ya manda el DPI del
+    /// monitor. `None` es «lo que diga el monitor».
+    ///
+    /// Relativa y no absoluta a proposito: quien la sube porque no ve bien
+    /// quiere verlo igual de grande en el portatil y en el monitor de casa,
+    /// y cada uno tiene su DPI.
+    pub escala_interfaz: Option<u32>,
 }
 
 fn fichero(ubicacion: &Ubicacion) -> PathBuf {
@@ -78,6 +86,7 @@ mod pruebas {
         let e = Estado {
             gif_por_segundo: Some(25),
             chat_ventana: Some([10, 20, 900, 700]),
+            escala_interfaz: Some(125),
         };
         guardar(&u, &e).unwrap();
         assert_eq!(cargar(&u), e);

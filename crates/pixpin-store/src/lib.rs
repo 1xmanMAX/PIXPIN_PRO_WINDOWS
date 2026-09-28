@@ -9,13 +9,14 @@ pub mod ajustes;
 pub mod almacen;
 pub mod comandos;
 pub mod estado;
+pub mod herramientas;
 pub mod idioma;
 pub mod regiones;
 pub mod rutas;
 
 pub use ajustes::{
-    Ajustes, Atajos, ErrorAjustes, FormatoColor, PreferenciaIdioma, Rendimiento, Sincro, Suavizado,
-    Tinta, cargar, guardar,
+    Ajustes, Atajos, Capturas, ErrorAjustes, EsquinaPila, FormatoColor, PreferenciaIdioma,
+    ModoDeIdiomas, Rendimiento, Sincro, Suavizado, Tinta, Voz, cargar, guardar,
 };
 pub use comandos::{CATALOGO, Comando, Descriptor, Enlaces};
 pub use idioma::{Catalogo, Idioma, resolver_idioma};

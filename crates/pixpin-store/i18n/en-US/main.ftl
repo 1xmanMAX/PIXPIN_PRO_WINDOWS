@@ -126,6 +126,12 @@ ajustes-nivel = Performance
 ajustes-nivel-auto = Automatic
 ajustes-nivel-completo = Full
 ajustes-nivel-ligero = Light
+ajustes-pdf-aligerar = Make PDFs lighter when added to the chat
+ajustes-pdf-nivel = How much lighter (Small and Max: by hand only)
+ajustes-pdf-nivel-sin-perdida = Exact
+ajustes-pdf-nivel-equilibrado = Medium
+ajustes-pdf-nivel-pequeno = Small
+ajustes-pdf-nivel-extremo = Max
 ajustes-retardo-captura = Countdown seconds before capturing
 ajustes-limite-scroll = Maximum height of a scrolling capture, in pixels
 ajustes-gif-ritmo = Frames per second when recording
@@ -142,6 +148,8 @@ pin-copiar-texto = Copy the text in the image
 # Opening an image pin in the editor canvas.
 pin-abrir-en-lienzo = Open in canvas
 pin-congelar = Freeze as image
+pin-manejar = Control remotely
+pin-dejar-de-manejar = Stop controlling remotely
 
 # Pages of a pinned PDF.
 pin-pagina-siguiente = Next page
@@ -182,7 +190,7 @@ chat-comentar = Comment on this
 chat-copiar = Copy
 chat-fijar = Pin to top
 chat-soltar = Unpin from top
-chat-compartir = Share
+chat-compartir = Share…
 chat-abrir-con = Open with another app
 chat-aligerar = Make the PDF lighter
 chat-renombrar = Rename
@@ -205,6 +213,9 @@ chat-conversaciones = Project conversations
 chat-proyectos = Projects
 chat-comenzar = Start
 chat-fondo = Chat background
+chat-escala = Interface scale
+chat-escala-normal = monitor default
+chat-escala-puesta = Interface scale: { $cuanto } %
 chat-ajustes = Settings
 chat-fondo-mar = Sea
 chat-fondo-arena = Sand
@@ -222,6 +233,7 @@ chat-adj-miniapp = A mini-app
 chat-reenviado = Forwarded
 chat-copiado = Copied
 chat-compartido = Copied to the clipboard: paste it wherever you want to share it
+chat-compartir-sin-panel = Windows did not open the Share panel: it is on the clipboard so you can paste it wherever you want
 chat-pineado = Put on screen
 chat-sin-archivo = This message has no file on this computer
 chat-sin-origen = That canvas is not in this project
@@ -230,15 +242,12 @@ chat-ya-en-marcha = PixPin is already running on Windows: pins come out with its
 chat-ajustes-bandeja = Settings open from the PixPin icon in the tray
 chat-proyectos-lista = Projects are the list on the left
 chat-no-hay-voz = Recording voice notes does not exist on Windows yet
-chat-no-hay-letra = Audio lyrics do not exist on Windows yet
 chat-no-hay-aligerar = Making a PDF lighter does not exist on Windows yet
 chat-no-hay-unir = On Windows every chat is already a project: use Forward to take it to another
 chat-no-hay-biblioteca = The audio library does not exist on Windows yet
-chat-no-hay-recorte = Show only the photo does not exist on Windows yet
+chat-ver-dibujo-entero = Show the whole drawing
 chat-no-hay-pagina = Attaching a page from a project does not exist on Windows yet
-chat-no-hay-conversacion = Recording a conversation does not exist on Windows yet
 chat-no-hay-telepronter = The teleprompter does not exist on Windows yet
-chat-no-hay-pronunciar = Pronunciation practice does not exist on Windows yet
 chat-no-se-pudo = It could not be done: check the PixPin log
 chat-fecha = { $mes } { $dia }
 chat-fecha-con-ano = { $mes } { $dia }, { $ano }
@@ -259,6 +268,7 @@ chat-ayer = Yesterday
 chat-buscar = Search
 chat-adjuntar = Attach
 chat-fijado = Pinned message
+info-galeria = Gallery
 info-todo = All
 info-fotos = Photos
 info-archivos = Files
@@ -294,9 +304,27 @@ comando-recibir-del-movil = Receive from phone…
 comando-sincronizar = Sync
 adjuntar-del-movil = Bring from phone…
 menu-foto-aqui = Draw right here
+proyecto-renombrar = Rename
 proyecto-borrar = Delete project
 proyecto-borrar-varios = Delete selected
 proyecto-borrar-aviso = It will leave the list and its folder will go to the PixPin bin. Continue?
+proyecto-papelera = Deleted projects…
+# Where each project is saved: its chosen folder or the usual place.
+ubicacion-cambiar = Change location…
+ubicacion-habitual = Move back to the usual location
+ubicacion-abrir = Open project folder
+ubicacion-elegir-titulo = Choose where to save the project
+ubicacion-nuevo = New project
+ubicacion-nuevo-en = New project in a folder…
+ubicacion-no-disponible = Location not available
+ubicacion-no-disponible-abrir = This project's folder is not available ({ $ruta }). Connect the drive and try again.
+ubicacion-movido = Project saved in { $ruta }
+ubicacion-vuelto = The project is back in the usual location
+ubicacion-error-red = Projects can only be saved on a drive of this computer, not on a network drive.
+ubicacion-error-no-es-carpeta = That folder does not exist on this computer.
+ubicacion-error-dentro = That folder is inside the project itself or inside PixPin's data.
+ubicacion-error-mover = The project could not be moved; it is still where it was.
+ubicacion-error-abrir = The project folder could not be opened.
 
 ## Sync (copy of the phone's SincronizarActivity.kt)
 sinc-titulo = Sync
@@ -357,6 +385,15 @@ sinc-todo = All
 sinc-nada = None
 sinc-sincronizar-n = Sync { $n }
 sinc-sincronizando = Syncing
+sincro-borrado-alli-vuelve = Deleted on { $otro } · will be sent back
+sincro-borrado-alli-se-borra = Deleted on { $otro } · WILL BE DELETED HERE (a backup is kept)
+sincro-borrado-alli-se-queda = Deleted on { $otro } · unchecked: stays here
+sincro-se-borran-aqui = Will be deleted HERE, because it was deleted on { $otro }: { $lista }. Uncheck it to keep it, or choose «Mine wins» to send it back.
+sincro-se-borran-alli = Will be deleted on { $otro }, because you deleted it here: { $lista }.
+sincro-juntar = Merge
+sincro-lo-mio-manda = Mine wins
+sincro-lo-mio-manda-como = One way only: what { $yo } has overwrites { $otro }. Nothing is deleted or changed here; there, whatever differs ends up as here and what they deleted comes back. Whatever only { $otro } has is kept. A backup of what gets overwritten is kept.
+sincro-mandar-n = Send { $n }
 
 ## The universe
 universo-titulo = Universe
@@ -385,7 +422,7 @@ universo-carpeta = Show in folder
 universo-devolver = Return to the nebula
 universo-nota = Note
 universo-conexiones = Connections
-universo-notas-chat = Include chat notes
+universo-notas-chat = Loose notes in the nebula
 universo-ordenar = Arrange planets
 universo-limpiar = Clean up orphans
 universo-agrupar = Group into new planet
@@ -503,6 +540,24 @@ chat-unir-nada = Nothing here can be added: only photos, drawings, notes and PDF
 chat-devolver = Add back to the project
 chat-devuelto = Back in "{ $nombre }"
 chat-devolver-no = Could not add it back
+unir-pdf-como-imagenes = Add as images
+unir-pdf-empezado = Adding the PDF to the project…
+unir-pdf-ya-va = That PDF is already being added
+unir-pdf-no = Could not add the PDF
+unir-pdf-hecho = { $hojas ->
+    [one] Added 1 sheet to the project
+   *[other] Added { $hojas } sheets to the project
+}
+unir-pdf-pintadas = { $hojas ->
+    [one] Added 1 sheet (the PDF could not be copied: it was drawn)
+   *[other] Added { $hojas } sheets (the PDF could not be copied: they were drawn)
+}
+unir-pdf-fotos = { $hojas ->
+    [one] Added 1 page as an image
+   *[other] Added { $hojas } of { $paginas } pages as images
+}
+unir-pdf-pintando = Drawing pages… { $hechas } of { $total }
+unir-pdf-imagenes-progreso = Turning into images… { $hechas } of { $total }
 
 ## Backups (copy of sincro/CopiasActivity.kt from the phone)
 cop-titulo = Backups
@@ -520,8 +575,17 @@ cop-volver-titulo = Go back to this backup?
 cop-volver-texto = «{ $nombre }» goes back to how it was on { $cuando } ({ $motivo }): { $hojas } sheets. The canvases you added afterwards stay. A backup of how it is now is saved first, so you can undo this.
 cop-ha-vuelto = «{ $nombre }» has gone back to the backup
 cop-no-se-pudo = Could not go back to the backup: { $motivo }
+papelera-titulo = Deleted projects
+papelera-como = They come back whole: with their name, their sheets in order, their PDF and their chat. And they stop being deleted, so syncing won't remove them again.
+papelera-detalle = { $hojas } sheets · { $mensajes } messages · deleted on { $cuando }
+papelera-recuperar = Recover
+papelera-recuperar-todos = Recover all
+papelera-ha-vuelto = «{ $nombre }» is back, whole
+papelera-no-se-pudo = Could not recover «{ $nombre }»: { $motivo }
+papelera-recuperados = Recovered { $n } of { $total } projects
 
 ## The document viewer: Word, EPUB books and web pages (task 2.1)
+visor-html-titulo = PixPin — page
 visor-titulo = PixPin viewer
 visor-marcador = Bookmark here
 visor-ajustes = Reading settings
@@ -536,6 +600,25 @@ visor-vacio = This document has no text to show
 visor-ayuda = Wheel to read · +/− size · M bookmark · G settings · Esc to leave
 visor-elige-emoticono = What do you mark it with?
 visor-sin-marcadores = No bookmarks yet
+
+## The readers: comfortable reading, annotating on top and the PDF reader
+lector-listo = Done
+lector-indice = Contents
+lector-letra-fijada = The type is locked: there are notes drawn on top
+lector-letra-normal = Normal type
+lector-letra-fija = Monospace
+lector-grosor-normal = Regular
+lector-grosor-gruesa = Bold
+lector-quitar-tinta = Remove the notes
+lector-tinta-quitada = Notes removed (Ctrl+Z brings them back while you stay here)
+lector-ayuda-docs = Wheel to read · Ctrl+wheel zoom · A annotate · M bookmark · I contents · +/− size · T type · B weight · Esc to leave
+lector-pdf-titulo = PixPin PDF reader
+lector-pdf-no-se-abre = Could not open the PDF
+lector-pdf-abriendo = Opening the PDF…
+lector-exportando = Saving the annotated PDF… { $hechas } of { $total }
+lector-exportar-pdf = Save the PDF with the notes
+lector-anotado = annotated
+lector-ayuda-pdf = Wheel to turn pages · Ctrl+wheel zoom · Ctrl+[ Ctrl+] space to annotate · A annotate · M bookmark · Esc to leave
 sinc-presencia-apagada = Presence is off in the settings ([sincro] presencia = false): you can sync from here, but the phone will not find this computer or be able to call it.
 bandeja-abrir-documento = Open a document…
 
@@ -622,9 +705,9 @@ mini-temporizador = Timer
 mini-contador = Counter
 mini-ruleta = Spinner
 mini-alarma = Alarm
-mini-tarea-nueva = Type something to do and press Enter
-mini-gasto-nuevo = Item and amount, for example: Dinner 42.50
-mini-nombre-nuevo = A name, then press Enter
+mini-tarea-nueva = Something to do, then Enter · ↑↓ pick, Space ticks, F2 edits
+mini-gasto-nuevo = Item and amount (Dinner 42.50), then Enter · ↑↓ pick, F2 edits
+mini-nombre-nuevo = A name, then Enter · Enter on empty spins, Del removes
 mini-limpiar-hechas = Clear the done ones
 mini-arrancar = Start
 mini-parar = Stop
@@ -633,6 +716,10 @@ mini-reiniciar = Reset
 mini-sortear = Spin
 mini-alarma-encender = Turn on
 mini-alarma-apagar = Turn off
+mini-guia-titulo = New name, then press Enter (Esc keeps the old one)
+mini-guia-cambiar = Fix it and press Enter (Esc leaves it as it was)
+mini-guia-duracion = Minutes or m:ss, then Enter · Space starts
+mini-guia-hora = Time (7:30), then Enter · Space turns it on
 chat-biblioteca-vacia = No voice notes or songs yet.
 chat-biblioteca-musica = Music
 chat-biblioteca-notas = Voice notes
@@ -656,6 +743,9 @@ pdf-aligerar-sin-fotos = It has no photos to lower: the weight is text or vector
 pdf-aligerar-ya-al-minimo = The photos are already at the minimum.
 pdf-aligerar-no-compensa = It would only drop from { $antes } to { $despues }: not worth it.
 pdf-aligerar-no-se-lee = The shrunk file didn't read back properly; the original stays.
+aligerar-progreso = Making lighter… { $por }%
+aligerar-empezado = Making the PDF lighter…
+aligerar-sin-mejora = This PDF was already light: it stays as it was.
 
 # Reminders: the time set on a message and the notice that shows up when it
 # arrives. The same times the phone offers, plus ten minutes.
@@ -679,6 +769,15 @@ chat-transcribir-hecha = Voice note converted to text
 chat-transcribir-en-marcha = Another note is already being converted; wait for it to finish
 chat-transcribir-sin-mensaje = The note is no longer in the conversation: the text has nowhere to go
 chat-transcribir-cancelada = Text conversion was cancelled
+chat-transcribir-otra-vez = Convert to text again
+chat-transcripcion-no = Could not convert to text: nothing in the audio was understood.
+chat-letra-vacia = This note has no text yet.
+chat-letra-copiada = Text copied, with its timestamps
+chat-recordar-hora = Pick the time…
+chat-recordar-hora-a-las = Remind me at
+chat-recordar-hora-teclas = Type the time · Enter sets it · Esc leaves it
+chat-recordar-hora-queda = Enter: { $cuando }
+chat-recordar-hora-mal = That is not a time: type it like 18:30
 chat-voz-sin-motor = The speech recogniser is missing: copy { $motor } into { $donde }
 chat-voz-sin-modelo = The { $modelo } speech model is missing: download it from { $enlace } and unzip it inside { $donde }
 chat-voz-idioma-sin-modelo = Vosk has no speech model for this language
@@ -687,6 +786,16 @@ chat-voz-modelo-ilegible = The model in { $donde } is incomplete or could not be
 chat-voz-no-es-audio = This note's audio could not be read
 chat-voz-audio-vacio = The audio is empty: there is nothing to convert
 chat-voz-no-se-entiende = Nothing said in the note could be understood
+chat-voz-sin-reconocedor = Windows has no speech recognizer for this language: add it in Settings › Time & language › Speech.
+chat-voz-bajar-whisper = Converting to text needs the Whisper speech model (about { $megas } MB). It is downloading now, only this once, and then the note will be converted.
+chat-voz-bajando-whisper = Downloading the speech model… { $pct }%
+chat-voz-sin-modelo-whisper = The Whisper speech model (about { $megas } MB) is missing: press «Convert to text» again to download it.
+chat-voz-sin-onnx = This Windows lacks the AI runtime (onnxruntime.dll): copy it into { $donde } or next to PixPin.
+chat-voz-descarga = The speech model could not be downloaded ({ $que }). Check the connection and press «Convert to text» again.
+chat-voz-onnx = The Whisper speech engine failed: { $detalle }
+chat-dictado-oyendo = Listening… speak, then click the microphone when done
+chat-dictado-fallo = Dictation failed: { $razon }
+chat-dictado-preparando = Getting the microphone ready…
 
 # The teleprompter: the text scrolls by and you read it aloud while it
 # records. There is no synthetic voice anywhere, same as on the phone.
@@ -704,3 +813,462 @@ chat-telepronter-borrador = What is typed in the box
 chat-telepronter-sin-texto = There is no text to read: type something in the box or attach a .txt or .md
 chat-telepronter-abierto = The teleprompter is already open
 chat-telepronter-hecha = Reading saved as a voice note
+
+# The capture stack: the little pile in the corner (icon and panel).
+pila-titulo-una = 1 capture
+pila-titulo-varias = { $cuantas } captures stacked
+pila-copiar-elegidas = Copy selected
+pila-copiar-todas = Copy all
+pila-quitar = Remove
+pila-copiadas = { $cuantas } captures copied: paste them with Ctrl+V
+
+# The drawing editor's properties panel (Excalidraw's).
+panel-trazo = Stroke
+panel-fondo = Background
+panel-relleno = Fill
+panel-grosor = Stroke width
+panel-estilo-trazo = Stroke style
+panel-presion = Pressure
+panel-trazo-a-mano = Sloppiness
+panel-bordes = Edges
+panel-tipo-flecha = Arrow type
+panel-fuente = Font family
+panel-tamano-fuente = Font size
+panel-alineacion-texto = Text align
+panel-puntas = Arrowheads
+panel-opacidad = Opacity
+panel-capas = Layers
+panel-alinear = Align
+panel-acciones = Actions
+panel-colores = Colors
+panel-tonos = Shades
+panel-codigo-hex = Hex code
+
+## The canvas paper (Excalidraw viewBackgroundColor)
+fondo-lienzo = Canvas background
+fondo-papeles-del-movil = Phone papers
+fondo-lienzo-menu = Canvas background…
+
+## Export and print the canvas (G1, G2, G3, F11)
+exportar-menu = Export…	Ctrl+Shift+E
+exportar-copiar-png = Copy as PNG	Ctrl+Shift+C
+exportar-titulo = Export the canvas
+exportar-que = What
+exportar-todo = Whole canvas
+exportar-seleccion = Selection
+exportar-marcos = Each frame
+exportar-escala = Scale
+exportar-transparente = Transparent background
+exportar-tipo-png = PNG image
+exportar-tipo-svg = SVG drawing
+exportar-tipo-pdf = PDF document
+exportar-tipo-html = Single-file web page
+exportar-vacio = There is nothing to export with this.
+exportar-fallo = The canvas could not be exported.
+exportar-hecho = Exported: { $nombre }
+imprimir-menu = Print…	Ctrl+P
+imprimir-vacio = There is nothing to print.
+imprimir-fallo = The canvas could not be printed.
+exportar-chat = Export…
+imprimir-chat = Print…
+# F11: imprimir con vista previa (el dialogo de Windows y el boton de la barra)
+imprimir-pista = Print… (Ctrl+P)
+imprimir-que = What to print
+imprimir-que-marcos = Each frame on its own page
+imprimir-que-todo = The whole canvas on one page
+imprimir-que-seleccion = Only the selection
+marca-elige = What do you mark it with? (1-9, 0) · Esc to cancel
+marca-plantar = Click on the canvas where the mark goes · Esc cancels
+hojita-borrar = Clear
+hojita-insertar = Insert
+hojita-pegar = As a pin
+
+# The share sheet (compartir.rs): one for everything, like the phone's.
+compartir-titulo = Share
+compartir-menu = Share…	Ctrl+Shift+S
+compartir-proyecto = Share…
+compartir-lector = Share…  (Ctrl+Shift+S)
+compartir-boton = Share
+compartir-guardar = Save as…
+compartir-copiar = Copy to the clipboard
+compartir-wifi = Send over Wi-Fi
+compartir-web = Web page
+compartir-pdf = PDF
+compartir-png = PNG
+compartir-jpg = JPG
+compartir-svg = SVG
+compartir-original = Original
+compartir-originales = Originals
+compartir-editable = Editable
+compartir-texto = Text
+compartir-csv = CSV
+compartir-paginas-de = What to include · { $marcadas } of { $total }
+compartir-una-pagina = Which page
+compartir-va-entero = Goes whole, as it is
+compartir-todas = All
+compartir-ninguna = None
+compartir-preparando = Preparing…
+compartir-marca-alguna = Tick some page
+compartir-en-cuanto-este = As soon as it is ready
+compartir-peso-ficheros = { $peso } · { $n } files
+compartir-panel-abierto = Choose where to send it
+compartir-guardado = Saved: { $nombre }
+compartir-copiado = Copied to the clipboard
+compartir-no-se-pudo = It could not be prepared
+compartir-nada = There is nothing to share here.
+compartir-coma-decimal = .
+compartir-lienzo = Canvas
+compartir-lienzo-entero = Whole canvas
+compartir-marco = Frame
+compartir-pagina = Page
+compartir-anotada = With the notes
+compartir-sin-nombre = Untitled
+compartir-tipo-lienzo = Canvas
+compartir-tipo-pagina = PDF page
+compartir-tipo-foto = Photo
+compartir-tipo-tabla = Table
+compartir-tipo-miniapp = Mini-app
+compartir-tipo-voz = Voice note
+compartir-tipo-nota = Note
+
+# Drawing tools: the ones shown in the canvas, the reader, pins and the
+# screen annotator. Turning one off removes it from the bar and its key.
+ajustes-pestana-herramientas = Tools
+herramientas-lazo = Lasso
+herramientas-rectangulo = Rectangle
+herramientas-rombo = Diamond
+herramientas-elipse = Ellipse
+herramientas-flecha = Arrow
+herramientas-flecha-codos = Elbow arrow
+herramientas-flecha-libre = Freehand arrow
+herramientas-linea = Line
+herramientas-lapiz = Pen
+herramientas-grafito = Pencil
+herramientas-texto = Text
+herramientas-borrador = Eraser
+herramientas-resaltador = Highlighter
+herramientas-foco = Spotlight
+herramientas-lupa = Magnifier
+herramientas-mosaico = Mosaic
+herramientas-arco = Arc
+herramientas-serie = Numbered steps
+herramientas-punto = Labelled point
+herramientas-cota = Dimension
+herramientas-escalar = Calibrate scale
+herramientas-escala-grafica = Scale bar
+herramientas-marco = Frame
+herramientas-relleno = Fill bucket
+herramientas-recortar = Trim
+herramientas-extender = Extend
+herramientas-copiar-estilo = Copy style
+
+## D10: a PowerPoint in the chat (diapositivas.rs)
+diapositivas-titulo = Presentation
+diapositivas-no-es = This is not a presentation
+diapositivas-keynote = Keynote files can't be read directly: export to PowerPoint or PDF
+diapositivas-sin-powerpoint = Presenting a PowerPoint needs PowerPoint installed
+diapositivas-abrir-con-otra = Open it with another app?
+diapositivas-preparando = Preparing the presentation with PowerPoint…
+diapositivas-no-se-pudo = Could not prepare the presentation
+diapositivas-no-esta = The presentation is no longer on this computer
+
+## Chat: a page from a project, the link card, «Received from» and the inbox
+chat-sin-paginas = No project has pages to attach
+chat-recibido-de = Received from { $de }
+chat-fecha-corta = { $mes } { $dia }
+chat-enlace-no-abre = The link could not be opened
+
+## D11: a spreadsheet in the chat is a book of tables (ventana_chat/libro.rs)
+libro-titulo = Spreadsheet
+libro-xls-antiguo = Old .xls files can't be read: open it and save it as .xlsx
+libro-abrir-fuera = Open it with another app?
+libro-no-es = The file isn't a valid spreadsheet
+libro-sin-hojas = The workbook has no sheet with data
+
+## D9: find in the document (buscador.rs, visor.rs, lector_pdf.rs)
+buscar-pista = Find in document
+buscar-cuenta = { $n } of { $total }
+buscar-nada = No results
+buscar-leyendo = Reading the text…
+buscar-sin-texto = This PDF has no text (it's an image)
+buscar-cifrado = Can't search an encrypted PDF
+
+## D5: rename from the reader (renombrar_doc.rs)
+renombrar-hecho = Now called "{ $nombre }"
+renombrar-ya-existe = There's already a file called "{ $nombre }"
+renombrar-no-se-pudo = Couldn't change the name
+
+## Canvas: zone, laser, image, shapes, graph and present (F8, F12, F14, G5)
+herramientas-zona = Zone (rounded copy)
+herramientas-laser = Laser pointer
+herramientas-imagen = Image
+herramientas-figuras = Shapes
+figuras-grafica = Graph of a function…
+figuras-tabla-en-blanco = Blank table
+figuras-pegar-tabla = Paste table (from Excel)
+figuras-guardar-seleccion = Save selection as a shape…
+figuras-quitar = Remove
+figuras-nombre-titulo = Save as a shape
+figuras-nombre = Name
+figuras-nombre-ayuda = Enter: save · Esc: cancel
+figuras-sin-tabla = The clipboard has no table
+grafica-titulo = Graph of a function
+grafica-formulas = y = (one curve per line)
+grafica-x-desde = x from
+grafica-x-hasta = x to
+grafica-y-desde = y from
+grafica-y-hasta = y to
+grafica-escala = Pixels per unit
+grafica-ayuda = Enter: insert · Shift+Enter: another curve · Tab: next field · Esc: cancel · piecewise: x^2 si x<0; 2x si x>=0
+grafica-limites-mal = The limits make no sense: "from" must be less than "to"
+grafica-sin-formula = Type a formula
+grafica-formula-mal = Can't understand:
+grafica-solo-x = It can only use x:
+presentar-ayuda = ← → PgDn: next · B: black · J: laser · L: pen · Esc: exit
+vista-mirando = View only · Alt+R: edit · F5: present
+herramientas-cronograma = Timeline
+cronograma-titulo = Timeline
+cronograma-filas = Rows
+cronograma-columnas = Scale columns
+cronograma-fila = Row
+cronograma-ayuda = Enter: apply · Tab: next field · Esc: cancel · drag the bars on the drawing
+cronograma-cuentas-mal = Rows from 0 to 60 and columns from 1 to 40
+
+## --- Voice: two languages, lyrics, teleprompter, pronounce, conversation, call (B6-B11) ---
+
+ajustes-voz-segundo = Second language of voice notes
+ajustes-voz-modo = With two languages
+ajustes-voz-modo-cada-uno = Each part as it was said
+ajustes-voz-modo-todo-en-uno = All in the first one
+ajustes-voz-ninguno = None
+ajustes-voz-ingles = English
+ajustes-voz-espanol = Spanish
+ajustes-voz-portugues = Portuguese
+chat-letra-editar = Edit the lyrics
+chat-letra-editando = The lyrics are already being edited
+chat-letra-guardar = Save
+chat-letra-guardada = Lyrics saved
+chat-cancelar-caja = Cancel
+chat-llamada-secreta = Secret call
+telepronter-pausa = Pause
+telepronter-seguir = Resume
+telepronter-velocidad-muy-lenta = very slow
+telepronter-velocidad-lenta = slow
+telepronter-velocidad-normal = normal
+telepronter-velocidad-rapida = fast
+telepronter-velocidad-muy-rapida = very fast
+pronunciar-titulo = Pronounce
+pronunciar-manten = Hold the space bar (or the microphone) and speak
+pronunciar-suelta = Release to hear yourself
+pronunciar-otra-vez = Hold again to repeat it
+pronunciar-guia = Guide
+pronunciar-guia-texto = Write a text
+pronunciar-guia-fichero = An image, a PDF or a note from this computer
+pronunciar-sin-guia = No guide: write one, or bring an image, a PDF or a note
+pronunciar-repetir = Hear again (R)
+pronunciar-guardar = Save to the chat (Ctrl+G)
+pronunciar-ya-guardada = Saved
+pronunciar-guardado = Saved; it is being transcribed so you can see what was understood
+pronunciar-idioma = Language you practise
+pronunciar-idioma-ajustes = The usual one
+pronunciar-oir-texto = Hear the text
+pronunciar-sin-voz = Windows has no voice for that language
+pronunciar-no-se-pudo = That could not be opened
+pronunciar-toma = Last take: { $duracion }
+pronunciar-pagina = Page { $pagina } of { $paginas }
+pronunciar-abierto = Pronounce is already open
+conversacion-titulo = Conversation
+conversacion-explicacion = It records non-stop; each person presses their number (1 to 9) when they start talking, and 0 when nobody is. The transcript comes out with the names.
+conversacion-cuantos = How many people are talking?
+conversacion-persona = Person { $n }
+conversacion-empezar = Start recording
+conversacion-terminar = Finish and transcribe
+conversacion-turnos = { $n } turns
+conversacion-hablando = Talking…
+conversacion-teclas = Press the number of who is talking · 0: nobody
+conversacion-transcribiendo = Transcribing the conversation…
+conversacion-abierta = The conversation is already open
+llamada-titulo = Call
+llamada-entrante = Incoming call
+llamada-contestar = Answer
+llamada-colgar = Hang up
+llamada-altavoz = Speaker
+llamada-perdida = Missed call
+
+## PDF zone (E9): merge PDF pages into one canvas, as on the phone
+fusionar-paginas = Merge into one canvas
+fusionar-paginas-empieza = Putting the pages together in a canvas…
+fusionar-paginas-hecho = Done: “{ $nombre }” is now in the project
+fusionar-paginas-no = Those pages could not be merged
+
+## Universe zone (batch 2: H2, H3, M1): the Cosmos theme outside the universe
+ajustes-tema-cosmos = Cosmos theme (starry sky in the chat)
+
+## Zona pines (tanda 2: C3, C4, L3): magic word, board, sheet and tools
+pin-convertir-en = Convert to
+pin-herramienta-temporizador = Timer
+pin-herramienta-cronometro = Stopwatch
+pin-herramienta-tareas = To-do list
+pin-herramienta-contador = Counter
+pin-herramienta-gastos = Expenses
+pin-herramienta-pizarra = Board
+pin-herramienta-ruleta = Roulette
+pin-herramienta-lienzo = Canvas
+pin-herramienta-hoja = Sheet
+pin-herramienta-tabla = Table
+pin-fondo-pizarra = Board background
+pin-pizarra-blanca = White
+pin-pizarra-negra = Black
+pin-pizarra-azul = Slate blue
+pin-pizarra-verde = Chalkboard green
+pin-pauta-lisa = Plain
+pin-pauta-cuadros = Grid
+pin-pauta-rayas = Lines
+pin-pauta-columnas = Columns
+pin-pauta-puntos = Dots
+pin-tiempo-cumplido = Time's up
+pin-hoja-nombre = Sheet
+
+## Window groups (H9) and Markdown note editor (H12)
+bandeja-grupos-ventanas = Window groups…
+chat-grupos-ventanas = Window groups
+chat-adj-nota-md = Note
+chat-editar-nota = Open in the note editor
+grupos-nada-abierto = No open canvases, documents or notes to save
+grupos-guardar = { $n ->
+    [one] Save the open window as a group…
+   *[other] Save the { $n } open windows as a group…
+}
+grupos-abrir = Open “{ $nombre }” · { $n }
+grupos-borrar = Delete “{ $nombre }”
+grupos-alguna-falta = Some window in the group can no longer be opened
+grupos-sin-nombre = Group
+grupos-nombre = Window group name
+grupos-guardar-boton = Save
+nota-md-nueva = New note
+nota-md-sufijo = PixPin note
+nota-md-negrita = Bold
+nota-md-cursiva = Italic
+nota-md-tachado = Strikethrough
+nota-md-codigo = Code
+nota-md-enlace = Link
+nota-md-titulo1 = Heading
+nota-md-titulo2 = Subheading
+nota-md-titulo3 = Section
+nota-md-lista = List
+nota-md-numerada = Numbered list
+nota-md-casilla = Task list
+nota-md-marcar = Check or uncheck the task
+nota-md-cita = Quote
+nota-md-bloque = Code block
+nota-md-raya = Divider
+nota-md-formula = Formula
+nota-md-cortar = Cut
+nota-md-copiar = Copy
+nota-md-pegar = Paste
+nota-md-guardar = Save
+nota-md-copia = Save a .md copy…
+nota-md-tipo = Markdown note
+nota-md-no-guardada = The note could not be saved. Close anyway and lose the changes?
+nota-md-mayus = Shift
+nota-md-intro = Enter
+
+## Canvas: weld vertices and number points (lienzo-geometria, 26-sep)
+herramientas-nudo = Weld vertices
+herramientas-bolita = Ball: sweep over to select
+lienzo-nudo = Weld vertices
+lienzo-nudo-ayuda = Click where two shapes touch and they are pinned together: they no longer come apart and, with a single pin, they turn around it. Click the pin to remove it; drag it with the hand to take the pinned shapes along.
+lienzo-punto-serie = Point labels
+lienzo-cota-pedir = Ask for the length when drawn
+lienzo-cota-titulo = How long and which way? (Tab switches field)
+lienzo-cota-largo = Length
+lienzo-cota-angulo = Angle
+
+## Canvas: image (zone, magnifier, pixelate, share and reference; Sep 26)
+lienzo-referencia-menu = Reference image…
+lienzo-pista-compartir = Share… (Ctrl+Shift+S)
+lienzo-pista-lupa = Magnifier (Q): on the canvas, tap a closed shape to show what lies beneath, enlarged; on screen, zooms under the cursor
+lienzo-pista-mosaico = Pixelate (mosaic): drag over what you want to hide
+lienzo-pista-zona = Zone (Z): drag a box to get a cropped copy you can move
+lienzo-panel-mosaico = Cover
+lienzo-panel-aumento = Magnification
+lienzo-panel-guia = Pointer
+# The spotlight (Propiedad.OSCURECER and Propiedad.ZONA on the phone)
+lienzo-panel-oscurecer = Darken
+lienzo-panel-zona-foco = Lit area
+lienzo-pista-foco = Spotlight (F): tap a closed shape and the area around it darkens, inside its frame
+lienzo-pista-serie = Numbered steps: each click places the next number
+
+## Projects screen in the chat and the Chat / Projects switch (ui/Proyectos.kt on the phone)
+proyectos-interruptor-chat = Chat
+proyectos-interruptor-proyectos = Projects
+proyectos-hojas = { $total } sheets
+proyectos-hojas-de = { $anotadas } of { $total } sheets annotated
+proyectos-chat = Chat
+proyectos-hoja = Sheet
+proyectos-nota = Note
+proyectos-tabla = Table
+proyectos-hoja-hecha = New sheet in “{ $nombre }”
+proyectos-renombrar = Rename
+proyectos-renombrar-titulo = Project name
+proyectos-guardar = Save
+proyectos-archivar = Archive
+proyectos-desarchivar = Unarchive
+proyectos-compartir = Share
+proyectos-copias = Backups
+proyectos-borrar = Delete
+proyectos-borrar-titulo = Delete “{ $nombre }”?
+proyectos-borrar-aviso = It will also be deleted on your other devices the next time you sync. A copy stays in the project menu → “Backups” in case you change your mind.
+
+## --- Canvas: graph and table dialogs, put into a cell (F12/F14) ---
+cajetin-cancelar = Cancel
+grafica-insertar = Insert
+figuras-guardar = Save
+figuras-editar-tabla = Edit table… (Enter)
+figuras-meter-en-celda = Put the selection into its cell
+tabla-blanco-titulo = Blank table
+tabla-pegada-titulo = Pasted table
+tabla-editar-titulo = Edit table
+tabla-insertar = Insert
+tabla-aplicar = Apply
+tabla-mas-fila = + Row
+tabla-menos-fila = − Row
+tabla-mas-columna = + Column
+tabla-menos-columna = − Column
+tabla-cabecera = Header
+tabla-pegar = Paste
+tabla-ayuda = Tab and arrows: another cell · − removes the active cell's row or column · Enter: accept · Esc: cancel
+
+## --- Canvas: the Zone to the project chat (F8, mandarLaZona on the phone) ---
+zona-arrastra-copia = Drag: a copy comes out
+zona-arrastra-chat = Drag: it goes to the project chat
+zona-al-chat = To chat
+zona-mandada = Zone sent to the «{ $proyecto }» chat
+zona-no-mandada = The zone could not be sent
+zona-viene-pdf = PDF «{ $proyecto }» → page { $pagina }
+zona-viene-lienzo = Canvas «{ $nombre }»
+zona-nombre-pagina = Zone of page { $pagina }
+zona-nombre-lienzo = Zone of { $nombre }
+zona-lienzo = canvas
+zona-hoja-lienzo = Canvas
+
+## The canvas toolbar grouped like the phone's (GRUPOS_DE_FABRICA)
+herramientas-mano = Select and move
+herramientas-imprimir = Print
+herramientas-compartir = Share
+barra-grupo-elegir = Other ways to select
+barra-grupo-trazar = Freehand
+barra-grupo-formas = Shapes
+barra-grupo-flechas = Arrows and lines
+barra-grupo-arreglar = Fix what is drawn
+barra-grupo-nombrar = Text and labels
+barra-grupo-tapar = Cover and point
+barra-grupo-medir = Measure
+barra-grupo-laminas = Tables, charts and timeline
+barra-grupo-marco = Frame and image
+barra-grupo-sacar = Share and print
+barra-pista-mano = Select and move (M)
+barra-pista-deshacer = Undo (Ctrl+Z)
+barra-pista-rehacer = Redo (Ctrl+Y)
+barra-pista-salir = Exit (Esc)
+ajustes-herramientas-sueltas = Always visible

@@ -103,6 +103,9 @@ pub fn carga_de(contenido: &Contenido, ruta: Option<&Path>) -> Option<Carga> {
         // Una zona en directo no es un fichero ni una imagen quieta: para
         // llevarsela se congela primero.
         Contenido::Vivo { .. } => None,
+        // Lo que pinta el gestor no vive aqui: `Ctrl` + arrastrar sobre una
+        // lista es mover el pin, como en cualquier otro contenido sin carga.
+        Contenido::Herramienta { .. } => None,
     }
 }
 

@@ -54,6 +54,17 @@ pub struct Astro {
     pub nota: String,
     /// Solo galaxias: si las notas del chat son lunas (D200).
     pub notas_del_chat: bool,
+    /// Lo puso el armado del chat (H2) y cuelga del sol con su vinculo, como
+    /// `alternarVinculo(Espacio.SOL, id)` del movil: se le pinta su orbita y
+    /// su raya al sol. Lo colocado a mano no lo lleva.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub atado: bool,
+    /// Solo planetas: el codigo de la luna que hace de sol dentro de el. Es
+    /// el subespacio del movil (`conSubespacio`) llevado a la jerarquia fija
+    /// del PC: el archivo del chat en el centro y lo que le contesta en
+    /// orbita a su alrededor.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sistema_de: Option<String>,
     #[serde(flatten)]
     pub resto: Map<String, Value>,
 }
@@ -72,6 +83,8 @@ impl Default for Astro {
             color: None,
             nota: String::new(),
             notas_del_chat: false,
+            atado: false,
+            sistema_de: None,
             resto: Map::new(),
         }
     }

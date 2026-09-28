@@ -306,15 +306,7 @@ pub trait Disco {
 
     /// El proyecto vuelve a estar vivo aqui.
     fn quitar_lapida(&self, chat: &str) -> io::Result<()> {
-        let f = self.sincro().join("chatsborrados.jsonl");
-        if !f.exists() {
-            return Ok(());
-        }
-        let quedan: Vec<LapidaDeChat> = leer_lineas::<LapidaDeChat>(&f)
-            .into_iter()
-            .filter(|l| l.chat != chat)
-            .collect();
-        escribir_lineas(&f, &quedan)
+        quitar_lapida_en(&self.sincro(), chat)
     }
 
     // ------------------------------------------------------------ archivos
@@ -1075,6 +1067,40 @@ pub fn anotar_lapida_en(sincro: &Path, chat: &str, cuando: i64, aparato: &str) -
             aparato: aparato.into(),
         }],
     )
+}
+
+/// Quita las lapidas de un chat en la carpeta `sincro` dada: lo usa la
+/// papelera al recuperar un proyecto sin pasar por un `Disco`. Sin esto, la
+/// siguiente vuelta lo volveria a borrar nada mas recuperarlo.
+pub fn quitar_lapida_en(sincro: &Path, chat: &str) -> io::Result<()> {
+    let f = sincro.join("chatsborrados.jsonl");
+    if !f.exists() {
+        return Ok(());
+    }
+    let quedan: Vec<LapidaDeChat> = leer_lineas::<LapidaDeChat>(&f)
+        .into_iter()
+        .filter(|l| l.chat != chat)
+        .collect();
+    escribir_lineas(&f, &quedan)
+}
+
+/// Olvida lo acordado de un chat con todos los aparatos. Lo usa la papelera
+/// al recuperar un proyecto entero: con la base de antes, las marcas de
+/// borrado que el otro puso al borrarlo serian «un cambio suyo» y la vuelta
+/// siguiente volveria a quitar sus mensajes uno a uno. Sin base, lo vivo
+/// gana a lo borrado (`diferencia::plan`), que es lo que se quiere.
+pub fn olvidar_bases_en(sincro: &Path, chat: &str) -> io::Result<()> {
+    let Ok(otros) = std::fs::read_dir(sincro.join("base")) else {
+        return Ok(());
+    };
+    let nombre = format!("{}.json", limpio(chat));
+    for otro in otros.flatten().filter(|e| e.path().is_dir()) {
+        let f = otro.path().join(&nombre);
+        if f.is_file() {
+            std::fs::remove_file(f)?;
+        }
+    }
+    Ok(())
 }
 
 /// Apunta marcas de borrado en la carpeta `sincro` dada.

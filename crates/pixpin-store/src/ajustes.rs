@@ -224,6 +224,12 @@ pub struct Ajustes {
     /// Como se siente el lapiz (`[tinta]`). Vacio = como siempre.
     pub tinta: Tinta,
     pub arranque_con_windows: bool,
+    /// M1: el tema Cosmos del movil fuera del universo: el cielo estrellado
+    /// detras de la lista de proyectos del chat y sus colores de noche. En
+    /// el movil es una opcion del «Modo noche» (y la de fabrica); aqui, que
+    /// no hay modo noche propio, una casilla, apagada de fabrica para no
+    /// cambiarle el aspecto a nadie sin pedirlo.
+    pub tema_cosmos: bool,
     /// Tope de altura de la captura con scroll. Sin el, una pagina infinita
     /// capturaria hasta agotar la memoria.
     pub limite_scroll_px: u32,
@@ -264,6 +270,119 @@ pub struct Ajustes {
     /// Es una tabla (`[sincro]`) y por eso va al final, detras de las claves
     /// sueltas: en TOML, lo que sigue a una cabecera de tabla es suyo.
     pub sincro: Sincro,
+    /// La pila de capturas (`[capturas]`). Tabla, asi que tambien al final.
+    pub capturas: Capturas,
+    /// Aligerar los PDF que entran al chat (`[pdf]`). Tabla: al final.
+    pub pdf: Pdf,
+    /// Que herramientas de dibujo salen en el lienzo, el lector, los pines
+    /// y el anotador de pantalla (`[herramientas]`). Tabla: al final.
+    pub herramientas: crate::herramientas::Herramientas,
+    /// Pasar notas de voz a texto con dos idiomas (`[voz]`). Tabla: al final.
+    pub voz: Voz,
+}
+
+/// Cuanto se aprieta un PDF: los cuatro perfiles de pdfsqueeze, con los
+/// nombres del movil (`ComprimirPdf.NIVELES`). En el TOML se aceptan tambien
+/// los de pdfsqueeze (`lossless`, `balanced`, `small`, `extreme`), que son
+/// los que alguien copiaria de su documentacion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum NivelPdf {
+    /// Ni un pixel cambia: solo se ordena y se aprieta por dentro.
+    #[serde(alias = "lossless")]
+    SinPerdida,
+    /// No se nota a la vista: fotos a 200 ppp, cada una comprobada. El del
+    /// movil de fabrica (`NIVEL_POR_DEFECTO = EQUILIBRADO`).
+    #[default]
+    #[serde(alias = "balanced")]
+    Equilibrado,
+    /// Para leer en pantalla: 150 ppp, y en los escaneos el texto se separa
+    /// del papel y sigue nitido.
+    #[serde(alias = "small")]
+    Pequeno,
+    /// Lo minimo que se sigue leyendo bien.
+    #[serde(alias = "extreme")]
+    Extremo,
+}
+
+/// Seccion `[pdf]`: aligerar los PDF al meterlos al chat.
+///
+/// En el movil es un solo ajuste con un «No comprimir» entre los niveles;
+/// aqui son dos porque la fila de opciones de la ventana de ajustes no tiene
+/// sitio para cinco, y porque asi apagarlo no olvida el nivel elegido.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Pdf {
+    /// Al entrar un PDF al chat, se aligera despues, en segundo plano.
+    /// Encendido de fabrica, como en el movil.
+    pub aligerar_al_entrar: bool,
+    /// Con que nivel. Al entrar solo se usan Exacto y Medio: si aqui dice
+    /// Chico o Max, al entrar se usa Medio y esos dos quedan para «Aligerar el
+    /// PDF» pedido a mano (ver `apps/pixpin/src/aligerar.rs`).
+    pub nivel: NivelPdf,
+}
+
+impl Default for Pdf {
+    fn default() -> Self {
+        Self {
+            aligerar_al_entrar: true,
+            nivel: NivelPdf::default(),
+        }
+    }
+}
+
+/// En que esquina del monitor aparece el icono de la pila de capturas.
+///
+/// Los nombres van en kebab-case en el TOML (`esquina = "abajo-derecha"`) y
+/// un nombre desconocido da error en vez de caer al de por defecto: si
+/// alguien escribe `"abajo derecha"` sin el guion, es mejor que PixPin lo
+/// diga a que el icono aparezca en otro sitio sin explicacion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum EsquinaPila {
+    ArribaIzquierda,
+    ArribaDerecha,
+    AbajoIzquierda,
+    #[default]
+    AbajoDerecha,
+}
+
+/// Seccion `[capturas]`: la pila de capturas.
+///
+/// El usuario la pidio asi: varias capturas seguidas se juntan en un
+/// montoncito y un solo Ctrl+V las pega todas. Se apaga entera poniendo
+/// `apilar_segundos = 0`, y entonces todo se comporta como antes de que esto
+/// existiera: una captura, una imagen en el portapapeles y ninguna ventana en
+/// la esquina.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Capturas {
+    /// Segundos, contados desde la ULTIMA captura de la tanda, durante los
+    /// cuales la siguiente se suma a la misma pila: mientras se siga
+    /// capturando, se sigue apilando. **Cero apaga la pila entera.**
+    ///
+    /// Diez son los que dijo el usuario, y son los que aguanta la paciencia:
+    /// mas tiempo y una captura de hace medio minuto se colaria en un pegado
+    /// que ya no tiene nada que ver.
+    pub apilar_segundos: u32,
+    /// Donde se planta el icono, dentro del monitor donde se hizo la captura.
+    pub esquina: EsquinaPila,
+    /// Segundos que el icono sigue ahi despues de cerrarse la tanda. Cero lo
+    /// deja hasta que el usuario lo quite o pegue.
+    ///
+    /// Ocho porque son los justos para ver que la captura se hizo y decidir
+    /// si se abre el montoncito, sin quedarse tapando la esquina.
+    pub icono_segundos: u32,
+}
+
+impl Default for Capturas {
+    fn default() -> Self {
+        Self {
+            apilar_segundos: 10,
+            esquina: EsquinaPila::default(),
+            icono_segundos: 8,
+        }
+    }
 }
 
 /// Lo de sincronizar que se puede tocar a mano.
@@ -282,12 +401,57 @@ pub struct Sincro {
     /// tiene interruptor porque una puerta abierta en la red local es algo
     /// que cada uno tiene derecho a no querer.
     pub presencia: bool,
+    /// «Lo mio manda»: al sincronizar, lo de ESTE equipo se impone.
+    ///
+    /// Con el encendido, un proyecto que ya esta aqui se queda tal cual y del
+    /// otro lado solo llega lo que aqui no existe. Es el `loMioManda` del
+    /// movil (v0.79), y nacio de un accidente real: alguien vacio un portatil
+    /// creyendo que el telefono lo volveria a llenar, y al juntar los dos
+    /// aparatos los borrados eran lo mas reciente y se llevaron por delante
+    /// lo del telefono.
+    ///
+    /// **Apagado de fabrica**: sincronizar es ponerse de acuerdo, y que un
+    /// lado mande siempre es la excepcion que se pide a proposito, no lo que
+    /// alguien espera sin haberlo tocado.
+    pub lo_mio_manda: bool,
 }
 
 impl Default for Sincro {
     fn default() -> Self {
-        Self { presencia: true }
+        Self {
+            presencia: true,
+            lo_mio_manda: false,
+        }
     }
+}
+
+// --- Voz (B6): dos idiomas en una nota -----------------------------------
+
+/// Que hace Whisper con dos idiomas mezclados. Las palabras del TOML son las
+/// del movil (`MODO_CADA_IDIOMA = "cada_uno"`, `MODO_TODO_EN_UNO`), para que
+/// signifiquen lo mismo en los dos aparatos.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ModoDeIdiomas {
+    /// Cada trozo en el idioma en que se dijo.
+    #[default]
+    #[serde(rename = "cada_uno")]
+    CadaUno,
+    /// Todo en el primer idioma (lo del otro, traducido).
+    #[serde(rename = "todo_en_uno")]
+    TodoEnUno,
+}
+
+/// Seccion `[voz]`: pasar notas de voz a texto.
+///
+/// `segundoIdiomaDeVoz` y `modoDeIdiomas` del movil (`SettingsRepository`):
+/// el primer idioma es el de la interfaz (ver `apps/pixpin/src/voz.rs`), y
+/// el segundo, solo para Whisper, vacio = ninguno.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct Voz {
+    /// Codigo corto (`en`, `pt`…) o vacio.
+    pub segundo_idioma: String,
+    pub modo_de_idiomas: ModoDeIdiomas,
 }
 
 impl Default for Ajustes {
@@ -300,7 +464,13 @@ impl Default for Ajustes {
             formato_color: FormatoColor::default(),
             rendimiento: Rendimiento::default(),
             tinta: Tinta::default(),
-            arranque_con_windows: false,
+            // Encendido de fabrica: el usuario lo pidio con estas palabras,
+            // «que apenas prendo se encienda la app». Vive en la bandeja y no
+            // roba nada al arrancar, y quien no lo quiera lo apaga en los
+            // ajustes o pone `arranque_con_windows = false` en el TOML. En
+            // modo portable no toca el registro, se quiera o no.
+            arranque_con_windows: true,
+            tema_cosmos: false,
             limite_scroll_px: 30_000,
             gif: Gif::default(),
             ignorar_programas: Vec::new(),
@@ -309,6 +479,10 @@ impl Default for Ajustes {
             abrir_con: true,
             enganche: pixpin_motor2d::enganche::Ajustes::default(),
             sincro: Sincro::default(),
+            capturas: Capturas::default(),
+            pdf: Pdf::default(),
+            herramientas: crate::herramientas::Herramientas::default(),
+            voz: Voz::default(),
         }
     }
 }
@@ -470,6 +644,18 @@ mod pruebas {
                 medir_fotogramas: true,
                 ..Rendimiento::default()
             },
+            capturas: Capturas {
+                apilar_segundos: 25,
+                esquina: EsquinaPila::ArribaIzquierda,
+                icono_segundos: 3,
+            },
+            pdf: Pdf {
+                aligerar_al_entrar: false,
+                nivel: NivelPdf::Extremo,
+            },
+            herramientas: crate::herramientas::Herramientas {
+                apagadas: vec!["lazo".into(), "mosaico".into()],
+            },
             ..Ajustes::default()
         }
     }
@@ -623,7 +809,61 @@ arranque_con_windows = true
         }
         assert_eq!(a.idioma, PreferenciaIdioma::Sistema);
         assert_eq!(a.formato_color, FormatoColor::Hex);
-        assert!(!a.arranque_con_windows);
+        // Arranca con Windows de fabrica: lo pidio el usuario («que apenas
+        // prendo se encienda la app»). Vive en la bandeja, asi que no se
+        // pone delante de nadie; quien no lo quiera lo apaga en los ajustes.
+        assert!(a.arranque_con_windows);
+    }
+
+    #[test]
+    fn la_pila_de_capturas_nace_encendida_con_diez_segundos_abajo_a_la_derecha() {
+        let a = Ajustes::default();
+        assert_eq!(a.capturas.apilar_segundos, 10);
+        assert_eq!(a.capturas.esquina, EsquinaPila::AbajoDerecha);
+        assert_eq!(a.capturas.icono_segundos, 8);
+    }
+
+    #[test]
+    fn la_pila_se_lee_del_toml_y_se_apaga_entera_con_un_cero() {
+        let a: Ajustes =
+            toml::from_str("[capturas]\napilar_segundos = 25\nesquina = \"arriba-izquierda\"")
+                .unwrap();
+        assert_eq!(a.capturas.apilar_segundos, 25);
+        assert_eq!(a.capturas.esquina, EsquinaPila::ArribaIzquierda);
+        // Lo que no se nombra conserva su valor de fabrica, como el resto.
+        assert_eq!(a.capturas.icono_segundos, 8);
+
+        // El interruptor de apagado: `0` y no un booleano aparte, porque «no
+        // apilar» es exactamente «la ventana de apilado dura cero».
+        let apagada: Ajustes = toml::from_str("[capturas]\napilar_segundos = 0").unwrap();
+        assert_eq!(apagada.capturas.apilar_segundos, 0);
+
+        // Y un fichero de antes de que esto existiera sigue abriendo con la
+        // pila encendida: es la funcion nueva, no una migracion.
+        let viejo: Ajustes = toml::from_str("limite_scroll_px = 100").unwrap();
+        assert_eq!(viejo.capturas, Capturas::default());
+    }
+
+    #[test]
+    fn una_esquina_desconocida_da_error_en_vez_de_adivinar() {
+        // Caso negativo: sin el guion no es ninguna de las cuatro, y caer a
+        // la de por defecto dejaria el icono en otro sitio sin decir nada.
+        assert!(toml::from_str::<Ajustes>("[capturas]\nesquina = \"abajo derecha\"").is_err());
+        assert!(toml::from_str::<Ajustes>("[capturas]\nesquina = \"centro\"").is_err());
+    }
+
+    #[test]
+    fn el_tema_cosmos_viene_apagado_se_guarda_y_un_fichero_viejo_lo_deja_apagado() {
+        assert!(!Ajustes::default().tema_cosmos);
+        let a = Ajustes {
+            tema_cosmos: true,
+            ..Default::default()
+        };
+        let texto = toml::to_string_pretty(&a).unwrap();
+        assert!(toml::from_str::<Ajustes>(&texto).unwrap().tema_cosmos);
+        // Caso negativo: un TOML de antes, sin la clave.
+        let viejo: Ajustes = toml::from_str("arranque_con_windows = true\n").unwrap();
+        assert!(!viejo.tema_cosmos);
     }
 
     #[test]
@@ -890,5 +1130,59 @@ alto = 200
             vuelta.enganche, original.enganche,
             "el iman sobrevive a la ida y vuelta con regiones de por medio:\n{texto}"
         );
+    }
+
+    #[test]
+    fn la_voz_viene_sin_segundo_idioma_y_cada_trozo_como_se_dijo() {
+        let a: Ajustes = toml::from_str("").unwrap();
+        assert_eq!(a.voz.segundo_idioma, "");
+        assert_eq!(a.voz.modo_de_idiomas, ModoDeIdiomas::CadaUno);
+    }
+
+    #[test]
+    fn el_modo_de_idiomas_se_escribe_con_las_palabras_del_movil() {
+        let a: Ajustes =
+            toml::from_str("[voz]\nsegundo_idioma = \"en\"\nmodo_de_idiomas = \"todo_en_uno\"\n")
+                .unwrap();
+        assert_eq!(a.voz.segundo_idioma, "en");
+        assert_eq!(a.voz.modo_de_idiomas, ModoDeIdiomas::TodoEnUno);
+        let texto = toml::to_string(&a).unwrap();
+        assert!(texto.contains("modo_de_idiomas = \"todo_en_uno\""), "{texto}");
+        // Caso negativo: una palabra que no es del movil no se acepta callada.
+        assert!(toml::from_str::<Ajustes>("[voz]\nmodo_de_idiomas = \"mezcla\"\n").is_err());
+    }
+
+    #[test]
+    fn aligerar_los_pdf_viene_encendido_y_en_equilibrado_como_en_el_movil() {
+        let a: Ajustes = toml::from_str("").unwrap();
+        assert!(a.pdf.aligerar_al_entrar);
+        assert_eq!(a.pdf.nivel, NivelPdf::Equilibrado);
+    }
+
+    #[test]
+    fn el_nivel_del_pdf_se_lee_con_su_nombre_o_con_el_de_pdfsqueeze() {
+        let a: Ajustes = toml::from_str("[pdf]\nnivel = \"pequeno\"\n").unwrap();
+        assert_eq!(a.pdf.nivel, NivelPdf::Pequeno);
+        assert!(a.pdf.aligerar_al_entrar, "lo que no se escribe sigue de fabrica");
+        let b: Ajustes = toml::from_str("[pdf]\nnivel = \"lossless\"\naligerar_al_entrar = false\n").unwrap();
+        assert_eq!(b.pdf.nivel, NivelPdf::SinPerdida);
+        assert!(!b.pdf.aligerar_al_entrar);
+        // Caso negativo: un nivel que no existe es un error, no un nivel
+        // cualquiera en silencio.
+        assert!(toml::from_str::<Ajustes>("[pdf]\nnivel = \"maximo\"\n").is_err());
+    }
+
+    #[test]
+    fn el_ajuste_del_pdf_va_y_vuelve_por_el_fichero() {
+        let donde = temporal("pdf");
+        let mut a = Ajustes::default();
+        a.pdf = Pdf {
+            aligerar_al_entrar: false,
+            nivel: NivelPdf::SinPerdida,
+        };
+        guardar_conservando(&donde, &a).unwrap();
+        let texto = fs::read_to_string(donde.fichero_ajustes()).unwrap();
+        assert!(texto.contains("sin-perdida"), "{texto}");
+        assert_eq!(cargar(&donde).unwrap().pdf, a.pdf);
     }
 }

@@ -76,6 +76,16 @@ pub enum Contenido {
         ancho: u32,
         alto: u32,
     },
+    /// Una herramienta dentro del pin: una mini-app (tareas, gastos,
+    /// cronometro...) o una tabla pegada. **La pinta el gestor**, que es
+    /// quien ve `pixpin-ui` y el documento, con el pintor que cuelga con
+    /// `Pin::poner_pintor_interior`; el pin solo le da el hueco y le devuelve
+    /// los clics y las teclas. `ancho`/`alto` son el tamano con que nace, en
+    /// pixeles fisicos: se estira libre y lo de dentro se recoloca.
+    Herramienta {
+        ancho: u32,
+        alto: u32,
+    },
 }
 
 /// Como se ensena un archivo por referencia, decidido SOLO por su extension
@@ -124,7 +134,15 @@ impl Contenido {
     /// den. La rueda y Ctrl + arrastrar la escalan en proporcion, texto
     /// incluido (lo pidio el usuario).
     pub fn redimension_libre(&self) -> bool {
-        matches!(self, Contenido::Nota { .. })
+        // La herramienta igual que la nota: estirarla da sitio a mas filas de
+        // la lista, no una lista mas gorda (`TextBoxSize` del movil).
+        matches!(self, Contenido::Nota { .. } | Contenido::Herramienta { .. })
+    }
+
+    /// Si el raton y el teclado son de lo de dentro: los clics y las teclas
+    /// van al gestor en vez de mover, girar o filtrar el pin.
+    pub fn interactivo(&self) -> bool {
+        matches!(self, Contenido::Herramienta { .. })
     }
 
     /// La imagen nativa, para el 100 % del doble clic. La nota y la ficha no
@@ -208,6 +226,9 @@ pub fn tamano_natural(
 
         // 1:1 como una captura: la zona se ve del tamano que tiene.
         Contenido::Vivo { ancho, alto } => ((*ancho).max(1), (*alto).max(1)),
+
+        // El gestor ya lo calculo con la disposicion de la mini-app.
+        Contenido::Herramienta { ancho, alto } => ((*ancho).max(1), (*alto).max(1)),
 
         // La miniatura tal cual la dio la Shell mas la franja del nombre.
         Contenido::Documento { vista, .. } => (
@@ -373,6 +394,23 @@ mod pruebas {
             alto: 0,
         };
         assert_eq!(tamano_natural(&sin, 100, &medidor), (480, 270));
+    }
+
+    #[test]
+    fn la_herramienta_se_estira_libre_y_es_suya_la_entrada() {
+        let h = Contenido::Herramienta {
+            ancho: 300,
+            alto: 420,
+        };
+        assert!(h.redimensionable() && h.redimension_libre() && h.interactivo());
+        assert_eq!(tamano_natural(&h, 150, &medidor), (300, 420));
+        // Caso negativo: una imagen no se queda los clics.
+        let img = Contenido::Imagen(ImagenRgba {
+            ancho: 1,
+            alto: 1,
+            pixeles: vec![0; 4],
+        });
+        assert!(!img.interactivo() && !img.redimension_libre());
     }
 
     #[test]
