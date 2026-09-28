@@ -13,7 +13,7 @@ use std::mem::size_of;
 
 use serde::{Deserialize, Serialize};
 
-use crate::elemento::Elemento;
+use crate::elemento::{ColorRgba, Elemento};
 use crate::medida::Escala;
 use crate::vector::Punto2;
 
@@ -31,6 +31,22 @@ pub struct Escena {
     /// Que mide un pixel de este lienzo (D31). `None` mientras no se calibre.
     #[serde(default)]
     pub escala: Option<Escala>,
+    /// **El color del papel**: el `appState.viewBackgroundColor` del
+    /// fichero de Excalidraw, que es tambien el `backgroundColor` de la
+    /// escena del movil (`ExcalidrawStore.kt`).
+    ///
+    /// Vive en la escena y no en la ventana porque es del documento: viaja
+    /// con el `.excalidraw`, sale al exportar y se ve en la vista previa del
+    /// chat y en el pin. Se cambia con `poner_fondo`, que lo apunta en el
+    /// historial como hace Excalidraw (`changeViewBackgroundColor` captura
+    /// el cambio): elegir un papel y arrepentirse se arregla con `Ctrl+Z`.
+    #[serde(default = "fondo_de_fabrica")]
+    pub fondo: ColorRgba,
+    /// **Los clavos de soldar vertices** (`Scene.alfileres` del movil, ver
+    /// `nudos`). Son de la escena y no de ningun elemento: un clavo ata dos
+    /// figuras y no pertenece a ninguna de las dos.
+    #[serde(default)]
+    pub alfileres: Vec<crate::nudos::Alfiler>,
     /// Lo que se ha hecho en ESTA sesion, para deshacerlo. No se guarda: el
     /// historial es estado de la interfaz, no del documento, y deshacer al
     /// abrir un dibujo de ayer un trazo que no se ve hacer confunde mas de
@@ -78,6 +94,12 @@ enum Cambio {
     /// Calibrar no toca ningun elemento, asi que no se puede expresar con
     /// `Editado`: lo que cambia es la escena.
     Escala(Option<Escala>),
+    /// El color del papel **antes** del cambio. Por lo mismo que `Escala`:
+    /// no es de ningun elemento.
+    Fondo(ColorRgba),
+    /// Los clavos **antes** del cambio (`nudos`): tampoco son de ningun
+    /// elemento.
+    Alfileres(Vec<crate::nudos::Alfiler>),
 }
 
 /// Todo lo que hizo un gesto. Un arrastre que mueve cuarenta elementos es
@@ -85,17 +107,32 @@ enum Cambio {
 #[derive(Debug, Clone, PartialEq, Default)]
 struct Paso {
     cambios: Vec<Cambio>,
+    /// Los ids que ya tienen su `Cambio::Editado` en este paso. Sin esto,
+    /// `apuntar_edicion` recorria `cambios` entero para no apuntar dos
+    /// veces, y al arrastrar mil elementos eso era un millon de
+    /// comparaciones por aviso del raton.
+    editados: std::collections::HashSet<u64>,
 }
 
 impl Cambio {
     /// Lo que ocupa de cara al techo del historial.
     fn bytes(&self) -> usize {
         match self {
-            Cambio::Anadido(_) | Cambio::Borrado(_) => size_of::<Cambio>(),
+            Cambio::Anadido(_) | Cambio::Borrado(_) | Cambio::Fondo(_) => size_of::<Cambio>(),
             Cambio::Editado { antes, .. } => size_of::<Cambio>() + antes.bytes(),
             Cambio::Reordenado(orden) => size_of::<Cambio>() + orden.len() * size_of::<u64>(),
             Cambio::Escala(escala) => {
                 size_of::<Cambio>() + escala.as_ref().map_or(0, |e| e.unidad.len())
+            }
+            Cambio::Alfileres(lista) => {
+                size_of::<Cambio>()
+                    + lista
+                        .iter()
+                        .map(|a| {
+                            size_of::<crate::nudos::Alfiler>()
+                                + a.agarres.len() * size_of::<crate::nudos::Agarre>()
+                        })
+                        .sum::<usize>()
             }
         }
     }
@@ -119,6 +156,15 @@ fn uno_u64() -> u64 {
     1
 }
 
+/// El papel de un lienzo que no dice el suyo: blanco, el `#ffffff` que
+/// escriben por defecto Excalidraw (`COLOR_PALETTE.white`) y el movil
+/// (`DrawTheme.FONDO_DIA`).
+pub const FONDO_DE_FABRICA: ColorRgba = ColorRgba::opaco(1.0, 1.0, 1.0);
+
+fn fondo_de_fabrica() -> ColorRgba {
+    FONDO_DE_FABRICA
+}
+
 impl Default for Escena {
     fn default() -> Self {
         Self {
@@ -126,6 +172,8 @@ impl Default for Escena {
             siguiente_id: 1,
             elementos: Vec::new(),
             escala: None,
+            fondo: FONDO_DE_FABRICA,
+            alfileres: Vec::new(),
             historia: Vec::new(),
             rehacer: Vec::new(),
             en_curso: None,
@@ -162,10 +210,18 @@ impl Escena {
     /// dibuje a traves de `abrir_paso`/`cerrar_paso`.
     fn empujar_cambio(&mut self, cambio: Cambio) {
         match &mut self.en_curso {
-            Some(paso) => paso.cambios.push(cambio),
+            Some(paso) => {
+                // Lo que entra por aqui tambien cuenta como apuntado: antes
+                // `apuntar_edicion` lo veia recorriendo `cambios`.
+                if let Cambio::Editado { id, .. } = &cambio {
+                    paso.editados.insert(*id);
+                }
+                paso.cambios.push(cambio);
+            }
             None => {
                 let paso = Paso {
                     cambios: vec![cambio],
+                    ..Paso::default()
                 };
                 self.bytes_historial += bytes_de(&paso);
                 self.historia.push(paso);
@@ -234,13 +290,27 @@ impl Escena {
 
     /// Borrado a peticion del usuario (el borrador, la tecla Suprimir): se
     /// apunta para poder deshacerlo.
+    ///
+    /// **Suelta tambien las flechas atadas** (ver `enlace::soltar_lo_borrado`)
+    /// y lo hace aqui, y no en cada sitio que borra, porque se borra desde
+    /// cinco sitios —Suprimir, el borrador, el panel, los pines, la capa—, y
+    /// el que se olvidara dejaria en el fichero una flecha atada a nada.
+    ///
+    /// Todo va a un solo paso: si no habia ninguno abierto se abre uno
+    /// para esto, porque deshacer el borrado y dejar la flecha suelta
+    /// dejaria la flecha sin su caja justo cuando la caja vuelve.
     pub fn borrar_apuntando(&mut self, id: u64) -> bool {
-        if self.borrar(id) {
-            self.empujar_cambio(Cambio::Borrado(id));
-            true
-        } else {
-            false
+        if !self.borrar(id) {
+            return false;
         }
+        let abierto_aqui = self.en_curso.is_none();
+        self.abrir_paso();
+        self.empujar_cambio(Cambio::Borrado(id));
+        crate::enlace::soltar_lo_borrado(self, id);
+        if abierto_aqui {
+            self.cerrar_paso();
+        }
+        true
     }
 
     pub fn buscar(&self, id: u64) -> Option<&Elemento> {
@@ -303,11 +373,7 @@ impl Escena {
     /// un trazo largo se comerian el techo en un solo arrastre.
     pub fn apuntar_edicion(&mut self, id: u64) {
         let Some(paso) = &self.en_curso else { return };
-        let ya_esta = paso
-            .cambios
-            .iter()
-            .any(|c| matches!(c, Cambio::Editado { id: i, .. } if *i == id));
-        if ya_esta {
+        if paso.editados.contains(&id) {
             return;
         }
         let Some(e) = self.buscar(id) else { return };
@@ -317,6 +383,7 @@ impl Escena {
         };
         if let Some(paso) = &mut self.en_curso {
             paso.cambios.push(cambio);
+            paso.editados.insert(id);
         }
     }
 
@@ -340,6 +407,31 @@ impl Escena {
         }
     }
 
+    /// **Cambia el color del papel**, apuntandolo para deshacerlo. Devuelve
+    /// si cambio algo: elegir el papel que ya estaba no gasta un `Ctrl+Z`.
+    ///
+    /// Solo papel opaco: el lienzo no tiene nada detras que se pueda ver, y
+    /// «sin papel» ya lo pide quien exporta con su «fondo transparente». Un
+    /// alfa aqui llegaria al movil como `#rrggbbaa`, que el lee quitandole
+    /// el alfa (`DrawTheme.colorDe`): se veria distinto en cada lado.
+    pub fn poner_fondo(&mut self, color: ColorRgba) -> bool {
+        let color = ColorRgba { a: 1.0, ..color };
+        if self.fondo == color {
+            return false;
+        }
+        // Dentro de un paso abierto, solo el primero: deshacer vuelve al
+        // papel de antes del gesto, no al penultimo que se probo.
+        let ya_apuntado = self
+            .en_curso
+            .as_ref()
+            .is_some_and(|p| p.cambios.iter().any(|c| matches!(c, Cambio::Fondo(_))));
+        if !ya_apuntado {
+            self.empujar_cambio(Cambio::Fondo(self.fondo));
+        }
+        self.fondo = color;
+        true
+    }
+
     /// Guarda la escala actual para poder volver a ella.
     ///
     /// Apuntarlo dos veces dentro del mismo paso guarda **solo la primera**:
@@ -351,6 +443,21 @@ impl Escena {
             return;
         }
         let cambio = Cambio::Escala(self.escala.clone());
+        if let Some(paso) = &mut self.en_curso {
+            paso.cambios.push(cambio);
+        }
+    }
+
+    /// Guarda los clavos actuales para poder volver a ellos (`nudos`).
+    ///
+    /// Apuntarlo dos veces dentro del mismo paso guarda **solo la primera**,
+    /// como `apuntar_escala`. Fuera de un paso no hace nada.
+    pub fn apuntar_alfileres(&mut self) {
+        let Some(paso) = &self.en_curso else { return };
+        if paso.cambios.iter().any(|c| matches!(c, Cambio::Alfileres(_))) {
+            return;
+        }
+        let cambio = Cambio::Alfileres(self.alfileres.clone());
         if let Some(paso) = &mut self.en_curso {
             paso.cambios.push(cambio);
         }
@@ -374,6 +481,9 @@ impl Escena {
         // solo se empujan cuando la accion ocurrio de verdad.
         paso.cambios.retain(|c| match c {
             Cambio::Editado { id, antes } => self.buscar(*id) != Some(antes.as_ref()),
+            // Los clavos se apuntan por si acaso (todo gesto con clavos los
+            // apunta): solo cuentan si de verdad cambiaron.
+            Cambio::Alfileres(antes) => *antes != self.alfileres,
             _ => true,
         });
         if paso.cambios.is_empty() {
@@ -479,6 +589,15 @@ impl Escena {
                     let actual = self.escala.clone();
                     self.escala = anterior.clone();
                     inverso.cambios.push(Cambio::Escala(actual));
+                }
+                Cambio::Fondo(anterior) => {
+                    let actual = self.fondo;
+                    self.fondo = *anterior;
+                    inverso.cambios.push(Cambio::Fondo(actual));
+                }
+                Cambio::Alfileres(anterior) => {
+                    let actual = std::mem::replace(&mut self.alfileres, anterior.clone());
+                    inverso.cambios.push(Cambio::Alfileres(actual));
                 }
             }
         }
@@ -993,5 +1112,47 @@ mod pruebas {
         assert!(tras_uno >= 1);
         e.deshacer();
         assert_eq!(e.pasos_cerrados(), tras_uno);
+    }
+
+    #[test]
+    fn cambiar_el_papel_se_deshace_y_se_rehace_como_en_excalidraw() {
+        let mut e = Escena::nueva();
+        assert_eq!(e.fondo, FONDO_DE_FABRICA);
+        let crema = ColorRgba::opaco(0.99, 0.96, 0.89);
+        assert!(e.poner_fondo(crema));
+        assert_eq!(e.fondo, crema);
+        assert!(e.deshacer());
+        assert_eq!(e.fondo, FONDO_DE_FABRICA);
+        assert!(e.rehacer());
+        assert_eq!(e.fondo, crema);
+    }
+
+    #[test]
+    fn elegir_el_papel_que_ya_estaba_no_gasta_un_deshacer() {
+        // Caso negativo: nada cambia, nada se apunta.
+        let mut e = Escena::nueva();
+        assert!(!e.poner_fondo(FONDO_DE_FABRICA));
+        assert!(!e.hay_que_deshacer());
+    }
+
+    #[test]
+    fn el_papel_es_siempre_opaco() {
+        let mut e = Escena::nueva();
+        e.poner_fondo(ColorRgba {
+            a: 0.3,
+            ..ColorRgba::opaco(0.0, 0.0, 0.0)
+        });
+        assert_eq!(e.fondo.a, 1.0);
+    }
+
+    #[test]
+    fn un_fichero_propio_sin_papel_se_abre_en_blanco_y_uno_con_papel_lo_conserva() {
+        // Los `.json` de antes de este campo no lo traen.
+        let viejo: Escena = serde_json::from_str(r#"{"version":1,"elementos":[]}"#).unwrap();
+        assert_eq!(viejo.fondo, FONDO_DE_FABRICA);
+        let mut e = Escena::nueva();
+        e.poner_fondo(ColorRgba::opaco(0.1, 0.2, 0.3));
+        let vuelta: Escena = serde_json::from_str(&serde_json::to_string(&e).unwrap()).unwrap();
+        assert_eq!(vuelta.fondo, e.fondo);
     }
 }

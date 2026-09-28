@@ -69,6 +69,19 @@ pub struct Rejilla {
     /// La `version` con la que se apunto cada elemento, para saber cual ha
     /// cambiado sin comparar elementos enteros.
     versiones: HashMap<u64, u32>,
+    /// El orden de la escena la ultima vez que se sincronizo, y el sitio de
+    /// cada id en el. Es lo que deja devolver los candidatos **en orden de
+    /// pintado**: las celdas guardan los ids en el orden en que se apuntaron
+    /// (el de su ultima edicion), asi que sin esto «Traer al frente» y
+    /// «Enviar al fondo» cambiaban la escena y la pantalla seguia igual.
+    orden: Vec<u64>,
+    posicion: HashMap<u64, usize>,
+    /// Las celdas (x0, y0, x1, y1) en que se apunto cada id. Sin esto,
+    /// quitar un elemento recorria TODAS las celdas de la rejilla (un
+    /// `retain` sobre el mapa entero) por cada elemento que cambiaba: al
+    /// soltar un trazo o deshacer, el coste crecia con todo lo dibujado y no
+    /// con lo que cambio.
+    ocupadas: HashMap<u64, (i32, i32, i32, i32)>,
 }
 
 impl Default for Rejilla {
@@ -87,6 +100,9 @@ impl Rejilla {
             lado: lado.max(1.0),
             celdas: HashMap::new(),
             versiones: HashMap::new(),
+            orden: Vec::new(),
+            posicion: HashMap::new(),
+            ocupadas: HashMap::new(),
         }
     }
 
@@ -104,10 +120,22 @@ impl Rejilla {
     /// reconstruyera, seria mas cara que la fuerza bruta que viene a
     /// evitar.
     pub fn sincronizar(&mut self, escena: &Escena) {
-        let mut vistos: HashSet<u64> = HashSet::with_capacity(escena.elementos.len());
-
+        // El orden solo se rehace si cambio: compararlo es un recorrido sin
+        // reservar nada, y lo normal (dibujar, mover) es que no cambie.
+        let mismo_orden = self.orden.len() == escena.elementos.len()
+            && self
+                .orden
+                .iter()
+                .zip(&escena.elementos)
+                .all(|(id, e)| *id == e.id);
+        if !mismo_orden {
+            self.orden.clear();
+            self.orden.extend(escena.elementos.iter().map(|e| e.id));
+            self.posicion.clear();
+            self.posicion
+                .extend(self.orden.iter().enumerate().map(|(i, id)| (*id, i)));
+        }
         for e in &escena.elementos {
-            vistos.insert(e.id);
             let cambio = match self.versiones.get(&e.id) {
                 Some(v) => *v != e.version,
                 None => true,
@@ -123,6 +151,15 @@ impl Rejilla {
         }
 
         // Los que ya no estan en la escena (compactar los saco de verdad).
+        //
+        // Todo id de la escena acaba de quedar en `versiones`, asi que solo
+        // puede sobrar alguno si `versiones` tiene MAS entradas que la
+        // escena. Mirarlo antes ahorra un `HashSet` del tamano de la escena
+        // en cada fotograma, que es lo que se pagaba aunque no sobrara nada.
+        if self.versiones.len() <= escena.elementos.len() {
+            return;
+        }
+        let vistos: HashSet<u64> = escena.elementos.iter().map(|e| e.id).collect();
         let sobrantes: Vec<u64> = self
             .versiones
             .keys()
@@ -144,15 +181,33 @@ impl Rejilla {
                 self.celdas.entry((cx, cy)).or_default().push(id);
             }
         }
+        self.ocupadas.insert(id, (cx0, cy0, cx1, cy1));
     }
 
     fn quitar(&mut self, id: u64) {
-        // Recorrer las celdas es aceptable porque solo pasa cuando un
-        // elemento cambia, y entonces esta en unas pocas.
-        self.celdas.retain(|_, ids| {
-            ids.retain(|x| *x != id);
-            !ids.is_empty()
-        });
+        // Solo las celdas en que se apunto: son unas pocas, y no dependen de
+        // cuanto haya dibujado en el resto del papel.
+        let Some((cx0, cy0, cx1, cy1)) = self.ocupadas.remove(&id) else {
+            return;
+        };
+        for cx in cx0..=cx1 {
+            for cy in cy0..=cy1 {
+                if let Some(ids) = self.celdas.get_mut(&(cx, cy)) {
+                    ids.retain(|x| *x != id);
+                    if ids.is_empty() {
+                        self.celdas.remove(&(cx, cy));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Donde estaba `id` en la lista de la escena la ultima vez que se
+    /// sincronizo. Quien pinta lo usa para ir derecho al elemento en vez de
+    /// buscarlo recorriendo la escena (`Escena::buscar` es lineal, y por
+    /// cada candidato de cada fotograma eso es cuadratico en lo visible).
+    pub fn posicion(&self, id: u64) -> Option<usize> {
+        self.posicion.get(&id).copied()
     }
 
     /// Los que **pueden** estar en la caja. Puede devolver de mas, nunca de
@@ -167,16 +222,22 @@ impl Rejilla {
         let mut fuera: Vec<u64> = Vec::new();
         for cx in cx0..=cx1 {
             for cy in cy0..=cy1 {
-                let Some(ids) = self.celdas.get(&(cx, cy)) else {
-                    continue;
-                };
-                for id in ids {
-                    if !fuera.contains(id) {
-                        fuera.push(*id);
-                    }
+                if let Some(ids) = self.celdas.get(&(cx, cy)) {
+                    fuera.extend_from_slice(ids);
                 }
             }
         }
+        // En el orden de la escena, que es el de pintado: quien pinta los
+        // recorre tal cual, y el que va encima tiene que salir despues. Un id
+        // que la rejilla no conoce (no deberia haberlo) va al final, por id.
+        //
+        // Los repetidos (un elemento que cruza varias celdas) se quitan
+        // DESPUES de ordenar, cuando ya estan juntos. Antes se miraba con
+        // `contains` antes de meter cada uno, y eso es cuadratico en lo que
+        // se ve: con cientos de trazos en pantalla era la parte mas cara de
+        // decidir que pintar.
+        fuera.sort_unstable_by_key(|id| (self.posicion.get(id).copied().unwrap_or(usize::MAX), *id));
+        fuera.dedup();
         fuera
     }
 
@@ -416,5 +477,31 @@ mod pruebas {
         // lo que ya funcionaba.
         let e = rect(1, 10.0, 20.0, 30.0, 40.0);
         assert_eq!(super::caja_indexable(&e), e.caja());
+    }
+
+    #[test]
+    fn los_candidatos_salen_en_el_orden_de_pintado_aunque_se_reordene_sin_editar() {
+        // «Traer al frente» cambia el orden de la escena sin tocar la version
+        // de nadie. La rejilla guardaba los ids por orden de edicion, y quien
+        // pinta los recorre tal cual: la escena cambiaba y la pantalla no.
+        let mut escena = Escena::nueva();
+        let a = escena.anadir(rect(0, 0.0, 0.0, 50.0, 50.0));
+        let b = escena.anadir(rect(0, 10.0, 10.0, 50.0, 50.0));
+        let mut rejilla = Rejilla::nueva();
+        rejilla.sincronizar(&escena);
+        let caja = (0.0, 0.0, 100.0, 100.0);
+        assert_eq!(rejilla.candidatos(caja), vec![a, b]);
+
+        let mut sel = crate::seleccion::Seleccion::nueva();
+        sel.poner(a);
+        crate::organizar::al_frente(&mut escena, &sel);
+        rejilla.sincronizar(&escena);
+        assert_eq!(rejilla.candidatos(caja), vec![b, a], "a tiene que ir encima");
+
+        // Caso negativo: editar a `b` (que la reapunta al final de su celda)
+        // no la sube por encima de `a`, que sigue delante en la escena.
+        escena.buscar_mut(b).unwrap().tocar();
+        rejilla.sincronizar(&escena);
+        assert_eq!(rejilla.candidatos(caja), vec![b, a]);
     }
 }

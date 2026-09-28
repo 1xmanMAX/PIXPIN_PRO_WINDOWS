@@ -319,6 +319,34 @@ pub fn sitio_fino(
     finos: &AjustesFinos,
     excluir: &[u64],
 ) -> Option<Anclaje> {
+    sitio_fino_con(elementos, p, zoom, faena, config, finos, &|id| excluir.contains(&id))
+}
+
+/// Como [`sitio`], pero preguntando a `excluye` si un id no cuenta, en vez
+/// de recorrer una lista. Es lo que usa el gesto al mover una seleccion:
+/// con mil elegidos, `excluir.contains` por cada elemento eran dos millones
+/// de comparaciones por aviso del raton, y la seleccion contesta en tiempo
+/// constante.
+pub fn sitio_con(
+    elementos: &[Elemento],
+    p: Punto2,
+    zoom: f32,
+    faena: Faena,
+    config: &Ajustes,
+    excluye: &dyn Fn(u64) -> bool,
+) -> Option<Anclaje> {
+    sitio_fino_con(elementos, p, zoom, faena, config, &AjustesFinos::NINGUNO, excluye)
+}
+
+fn sitio_fino_con(
+    elementos: &[Elemento],
+    p: Punto2,
+    zoom: f32,
+    faena: Faena,
+    config: &Ajustes,
+    finos: &AjustesFinos,
+    excluye: &dyn Fn(u64) -> bool,
+) -> Option<Anclaje> {
     let ajustes = ajustes_para(faena, config);
     if !ajustes.activo {
         return None;
@@ -373,7 +401,7 @@ pub fn sitio_fino(
         // que de verdad pasan cerca del cursor.
         let visibles: Vec<Elemento> = elementos
             .iter()
-            .filter(|e| !excluir.contains(&e.id) && !e.borrado)
+            .filter(|e| !excluye(e.id) && !e.borrado)
             .filter(|e| {
                 let (x0, y0, x1, y1) = e.caja();
                 p.x >= x0 - radio && p.x <= x1 + radio && p.y >= y0 - radio && p.y <= y1 + radio
@@ -412,7 +440,7 @@ pub fn sitio_fino(
     }
 
     for e in elementos {
-        if e.borrado || excluir.contains(&e.id) {
+        if e.borrado || excluye(e.id) {
             continue;
         }
         let (x0, y0, x1, y1) = e.caja();
@@ -469,7 +497,7 @@ pub fn sitio_fino(
     //    la cabecera de esta funcion sobre por que no puja por cercania.
     if mejor.is_none() && finos.bordes {
         for e in elementos {
-            if e.borrado || e.bloqueado || excluir.contains(&e.id) {
+            if e.borrado || e.bloqueado || excluye(e.id) {
                 continue;
             }
             // El marco se queda fuera: delimita hasta donde llega el dibujo,

@@ -5,17 +5,124 @@
 //! soltar, y aparece un circulo limpio que se sigue ajustando al arrastrar.
 //!
 //! El reconocimiento es puro y barato: corre UNA vez, cuando el trazo se
-//! para, sobre sus puntos. Tres formas, de mas a menos segura:
-//! - **Linea**: todos los puntos cerca de la cuerda.
-//! - **Rectangulo**: el trazo simplificado tiene esquinas de casi 90 grados y
-//!   lados derechos. Vale una «L» abierta (subir y luego ir en horizontal),
-//!   que da el rectangulo que esa esquina insinua, y vale cerrado.
-//! - **Elipse**: cerrado (o casi) y los puntos cerca de la elipse inscrita
-//!   en su caja.
+//! para, sobre sus puntos. Es el «gesto de pararse» del movil
+//! (`DrawController.latido`, v0.80.2), en este orden:
+//! - **Compas**: el cursor se clavo sin ir a ningun sitio (todo el trazo
+//!   cabe en `LO_QUE_ES_UN_TOQUE_PX`). Ahi esta el centro, y lo que se
+//!   arrastre despues abre un circulo hasta el cursor.
+//! - **Rectangulo de una «L»** (`GestoDeRectangulo.kt`): una raya, un codo
+//!   de 60 a 120 grados y otra raya. Sale un rectangulo con una esquina
+//!   donde empezo y la otra en el cursor, que sigue tirando de ella.
+//! - Y lo que ya reconocia el PC con el trazo quieto: **linea** (todos los
+//!   puntos cerca de la cuerda), **rectangulo cerrado** (esquinas de casi 90
+//!   grados y lados derechos) y **elipse** (cerrado o casi, cerca de la
+//!   elipse inscrita en su caja).
 //!
-//! Si no es ninguna, el trazo se queda como esta.
+//! Si no es ninguna, el trazo se queda como esta. El movil, en cambio,
+//! endereza en recta cualquier trazo que se para; aqui no, porque con raton
+//! se duda a mitad de una letra mucho mas que con el dedo y convertir un
+//! garabato en raya sin pedirlo es peor que no tener el gesto.
 
 use crate::vector::{Punto2, distancia_a_segmento};
+
+/// Cuanto tiene que quedarse quieto el cursor, dibujando a mano, para que el
+/// trazo salga limpio: `ESPERA_PARA_LA_RECTA` del movil. Es el mismo numero a
+/// proposito: el gesto es el mismo, y un gesto que se cumple a distinto ritmo
+/// en dos aparatos son dos gestos que aprender. Menos, y una raya trazada
+/// despacio se endereza sola en mitad de una curva.
+pub const ESPERA_PARA_LA_FORMA_MS: u64 = 550;
+
+/// Cuanto puede temblar el cursor, en pixeles de pantalla, sin dejar de estar
+/// parado (`TEMBLOR_DEL_DEDO` del movil). Con dos o tres la cuenta no llega a
+/// cumplirse nunca en una mano normal, ni con lapiz de tableta.
+pub const TEMBLOR_PX: f32 = 8.0;
+
+/// Lo que se le deja moverse al trazo, en pixeles de pantalla, para que siga
+/// siendo un punto y no un recorrido: y por tanto un compas y no una raya
+/// (`LO_QUE_ES_UN_TOQUE` del movil). Se mide en pantalla porque lo que decide
+/// si se quiso dibujar o clavar la punta es cuanto se movio la mano, a
+/// cualquier aumento.
+pub const LO_QUE_ES_UN_TOQUE_PX: f32 = 14.0;
+
+/// Lo que tiene que medir cada brazo de la «L», en pixeles de pantalla
+/// (`GestoDeRectangulo.BRAZO_MINIMO`). Menos, y el ganchito del final de una
+/// raya pasa por esquina.
+pub const BRAZO_MINIMO_PX: f32 = 36.0;
+
+/// En que se convierte un trazo que se para.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AlPararse {
+    /// Compas clavado en `centro`: el radio lo pone el cursor.
+    Compas { centro: Punto2 },
+    /// Rectangulo de la «L»: `esquina` fija (donde empezo el trazo), la otra
+    /// la pone el cursor.
+    Ele { esquina: Punto2 },
+    /// Lo que se reconoce por su dibujo entero.
+    Forma(FormaReconocida),
+}
+
+/// El gesto de pararse entero, en el orden del movil: compas, «L», y luego
+/// lo que se reconoce por su forma. `zoom` son pixeles de pantalla por unidad
+/// de escena: los umbrales del gesto son de mano, no de dibujo.
+pub fn al_pararse(puntos: &[Punto2], zoom: f32) -> Option<AlPararse> {
+    let arranque = *puntos.first()?;
+    let z = zoom.max(0.0001);
+    // Parado sin haber ido a ningun sitio: eso es clavar la punta del compas.
+    // Va el primero porque un punto no tiene forma que reconocer, y sin esto
+    // mantener pulsado quieto no hacia nada (el reconocedor pide 20 de largo).
+    if puntos
+        .iter()
+        .all(|p| p.distancia(arranque) * z <= LO_QUE_ES_UN_TOQUE_PX)
+    {
+        return Some(AlPararse::Compas { centro: arranque });
+    }
+    if es_una_ele(puntos, z) {
+        return Some(AlPararse::Ele { esquina: arranque });
+    }
+    reconocer(puntos).map(AlPararse::Forma)
+}
+
+/// Si lo trazado es una «L»: porte de `GestoDeRectangulo.esUnaEle`.
+///
+/// Se simplifica el trazo (lo que tiembla la mano se va y quedan los
+/// vertices) y se pide lo que tiene una L de verdad: dos brazos con cuerpo y
+/// un codo de 60 a 120 grados. No hace falta que vayan de eje: el rectangulo
+/// que sale va derecho igual, de la esquina de salida a la del cursor. Una
+/// raya con una curva suave no llega a codo, y una V cerrada tampoco es L.
+pub fn es_una_ele(puntos: &[Punto2], zoom: f32) -> bool {
+    if puntos.len() < 3 {
+        return false;
+    }
+    let z = zoom.max(0.0001);
+    let largo: f32 = puntos.windows(2).map(|w| w[0].distancia(w[1])).sum();
+    let mut s = simplificar(puntos, (10.0 / z).max(largo * 0.07));
+    // Un codo redondeado deja dos vertices juntos: se funden en uno. Sin
+    // esto, la «L» que la mano dobla en curva (la de casi todo el mundo) no
+    // contaba, que es por lo que en el PC no salia el rectangulo.
+    if s.len() == 4 {
+        let entre = s[2].distancia(s[1]);
+        let corto = s[1].distancia(s[0]).min(s[3].distancia(s[2]));
+        if entre <= corto * 0.35 {
+            let medio = Punto2::nuevo((s[1].x + s[2].x) / 2.0, (s[1].y + s[2].y) / 2.0);
+            s = vec![s[0], medio, s[3]];
+        }
+    }
+    if s.len() != 3 {
+        return false;
+    }
+    let (la, lb) = (s[0].distancia(s[1]), s[1].distancia(s[2]));
+    if la * z < BRAZO_MINIMO_PX || lb * z < BRAZO_MINIMO_PX {
+        return false;
+    }
+    if la.min(lb) < 0.25 * la.max(lb) {
+        return false;
+    }
+    // El coseno entre los brazos (como vectores de ida): 0 es un codo recto,
+    // y hasta 0,5 son 60-120 grados.
+    let (ax, ay) = (s[1].x - s[0].x, s[1].y - s[0].y);
+    let (bx, by) = (s[2].x - s[1].x, s[2].y - s[1].y);
+    ((ax * bx + ay * by) / (la * lb)).abs() <= 0.5
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FormaReconocida {
@@ -109,21 +216,8 @@ pub fn reconocer(puntos: &[Punto2]) -> Option<FormaReconocida> {
     let cerrado = cuerda <= 0.2 * diagonal.max(largo * 0.25);
     let vertices = simplificar(puntos, 0.07 * diagonal);
 
-    // «L» abierta: dos lados rectos, de eje, que forman casi 90 grados.
-    if !cerrado && vertices.len() == 3 {
-        let (a, b, v) = (vertices[0], vertices[1], vertices[2]);
-        let lados_largos = a.distancia(b) >= 0.2 * largo && b.distancia(v) >= 0.2 * largo;
-        if lados_largos
-            && coseno_esquina(a, b, v).abs() < 0.35
-            && casi_de_eje(a, b)
-            && casi_de_eje(b, v)
-        {
-            return Some(FormaReconocida::Rectangulo {
-                caja: caja(&vertices),
-            });
-        }
-    }
-
+    // La «L» abierta ya no se mira aqui: es `es_una_ele`, la del movil, que
+    // da un rectangulo que sigue al cursor en vez de la caja de lo trazado.
     if cerrado {
         // Rectangulo cerrado: 4 esquinas casi rectas. Se admite un vertice de
         // mas por el pequeño gancho al cerrar.
@@ -217,22 +311,95 @@ mod pruebas {
     }
 
     #[test]
-    fn subir_y_luego_ir_en_horizontal_da_el_rectangulo_de_esa_esquina() {
-        // Desde abajo a la izquierda sube, y en la esquina va a la derecha.
-        let mut p = tramo(Punto2::nuevo(0.0, 100.0), Punto2::nuevo(2.0, 0.0), 20);
+    fn bajar_y_luego_ir_en_horizontal_es_una_ele_con_la_esquina_donde_empezo() {
+        // Lo que pidio el usuario: una raya vertical y luego una horizontal.
+        let mut p = tramo(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(2.0, 100.0), 20);
         p.extend(tramo(
-            Punto2::nuevo(2.0, 0.0),
-            Punto2::nuevo(150.0, 3.0),
+            Punto2::nuevo(2.0, 100.0),
+            Punto2::nuevo(150.0, 97.0),
             20,
         ));
-        p.push(Punto2::nuevo(150.0, 3.0));
-        match reconocer(&p) {
-            Some(FormaReconocida::Rectangulo { caja }) => {
-                assert!(caja.0.abs() < 3.0 && caja.1.abs() < 3.0, "{caja:?}");
-                assert!((caja.2 - 150.0).abs() < 3.0 && (caja.3 - 100.0).abs() < 3.0);
-            }
-            otro => panic!("esperaba rectangulo: {otro:?}"),
-        }
+        p.push(Punto2::nuevo(150.0, 97.0));
+        assert_eq!(
+            al_pararse(&p, 1.0),
+            Some(AlPararse::Ele {
+                esquina: Punto2::nuevo(0.0, 0.0)
+            })
+        );
+    }
+
+    #[test]
+    fn una_ele_con_el_codo_redondeado_tambien_cuenta() {
+        // La mano no dobla en seco: el codo es un cuarto de circulo. Sin
+        // fundir los dos vertices del codo, esta L no contaba.
+        let mut p = tramo(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(0.0, 85.0), 17);
+        p.extend((0..=8).map(|i| {
+            let t = std::f32::consts::FRAC_PI_2 * i as f32 / 8.0;
+            Punto2::nuevo(15.0 - 15.0 * t.cos(), 85.0 + 15.0 * t.sin())
+        }));
+        p.extend(tramo(
+            Punto2::nuevo(15.0, 100.0),
+            Punto2::nuevo(140.0, 100.0),
+            25,
+        ));
+        p.push(Punto2::nuevo(140.0, 100.0));
+        assert!(es_una_ele(&p, 1.0));
+    }
+
+    #[test]
+    fn una_ele_diminuta_en_pantalla_no_es_ele() {
+        // Caso negativo: brazos de 20 px de pantalla son el ganchito del
+        // final de una raya, no una esquina. La misma L a zoom 4 si cuenta.
+        let mut p = tramo(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(0.0, 20.0), 10);
+        p.extend(tramo(
+            Punto2::nuevo(0.0, 20.0),
+            Punto2::nuevo(20.0, 20.0),
+            10,
+        ));
+        p.push(Punto2::nuevo(20.0, 20.0));
+        assert!(!es_una_ele(&p, 1.0));
+        assert!(es_una_ele(&p, 4.0));
+    }
+
+    #[test]
+    fn clavar_el_cursor_sin_ir_a_ningun_sitio_es_un_compas() {
+        let temblor = [
+            Punto2::nuevo(50.0, 50.0),
+            Punto2::nuevo(52.0, 51.0),
+            Punto2::nuevo(49.0, 53.0),
+        ];
+        assert_eq!(
+            al_pararse(&temblor, 1.0),
+            Some(AlPararse::Compas {
+                centro: Punto2::nuevo(50.0, 50.0)
+            })
+        );
+        // Un solo punto (pulsar y quedarse quieto, sin avisos de movimiento).
+        assert!(matches!(
+            al_pararse(&temblor[..1], 1.0),
+            Some(AlPararse::Compas { .. })
+        ));
+        // Caso negativo: 30 px de recorrido ya es dibujar, no clavar.
+        let raya = tramo(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(30.0, 0.0), 10);
+        assert!(!matches!(
+            al_pararse(&raya, 1.0),
+            Some(AlPararse::Compas { .. })
+        ));
+    }
+
+    #[test]
+    fn el_toque_del_compas_se_mide_en_pantalla() {
+        // 10 unidades de escena: a zoom 1 es un toque; a zoom 3 son 30 px de
+        // mano, y eso ya es haberse movido.
+        let p = [Punto2::nuevo(0.0, 0.0), Punto2::nuevo(10.0, 0.0)];
+        assert!(matches!(
+            al_pararse(&p, 1.0),
+            Some(AlPararse::Compas { .. })
+        ));
+        assert!(!matches!(
+            al_pararse(&p, 3.0),
+            Some(AlPararse::Compas { .. })
+        ));
     }
 
     #[test]
@@ -266,6 +433,8 @@ mod pruebas {
         ));
         v.push(Punto2::nuevo(100.0, 0.0));
         assert_eq!(reconocer(&v), None);
+        // Ni para el gesto de pararse entero: una V cerrada no es una «L».
+        assert_eq!(al_pararse(&v, 1.0), None);
         // Un zigzag tampoco.
         let zig: Vec<Punto2> = (0..40)
             .map(|i| Punto2::nuevo(i as f32 * 5.0, if i % 2 == 0 { 0.0 } else { 30.0 }))

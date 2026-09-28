@@ -22,11 +22,13 @@
 //! Notepad, y arreglarlo pide una tabla de Unicode que no cabe sin
 //! dependencias nuevas.
 
-/// Cuanto separa dos renglones, en multiplos del tamano de letra.
+/// Cuanto separa dos renglones, en multiplos del tamano de letra, cuando la
+/// familia no trae el suyo (`interlineado_de`). El 1,25 de Excalidraw
+/// (`lineHeight` de Excalifont) y del movil (`DrawFonts.medirTexto`).
 ///
 /// Publica porque quien pinta el cursor necesita el mismo numero: dos
 /// interlineados distintos ponen la barra entre dos lineas.
-pub const INTERLINEADO: f32 = 1.3;
+pub const INTERLINEADO: f32 = 1.25;
 
 /// Lo que se supone que ocupa de ancho un caracter, en multiplos del tamano
 /// de letra. Es un promedio a ojo: el motor no tiene DirectWrite y no puede
@@ -36,9 +38,18 @@ const ANCHO_POR_CARACTER: f32 = 0.62;
 /// El tamano de letra con el que nace un texto nuevo, en unidades del mundo.
 pub const TAM_POR_DEFECTO: f32 = 20.0;
 
+/// El `ancho_max` de un texto que no se parte: a partir de aqui quien pinta
+/// no reparte renglones (`pixpin_render::letras::SIN_PARTIR`, el mismo
+/// numero). Un texto suelto de Excalidraw no se parte nunca.
+pub const SIN_PARTIR: f32 = 1.0e6;
+
 /// La letra con la que nace un texto nuevo. La misma que `Figura::Texto` da
 /// por defecto al leer un fichero sin `familia`.
-pub const FAMILIA_POR_DEFECTO: &str = "Segoe UI";
+pub const FAMILIA_POR_DEFECTO: &str = "Excalifont";
+
+/// La letra de los rotulos que no son texto del usuario (los nombres del
+/// cronograma, las piezas de una ecuacion): la de la interfaz de Windows.
+pub const FAMILIA_DEL_SISTEMA: &str = "Segoe UI";
 
 /// Cuanto se inclina la cursiva, en unidades de sesgo horizontal por unidad de
 /// alto (`SESGO_DE_LA_CURSIVA` del movil).
@@ -111,15 +122,16 @@ pub fn raya_del_tachado(
     x: f32,
     y: f32,
     tam: f32,
+    familia: &str,
     estilo: EstiloDeTexto,
 ) -> Option<RayaDeTachado> {
     if !estilo.tachado || texto.trim().is_empty() || tam <= 0.0 {
         return None;
     }
-    // Sin la holgura de `medida_estimada`: esa existe para dejar sitio a la
-    // barra del cursor, y una raya de tachado que sobresale un caracter por la
-    // derecha se lee como un guion pegado a la palabra.
-    let ancho = texto.trim_end().chars().count() as f32 * tam * ANCHO_POR_CARACTER;
+    // Lo que ocupa lo escrito, medido con su letra si hay con que (sin los
+    // espacios del final: una raya que sobresale por la derecha se lee como
+    // un guion pegado a la palabra).
+    let ancho = ancho_real(texto.trim_end(), tam, familia, estilo);
     if ancho <= 0.0 {
         return None;
     }
@@ -134,62 +146,387 @@ pub fn raya_del_tachado(
 }
 
 // -------------------------------------------------------------------------
-// Las tres letras de Excalidraw, por su numero
+// La alineacion: `textAlign` y `verticalAlign`
+// -------------------------------------------------------------------------
+
+/// **A que lado se pegan los renglones** (`textAlign` de Excalidraw y
+/// `TextAlign` del movil). Las tres palabras son las del fichero, y tienen que
+/// ser exactamente esas: el movil las lee con un `enum` de kotlinx, y una
+/// palabra que no conozca le hace rechazar el dibujo entero.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AlineacionTexto {
+    /// La de siempre, y la que pinta el movil cuando el campo falta.
+    #[default]
+    Izquierda,
+    Centro,
+    Derecha,
+}
+
+impl AlineacionTexto {
+    pub fn palabra(self) -> &'static str {
+        match self {
+            AlineacionTexto::Izquierda => "left",
+            AlineacionTexto::Centro => "center",
+            AlineacionTexto::Derecha => "right",
+        }
+    }
+
+    pub fn desde_palabra(p: &str) -> Option<AlineacionTexto> {
+        Some(match p {
+            "left" => AlineacionTexto::Izquierda,
+            "center" => AlineacionTexto::Centro,
+            "right" => AlineacionTexto::Derecha,
+            _ => return None,
+        })
+    }
+
+    /// Que parte del hueco sobrante va a la izquierda del renglon: nada,
+    /// la mitad o todo. Es la misma cuenta para el renglon dentro de su caja
+    /// y para la caja dentro de su figura.
+    pub fn fraccion(self) -> f32 {
+        match self {
+            AlineacionTexto::Izquierda => 0.0,
+            AlineacionTexto::Centro => 0.5,
+            AlineacionTexto::Derecha => 1.0,
+        }
+    }
+}
+
+/// **A que altura va el rotulo dentro de su figura** (`verticalAlign`). Solo
+/// dice algo en un texto con `containerId`: un texto suelto no tiene hueco
+/// en el que subir o bajar, igual que en Excalidraw.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AlineacionVertical {
+    /// La de fabrica del movil (`ItemStyle.verticalAlign = TOP`).
+    #[default]
+    Arriba,
+    Medio,
+    Abajo,
+}
+
+impl AlineacionVertical {
+    pub fn palabra(self) -> &'static str {
+        match self {
+            AlineacionVertical::Arriba => "top",
+            AlineacionVertical::Medio => "middle",
+            AlineacionVertical::Abajo => "bottom",
+        }
+    }
+
+    pub fn desde_palabra(p: &str) -> Option<AlineacionVertical> {
+        Some(match p {
+            "top" => AlineacionVertical::Arriba,
+            "middle" => AlineacionVertical::Medio,
+            "bottom" => AlineacionVertical::Abajo,
+            _ => return None,
+        })
+    }
+
+    pub fn fraccion(self) -> f32 {
+        match self {
+            AlineacionVertical::Arriba => 0.0,
+            AlineacionVertical::Medio => 0.5,
+            AlineacionVertical::Abajo => 1.0,
+        }
+    }
+}
+
+/// Lo que ocupa un renglon, a ojo y **sin** la holgura del cursor. Es la
+/// medida con la que se aparta cada renglon al centrarlo o pegarlo a la
+/// derecha: con la holgura, un texto a la derecha quedaria despegado del
+/// borde un caracter entero.
+pub fn ancho_de_renglon(renglon: &str, tam: f32) -> f32 {
+    renglon.trim_end().chars().count() as f32 * tam * ANCHO_POR_CARACTER
+}
+
+/// **Cuanto se aparta cada renglon de la izquierda de su caja.**
+///
+/// Como el movil (`Renderer.drawText`): cada renglon se alinea por su cuenta
+/// dentro del ancho de la caja, y no el bloque entero. Asi es como se ve un
+/// parrafo centrado: el renglon corto en medio del largo, no pegado a el.
+///
+/// Cada renglon se mide con su letra (`ancho_real`): con el medidor del
+/// anfitrion, lo que mide DirectWrite; sin el, a ojo. Nunca saca el texto de
+/// su caja: el apartado no baja de cero.
+pub fn apartados_de_renglones(
+    texto: &str,
+    tam: f32,
+    familia: &str,
+    estilo: EstiloDeTexto,
+    ancho_caja: f32,
+    a: AlineacionTexto,
+) -> Vec<f32> {
+    texto
+        .split('\n')
+        .map(|r| ((ancho_caja - ancho_real(r.trim_end(), tam, familia, estilo)) * a.fraccion()).max(0.0))
+        .collect()
+}
+
+// -------------------------------------------------------------------------
+// Las letras, por su numero: las de Excalidraw y las del lienzo de citas
 // -------------------------------------------------------------------------
 
 /// Excalifont, la de a mano. La de por omision.
 pub const FUENTE_EXCALIFONT: u8 = 5;
 /// Nunito, la «normal», para cuando hace falta que se lea limpio.
 pub const FUENTE_NUNITO: u8 = 6;
+/// Lilita One, la gorda de rotular (la cuarta del desplegable de Excalidraw).
+pub const FUENTE_LILITA_ONE: u8 = 7;
 /// Comic Shanns, la monoespaciada.
 pub const FUENTE_COMIC_SHANNS: u8 = 8;
+/// Work Sans, la «Normal» del lienzo de citas.
+pub const FUENTE_WORK_SANS: u8 = 101;
+/// Fraunces, la «Serif» del lienzo de citas.
+pub const FUENTE_FRAUNCES: u8 = 102;
+/// Courier New, la «Maquina» del lienzo de citas (ya viene con Windows).
+pub const FUENTE_COURIER_NEW: u8 = 103;
+/// Caveat, la «Manuscrita» del lienzo de citas.
+pub const FUENTE_CAVEAT: u8 = 104;
+
+/// Una letra que se puede elegir para un texto del lienzo.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Fuente {
+    /// El `fontFamily` que va en el fichero.
+    pub id: u8,
+    /// Con que nombre se pide a DirectWrite, y con cual la guarda
+    /// `Figura::Texto::familia`.
+    pub nombre: &'static str,
+    /// Como la llama quien la usa: el movil y el lienzo de citas.
+    pub etiqueta: &'static str,
+    /// La distancia entre renglones en veces el tamano de letra
+    /// (`lineHeight` de `font-metadata.ts` de Excalidraw).
+    pub interlineado: f32,
+    /// `(ascenso, descenso)` de la cara normal, en em, tal como los da
+    /// DirectWrite (`DWRITE_FONT_METRICS`, medidos con
+    /// `pixpin_render::letras`). Solo hacen falta donde no hay DirectWrite
+    /// que coloque la linea base: el SVG.
+    pub alturas: (f32, f32),
+}
+
+impl Fuente {
+    /// Donde cae la linea base del primer renglon, en veces el tamano de
+    /// letra desde arriba de la caja: la letra centrada en su renglon,
+    /// como la centra CSS y como la pinta `pixpin_render::letras` con el
+    /// interlineado fijo (`getVerticalOffset` de Excalidraw).
+    pub fn linea_base(&self) -> f32 {
+        let (a, d) = self.alturas;
+        a + (self.interlineado - (a + d)) / 2.0
+    }
+}
+
+/// **Las ocho letras del lienzo**, en el orden en que salen en el panel.
+///
+/// Las cuatro primeras son las que ofrece el selector de Excalidraw (las tres
+/// de siempre y Lilita One, del desplegable; las viejas Virgil, Helvetica y
+/// Cascadia estan retiradas alli y aqui solo se leen como alias). Las cuatro
+/// ultimas son las del lienzo de citas del usuario (`LETRAS` de
+/// `tarjetas.js`).
+///
+/// **Los numeros de las cuatro de citas (101 a 104) no son de Excalidraw**, y
+/// a proposito caen fuera de los suyos (1-10, 100 y los de reserva 998, 999 y
+/// 1000): el movil resuelve un numero que no conoce a Excalifont sin
+/// rechazar el dibujo (`ItemStyle.fontFamilyResuelta`) y guarda el numero tal
+/// cual en su `Element`, asi que el texto vuelve al PC con su letra; y
+/// Excalidraw lo pinta con su letra de reserva.
+pub const FUENTES: [Fuente; 8] = [
+    Fuente {
+        id: FUENTE_EXCALIFONT,
+        nombre: "Excalifont",
+        etiqueta: "A mano",
+        interlineado: 1.25,
+        alturas: (0.886, 0.374),
+    },
+    Fuente {
+        id: FUENTE_NUNITO,
+        nombre: "Nunito",
+        etiqueta: "Normal",
+        interlineado: 1.25,
+        alturas: (1.011, 0.353),
+    },
+    Fuente {
+        id: FUENTE_LILITA_ONE,
+        nombre: "Lilita One",
+        etiqueta: "Lilita One",
+        interlineado: 1.15,
+        alturas: (0.923, 0.22),
+    },
+    Fuente {
+        id: FUENTE_COMIC_SHANNS,
+        nombre: "Comic Shanns",
+        etiqueta: "Codigo",
+        interlineado: 1.25,
+        alturas: (1.167, 0.564),
+    },
+    Fuente {
+        id: FUENTE_WORK_SANS,
+        nombre: "Work Sans",
+        etiqueta: "Normal (citas)",
+        interlineado: 1.25,
+        alturas: (0.93, 0.243),
+    },
+    Fuente {
+        id: FUENTE_FRAUNCES,
+        nombre: "Fraunces",
+        etiqueta: "Serif",
+        interlineado: 1.25,
+        alturas: (0.978, 0.255),
+    },
+    Fuente {
+        id: FUENTE_COURIER_NEW,
+        nombre: "Courier New",
+        etiqueta: "Maquina",
+        interlineado: 1.25,
+        alturas: (0.833, 0.3),
+    },
+    Fuente {
+        id: FUENTE_CAVEAT,
+        nombre: "Caveat",
+        etiqueta: "Manuscrita",
+        interlineado: 1.25,
+        alturas: (0.96, 0.3),
+    },
+];
+
+/// La letra del catalogo con ese numero, sin resolver alias.
+pub fn fuente(id: u8) -> Option<&'static Fuente> {
+    FUENTES.iter().find(|f| f.id == id)
+}
+
+/// La letra del catalogo con ese nombre (sin distinguir mayusculas).
+pub fn fuente_por_nombre(nombre: &str) -> Option<&'static Fuente> {
+    let n = nombre.trim();
+    // «Comic Shanns 2» es como la llamaba el movil en sus primeras versiones.
+    let n = if n.eq_ignore_ascii_case("Comic Shanns 2") {
+        "Comic Shanns"
+    } else {
+        n
+    };
+    FUENTES.iter().find(|f| f.nombre.eq_ignore_ascii_case(n))
+}
 
 /// La familia con la que hay que pintar, **resolviendo los alias viejos**.
 ///
-/// Los numeros no son correlativos y **van en el fichero**: 5, 6 y 8, con 1
-/// (Virgil), 2 (Helvetica) y 3 (Cascadia) como alias de los dibujos de antes.
-/// Un dibujo guardado con aquellos numeros tiene que seguir viendose con la
-/// letra que le toca, no caer al valor por omision.
+/// Los numeros no son correlativos y **van en el fichero**: 5, 6, 7 y 8, con
+/// 1 (Virgil), 2 (Helvetica) y 3 (Cascadia) como alias de los dibujos de
+/// antes, y 101 a 104 para las del lienzo de citas. Un dibujo guardado con
+/// aquellos numeros tiene que seguir viendose con la letra que le toca, no
+/// caer al valor por omision.
 pub fn familia_resuelta(id: Option<u8>) -> u8 {
     match id {
-        None | Some(1) | Some(FUENTE_EXCALIFONT) => FUENTE_EXCALIFONT,
-        Some(2) | Some(FUENTE_NUNITO) => FUENTE_NUNITO,
-        Some(3) | Some(FUENTE_COMIC_SHANNS) => FUENTE_COMIC_SHANNS,
+        None | Some(1) => FUENTE_EXCALIFONT,
+        Some(2) => FUENTE_NUNITO,
+        Some(3) => FUENTE_COMIC_SHANNS,
+        Some(n) if fuente(n).is_some() => n,
         _ => FUENTE_EXCALIFONT,
     }
 }
 
-/// El numero de familia que le corresponde a un nombre de fuente de Windows.
+/// El numero de familia que le corresponde a un nombre de fuente.
 ///
 /// **Esto es lo que impide que el movil reabra el texto con otra letra.** Aqui
-/// `Figura::Texto` guarda el nombre de una fuente del sistema («Segoe UI») y
-/// el fichero espera uno de esos tres numeros: escribir el nombre haria que el
-/// movil no reconociera la familia y cayera a la de por omision.
+/// `Figura::Texto` guarda el nombre de la fuente y el fichero espera un
+/// numero: escribir el nombre haria que el movil no reconociera la familia y
+/// cayera a la de por omision.
 ///
-/// No adivina: lo que no es ninguna de las tres cae en Excalifont, que es lo
-/// que hace el movil con un numero que no conoce.
+/// No adivina: lo que no es del catalogo («Segoe UI») cae en Excalifont, que
+/// es lo que hace el movil con un numero que no conoce.
 pub fn numero_de_familia(nombre: &str) -> u8 {
-    let n = nombre.trim();
-    if n.eq_ignore_ascii_case("Nunito") {
-        FUENTE_NUNITO
-    } else if n.eq_ignore_ascii_case("Comic Shanns") || n.eq_ignore_ascii_case("Comic Shanns 2") {
-        FUENTE_COMIC_SHANNS
-    } else {
-        FUENTE_EXCALIFONT
+    fuente_por_nombre(nombre).map_or(FUENTE_EXCALIFONT, |f| f.id)
+}
+
+/// Y al reves: el nombre con el que pedirle esa letra a DirectWrite.
+pub fn nombre_de_familia(id: Option<u8>) -> &'static str {
+    fuente(familia_resuelta(id)).map_or("Excalifont", |f| f.nombre)
+}
+
+/// El interlineado fijo de una familia del catalogo; `None` para las del
+/// sistema (Segoe UI de los rotulos), que siguen con el de su fuente.
+pub fn interlineado_de(familia: &str) -> Option<f32> {
+    fuente_por_nombre(familia).map(|f| f.interlineado)
+}
+
+// -------------------------------------------------------------------------
+// Medir de verdad: el medidor que pone quien tiene DirectWrite
+// -------------------------------------------------------------------------
+
+/// **Lo que mide un texto** con su letra: ancho (con los espacios del final)
+/// y alto. Lo pone el anfitrion, que es quien tiene DirectWrite; el motor es
+/// puro y sin el mide a ojo (`medida_estimada`).
+pub type Medidor =
+    fn(texto: &str, tam: f32, familia: &str, estilo: EstiloDeTexto) -> Option<(f32, f32)>;
+
+static MEDIDOR: std::sync::RwLock<Option<Medidor>> = std::sync::RwLock::new(None);
+
+thread_local! {
+    /// Un medidor solo para este hilo: el de las pruebas, que no pueden
+    /// tocar el global sin pisarse unas a otras.
+    static MEDIDOR_DEL_HILO: std::cell::Cell<Option<Medidor>> = const { std::cell::Cell::new(None) };
+}
+
+/// Pone el medidor de todo el proceso. Lo llama la aplicacion al arrancar,
+/// antes de abrir ningun lienzo.
+pub fn instalar_medidor(m: Medidor) {
+    if let Ok(mut g) = MEDIDOR.write() {
+        *g = Some(m);
     }
 }
 
-/// Y al reves: el nombre con el que pedirle esa letra a Windows.
-///
-/// Si la fuente no esta instalada, quien pinta se queda con la del sistema: es
-/// preferible a que no se vea el texto, que es lo que decide el movil con la
-/// misma disyuntiva.
-pub fn nombre_de_familia(id: Option<u8>) -> &'static str {
-    match familia_resuelta(id) {
-        FUENTE_NUNITO => "Nunito",
-        FUENTE_COMIC_SHANNS => "Comic Shanns",
-        _ => "Excalifont",
+/// Corre `f` con `m` como medidor de este hilo (para las pruebas).
+pub fn con_medidor<R>(m: Medidor, f: impl FnOnce() -> R) -> R {
+    let antes = MEDIDOR_DEL_HILO.with(|c| c.replace(Some(m)));
+    let r = f();
+    MEDIDOR_DEL_HILO.with(|c| c.set(antes));
+    r
+}
+
+fn medidor() -> Option<Medidor> {
+    MEDIDOR_DEL_HILO
+        .with(|c| c.get())
+        .or_else(|| MEDIDOR.read().ok().and_then(|g| *g))
+}
+
+/// Si hay con que medir de verdad.
+pub fn hay_medidor() -> bool {
+    medidor().is_some()
+}
+
+/// El ancho de un renglon con su letra: el de DirectWrite si hay medidor, a
+/// ojo si no. Sin holgura: es donde acaba la ultima letra (o el ultimo
+/// espacio), que es donde va el cursor.
+pub fn ancho_real(renglon: &str, tam: f32, familia: &str, estilo: EstiloDeTexto) -> f32 {
+    if renglon.is_empty() {
+        return 0.0;
     }
+    medidor()
+        .and_then(|m| m(renglon, tam, familia, estilo))
+        .map_or_else(
+            || renglon.chars().count() as f32 * tam * ANCHO_POR_CARACTER,
+            |(w, _)| w,
+        )
+}
+
+/// **La caja de un texto suelto, ajustada a lo escrito**, como la de
+/// Excalidraw con `autoResize`: de ancho, el renglon mas largo medido con su
+/// letra; de alto, renglones por tamano por el interlineado de su familia
+/// (las del sistema, que no tienen uno fijo, lo que diga DirectWrite).
+///
+/// Un renglon vacio mide un espacio (`measureText` de Excalidraw hace lo
+/// mismo): un texto recien abierto tiene que tener donde pulsar y donde
+/// pintar el cursor.
+pub fn medida(texto: &str, tam: f32, familia: &str, estilo: EstiloDeTexto) -> (f32, f32) {
+    let renglones = texto.split('\n').count().max(1);
+    let alto_fijo = interlineado_de(familia).map(|k| renglones as f32 * tam * k);
+    let relleno = texto
+        .split('\n')
+        .map(|r| if r.is_empty() { " " } else { r })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let (ancho, alto) = medidor()
+        .and_then(|m| m(&relleno, tam, familia, estilo))
+        .unwrap_or_else(|| medida_estimada(texto, tam));
+    (ancho, alto_fijo.unwrap_or(alto))
 }
 
 /// Una tecla de las que mueven o borran mientras se escribe.
@@ -401,7 +738,7 @@ mod pruebas_de_estilo {
         let liso = EstiloDeTexto::default();
         assert!(liso.liso());
         assert_eq!(liso.sesgo(), 0.0);
-        assert!(raya_del_tachado("hola", 0.0, 0.0, 20.0, liso).is_none());
+        assert!(raya_del_tachado("hola", 0.0, 0.0, 20.0, "Excalifont", liso).is_none());
     }
 
     #[test]
@@ -428,7 +765,7 @@ mod pruebas_de_estilo {
             ..Default::default()
         };
         let ((x0, y0), (x1, y1), grosor) =
-            raya_del_tachado("hola", 10.0, 100.0, 20.0, t).expect("hay que tachar");
+            raya_del_tachado("hola", 10.0, 100.0, 20.0, "Excalifont", t).expect("hay que tachar");
         assert_eq!(x0, 10.0, "la raya empieza donde el texto");
         assert!(x1 > x0, "la raya no tiene largo");
         assert_eq!(y0, y1, "la raya sale torcida");
@@ -444,9 +781,9 @@ mod pruebas_de_estilo {
             tachado: true,
             ..Default::default()
         };
-        assert!(raya_del_tachado("", 0.0, 0.0, 20.0, t).is_none());
-        assert!(raya_del_tachado("   ", 0.0, 0.0, 20.0, t).is_none());
-        assert!(raya_del_tachado("hola", 0.0, 0.0, 0.0, t).is_none());
+        assert!(raya_del_tachado("", 0.0, 0.0, 20.0, "Excalifont", t).is_none());
+        assert!(raya_del_tachado("   ", 0.0, 0.0, 20.0, "Excalifont", t).is_none());
+        assert!(raya_del_tachado("hola", 0.0, 0.0, 0.0, "Excalifont", t).is_none());
     }
 
     #[test]
@@ -460,21 +797,49 @@ mod pruebas_de_estilo {
         assert_eq!(familia_resuelta(Some(5)), FUENTE_EXCALIFONT);
         assert_eq!(familia_resuelta(Some(6)), FUENTE_NUNITO);
         assert_eq!(familia_resuelta(Some(8)), FUENTE_COMIC_SHANNS);
+        assert_eq!(familia_resuelta(Some(7)), FUENTE_LILITA_ONE);
+        // Las del lienzo de citas se quedan con su numero.
+        for id in [FUENTE_WORK_SANS, FUENTE_FRAUNCES, FUENTE_COURIER_NEW, FUENTE_CAVEAT] {
+            assert_eq!(familia_resuelta(Some(id)), id);
+        }
         // Caso negativo: un numero que no es de nadie cae en la de por
-        // omision, no en un panico ni en un hueco.
+        // omision, no en un panico ni en un hueco. Tampoco el 4 (el hueco
+        // que Excalidraw deja para letras de terceros) ni el 100 (su reserva
+        // china).
         assert_eq!(familia_resuelta(Some(99)), FUENTE_EXCALIFONT);
+        assert_eq!(familia_resuelta(Some(4)), FUENTE_EXCALIFONT);
+        assert_eq!(familia_resuelta(Some(100)), FUENTE_EXCALIFONT);
     }
 
     #[test]
     fn una_fuente_de_windows_no_viaja_al_fichero_con_su_nombre() {
         // **Esto es lo que impide que el movil reabra el texto con otra
-        // letra**: el fichero espera 5, 6 u 8, no «Segoe UI».
+        // letra**: el fichero espera un numero, no «Segoe UI».
         assert_eq!(numero_de_familia("Segoe UI"), FUENTE_EXCALIFONT);
         assert_eq!(numero_de_familia("Nunito"), FUENTE_NUNITO);
         assert_eq!(numero_de_familia("comic shanns"), FUENTE_COMIC_SHANNS);
-        // Y la ida y vuelta es estable para las tres de verdad.
-        for id in [FUENTE_EXCALIFONT, FUENTE_NUNITO, FUENTE_COMIC_SHANNS] {
-            assert_eq!(numero_de_familia(nombre_de_familia(Some(id))), id);
+        assert_eq!(numero_de_familia("Comic Shanns 2"), FUENTE_COMIC_SHANNS);
+        // Y la ida y vuelta es estable para las ocho del catalogo.
+        for f in FUENTES {
+            assert_eq!(numero_de_familia(nombre_de_familia(Some(f.id))), f.id);
+        }
+    }
+
+    #[test]
+    fn los_numeros_de_las_letras_de_citas_no_pisan_los_de_excalidraw() {
+        // Los de Excalidraw (`FONT_FAMILY` y sus reservas): si uno de los
+        // nuestros cayera ahi, excalidraw.com pintaria el texto con otra
+        // letra que si conoce, en vez de con su reserva.
+        let de_excalidraw = [1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 100];
+        for f in &FUENTES[4..] {
+            assert!(!de_excalidraw.contains(&f.id), "{} usa el {}", f.nombre, f.id);
+        }
+        // Y no hay dos con el mismo numero ni el mismo nombre.
+        for (i, a) in FUENTES.iter().enumerate() {
+            for b in &FUENTES[i + 1..] {
+                assert_ne!(a.id, b.id);
+                assert_ne!(a.nombre, b.nombre);
+            }
         }
     }
 }
@@ -626,5 +991,110 @@ mod pruebas {
         let (ancho, alto) = medida_estimada("", TAM_POR_DEFECTO);
         assert!(ancho > 0.0, "ancho {ancho}");
         assert!(alto > 0.0, "alto {alto}");
+    }
+
+    #[test]
+    fn las_palabras_de_la_alineacion_son_las_del_fichero_y_vuelven() {
+        for a in [
+            AlineacionTexto::Izquierda,
+            AlineacionTexto::Centro,
+            AlineacionTexto::Derecha,
+        ] {
+            assert_eq!(AlineacionTexto::desde_palabra(a.palabra()), Some(a));
+        }
+        for v in [
+            AlineacionVertical::Arriba,
+            AlineacionVertical::Medio,
+            AlineacionVertical::Abajo,
+        ] {
+            assert_eq!(AlineacionVertical::desde_palabra(v.palabra()), Some(v));
+        }
+        assert_eq!(AlineacionTexto::Centro.palabra(), "center");
+        assert_eq!(AlineacionVertical::Medio.palabra(), "middle");
+        // Caso negativo: una palabra de otro sitio no se adivina.
+        assert_eq!(AlineacionTexto::desde_palabra("justify"), None);
+        assert_eq!(AlineacionVertical::desde_palabra("center"), None);
+    }
+
+    #[test]
+    fn centrado_el_renglon_corto_se_aparta_la_mitad_de_lo_que_le_sobra() {
+        // Cada caracter mide 6,2 con letra 10 (a ojo, sin medidor).
+        let apartados = |t: &str, caja: f32, a: AlineacionTexto| {
+            apartados_de_renglones(t, 10.0, "Excalifont", EstiloDeTexto::default(), caja, a)
+        };
+        let a = apartados("abcd\nab", 24.8, AlineacionTexto::Centro);
+        assert!(a[0].abs() < 1e-3, "el largo llena la caja: {a:?}");
+        assert!((a[1] - 6.2).abs() < 1e-3, "{a:?}");
+        let d = apartados("abcd\nab", 24.8, AlineacionTexto::Derecha);
+        assert!((d[1] - 12.4).abs() < 1e-3, "{d:?}");
+        // Caso negativo: a la izquierda nadie se aparta, y un renglon mas
+        // ancho que su caja no se sale por la izquierda.
+        let i = apartados("abcd\nab", 24.8, AlineacionTexto::Izquierda);
+        assert_eq!(i, vec![0.0, 0.0]);
+        let ancho = apartados("abcdefgh", 10.0, AlineacionTexto::Derecha);
+        assert_eq!(ancho, vec![0.0]);
+    }
+
+    /// Un medidor de mentira: 10 por letra (el espacio tambien) y un alto
+    /// de sistema de 1,5 por renglon, para que se note si se usa.
+    fn medidor_de_prueba(
+        t: &str,
+        tam: f32,
+        _familia: &str,
+        estilo: EstiloDeTexto,
+    ) -> Option<(f32, f32)> {
+        let largo = t.split('\n').map(|r| r.chars().count()).max().unwrap_or(0) as f32;
+        let gordo = if estilo.negrita { 2.0 } else { 1.0 };
+        Some((largo * 10.0 * gordo, t.split('\n').count() as f32 * tam * 1.5))
+    }
+
+    #[test]
+    fn con_medidor_la_caja_mide_lo_escrito_y_no_un_caracter_de_mas() {
+        con_medidor(medidor_de_prueba, || {
+            let (ancho, alto) = medida("hola", 20.0, "Excalifont", EstiloDeTexto::default());
+            assert_eq!(ancho, 40.0, "ni la holgura del cursor ni el 0,62 a ojo");
+            assert_eq!(alto, 25.0, "un renglon de Excalifont: 20 x 1,25");
+            // Dos renglones: manda el largo, y el alto es el interlineado fijo.
+            let (a2, h2) = medida("hola\nhol", 20.0, "Excalifont", EstiloDeTexto::default());
+            assert_eq!((a2, h2), (40.0, 50.0));
+            // La negrita pasa hasta el medidor.
+            let negrita = EstiloDeTexto {
+                negrita: true,
+                ..Default::default()
+            };
+            assert_eq!(medida("hola", 20.0, "Excalifont", negrita).0, 80.0);
+        });
+    }
+
+    #[test]
+    fn un_renglon_vacio_mide_un_espacio_y_el_cursor_empieza_en_cero() {
+        con_medidor(medidor_de_prueba, || {
+            let (ancho, alto) = medida("", 20.0, "Nunito", EstiloDeTexto::default());
+            assert_eq!(ancho, 10.0, "un espacio");
+            assert!(alto > 0.0);
+            // Caso negativo: el ancho de NADA delante del cursor es cero, no
+            // un espacio; si no la barra saldria despegada del borde.
+            assert_eq!(ancho_real("", 20.0, "Nunito", EstiloDeTexto::default()), 0.0);
+        });
+    }
+
+    #[test]
+    fn una_letra_del_sistema_toma_el_alto_de_directwrite_y_no_el_fijo() {
+        con_medidor(medidor_de_prueba, || {
+            let (_, alto) = medida("a\nb", 20.0, "Segoe UI", EstiloDeTexto::default());
+            assert_eq!(alto, 60.0, "el 1,5 del medidor, no el 1,25");
+        });
+        // Y Lilita One lleva el suyo, el 1,15 de Excalidraw.
+        let (_, lilita) = medida("a", 20.0, "Lilita One", EstiloDeTexto::default());
+        assert!((lilita - 23.0).abs() < 1e-3, "{lilita}");
+    }
+
+    #[test]
+    fn sin_medidor_se_mide_a_ojo_como_siempre() {
+        // Caso negativo: el motor puro no tiene DirectWrite y no puede
+        // quedarse sin caja.
+        assert!(!hay_medidor(), "una prueba dejo un medidor puesto en este hilo");
+        let (ancho, _) = medida("hola", 10.0, "Excalifont", EstiloDeTexto::default());
+        assert_eq!(ancho, medida_estimada("hola", 10.0).0);
     }
 }

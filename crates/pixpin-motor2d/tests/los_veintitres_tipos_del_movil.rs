@@ -49,13 +49,11 @@ const LOS_VEINTITRES: [&str; 23] = [
 /// aqui, lo que se promete de el es que vuelve intacto. Cuando su grupo le
 /// ensene a dibujarse, hay que quitarlo de aqui — y la prueba de mas abajo
 /// obliga a ello.
-const LOS_AJENOS: [&str; 6] = [
-    "pixpin-lupa",
+const LOS_AJENOS: [&str; 4] = [
     "pixpin-axes",
     "pixpin-number-line",
     "pixpin-space",
     "pixpin-solid",
-    "pixpin-gantt",
 ];
 
 /// Lo unico que puede cambiar al mover un elemento.
@@ -333,7 +331,7 @@ fn abrir_y_guardar_sin_tocar_nada_devuelve_los_veintitres_byte_a_byte() {
 }
 
 #[test]
-fn el_pc_sabe_dibujar_diecisiete_de_los_veintitres_y_los_otros_seis_viajan() {
+fn el_pc_sabe_dibujar_diecinueve_de_los_veintitres_y_los_otros_cuatro_viajan() {
     let l = leer(&lienzo_con_los_veintitres()).unwrap();
     let mut ajenos = Vec::new();
     for (entrada, (tipo, _)) in l
@@ -353,7 +351,7 @@ fn el_pc_sabe_dibujar_diecisiete_de_los_veintitres_y_los_otros_seis_viajan() {
         "la lista de tipos que el PC todavia no dibuja ya no cuadra: \
          si un grupo acaba de ensenarle uno, quitalo de LOS_AJENOS"
     );
-    assert_eq!(l.cuantos_ajenos(), 6);
+    assert_eq!(l.cuantos_ajenos(), LOS_AJENOS.len());
 }
 
 #[test]

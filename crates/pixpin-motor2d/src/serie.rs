@@ -79,6 +79,33 @@ pub fn nuevo(
     .con_caja(x, y, ancho, alto)
 }
 
+
+/// El numero mide el radio por esto (`SERIAL_TEXT_RATIO = 1.25`).
+pub const TEXTO_POR_RADIO: f32 = 1.25;
+
+/// La letra del numero: la elegida en el panel (`fontFamily`, en los
+/// extras) o, sin elegir, la del sistema en negrita, que es lo que pinta el
+/// movil (`paint.reset()` deja la de Android).
+pub fn familia_de(e: &Elemento) -> String {
+    e.extras
+        .familia
+        .clone()
+        .unwrap_or_else(|| "Segoe UI".to_string())
+}
+
+/// **Blanco o negro, lo que se lea sobre `fondo`** (`contrastingTextColor`
+/// del movil: luminancia 0,299/0,587/0,114 y el corte en 150 de 255). Con la
+/// misma transparencia que el disco.
+pub fn tinta_sobre(fondo: crate::elemento::ColorRgba) -> crate::elemento::ColorRgba {
+    let luz = 0.299 * fondo.r + 0.587 * fondo.g + 0.114 * fondo.b;
+    let v = if luz > 150.0 / 255.0 { 0.0 } else { 1.0 };
+    crate::elemento::ColorRgba {
+        r: v,
+        g: v,
+        b: v,
+        a: fondo.a,
+    }
+}
 /// Pequeno ayudante: `..modelo.clone()` pisa la caja, asi que se vuelve a
 /// poner. Es feo de leer en linea y por eso esta con nombre.
 trait ConCaja {
@@ -165,5 +192,26 @@ mod pruebas {
         assert_eq!(e.ancho, 18.0, "la caja la manda el tamano de letra");
         assert_eq!(e.x, 1.0);
         assert_eq!(e.id, 0, "los identificadores los reparte la escena");
+    }
+
+    #[test]
+    fn sobre_un_disco_oscuro_el_numero_va_en_blanco_y_sobre_uno_claro_en_negro() {
+        use crate::elemento::ColorRgba;
+        let negro = tinta_sobre(ColorRgba::opaco(0.12, 0.12, 0.12));
+        assert_eq!((negro.r, negro.g, negro.b), (1.0, 1.0, 1.0));
+        // Caso negativo: sobre amarillo un numero blanco no se leeria.
+        let amarillo = tinta_sobre(ColorRgba::opaco(1.0, 0.85, 0.0));
+        assert_eq!((amarillo.r, amarillo.g, amarillo.b), (0.0, 0.0, 0.0));
+        // Con la transparencia del disco.
+        let medio = tinta_sobre(ColorRgba { a: 0.5, ..ColorRgba::opaco(0.0, 0.0, 0.0) });
+        assert_eq!(medio.a, 0.5);
+    }
+
+    #[test]
+    fn el_numero_va_en_la_letra_elegida_y_sin_elegir_en_la_del_sistema() {
+        let mut e = serie(1);
+        assert_eq!(familia_de(&e), "Segoe UI");
+        e.extras.familia = Some("Caveat".into());
+        assert_eq!(familia_de(&e), "Caveat");
     }
 }

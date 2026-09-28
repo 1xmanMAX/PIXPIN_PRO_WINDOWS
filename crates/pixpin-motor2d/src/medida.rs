@@ -80,10 +80,14 @@ pub fn longitud_de(e: &Elemento) -> f32 {
     }
 }
 
-/// Hacia donde va, en grados desde la horizontal.
+/// Hacia donde va, en grados **como se leen en un plano**: cero a la derecha
+/// y creciendo hacia arriba (`anguloDe` del movil, `Medida.kt`).
 ///
-/// La `y` crece hacia abajo, asi que bajar a la derecha son 45 grados
-/// positivos. Es la misma convencion que el resto del motor.
+/// La `y` de la pantalla crece hacia abajo, asi que el `atan2` crudo va al
+/// reves de lo que dice cualquiera al mirar el dibujo: se le da la vuelta
+/// aqui. Antes se dejaba crudo (bajar a la derecha eran 45 positivos) y la
+/// misma cota decia «30°» en el movil y «-30°» aqui; y quien dicta «30°»
+/// quiere treinta grados hacia arriba, no hacia abajo.
 ///
 /// Los puntos de `e` estan en marco LOCAL: quien pinta (`pintado.rs:353`) y
 /// quien pica (`impacto.rs:28`) aplican `e.angulo` por su cuenta. Si esta
@@ -97,7 +101,7 @@ pub fn angulo_de(e: &Elemento) -> f32 {
         Some((a, b)) => {
             let d = b.restar(a);
             let local = d.y.atan2(d.x).to_degrees();
-            normalizar_grados(local + e.angulo.to_degrees())
+            normalizar_grados(-(local + e.angulo.to_degrees()))
         }
         None => 0.0,
     }
@@ -190,6 +194,48 @@ pub fn con_longitud(e: &mut Elemento, largo_px_deseado: f32) {
     let factor = largo_px_deseado / actual;
     let nuevo = Punto2::nuevo(a.x + (b.x - a.x) * factor, a.y + (b.y - a.y) * factor);
     poner_extremos(e, a, nuevo);
+}
+
+/// **La misma raya con el largo y el angulo que se dicten, anclada por donde
+/// empieza** (`conLargoYAngulo` del movil).
+///
+/// Ese anclaje es lo que la hace servir: dibujando a mano se acierta el sitio
+/// donde empieza una medida —una esquina, un cruce— y nunca el largo ni el
+/// angulo. `grados` va como en un plano (ver [`angulo_de`]). Los intermedios
+/// de una polilinea se pierden a proposito: con dos numeros se dice «de aqui
+/// hasta alla», y eso es una recta. Sin nada que hacer (largo no positivo,
+/// numeros que no lo son) la deja como estaba.
+pub fn con_largo_y_angulo(e: &mut Elemento, largo_px: f32, grados: f32) {
+    if !largo_px.is_finite() || largo_px <= 0.0 || !grados.is_finite() {
+        return;
+    }
+    let Some(inicio) = crate::nudos::vertices_en_el_mundo(e).first().copied() else {
+        return;
+    };
+    let rad = (-normalizar_grados(grados)).to_radians();
+    let fin = Punto2::nuevo(inicio.x + largo_px * rad.cos(), inicio.y + largo_px * rad.sin());
+    // El giro va ya en los puntos: con el angulo puesto se contaria dos veces.
+    e.angulo = 0.0;
+    poner_extremos(e, inicio, fin);
+    // Cambiar el largo o el angulo suelta los anclajes: la punta ya no esta
+    // donde estaba.
+    e.extras.enganche_inicio = None;
+    e.extras.enganche_fin = None;
+}
+
+/// El camino de vuelta de lo tecleado: de unidades de la escala a pixeles de
+/// escena (`largoEnPixeles`). Sin escala valida, lo tecleado ya son pixeles.
+pub fn largo_en_pixeles(valor: f32, escala: Option<&Escala>) -> f32 {
+    match escala.filter(|e| e.valida()) {
+        Some(e) => valor / e.unidades_por_pixel,
+        None => valor,
+    }
+}
+
+/// Lo que hay que teclear para ver la medida de `e`: en unidades si hay
+/// escala, en pixeles si no (`largoEnUnidades`).
+pub fn largo_en_unidades(e: &Elemento, escala: Option<&Escala>) -> f32 {
+    medida_de(e, escala).unwrap_or_else(|| longitud_de(e))
 }
 
 /// Los dos extremos de un elemento con puntos, si los tiene.
@@ -345,9 +391,12 @@ mod pruebas {
         let recta = cota(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(10.0, 0.0));
         assert!(angulo_de(&recta).abs() < 1e-3, "horizontal es cero");
 
-        // La y crece hacia abajo, asi que bajar a la derecha es positivo.
+        // Como en un plano y en el movil: bajar a la derecha es negativo,
+        // subir, positivo (la y de la pantalla crece hacia abajo).
         let baja = cota(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(10.0, 10.0));
-        assert!((angulo_de(&baja) - 45.0).abs() < 1e-3);
+        assert!((angulo_de(&baja) + 45.0).abs() < 1e-3);
+        let sube = cota(Punto2::nuevo(0.0, 0.0), Punto2::nuevo(10.0, -10.0));
+        assert!((angulo_de(&sube) - 45.0).abs() < 1e-3);
     }
 
     #[test]
@@ -501,5 +550,76 @@ mod pruebas {
         };
         assert!(!mala.valida());
         assert_eq!(texto_de_medida(245.0, Some(&mala), ','), "245 px");
+    }
+}
+
+#[cfg(test)]
+mod pruebas_dictar {
+    //! **Dictarle a una cota cuanto mide y hacia donde va** (`conLargoYAngulo`
+    //! del movil).
+    use super::*;
+
+    fn raya(a: (f32, f32), b: (f32, f32)) -> Elemento {
+        Elemento {
+            figura: Figura::Cota {
+                puntos: vec![Punto2::nuevo(a.0, a.1), Punto2::nuevo(b.0, b.1)],
+            },
+            x: a.0.min(b.0),
+            y: a.1.min(b.1),
+            ancho: (b.0 - a.0).abs(),
+            alto: (b.1 - a.1).abs(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn dictar_largo_y_angulo_deja_la_raya_anclada_por_donde_empieza() {
+        let mut c = raya((10.0, 10.0), (57.0, 23.0));
+        con_largo_y_angulo(&mut c, 50.0, 90.0);
+        let p = c.puntos().unwrap();
+        assert_eq!(p[0], Punto2::nuevo(10.0, 10.0), "se movio el principio");
+        // Noventa grados es hacia ARRIBA, como en un plano.
+        assert!((p[1].x - 10.0).abs() < 1e-3 && (p[1].y + 40.0).abs() < 1e-3, "{:?}", p[1]);
+        assert!((longitud_de(&c) - 50.0).abs() < 1e-3);
+        assert!((angulo_de(&c) - 90.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn una_raya_girada_se_dicta_desde_donde_se_ve_su_principio() {
+        let mut c = raya((0.0, 0.0), (100.0, 0.0));
+        c.angulo = std::f32::consts::FRAC_PI_2;
+        let visto = crate::nudos::vertices_en_el_mundo(&c)[0];
+        con_largo_y_angulo(&mut c, 30.0, 0.0);
+        assert_eq!(c.angulo, 0.0);
+        let p = c.puntos().unwrap();
+        assert!(p[0].distancia(visto) < 1e-3, "{:?} y {visto:?}", p[0]);
+        assert!((angulo_de(&c)).abs() < 1e-3);
+    }
+
+    #[test]
+    fn un_largo_imposible_deja_la_cota_como_estaba() {
+        let antes = raya((0.0, 0.0), (30.0, 40.0));
+        for largo in [0.0, -5.0, f32::NAN, f32::INFINITY] {
+            let mut c = antes.clone();
+            con_largo_y_angulo(&mut c, largo, 10.0);
+            assert_eq!(c, antes, "{largo}");
+        }
+        let mut c = antes.clone();
+        con_largo_y_angulo(&mut c, 10.0, f32::NAN);
+        assert_eq!(c, antes);
+    }
+
+    #[test]
+    fn lo_tecleado_se_pasa_a_pixeles_con_la_escala_y_sin_ella_ya_son_pixeles() {
+        let e = Escala {
+            unidades_por_pixel: 0.01,
+            unidad: "m".into(),
+            decimales: 2,
+        };
+        assert!((largo_en_pixeles(2.0, Some(&e)) - 200.0).abs() < 1e-3);
+        assert_eq!(largo_en_pixeles(2.0, None), 2.0);
+        let c = raya((0.0, 0.0), (300.0, 400.0));
+        assert!((largo_en_unidades(&c, Some(&e)) - 5.0).abs() < 1e-4);
+        assert_eq!(largo_en_unidades(&c, None), 500.0);
     }
 }

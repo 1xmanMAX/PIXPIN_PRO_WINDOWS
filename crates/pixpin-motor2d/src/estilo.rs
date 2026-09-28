@@ -31,6 +31,13 @@ impl NivelGrosor {
         }
     }
 
+    /// El grosor del resaltador: el del lapiz del movil (la mitad del de las
+    /// formas, `freedrawWidthFor`) por `ENGORDE_DEL_MARCADOR` (5). Medio =
+    /// 2 / 2 * 5 = 5, que su tinta pinta a unos 30 de ancho, como el movil.
+    pub fn de_resaltador(self) -> f32 {
+        self.de_forma() / 2.0 * crate::tinta::ENGORDE_DEL_MARCADOR
+    }
+
     /// El `strokeWidth` del lapiz, que la tinta multiplica por su factor.
     pub fn de_tinta(self) -> f32 {
         match self {
@@ -48,6 +55,11 @@ impl NivelGrosor {
                 crate::tinta::GROSOR_FINO,
                 crate::tinta::GROSOR_MEDIO,
                 crate::tinta::GROSOR_GRUESO,
+            ),
+            Figura::Resaltador { .. } => (
+                NivelGrosor::Fino.de_resaltador(),
+                NivelGrosor::Medio.de_resaltador(),
+                NivelGrosor::Grueso.de_resaltador(),
             ),
             _ => (1.0, 2.0, 4.0),
         };
@@ -80,6 +92,43 @@ pub struct EstiloDibujo {
     /// color y no con la herramienta, porque es la otra mitad de «de que
     /// color va esto» (misma razon que en el movil).
     pub material: MaterialTinta,
+    /// **Lo que Excalidraw recuerda aparte para lo siguiente**
+    /// (`currentItemRoundness`, `currentItemArrowType`,
+    /// `currentItemStart/EndArrowhead`, `currentItemFontFamily`,
+    /// `currentItemFontSize`). Sin esto, elegir «Bordes: redondo» sin nada
+    /// elegido no hacia nada: la figura nueva nacia en pico porque
+    /// `gesto::nuevo_elemento` solo miraba el estilo comun.
+    ///
+    /// Esquinas redondeadas para el proximo rectangulo o rombo.
+    pub redondo: bool,
+    /// La proxima flecha, de codos.
+    pub codos: bool,
+    pub punta_inicio: crate::formas::TipoPunta,
+    pub punta_fin: crate::formas::TipoPunta,
+    /// El numero de familia del proximo texto (5, 6 u 8). `None` = la de
+    /// siempre (`texto::FAMILIA_POR_DEFECTO`): hasta que alguien elija una,
+    /// el texto nuevo nace igual que antes de existir este campo.
+    pub familia: Option<u8>,
+    /// El `fontSize` del proximo texto.
+    pub tamano_letra: f32,
+    /// La proxima flecha, curva (`currentItemArrowType: "round"`). Aparte de
+    /// `redondo` a proposito: en Excalidraw el tipo de flecha y los bordes
+    /// son dos «actuales» distintos, y redondear rectangulos no tiene por
+    /// que curvar la proxima flecha.
+    pub curva: bool,
+    /// Los renglones del proximo texto (`currentItemTextAlign`).
+    pub alineacion: crate::texto::AlineacionTexto,
+    /// Y su altura dentro de una figura (`verticalAlign` del estilo del
+    /// movil, que tambien lo guarda para lo siguiente).
+    pub alineacion_vertical: crate::texto::AlineacionVertical,
+    /// **El proximo mosaico desenfoca en vez de pixelar** (`mosaicBlur` del
+    /// `ItemStyle` del movil).
+    pub desenfoque: bool,
+    /// **Cuanto agranda la proxima lupa** (`ItemStyle.aumento`, el doble).
+    pub aumento: f32,
+    /// **Con que senala la proxima lupa de donde sale** (`ItemStyle.guia`, la
+    /// flecha).
+    pub guia: crate::lupa_elemento::GuiaDeLupa,
 }
 
 impl Default for EstiloDibujo {
@@ -96,6 +145,22 @@ impl Default for EstiloDibujo {
             rugosidad: 1.0,
             opacidad: 1.0,
             material: MaterialTinta::Lisa,
+            // En pico, como hasta ahora. Excalidraw nace redondo fuera de
+            // sus pruebas, pero cambiarlo aqui cambiaria el aspecto de todo
+            // lo que el usuario dibuja sin que lo haya pedido.
+            redondo: false,
+            codos: false,
+            punta_inicio: crate::formas::TipoPunta::Ninguna,
+            punta_fin: crate::formas::TipoPunta::Flecha,
+            familia: None,
+            tamano_letra: crate::texto::TAM_POR_DEFECTO,
+            // Recta, como hasta ahora: lo mismo que con los bordes.
+            curva: false,
+            alineacion: crate::texto::AlineacionTexto::Izquierda,
+            alineacion_vertical: crate::texto::AlineacionVertical::Arriba,
+            desenfoque: false,
+            aumento: crate::lupa_elemento::AUMENTO_POR_DEFECTO,
+            guia: crate::lupa_elemento::GuiaDeLupa::Flecha,
         }
     }
 }
@@ -128,12 +193,75 @@ impl EstiloDibujo {
             CambioEstilo::Material(m) => self.material = m,
         }
     }
+
+    /// Deja un [`CambioForma`] como el valor de lo proximo que se dibuje,
+    /// como hace Excalidraw con cada `currentItem*`. La presion no esta: el
+    /// lapiz la lleva en `Gesto::variabilidad`, que es anterior a esto.
+    pub fn aplicar_forma(&mut self, cambio: CambioForma) {
+        match cambio {
+            CambioForma::Bordes { redondo } => self.redondo = redondo,
+            CambioForma::Codos(v) => self.codos = v,
+            CambioForma::PuntaInicio(t) => self.punta_inicio = t,
+            CambioForma::PuntaFin(t) => self.punta_fin = t,
+            CambioForma::Familia(n) => {
+                self.familia = Some(crate::texto::familia_resuelta(Some(n)));
+            }
+            CambioForma::TamanoLetra(t) => self.tamano_letra = t.max(1.0),
+            CambioForma::Presion(_) => {}
+            // Los tres tipos se excluyen: una flecha no es curva y de codos
+            // a la vez, asi que elegir uno apaga los otros dos.
+            CambioForma::TipoFlecha(t) => {
+                self.codos = t == TipoFlecha::Codos;
+                self.curva = t == TipoFlecha::Curva;
+            }
+            CambioForma::Alineacion(a) => self.alineacion = a,
+            CambioForma::AlineacionVertical(v) => self.alineacion_vertical = v,
+            CambioForma::Desenfoque(v) => self.desenfoque = v,
+            CambioForma::AumentoLupa(z) => {
+                self.aumento = z.clamp(
+                    crate::lupa_elemento::AUMENTO_MINIMO,
+                    crate::lupa_elemento::AUMENTO_MAXIMO,
+                )
+            }
+            CambioForma::GuiaLupa(g) => self.guia = g,
+            // Solo con un foco elegido: el foco nace de una figura con los de
+            // fabrica del movil.
+            CambioForma::Oscurecer(_) | CambioForma::ZonaFoco(_) => {}
+        }
+    }
+}
+
+/// **Los tres tipos de flecha de Excalidraw** (`currentItemArrowType`):
+/// afilada, curva y de codos.
+///
+/// En el fichero son dos campos sueltos —`elbowed` y `roundness`— y eso deja
+/// estados que no significan nada, como «de codos y curva a la vez». Aqui se
+/// vuelven tres opciones, que es como se piensan y como las ofrece el panel
+/// del movil (`FormaDeFlecha`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TipoFlecha {
+    Afilada,
+    Curva,
+    Codos,
+}
+
+impl TipoFlecha {
+    /// El tipo de una flecha. `None` si no es una flecha.
+    pub fn de(e: &crate::elemento::Elemento) -> Option<TipoFlecha> {
+        match &e.figura {
+            Figura::Flecha { codos: true, .. } => Some(TipoFlecha::Codos),
+            Figura::Flecha { .. } if e.redondo => Some(TipoFlecha::Curva),
+            Figura::Flecha { .. } => Some(TipoFlecha::Afilada),
+            _ => None,
+        }
+    }
 }
 
 /// El grosor que tendria `figura` con el nivel `g`.
 fn grosor_para(figura: &Figura, g: NivelGrosor) -> f32 {
     match figura {
         Figura::Lapiz { .. } => g.de_tinta(),
+        Figura::Resaltador { .. } => g.de_resaltador(),
         _ => g.de_forma(),
     }
 }
@@ -181,6 +309,393 @@ pub fn aplicar_a(escena: &mut Escena, sel: &Seleccion, cambio: CambioEstilo) {
         }
     }
     escena.cerrar_paso();
+}
+
+// -------------------------------------------------------------------------
+// Lo que no es estilo comun: bordes, flechas, letra y presion
+// -------------------------------------------------------------------------
+
+/// Los mandos del panel que solo tienen sentido para UN tipo de figura:
+/// las esquinas del recuadro, las puntas y el codo de la flecha, la letra
+/// del texto y la pluma del lapiz.
+///
+/// Van aparte de [`CambioEstilo`] porque cada uno solo lo admiten algunas
+/// figuras ([`CambioForma::admite`]). Tambien son un «actual», como en
+/// Excalidraw: [`EstiloDibujo::aplicar_forma`] los deja para lo proximo que
+/// se dibuje y `gesto::nuevo_elemento` los lee.
+///
+/// Los valores son los del formato de Excalidraw, para que lo cambiado aqui
+/// viaje al movil tal cual: `roundness`, `elbowed`, `startArrowhead`,
+/// `endArrowhead`, `fontFamily` (5, 6 u 8), `fontSize` y
+/// `strokeOptions.variability`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CambioForma {
+    /// Esquinas redondeadas (`roundness`) o en pico.
+    Bordes {
+        redondo: bool,
+    },
+    /// Flecha de codos (`elbowed`) o recta.
+    Codos(bool),
+    PuntaInicio(crate::formas::TipoPunta),
+    PuntaFin(crate::formas::TipoPunta),
+    /// El numero de familia del fichero: 5 a mano, 6 normal, 8 codigo.
+    Familia(u8),
+    /// El `fontSize`: 16, 20, 28 o 36 en el panel de Excalidraw.
+    TamanoLetra(f32),
+    /// Pluma constante o variable del lapiz.
+    Presion(crate::tinta::Variabilidad),
+    /// Afilada, curva (`roundness`) o de codos (`elbowed`): los tres botones
+    /// de «Tipo de flecha». `Codos` sigue existiendo para quien solo quiere
+    /// el interruptor; el panel usa este, que no deja estados a medias.
+    TipoFlecha(TipoFlecha),
+    /// Los renglones a la izquierda, al centro o a la derecha (`textAlign`).
+    Alineacion(crate::texto::AlineacionTexto),
+    /// El rotulo arriba, en medio o abajo de su figura (`verticalAlign`).
+    AlineacionVertical(crate::texto::AlineacionVertical),
+    /// **Pixelar o desenfocar** un mosaico (`Propiedad.MOSAICO`, `mosaicBlur`).
+    Desenfoque(bool),
+    /// **Cuanto agranda una lupa** (`Propiedad.LUPA`): crece el cristal desde
+    /// su centro y lo mirado no se mueve (`conAumento`).
+    AumentoLupa(f32),
+    /// **Con que senala una lupa** de donde sale lo que ensena.
+    GuiaLupa(crate::lupa_elemento::GuiaDeLupa),
+    /// **Cuanto oscurece un foco** lo de su anillo, en por ciento (10-90,
+    /// `Propiedad.OSCURECER` del movil).
+    Oscurecer(u8),
+    /// **Que parte de su marco ocupa el hueco de un foco** (`Propiedad.ZONA`,
+    /// `conZona`): el marco no se mueve, crece o mengua lo iluminado.
+    ZonaFoco(f32),
+}
+
+impl CambioForma {
+    /// Si esta figura admite el cambio. Es el filtro que deja cambiar una
+    /// seleccion mezclada sin estropear lo que no lo admite: poner punta a un
+    /// rectangulo no significa nada, y pasarlo a «de codos» tampoco.
+    ///
+    /// Los bordes, solo en rectangulo y rombo: son las dos figuras que
+    /// `pintado.rs` sabe redondear, con cualquier rugosidad. La linea y la
+    /// imagen tambien llevan `roundness` en Excalidraw, pero aqui cambiarlo
+    /// no se veria, y un boton que no cambia nada de lo que se ve es un boton
+    /// que miente.
+    pub fn admite(&self, figura: &Figura) -> bool {
+        match self {
+            CambioForma::Bordes { .. } => matches!(figura, Figura::Rectangulo | Figura::Rombo),
+            CambioForma::Codos(_)
+            | CambioForma::PuntaInicio(_)
+            | CambioForma::PuntaFin(_)
+            | CambioForma::TipoFlecha(_) => matches!(figura, Figura::Flecha { .. }),
+            // La vertical tambien la admite un texto suelto, como en
+            // Excalidraw: se guarda y cuenta en cuanto se meta en una caja.
+            // **La letra, en todo lo que tiene letra** (`fontFamily` del movil,
+            // que la guarda tambien en la cota, el numero de serie, el punto y
+            // el cronograma): el pedido del usuario fue «elegir el tipo de letra
+            // en todo lo que tenga letra».
+            CambioForma::Familia(_) => lleva_letra(figura),
+            // El tamano: el texto y el numero de serie (su circulo es la letra
+            // por 0,9 de radio, `SERIAL_RADIUS`).
+            CambioForma::TamanoLetra(_) => {
+                matches!(figura, Figura::Texto { .. } | Figura::Serie { .. })
+            }
+            CambioForma::Alineacion(_) | CambioForma::AlineacionVertical(_) => {
+                matches!(figura, Figura::Texto { .. })
+            }
+            CambioForma::Presion(_) => matches!(figura, Figura::Lapiz { .. }),
+            CambioForma::Desenfoque(_) => matches!(figura, Figura::Mosaico { .. }),
+            CambioForma::AumentoLupa(_) | CambioForma::GuiaLupa(_) => {
+                matches!(figura, Figura::Lupa { .. })
+            }
+            CambioForma::Oscurecer(_) | CambioForma::ZonaFoco(_) => {
+                matches!(figura, Figura::Foco { .. })
+            }
+        }
+    }
+}
+
+/// **Si la figura lleva letra** que se pueda elegir: el texto (en su
+/// `familia`) y las que rotulan sin ser un texto (en `extras.familia`, que
+/// viaja como su `fontFamily`). Las graficas, tablas y ecuaciones son textos
+/// agrupados, asi que ya entran por el texto.
+pub fn lleva_letra(figura: &Figura) -> bool {
+    matches!(
+        figura,
+        Figura::Texto { .. }
+            | Figura::Serie { .. }
+            | Figura::Cota { .. }
+            | Figura::Punto { .. }
+            | Figura::Cronograma { .. }
+            | Figura::EscalaGrafica
+    )
+}
+
+/// La pluma que de verdad pinta este lapiz: la presion firme del movil manda
+/// sobre lo que diga `strokeOptions` (ver `tinta::opciones_con_presion_firme`).
+pub fn variabilidad_de(e: &crate::elemento::Elemento) -> Option<crate::tinta::Variabilidad> {
+    use crate::tinta::Variabilidad;
+    match &e.figura {
+        Figura::Lapiz { opciones, .. } => Some(if e.extras.presion_firme {
+            Variabilidad::Constante
+        } else {
+            opciones.map(|o| o.variabilidad).unwrap_or_default()
+        }),
+        _ => None,
+    }
+}
+
+/// Si aplicar `cambio` a `e` cambiaria algo. Pulsar el valor que ya tiene no
+/// abre un paso de deshacer vacio, igual que en `aplicar_a`.
+fn cambiaria_forma(e: &crate::elemento::Elemento, cambio: CambioForma) -> bool {
+    if !cambio.admite(&e.figura) {
+        return false;
+    }
+    match (cambio, &e.figura) {
+        (CambioForma::Bordes { redondo }, _) => e.redondo != redondo,
+        (CambioForma::Codos(v), Figura::Flecha { codos, .. }) => *codos != v,
+        (CambioForma::PuntaInicio(t), Figura::Flecha { punta_inicio, .. }) => *punta_inicio != t,
+        (CambioForma::PuntaFin(t), Figura::Flecha { punta_fin, .. }) => *punta_fin != t,
+        (CambioForma::Familia(n), Figura::Texto { familia, .. }) => {
+            crate::texto::numero_de_familia(familia) != crate::texto::familia_resuelta(Some(n))
+        }
+        // Las demas: sin letra elegida siempre cambia (pasa de la del
+        // sistema a una del catalogo).
+        (CambioForma::Familia(n), _) => {
+            e.extras.familia.as_deref() != Some(crate::texto::nombre_de_familia(Some(n)))
+        }
+        (CambioForma::TamanoLetra(t), Figura::Serie { .. }) => {
+            (e.ancho - crate::serie::diametro(t)).abs() > 0.01
+        }
+        (CambioForma::TamanoLetra(t), Figura::Texto { tam, .. }) => (*tam - t).abs() > 0.01,
+        (CambioForma::Presion(v), _) => variabilidad_de(e) != Some(v),
+        (CambioForma::TipoFlecha(t), _) => TipoFlecha::de(e) != Some(t),
+        // Con lo que se ve y no con lo que dice el fichero: pulsar
+        // «izquierda» en un texto que no trae `textAlign` —y que ya se pinta
+        // a la izquierda— no es un cambio, y no deja un paso de deshacer.
+        (CambioForma::Alineacion(a), _) => e.extras.alineacion.unwrap_or_default() != a,
+        (CambioForma::AlineacionVertical(v), _) => {
+            e.extras.alineacion_vertical.unwrap_or_default() != v
+        }
+        (CambioForma::Desenfoque(v), Figura::Mosaico { desenfoque }) => *desenfoque != v,
+        (CambioForma::AumentoLupa(z), Figura::Lupa { cristal }) => {
+            (crate::lupa_elemento::aumento_de(cristal, crate::lupa_elemento::caja_de(e)) - z).abs()
+                > 0.01
+        }
+        (CambioForma::GuiaLupa(g), Figura::Lupa { cristal }) => cristal.guia != g,
+        (CambioForma::Oscurecer(n), Figura::Foco { cristal }) => {
+            crate::lupa_elemento::oscurecimiento_de(cristal) != n
+        }
+        (CambioForma::ZonaFoco(z), Figura::Foco { cristal }) => {
+            (crate::lupa_elemento::zona_de(cristal, crate::lupa_elemento::caja_de(e)) - z).abs() > 0.005
+        }
+        _ => false,
+    }
+}
+
+/// Escribe el cambio en un elemento que lo admite.
+/// La caja de un texto suelto, otra vez a la medida de lo escrito
+/// (`texto::medida`). Solo con medidor de verdad y solo en los sueltos: el de
+/// dentro de una figura lo coloca su figura.
+fn remedir_texto_suelto(e: &mut crate::elemento::Elemento) {
+    if !crate::texto::hay_medidor() || e.extras.contenedor.is_some() {
+        return;
+    }
+    let estilo = crate::texto::EstiloDeTexto {
+        negrita: e.extras.negrita,
+        cursiva: e.extras.cursiva,
+        tachado: false,
+    };
+    if let Figura::Texto { texto, tam, familia } = &e.figura {
+        let (ancho, alto) = crate::texto::medida(texto, *tam, familia, estilo);
+        e.ancho = ancho;
+        e.alto = alto;
+    }
+}
+
+fn escribir_forma(e: &mut crate::elemento::Elemento, cambio: CambioForma) {
+    use crate::tinta::{FACTOR_VARIABLE, OpcionesTinta, Variabilidad};
+    match cambio {
+        CambioForma::Bordes { redondo } => e.redondo = redondo,
+        CambioForma::Codos(v) => {
+            // Solo el interruptor: el camino en escalera se deriva de los dos
+            // extremos al pintar (`codo::trazado_de_flecha`) y los puntos se
+            // quedan como estaban, asi que volver a recta devuelve la flecha
+            // de antes y no una aproximacion.
+            if let Figura::Flecha { codos, .. } = &mut e.figura {
+                *codos = v;
+            }
+        }
+        CambioForma::PuntaInicio(t) => {
+            if let Figura::Flecha { punta_inicio, .. } = &mut e.figura {
+                *punta_inicio = t;
+            }
+        }
+        CambioForma::PuntaFin(t) => {
+            if let Figura::Flecha { punta_fin, .. } = &mut e.figura {
+                *punta_fin = t;
+            }
+        }
+        CambioForma::Familia(n) => {
+            // El nombre y no el numero, que es lo que guarda la figura; al
+            // escribir el fichero `numero_de_familia` lo vuelve a traducir.
+            if let Figura::Texto { familia, .. } = &mut e.figura {
+                *familia = crate::texto::nombre_de_familia(Some(n)).to_string();
+            } else {
+                // La cota, el numero, el punto, el cronograma y la escala: su
+                // letra va en los extras y sale en su `fontFamily`. Su rotulo
+                // se mide al pintarlo, asi que no hay caja que remedir.
+                e.extras.familia = Some(crate::texto::nombre_de_familia(Some(n)).to_string());
+            }
+            // Otra letra, otra caja: la de Excalifont le queda corta o larga
+            // a Nunito. Con medidor se remide (`redrawTextBoundingBox` de
+            // Excalidraw); sin el, se queda como estaba, que medir a ojo no
+            // distingue una letra de otra.
+            remedir_texto_suelto(e);
+        }
+        CambioForma::TamanoLetra(nuevo) => {
+            // El numero de serie: su circulo es la letra por 0,9 de radio. Se
+            // agranda desde su centro, que es lo que senala.
+            if let Figura::Serie { .. } = e.figura {
+                let (cx, cy) = (e.x + e.ancho / 2.0, e.y + e.alto / 2.0);
+                let d = crate::serie::diametro(nuevo);
+                (e.x, e.y, e.ancho, e.alto) = (cx - d / 2.0, cy - d / 2.0, d, d);
+                return;
+            }
+            if let Figura::Texto { texto, tam, .. } = &mut e.figura {
+                let viejo = *tam;
+                *tam = nuevo;
+                if crate::texto::hay_medidor() && e.extras.contenedor.is_none() {
+                    remedir_texto_suelto(e);
+                    return;
+                }
+                // La caja crece con la letra, como al remedir en Excalidraw.
+                // Sin medidor, a escala y no a ojo: un texto del movil trae
+                // su caja medida con su fuente, y `medida_estimada` le daria
+                // otra proporcion. Se queda quieta la esquina de arriba a la
+                // izquierda, que es donde empieza a leerse.
+                if viejo > 0.0 && e.ancho > 0.0 && e.alto > 0.0 {
+                    let k = nuevo / viejo;
+                    e.ancho *= k;
+                    e.alto *= k;
+                } else {
+                    let (ancho, alto) = crate::texto::medida_estimada(texto, nuevo);
+                    e.ancho = ancho;
+                    e.alto = alto;
+                }
+            }
+        }
+        CambioForma::Presion(v) => {
+            if let Figura::Lapiz { opciones, .. } = &mut e.figura {
+                // Un trazo de antes de E1 (sin `strokeOptions`) guarda su
+                // grosor en pixeles; al estrenar opciones se pasa a
+                // `strokeWidth` o el trazo se pintaria cuatro veces mas gordo.
+                let o = match opciones {
+                    Some(o) => *o,
+                    None => {
+                        e.grosor /= FACTOR_VARIABLE;
+                        OpcionesTinta::default()
+                    }
+                };
+                *opciones = Some(OpcionesTinta {
+                    variabilidad: v,
+                    ..o
+                });
+            }
+            // La presion firme del movil fuerza la pluma constante: sin
+            // apagarla, pedir la variable no cambiaria nada. Es el mismo
+            // campo con otro nombre, asi que apagarlo es decir lo mismo.
+            if v == Variabilidad::Variable {
+                e.extras.presion_firme = false;
+            }
+        }
+        CambioForma::TipoFlecha(t) => {
+            // Los dos campos del fichero a la vez: de codos apaga la curva y
+            // curva apaga los codos, como `FormaDeFlecha.aplicadaA` del movil.
+            // Los puntos no se tocan, asi que volver a afilada devuelve la
+            // flecha de antes.
+            if let Figura::Flecha { codos, .. } = &mut e.figura {
+                *codos = t == TipoFlecha::Codos;
+                e.redondo = t == TipoFlecha::Curva;
+            }
+        }
+        CambioForma::Alineacion(a) => e.extras.alineacion = Some(a),
+        CambioForma::AlineacionVertical(v) => e.extras.alineacion_vertical = Some(v),
+        CambioForma::Desenfoque(v) => {
+            if let Figura::Mosaico { desenfoque } = &mut e.figura {
+                *desenfoque = v;
+            }
+        }
+        CambioForma::AumentoLupa(z) => {
+            let caja = crate::lupa_elemento::caja_de(e);
+            if let Figura::Lupa { cristal } = &mut e.figura {
+                let (nuevo, c) = crate::lupa_elemento::con_aumento(cristal, caja, z);
+                *cristal = nuevo;
+                (e.x, e.y, e.ancho, e.alto) = c;
+            }
+        }
+        CambioForma::GuiaLupa(g) => {
+            if let Figura::Lupa { cristal } = &mut e.figura {
+                cristal.guia = g;
+            }
+        }
+        CambioForma::Oscurecer(n) => {
+            if let Figura::Foco { cristal } = &mut e.figura {
+                cristal.oscurecer = Some(
+                    n.clamp(crate::lupa_elemento::OSCURECER_MINIMO, crate::lupa_elemento::OSCURECER_MAXIMO),
+                );
+            }
+        }
+        CambioForma::ZonaFoco(z) => {
+            let caja = crate::lupa_elemento::caja_de(e);
+            if let Figura::Foco { cristal } = &mut e.figura {
+                *cristal = crate::lupa_elemento::con_zona(cristal, caja, z);
+            }
+        }
+    }
+}
+
+/// Lleva un [`CambioForma`] a lo seleccionado que lo admite, en UN paso de
+/// deshacer. Lo que no lo admite se queda como estaba. Devuelve si cambio
+/// algo.
+pub fn aplicar_forma(escena: &mut Escena, sel: &Seleccion, cambio: CambioForma) -> bool {
+    let afectados: Vec<u64> = sel
+        .ids()
+        .iter()
+        .copied()
+        .filter(|id| {
+            escena
+                .buscar(*id)
+                .is_some_and(|e| !e.borrado && cambiaria_forma(e, cambio))
+        })
+        .collect();
+    if afectados.is_empty() {
+        return false;
+    }
+    escena.abrir_paso();
+    for id in afectados {
+        escena.apuntar_edicion(id);
+        if let Some(e) = escena.buscar_mut(id) {
+            escribir_forma(e, cambio);
+            e.tocar();
+        }
+        // **El rotulo de una caja se mueve a su nuevo sitio.** Su alineacion
+        // no es solo como van los renglones: dice en que parte de la figura
+        // va (`computeBoundTextPosition`). Sin recolocarlo, «abajo» se
+        // guardaba y el rotulo seguia arriba. Dentro del mismo paso, asi que
+        // deshacer lo devuelve de una vez.
+        if matches!(
+            cambio,
+            CambioForma::Alineacion(_) | CambioForma::AlineacionVertical(_)
+        ) {
+            let sitio = escena.buscar(id).and_then(|t| {
+                crate::texto_en_figuras::sitio_en_su_contenedor(t, &escena.elementos)
+            });
+            if let (Some(p), Some(e)) = (sitio, escena.buscar_mut(id)) {
+                e.x = p.x;
+                e.y = p.y;
+                e.tocar();
+            }
+        }
+    }
+    escena.cerrar_paso();
+    true
 }
 
 // -------------------------------------------------------------------------
@@ -277,9 +792,15 @@ pub fn propiedades_de(figura: &Figura) -> &'static [Propiedad] {
         // El foco no dibuja tinta: apaga lo de alrededor. Lo que gradua es
         // cuanto oscurece, y eso aqui todavia no es un mando.
         Figura::Foco { .. } => &[],
+        // La lupa: la tinta y el grueso de su montura (`Propiedad.LUPA` va
+        // aparte, en el panel), como `propiedadesDeTipo(LUPA)` del movil.
+        Figura::Lupa { .. } => &[Trazo, Grosor, Opacidad],
         // La hoja no tiene estilo: es un limite, no un dibujo. Solo se
         // estira.
         Figura::Marco { .. } => &[],
+        // El cronograma: la tinta de la rejilla y los nombres, el fondo de
+        // las barras (sin el, las barras van de la tinta) y el grueso.
+        Figura::Cronograma { .. } => &[Trazo, Fondo, Grosor, Opacidad],
     }
 }
 
@@ -825,5 +1346,263 @@ mod pruebas {
             !propiedades_de(&Figura::Cota { puntos: vec![] }).contains(&Rugosidad),
             "una cota temblorosa no dice donde acaba la medida"
         );
+    }
+
+    // --- CambioForma -----------------------------------------------------
+
+    fn flecha() -> Figura {
+        Figura::Flecha {
+            puntos: vec![
+                crate::vector::Punto2::nuevo(0.0, 0.0),
+                crate::vector::Punto2::nuevo(50.0, 30.0),
+            ],
+            punta_inicio: TipoPunta::Ninguna,
+            punta_fin: TipoPunta::Flecha,
+            codos: false,
+        }
+    }
+
+    fn texto(tam: f32) -> Figura {
+        Figura::Texto {
+            texto: "hola".into(),
+            tam,
+            familia: "Excalifont".into(),
+        }
+    }
+
+    #[test]
+    fn redondear_una_seleccion_mezclada_solo_toca_lo_que_tiene_esquinas() {
+        let mut escena = Escena::nueva();
+        let caja = rect(&mut escena);
+        let punta = con(&mut escena, flecha());
+        let mut sel = Seleccion::nueva();
+        sel.poner_todos([caja, punta]);
+        assert!(aplicar_forma(
+            &mut escena,
+            &sel,
+            CambioForma::Bordes { redondo: true }
+        ));
+        assert!(escena.buscar(caja).unwrap().redondo);
+        // Caso negativo: una flecha no tiene esquinas; marcarla redonda
+        // escribiria un `roundness` que nadie pidio.
+        assert!(!escena.buscar(punta).unwrap().redondo);
+        assert!(escena.deshacer());
+        assert!(!escena.buscar(caja).unwrap().redondo, "un solo paso");
+    }
+
+    #[test]
+    fn el_tipo_de_flecha_es_uno_de_tres_y_elegir_uno_apaga_los_otros() {
+        let mut escena = Escena::nueva();
+        let id = con(&mut escena, flecha());
+        let sel = sel_de(id);
+        assert_eq!(TipoFlecha::de(escena.buscar(id).unwrap()), Some(TipoFlecha::Afilada));
+        assert!(aplicar_forma(&mut escena, &sel, CambioForma::TipoFlecha(TipoFlecha::Codos)));
+        assert!(aplicar_forma(&mut escena, &sel, CambioForma::TipoFlecha(TipoFlecha::Curva)));
+        let e = escena.buscar(id).unwrap();
+        assert!(e.redondo, "curva es `roundness`");
+        assert!(
+            matches!(e.figura, Figura::Flecha { codos: false, .. }),
+            "curva y de codos a la vez no significa nada"
+        );
+        assert!(aplicar_forma(&mut escena, &sel, CambioForma::TipoFlecha(TipoFlecha::Codos)));
+        assert!(!escena.buscar(id).unwrap().redondo);
+        // Caso negativo: pulsar el que ya tiene no abre un paso vacio, y un
+        // rectangulo no tiene tipo de flecha.
+        assert!(!aplicar_forma(&mut escena, &sel, CambioForma::TipoFlecha(TipoFlecha::Codos)));
+        let caja = rect(&mut escena);
+        assert!(!aplicar_forma(
+            &mut escena,
+            &sel_de(caja),
+            CambioForma::TipoFlecha(TipoFlecha::Curva)
+        ));
+        assert!(!escena.buscar(caja).unwrap().redondo);
+    }
+
+    #[test]
+    fn alinear_el_rotulo_de_una_caja_lo_lleva_a_su_sitio_en_un_solo_paso() {
+        use crate::texto::{AlineacionTexto, AlineacionVertical};
+        let mut escena = Escena::nueva();
+        let caja = rect(&mut escena);
+        {
+            let c = escena.buscar_mut(caja).unwrap();
+            c.ancho = 200.0;
+            c.alto = 100.0;
+            c.extras.id_de_fichero = Some("caja".into());
+        }
+        let rotulo = con(&mut escena, texto(20.0));
+        {
+            let t = escena.buscar_mut(rotulo).unwrap();
+            t.ancho = 40.0;
+            t.alto = 20.0;
+            t.x = 5.0;
+            t.y = 5.0;
+            t.extras.contenedor = Some("caja".into());
+        }
+        let sel = sel_de(rotulo);
+        assert!(aplicar_forma(
+            &mut escena,
+            &sel,
+            CambioForma::AlineacionVertical(AlineacionVertical::Abajo)
+        ));
+        let t = escena.buscar(rotulo).unwrap();
+        assert_eq!(t.extras.alineacion_vertical, Some(AlineacionVertical::Abajo));
+        // Pegado al fondo del hueco: 100 de alto menos 5 de aire.
+        assert!((t.y + t.alto - 95.0).abs() < 0.01, "{}", t.y);
+        assert!(aplicar_forma(
+            &mut escena,
+            &sel,
+            CambioForma::Alineacion(AlineacionTexto::Derecha)
+        ));
+        let t = escena.buscar(rotulo).unwrap();
+        assert!((t.x + t.ancho - 195.0).abs() < 0.01, "{}", t.x);
+        // Un paso por boton: deshacer el ultimo lo devuelve a la izquierda.
+        assert!(escena.deshacer());
+        let t = escena.buscar(rotulo).unwrap();
+        assert_eq!(t.extras.alineacion, None);
+        assert!((t.x - 5.0).abs() < 0.01);
+        // Caso negativo: «izquierda» en un texto que no la trae ya es lo que
+        // se ve; no hay nada que cambiar.
+        assert!(!aplicar_forma(
+            &mut escena,
+            &sel,
+            CambioForma::Alineacion(AlineacionTexto::Izquierda)
+        ));
+    }
+
+    #[test]
+    fn las_puntas_y_el_codo_se_cambian_cada_uno_por_su_lado() {
+        let mut escena = Escena::nueva();
+        let id = con(&mut escena, flecha());
+        let sel = sel_de(id);
+        aplicar_forma(
+            &mut escena,
+            &sel,
+            CambioForma::PuntaInicio(TipoPunta::Circulo),
+        );
+        aplicar_forma(&mut escena, &sel, CambioForma::PuntaFin(TipoPunta::Ninguna));
+        aplicar_forma(&mut escena, &sel, CambioForma::Codos(true));
+        let Figura::Flecha {
+            punta_inicio,
+            punta_fin,
+            codos,
+            puntos,
+        } = &escena.buscar(id).unwrap().figura
+        else {
+            panic!("sigue siendo flecha");
+        };
+        assert_eq!(*punta_inicio, TipoPunta::Circulo);
+        assert_eq!(*punta_fin, TipoPunta::Ninguna);
+        assert!(*codos);
+        // Los puntos no se tocan: la escalera se deriva al pintar.
+        assert_eq!(puntos.len(), 2);
+    }
+
+    #[test]
+    fn pedir_la_punta_que_ya_tiene_no_abre_un_paso_de_deshacer() {
+        let mut escena = Escena::nueva();
+        let id = con(&mut escena, flecha());
+        assert!(!aplicar_forma(
+            &mut escena,
+            &sel_de(id),
+            CambioForma::PuntaFin(TipoPunta::Flecha)
+        ));
+        // El ultimo paso sigue siendo el de haberla anadido: deshacer una
+        // vez la quita.
+        assert!(escena.deshacer());
+        assert!(escena.buscar(id).is_none_or(|e| e.borrado));
+    }
+
+    #[test]
+    fn el_tamano_de_letra_estira_la_caja_en_proporcion() {
+        let mut escena = Escena::nueva();
+        let id = con(&mut escena, texto(20.0));
+        {
+            let e = escena.buscar_mut(id).unwrap();
+            e.ancho = 100.0;
+            e.alto = 26.0;
+        }
+        let version = escena.buscar(id).unwrap().version;
+        aplicar_forma(&mut escena, &sel_de(id), CambioForma::TamanoLetra(28.0));
+        let e = escena.buscar(id).unwrap();
+        let Figura::Texto { tam, .. } = &e.figura else {
+            panic!("sigue siendo texto")
+        };
+        assert_eq!(*tam, 28.0);
+        assert!((e.ancho - 140.0).abs() < 0.01 && (e.alto - 36.4).abs() < 0.01);
+        assert!(e.version > version, "sin version la cache no repinta");
+    }
+
+    #[test]
+    fn la_familia_se_guarda_por_su_nombre_y_viaja_por_su_numero() {
+        let mut escena = Escena::nueva();
+        let id = con(&mut escena, texto(20.0));
+        aplicar_forma(&mut escena, &sel_de(id), CambioForma::Familia(8));
+        let Figura::Texto { familia, .. } = &escena.buscar(id).unwrap().figura else {
+            panic!("sigue siendo texto")
+        };
+        assert_eq!(crate::texto::numero_de_familia(familia), 8);
+        // Caso negativo: a un rectangulo no se le pone letra.
+        let caja = rect(&mut escena);
+        assert!(!aplicar_forma(
+            &mut escena,
+            &sel_de(caja),
+            CambioForma::Familia(6)
+        ));
+    }
+
+    #[test]
+    fn la_presion_de_un_trazo_viejo_estrena_opciones_sin_engordar() {
+        use crate::tinta::{FACTOR_VARIABLE, Variabilidad};
+        let mut escena = Escena::nueva();
+        let id = con(
+            &mut escena,
+            Figura::Lapiz {
+                puntos: Vec::new(),
+                presiones: Vec::new(),
+                opciones: None,
+            },
+        );
+        escena.buscar_mut(id).unwrap().grosor = 8.0;
+        assert_eq!(
+            variabilidad_de(escena.buscar(id).unwrap()),
+            Some(Variabilidad::Variable)
+        );
+        assert!(aplicar_forma(
+            &mut escena,
+            &sel_de(id),
+            CambioForma::Presion(Variabilidad::Constante)
+        ));
+        let e = escena.buscar(id).unwrap();
+        assert_eq!(variabilidad_de(e), Some(Variabilidad::Constante));
+        assert!((e.grosor - 8.0 / FACTOR_VARIABLE).abs() < 1e-4);
+    }
+
+    #[test]
+    fn pedir_pluma_variable_apaga_la_presion_firme_del_movil() {
+        use crate::tinta::{OpcionesTinta, Variabilidad};
+        let mut escena = Escena::nueva();
+        let id = con(
+            &mut escena,
+            Figura::Lapiz {
+                puntos: Vec::new(),
+                presiones: Vec::new(),
+                opciones: Some(OpcionesTinta::default()),
+            },
+        );
+        escena.buscar_mut(id).unwrap().extras.presion_firme = true;
+        // Con la presion firme puesta el trazo ya es constante aunque sus
+        // opciones digan variable: eso es lo que el panel tiene que marcar.
+        assert_eq!(
+            variabilidad_de(escena.buscar(id).unwrap()),
+            Some(Variabilidad::Constante)
+        );
+        assert!(aplicar_forma(
+            &mut escena,
+            &sel_de(id),
+            CambioForma::Presion(Variabilidad::Variable)
+        ));
+        let e = escena.buscar(id).unwrap();
+        assert!(!e.extras.presion_firme);
+        assert_eq!(variabilidad_de(e), Some(Variabilidad::Variable));
     }
 }

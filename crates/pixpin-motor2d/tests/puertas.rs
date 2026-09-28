@@ -336,3 +336,165 @@ fn sin_aumento_no_se_simplifica_nada() {
     assert_eq!(pixpin_motor2d::ordenes_a_distancia(e, 0.0), ordenes(e));
     assert_eq!(pixpin_motor2d::ordenes_a_distancia(e, -1.0), ordenes(e));
 }
+
+/// Mover una seleccion grande: lo que cuesta CADA aviso del raton mientras
+/// se arrastra, sin contar el pintado. Excalidraw busca por id en un mapa;
+/// aqui la seleccion y la escena eran listas, y mover mil de dos mil
+/// recorria las dos por cada elemento en cada movimiento.
+#[test]
+fn arrastrar_mil_seleccionados_de_dos_mil_cuesta_menos_de_cuatrocientos_microsegundos_por_aviso() {
+    use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
+    let mut escena = Escena::nueva();
+    let ids: Vec<u64> = (0..2_000).map(|i| escena.anadir(elemento(i))).collect();
+    let mut g = Gesto::nuevo();
+    g.herramienta = Herramienta::Mano;
+    g.seleccion.poner_todos(ids.iter().copied().step_by(2));
+    // Se pulsa sobre el borde de un elegido (el de 0,0): un rectangulo sin
+    // relleno solo se coge por el borde.
+    g.evento(
+        EventoGesto::Pulsar {
+            p: Punto2::nuevo(0.0, 40.0),
+            shift: false,
+            alt: false,
+            presion: None,
+        },
+        &mut escena,
+        1.0,
+    );
+    assert!(g.marquesina().is_none() && !g.en_reposo(), "la pulsacion tiene que coger la seleccion");
+    let avisos = 200;
+    let ahora = Instant::now();
+    for i in 0..avisos {
+        g.evento(
+            EventoGesto::Mover {
+                p: Punto2::nuevo(10.0 + i as f32, 10.0 + i as f32),
+                shift: false,
+                alt: false,
+                presion: None,
+            },
+            &mut escena,
+            1.0,
+        );
+    }
+    let por_aviso = ahora.elapsed() / avisos;
+    eprintln!("mover 1000 de 2000: {por_aviso:?} por aviso");
+    assert!(
+        por_aviso.as_micros() < (400 * FACTOR) as u128,
+        "cada aviso del raton tardo {por_aviso:?}"
+    );
+}
+
+/// Pasar el raton por encima con la seleccion puesta, sin pulsar: en cada
+/// aviso se mira que hay debajo para poner el cursor. Es lo que mas avisos
+/// recibe de todo el editor.
+#[test]
+fn pasar_el_raton_sobre_dos_mil_elementos_cuesta_menos_de_cien_microsegundos_por_aviso() {
+    use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
+    let mut escena = Escena::nueva();
+    for i in 0..2_000 {
+        escena.anadir(elemento(i));
+    }
+    let mut g = Gesto::nuevo();
+    g.herramienta = Herramienta::Mano;
+    let avisos = 400;
+    let ahora = Instant::now();
+    for i in 0..avisos {
+        let t = i as f32;
+        g.evento(
+            EventoGesto::Mover {
+                p: Punto2::nuevo(5.0 + t * 3.0, 7.0 + t * 1.5),
+                shift: false,
+                alt: false,
+                presion: None,
+            },
+            &mut escena,
+            1.0,
+        );
+    }
+    let por_aviso = ahora.elapsed() / avisos;
+    eprintln!("pasar el raton sobre 2000: {por_aviso:?} por aviso");
+    assert!(
+        por_aviso.as_micros() < (100 * FACTOR) as u128,
+        "cada aviso del raton tardo {por_aviso:?}"
+    );
+}
+
+/// Lo mismo, con **cien flechas atadas** a los elegidos y fuera de la
+/// seleccion: cada aviso las re-traza (siguen a su caja en vivo, como en
+/// Excalidraw). Las flechas se buscan UNA vez al pulsar y se apuntan por su
+/// posicion; si se buscaran en cada aviso, el coste creceria con elegidos por
+/// flechas y esto no cabria.
+#[test]
+fn arrastrar_mil_de_dos_mil_con_cien_flechas_atadas_cuesta_menos_de_seiscientos_microsegundos_por_aviso()
+{
+    use pixpin_motor2d::elemento::{Enganche, Extras};
+    use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta};
+    let mut escena = Escena::nueva();
+    let ids: Vec<u64> = (0..2_000).map(|i| escena.anadir(elemento(i))).collect();
+    // Cada flecha sale del vacio y acaba atada a un elegido distinto.
+    for k in 0..100usize {
+        let objetivo = ids[k * 20];
+        let caja = escena.buscar(objetivo).unwrap().clone();
+        let fin = Punto2::nuevo(caja.x - 5.0, caja.y + caja.alto / 2.0);
+        let inicio = Punto2::nuevo(fin.x - 300.0, fin.y);
+        escena.anadir(Elemento {
+            figura: Figura::Flecha {
+                puntos: vec![inicio, fin],
+                punta_inicio: pixpin_motor2d::TipoPunta::Ninguna,
+                punta_fin: pixpin_motor2d::TipoPunta::Flecha,
+                codos: false,
+            },
+            x: inicio.x,
+            y: inicio.y,
+            extras: Extras {
+                enganche_fin: Some(Enganche {
+                    elemento: pixpin_motor2d::enlace::id_de_texto(objetivo),
+                    foco: 0.0,
+                    hueco: 6.0,
+                    punto_fijo: None,
+                    modo: Default::default(),
+                }),
+                ..Default::default()
+            },
+            ..elemento(0)
+        });
+    }
+    let mut g = Gesto::nuevo();
+    g.herramienta = Herramienta::Mano;
+    g.seleccion.poner_todos(ids.iter().copied().step_by(2));
+    g.evento(
+        EventoGesto::Pulsar {
+            p: Punto2::nuevo(0.0, 40.0),
+            shift: false,
+            alt: false,
+            presion: None,
+        },
+        &mut escena,
+        1.0,
+    );
+    assert_eq!(g.flechas_que_siguen().len(), 100, "no se apuntaron las cien flechas");
+    let avisos = 200;
+    let ahora = Instant::now();
+    for i in 0..avisos {
+        g.evento(
+            EventoGesto::Mover {
+                p: Punto2::nuevo(10.0 + i as f32, 10.0 + i as f32),
+                shift: false,
+                alt: false,
+                presion: None,
+            },
+            &mut escena,
+            1.0,
+        );
+    }
+    let por_aviso = ahora.elapsed() / avisos;
+    eprintln!("mover 1000 de 2000 con 100 flechas atadas: {por_aviso:?} por aviso");
+    // El tope es el del arrastre sin flechas (400) mas dos microsegundos por
+    // flecha: re-trazar una cuesta ~1,4 µs medidos (cortar su rayo con el
+    // borde de la caja). Lo que se vigila es que crezca con las FLECHAS y no
+    // con la escena ni con lo elegido.
+    assert!(
+        por_aviso.as_micros() < (600 * FACTOR) as u128,
+        "cada aviso del raton tardo {por_aviso:?}"
+    );
+}

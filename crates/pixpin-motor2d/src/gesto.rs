@@ -32,7 +32,6 @@ use pixpin_geom::Tirador;
 
 use crate::elemento::{Elemento, Figura};
 use crate::escena::Escena;
-use crate::formas::TipoPunta;
 use crate::impacto::{dentro_de, elemento_en};
 use crate::medida::Escala;
 use crate::seleccion::Seleccion;
@@ -80,6 +79,12 @@ pub enum Herramienta {
     /// Seleccionar y mover lo ya dibujado.
     Mano,
     Lapiz,
+    /// **Grafito** (v0.75 del movil): el lapiz de verdad, hecho de sellos
+    /// sobre la rejilla fija de cuadritos (`tinta::grafito`). Por dentro es
+    /// el mismo trazo que el lapiz, con `material:"cuadritos"`: un lapiz
+    /// mas, hecho de otra cosa, y por eso comparte con el todo lo de trazar a
+    /// mano (el gesto de pararse, el iman, la forma rapida).
+    Grafito,
     Resaltador,
     Linea,
     Flecha,
@@ -142,6 +147,26 @@ pub enum Herramienta {
     /// Copia el estilo de una figura y lo pega en otra (grupo B). Es
     /// invencion de escritorio: en el movil no existe.
     CopiarEstilo,
+    /// **La zona** (F8, `Tool.ZONA` del movil): se arrastra un rectangulo y
+    /// sale una foto de lo que hay dentro, recortada en redondo, para
+    /// llevarla a otro sitio. La foto la saca quien pinta; el gesto no crea
+    /// nada (ver `zona.rs`).
+    Zona,
+    /// **El puntero laser** (F14): una estela que se apaga sola. No deja
+    /// nada en el dibujo (ver `puntero_laser.rs`).
+    Laser,
+    /// **El cronograma** (F12, `Tool.CRONOGRAMA` del movil): se arrastra la
+    /// caja y nace un plan con tres filas dentro. Ver `cronograma.rs`.
+    Cronograma,
+    /// **Soldar vertices** (`Tool.NUDO` del movil): un clic en el cruce o la
+    /// junta de dos figuras las clava por ahi y desde entonces no se separan
+    /// (ver `nudos.rs`). Otro clic en el clavo lo quita. No crea nada: los
+    /// clavos son de la escena.
+    Nudo,
+    /// **La bolita** (`Tool.BOLITA` del movil): se pasa por encima de lo que
+    /// se quiera y va entrando en la seleccion; volver a pasar lo saca. La
+    /// lleva quien tiene la escena, como el lazo (ver `bolita.rs`).
+    Bolita,
 }
 
 impl Herramienta {
@@ -152,6 +177,7 @@ impl Herramienta {
         !matches!(
             self,
             Herramienta::Lapiz
+                | Herramienta::Grafito
                 | Herramienta::Texto
                 // La flecha a pulso se traza como el lapiz, punto a punto.
                 | Herramienta::FlechaLibre
@@ -174,6 +200,9 @@ impl Herramienta {
             self,
             Herramienta::Mano
                 | Herramienta::Lupa
+                // El foco es una varita, como la lupa del lienzo: convierte la
+                // figura que toca (`dibujo::lupa::convertir_en_foco`).
+                | Herramienta::Foco
                 | Herramienta::Borrador
                 | Herramienta::Escalar
                 | Herramienta::Lazo
@@ -181,6 +210,15 @@ impl Herramienta {
                 | Herramienta::Recortar
                 | Herramienta::Extender
                 | Herramienta::CopiarEstilo
+                // Las dos las lleva quien tiene la escena, como el lazo: la
+                // zona saca una foto al soltar y el laser solo se pinta.
+                | Herramienta::Zona
+                | Herramienta::Laser
+                // Clava lo que ya hay; el clavo va a la escena, no nace un
+                // elemento (`dibujo::construir`).
+                | Herramienta::Nudo
+                // Selecciona, como el lazo.
+                | Herramienta::Bolita
         )
     }
 }
@@ -250,6 +288,11 @@ pub struct Respuesta {
 pub enum Peticion {
     /// Cuanto mide de verdad el trazo que se acaba de arrastrar.
     Calibrar { largo_px: f32 },
+    /// **Cuanto mide y hacia donde va la cota recien trazada** (el
+    /// `DialogoDeCota` del movil). Quien lleva la ventana abre el cajetin y
+    /// aplica lo tecleado con [`Gesto::dictar_cota`]; si se cancela, la cota
+    /// se queda como se trazo, que ya dice lo que mide.
+    DictarCota { id: u64 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -271,9 +314,25 @@ enum Estado {
         origen: Punto2,
         hasta: Punto2,
     },
+    /// Arrastrando una barra de un cronograma (F12): moviendola o
+    /// estirandola por la punta. `agarre` es por donde se cogio, en columnas
+    /// desde su principio, para que no salte al empezar.
+    BarraDelPlan {
+        id: u64,
+        indice: usize,
+        mano: crate::cronograma::ManoEnLaBarra,
+        agarre: f32,
+    },
     /// Arrastrando la raya de `Escalar`. No hay id: no deja rastro, y sus
     /// puntos van en `trazo` en vez de en un elemento de la escena.
     Calibrando,
+    /// Arrastrando un punto de una flecha ya dibujada (el editor de puntos
+    /// de Excalidraw). Si es un extremo, al soltar se ata a lo que tenga
+    /// debajo o se suelta.
+    ArrastrandoPunta {
+        id: u64,
+        agarre: crate::tiradores::AgarrePunta,
+    },
 }
 
 pub struct Gesto {
@@ -297,6 +356,12 @@ pub struct Gesto {
     /// del cursor al convertirla y radios de entonces. Escala desde su
     /// centro; crecer desde una esquina la haria saltar al convertirse.
     forma_elipse: Option<(Punto2, f32, f32, f32)>,
+    /// Si lo que se esta dibujando salio del gesto de pararse (compas, «L»,
+    /// forma rapida). Desde ese instante ya no es un trazo a mano sino una
+    /// figura: el iman la trata como tal (`faena`), y al soltar un compas que
+    /// no llego a abrirse se descarta, como cualquier figura de tamano cero
+    /// del movil (`finishCreating`).
+    forma_por_gesto: bool,
     /// El «actual» del panel lateral: con esto nacen las figuras nuevas.
     /// El grosor del lapiz sigue en `grosor_tinta` (las teclas 1/2/3).
     pub estilo: crate::estilo::EstiloDibujo,
@@ -315,12 +380,64 @@ pub struct Gesto {
     /// El lazo no `deja_rastro()`, asi que la maquina de estados no crea
     /// ningun elemento por el: lo lleva entero quien tiene la escena.
     pub lazo: Option<crate::lazo::Lazo>,
+    /// El rectangulo de la Zona que se esta arrastrando (esquina de salida y
+    /// cursor). Aqui por lo mismo que el lazo: lo pinta quien pinta lo de
+    /// encima, en cualquier anfitrion, y lo mueve quien tiene la escena.
+    pub zona: Option<(Punto2, Punto2)>,
+    /// La estela del puntero laser (ver `puntero_laser.rs`).
+    pub laser: crate::puntero_laser::PunteroLaser,
     /// El estilo que el cuentagotas se llevo, a la espera de pegarlo.
     ///
     /// Tambien aqui por lo mismo: la caja de herramientas pinta el
     /// cuentagotas «cargado» o «vacio» segun esto, y el clic siguiente hace
     /// una cosa u otra segun esto.
     pub estilo_tomado: Option<crate::estilo::EstiloCopiado>,
+    /// **Con el grafito en la mano** (`conElGrafitoEnLaMano` del movil):
+    /// se enciende al coger el grafito y se apaga al coger el lapiz o el
+    /// resaltador. Mientras dura, las figuras nuevas (rectangulo, rombo,
+    /// ovalo, linea, flecha) nacen de grafito, como en el movil desde la
+    /// v0.80.2. Ver [`Gesto::tomar_herramienta`].
+    pub grafito_en_la_mano: bool,
+    /// Las flechas atadas a lo que se esta moviendo, apuntadas al pulsar
+    /// para re-trazarlas en cada aviso sin buscarlas (ver
+    /// `enlace::Seguidoras`).
+    seguidoras: crate::enlace::Seguidoras,
+    /// Lo elegido tal como estaba al pulsar un tirador, si son varios: el
+    /// bloque se estira siempre desde aqui (`estirar_bloque`).
+    originales_del_bloque: Vec<Elemento>,
+    /// La figura a la que se ataria cada extremo —inicio y fin— de la
+    /// flecha que se dibuja o cuya punta se arrastra. La ventana la resalta
+    /// (`resaltado_de_union`) para que atar no sea una sorpresa al soltar.
+    pub candidatas: [Option<u64>; 2],
+    /// Si el gesto en curso llego a moverse. Un clic sobre una flecha
+    /// elegida sin arrastrar no puede re-atar nada: dejaria un paso de
+    /// deshacer sin nada que se viera.
+    arrastrado: bool,
+    /// Alt pulsado: al pulsar (`[0]`) y en el ultimo aviso del raton (`[1]`).
+    /// Con Alt, la punta de flecha que se suelta encima de una figura se ata
+    /// **dentro** (`bindMode: "inside"` de Excalidraw). Se apunta porque el
+    /// soltar no trae modificadores: lo que cuenta es lo que habia pulsado
+    /// justo antes. Dos, porque la punta de salida se deja al pulsar y la de
+    /// llegada al soltar.
+    alt: [bool; 2],
+    /// **Los clavos de soldar vertices** en este gesto (`nudos`): si la
+    /// escena tenia alguno al pulsar, y el clavo cogido si se esta llevando
+    /// uno. Con clavos, arrastrar lo elegido puede girarlo en vez de
+    /// trasladarlo, y entonces no vale moverlo como una capa quieta.
+    con_clavos: bool,
+    clavo_en_mano: Option<usize>,
+    /// **De que serie salen las letras de los proximos puntos**: A, a o 1
+    /// (`seriePuntos` del movil). Es del gesto y no del estilo porque es una
+    /// decision del dibujo entero, no de cada punto: quien elige una serie va
+    /// a poner diez puntos seguidos de esa serie.
+    pub serie_de_punto: crate::puntos_etiquetados::SerieDePunto,
+    /// **Si al trazar una cota se pide su medida** (`pedirLaMedida` del
+    /// movil, encendido de fabrica). Son dos formas de acotar: dictandola, la
+    /// raya acaba midiendo lo que uno dice (levantar un plano); sin dictar,
+    /// mide lo que hay (medir sobre una foto). Es un interruptor del panel.
+    pub pedir_la_medida: bool,
+    /// El barrido de la bolita en curso, para pasarla y pintarla.
+    pub bolita: crate::bolita::Bolita,
 }
 
 impl Default for Gesto {
@@ -337,8 +454,64 @@ impl Default for Gesto {
             estilo: crate::estilo::EstiloDibujo::default(),
             escribiendo: None,
             forma_elipse: None,
+            forma_por_gesto: false,
             lazo: None,
+            zona: None,
+            laser: crate::puntero_laser::PunteroLaser::default(),
             estilo_tomado: None,
+            grafito_en_la_mano: false,
+            seguidoras: crate::enlace::Seguidoras::default(),
+            originales_del_bloque: Vec::new(),
+            candidatas: [None; 2],
+            arrastrado: false,
+            alt: [false; 2],
+            con_clavos: false,
+            clavo_en_mano: None,
+            serie_de_punto: crate::puntos_etiquetados::SerieDePunto::Mayusculas,
+            pedir_la_medida: true,
+            bolita: crate::bolita::Bolita::default(),
+        }
+    }
+}
+
+/// Las figuras que nacen de grafito con el en la mano: las de
+/// `FIGURAS_DE_GRAFITO` del movil (`DrawController.kt`).
+pub const FIGURAS_DE_GRAFITO: [Herramienta; 6] = [
+    Herramienta::Rectangulo,
+    Herramienta::Rombo,
+    Herramienta::Elipse,
+    Herramienta::Linea,
+    Herramienta::Flecha,
+    Herramienta::FlechaCodos,
+];
+
+impl Gesto {
+    /// **Coge una herramienta**, y con ella lo que se tiene en la mano.
+    ///
+    /// El grafito es una herramienta y no un material del panel, pero deja
+    /// huella en lo que viene detras: tras el grafito, el rectangulo o la
+    /// flecha salen de grafito (`conElGrafitoEnLaMano` del movil). Se deja al
+    /// coger el lapiz o el resaltador; las demas no lo tocan, para que ir a
+    /// la mano a mover algo y volver no lo apague.
+    pub fn tomar_herramienta(&mut self, h: Herramienta) {
+        match h {
+            Herramienta::Grafito => self.grafito_en_la_mano = true,
+            Herramienta::Lapiz | Herramienta::Resaltador => self.grafito_en_la_mano = false,
+            _ => {}
+        }
+        self.herramienta = h;
+    }
+
+    /// El material con el que nace lo que se va a dibujar: el grafito si es
+    /// el grafito o si se tiene en la mano y es una de sus figuras; si no, el
+    /// «actual» del panel, como siempre.
+    fn material_de_lo_nuevo(&self) -> crate::tinta::MaterialTinta {
+        let de_grafito = self.herramienta == Herramienta::Grafito
+            || (self.grafito_en_la_mano && FIGURAS_DE_GRAFITO.contains(&self.herramienta));
+        if de_grafito {
+            crate::tinta::MaterialTinta::Cuadritos
+        } else {
+            self.estilo.material
         }
     }
 }
@@ -352,6 +525,24 @@ impl Gesto {
         matches!(self.estado, Estado::Reposo)
     }
 
+    /// Si se esta arrastrando la seleccion (solo trasladarla: escalar y
+    /// girar cambian la forma y no valen). La ventana pinta entonces lo
+    /// elegido una sola vez en su propia capa y la mueve con la
+    /// composicion, en vez de repintar la escena en cada aviso del raton.
+    pub fn moviendo(&self) -> bool {
+        // Con clavos lo elegido puede girar en vez de trasladarse: una capa
+        // que solo se traslada ensenaria otra cosa que lo que pasa.
+        matches!(self.estado, Estado::Moviendo { .. }) && !self.con_clavos
+    }
+
+    /// Si se esta estirando o girando lo elegido por sus tiradores. Cambia
+    /// de forma en cada aviso (no vale una capa quieta), pero **solo cambia
+    /// lo elegido** y las flechas que lo siguen: la ventana rehace entonces
+    /// solo ese trozo encima de la capa congelada.
+    pub fn transformando(&self) -> bool {
+        matches!(self.estado, Estado::Escalando { .. } | Estado::Girando { .. })
+    }
+
     /// El trazo a mano que se esta dibujando ahora. La ventana lo excluye de
     /// la capa congelada (D120): es lo unico que cambia en cada fotograma.
     pub fn trazo_en_curso(&self) -> Option<u64> {
@@ -359,7 +550,7 @@ impl Gesto {
             Estado::Dibujando { id }
                 if matches!(
                     self.herramienta,
-                    Herramienta::Lapiz | Herramienta::Resaltador
+                    Herramienta::Lapiz | Herramienta::Resaltador | Herramienta::Grafito
                 ) =>
             {
                 Some(id)
@@ -368,34 +559,97 @@ impl Gesto {
         }
     }
 
-    /// Forma rapida: si se esta dibujando a mano y el trazo parece una linea,
-    /// un rectangulo o una elipse, lo convierte en esa figura (con su color y
-    /// un grosor equivalente) y deja listo el ajuste: los movimientos
-    /// siguientes la redimensionan. Lo llama la ventana cuando el cursor se
-    /// queda quieto con el boton pulsado. `None` si no hay nada que convertir.
-    /// Sigue siendo el mismo elemento, anadido en este paso: un Ctrl+Z lo
-    /// quita entero.
-    pub fn convertir_en_forma(&mut self, escena: &mut Escena, cursor: Punto2) -> Option<Respuesta> {
-        use crate::forma_rapida::{FormaReconocida, reconocer};
+    /// El gesto de pararse (`DrawController.latido` del movil, v0.80.2): si
+    /// se esta dibujando a mano y el cursor se ha quedado quieto, lo trazado
+    /// sale limpio y los movimientos siguientes lo ajustan. Segun lo que se
+    /// lleve (ver `forma_rapida::al_pararse`):
+    /// - clavado sin ir a ningun sitio: **compas**, un circulo con centro
+    ///   donde se pulso y radio hasta el cursor;
+    /// - una «L»: **rectangulo** de la esquina de salida a la del cursor;
+    /// - una linea, un rectangulo cerrado o una elipse: esa figura.
+    ///
+    /// Lo llama la ventana cuando el cursor se queda quieto con el boton
+    /// pulsado. `escala` son unidades de escena por pixel de pantalla, como en
+    /// `evento`: los umbrales del gesto son de la mano. `None` si no hay nada
+    /// que convertir. Sigue siendo el mismo elemento, anadido en este paso:
+    /// un Ctrl+Z lo quita entero.
+    pub fn convertir_en_forma(
+        &mut self,
+        escena: &mut Escena,
+        cursor: Punto2,
+        escala: f32,
+    ) -> Option<Respuesta> {
+        use crate::forma_rapida::{AlPararse, FormaReconocida, al_pararse};
         let Estado::Dibujando { id } = self.estado else {
             return None;
         };
-        if self.herramienta != Herramienta::Lapiz {
+        // Los tres que trazan a mano, como en el movil (alli los tres son un
+        // FREEDRAW). El grafito desde la v0.80.2: sin el no saltaba la recta,
+        // el compas ni el rectangulo. La figura que sale conserva el
+        // material, asi que sale de grafito.
+        if !matches!(
+            self.herramienta,
+            Herramienta::Lapiz | Herramienta::Grafito | Herramienta::Resaltador
+        ) {
             return None;
         }
         let e = escena.buscar(id)?;
-        let Figura::Lapiz { puntos, .. } = &e.figura else {
+        let (Figura::Lapiz { puntos, .. } | Figura::Resaltador { puntos }) = &e.figura else {
             return None;
         };
-        let forma = reconocer(puntos)?;
-        let grosor = crate::estilo::NivelGrosor::de_elemento(&e.figura, e.grosor).de_forma();
+        let es_resaltador = matches!(e.figura, Figura::Resaltador { .. });
+        let forma = al_pararse(puntos, 1.0 / escala.max(0.0001))?;
+        // **La figura del resaltador mide lo que media su tinta.** Con el
+        // grosor de las lineas (1/2/4) una raya de resaltador grueso (15 de
+        // tinta) se quedaba en 4 al pararse: «delgadisima». El movil tiene el
+        // mismo fallo (`comoUnaRaya` le pone el `strokeWidth` del estilo);
+        // aqui se arregla. El lapiz si toma el de las lineas, como alli.
+        let grosor = if es_resaltador {
+            crate::tinta::ancho_del_resaltador(e.grosor)
+        } else {
+            crate::estilo::NivelGrosor::de_elemento(&e.figura, e.grosor).de_forma()
+        };
         let relleno = self.estilo.relleno;
         let e = escena.buscar_mut(id)?;
         e.grosor = grosor;
         e.angulo = 0.0;
+        // Y de una sola pasada: a mano alzada son dos, y translucidas su
+        // cruce sale mas oscuro que el resto, cosa que la tinta no hace.
+        if es_resaltador {
+            e.rugosidad = 0.0;
+        }
+        // El resaltador pinta su tinta al 40 % (`pintado.rs`); la figura que
+        // sale de el sigue siendo de resaltador, translucida, y no tapa lo que
+        // se estaba subrayando.
+        if es_resaltador {
+            e.opacidad *= crate::tinta::OPACIDAD_DEL_RESALTADOR;
+        }
         self.forma_elipse = None;
+        self.forma_por_gesto = true;
         match forma {
-            FormaReconocida::Linea { a, .. } => {
+            AlPararse::Compas { centro } => {
+                // Un ovalo de verdad y no un poligono: el mismo que deja la
+                // herramienta de elipse. Reutiliza el ajuste de la elipse
+                // rapida con distancia y radios de 1: asi el radio es, en cada
+                // aviso, la distancia del centro al cursor (el compas).
+                let r = cursor.distancia(centro);
+                e.figura = Figura::Elipse;
+                e.relleno = relleno;
+                (e.x, e.y, e.ancho, e.alto) = (centro.x - r, centro.y - r, 2.0 * r, 2.0 * r);
+                self.forma_elipse = Some((centro, 1.0, 1.0, 1.0));
+            }
+            AlPararse::Ele { esquina } => {
+                // Una esquina donde empezo el trazo y la otra en el cursor,
+                // que sigue tirando de ella (las figuras de caja crecen desde
+                // `trazo[0]` en `mover`).
+                e.figura = Figura::Rectangulo;
+                e.relleno = relleno;
+                (e.x, e.y) = (esquina.x.min(cursor.x), esquina.y.min(cursor.y));
+                (e.ancho, e.alto) = ((cursor.x - esquina.x).abs(), (cursor.y - esquina.y).abs());
+                self.trazo.clear();
+                self.trazo.push(esquina);
+            }
+            AlPararse::Forma(FormaReconocida::Linea { a, .. }) => {
                 e.figura = Figura::Linea {
                     puntos: vec![a, cursor],
                 };
@@ -404,7 +658,7 @@ impl Gesto {
                 self.trazo.clear();
                 self.trazo.push(a);
             }
-            FormaReconocida::Rectangulo { caja } => {
+            AlPararse::Forma(FormaReconocida::Rectangulo { caja }) => {
                 e.figura = Figura::Rectangulo;
                 e.relleno = relleno;
                 (e.x, e.y, e.ancho, e.alto) = (caja.0, caja.1, caja.2 - caja.0, caja.3 - caja.1);
@@ -422,7 +676,7 @@ impl Gesto {
                 self.trazo.clear();
                 self.trazo.push(ancla);
             }
-            FormaReconocida::Elipse { caja } => {
+            AlPararse::Forma(FormaReconocida::Elipse { caja }) => {
                 e.figura = Figura::Elipse;
                 e.relleno = relleno;
                 (e.x, e.y, e.ancho, e.alto) = (caja.0, caja.1, caja.2 - caja.0, caja.3 - caja.1);
@@ -482,7 +736,28 @@ impl Gesto {
                 shift,
                 alt,
                 presion,
-            } => self.pulsar(p, shift, alt, presion, escena, escala),
+            } => {
+                // Solo si el pulsar se atiende: un segundo pulsar sin su
+                // soltar se ignora, y no debe cambiar el Alt de la salida.
+                if self.en_reposo() {
+                    self.alt = [alt; 2];
+                }
+                let r = self.pulsar(p, shift, alt, presion, escena, escala);
+                // **Un clavo solo cuenta si sujeta algo de lo elegido.** Lo
+                // que no atraviesa ninguno se traslada, gira y se estira
+                // igual con clavos que sin ellos (`Libertad::Libre`), asi que
+                // puede seguir moviendose como capa. Antes bastaba un clavo
+                // en cualquier rincon del dibujo para que cada aviso del
+                // raton rehiciera la escena entera.
+                if self.con_clavos && self.clavo_en_mano.is_none() {
+                    self.con_clavos = self
+                        .seleccion
+                        .ids()
+                        .iter()
+                        .any(|&id| crate::nudos::alfileres_de(&escena.alfileres, id).next().is_some());
+                }
+                r
+            }
             EventoGesto::Mover {
                 p,
                 shift,
@@ -490,6 +765,8 @@ impl Gesto {
                 presion,
             } => {
                 let p = self.enganchar(p, escena, escala);
+                self.arrastrado |= !self.en_reposo();
+                self.alt[1] = alt;
                 self.mover(p, shift, alt, presion, escena, escala)
             }
             EventoGesto::Soltar { p } => {
@@ -501,6 +778,11 @@ impl Gesto {
                 self.estado = Estado::Reposo;
                 self.seleccion.limpiar();
                 self.anclaje_activo = None;
+                // Cancelar deshace lo movido, y con ello las flechas que lo
+                // seguian: ni lista de seguidoras ni resaltado sobreviven.
+                self.seguidoras.limpiar();
+                self.candidatas = [None; 2];
+                self.forma_por_gesto = false;
                 Respuesta {
                     region: Region::Todo,
                     cursor: FormaCursor::Flecha,
@@ -563,25 +845,38 @@ impl Gesto {
         match self.estado {
             // El punto que hace nacer una figura.
             Estado::Reposo => match self.herramienta {
-                Herramienta::Lapiz | Herramienta::Resaltador => Some(Faena::AMano),
+                Herramienta::Lapiz | Herramienta::Resaltador | Herramienta::Grafito => Some(Faena::AMano),
                 // `Mano` selecciona y mueve; `Lupa` es una vista y no deja
                 // rastro; el `Borrador` quita, no coloca. Ninguna de las
                 // tres pone un punto que merezca engancharse.
                 Herramienta::Mano | Herramienta::Lupa | Herramienta::Borrador => None,
                 _ => Some(Faena::Trazando),
             },
+            // Lo que salio del gesto de pararse ya no es un trazo a mano: su
+            // punta se engancha como la de una figura (`Iman.Faena.TRAZANDO`
+            // del movil al enderezar o abrir el compas).
+            Estado::Dibujando { .. } if self.forma_por_gesto => Some(Faena::Trazando),
             Estado::Dibujando { .. } => match self.herramienta {
-                Herramienta::Lapiz | Herramienta::Resaltador => Some(Faena::AMano),
+                Herramienta::Lapiz | Herramienta::Resaltador | Herramienta::Grafito => Some(Faena::AMano),
                 _ => Some(Faena::Trazando),
             },
             // Calibrar es trazar una raya de dos puntos, y es donde mas
             // falta hace: el error de picar a pulso entra directo en la
             // escala y lo hereda todo lo que se mida despues.
             Estado::Calibrando => Some(Faena::Trazando),
+            // El clavo que se lleva no se imanta: el iman se pegaria a las
+            // propias figuras que atraviesa en cuanto se moviera un pelo.
+            Estado::Moviendo { .. } if self.clavo_en_mano.is_some() => None,
             Estado::Moviendo { .. } => Some(Faena::Moviendo),
             Estado::Escalando { .. } | Estado::Girando { .. } => Some(Faena::Afinando),
             // Seleccionar no es dibujar: nada tira del cursor.
             Estado::Marquesina { .. } => None,
+            // La punta de una flecha no se engancha al iman: la ayuda aqui
+            // es el resaltado de la figura a la que se va a atar, y el iman
+            // ademas se pegaria al punto viejo de la propia flecha.
+            Estado::ArrastrandoPunta { .. } => None,
+            // La barra de un cronograma ya se engancha a cuartos de columna.
+            Estado::BarraDelPlan { .. } => None,
         }
     }
 
@@ -598,17 +893,24 @@ impl Gesto {
         let zoom = 1.0 / escala.max(0.0001);
         // Lo que se esta dibujando o moviendo no cuenta: se engancharia a si
         // mismo en cuanto naciera.
-        let propios: [u64; 1];
-        let excluir: &[u64] = match self.estado {
-            Estado::Dibujando { id } => {
-                propios = [id];
-                &propios
-            }
-            Estado::Moviendo { .. } => self.seleccion.ids(),
-            _ => &[],
+        // Se pregunta con una funcion y no con una lista: al mover mil
+        // elegidos, `contains` sobre la lista por cada elemento de la escena
+        // se llevaba casi todo el tiempo de cada aviso del raton.
+        let seleccion = &self.seleccion;
+        let dibujando = match self.estado {
+            Estado::Dibujando { id } => Some(id),
+            _ => None,
         };
-        let encontrado =
-            crate::enganche::sitio(&escena.elementos, p, zoom, faena, &self.enganche, excluir);
+        let moviendo = matches!(self.estado, Estado::Moviendo { .. });
+        let excluye = |id: u64| dibujando == Some(id) || (moviendo && seleccion.contiene(id));
+        let encontrado = crate::enganche::sitio_con(
+            &escena.elementos,
+            p,
+            zoom,
+            faena,
+            &self.enganche,
+            &excluye,
+        );
         self.anclaje_activo = encontrado;
         encontrado.map_or(p, |a| a.punto)
     }
@@ -644,6 +946,12 @@ impl Gesto {
     /// paso una vez: los tiradores se pintaban rectos mientras el clic
     /// respondia girado.
     pub fn tiradores(&self, escena: &Escena, escala: f32) -> Option<Tiradores> {
+        // Mientras se escribe no hay marco (`marco_visible`), y un tirador
+        // que no se ve no puede agarrar: el clic cerca del texto que se
+        // escribe lo estiraria sin que se supiera por que.
+        if !self.marco_visible() {
+            return None;
+        }
         let caja = self.seleccion.caja(escena)?;
         // Con un solo elemento, el marco lleva su angulo. Con varios, la
         // caja es paralela a los ejes y cada uno conserva el suyo.
@@ -661,6 +969,16 @@ impl Gesto {
     /// este `Vec` empezara vacio, crecer de 4 a 8 a 16... asignaria una
     /// docena de veces por trazo, en el unico camino del programa con un
     /// plazo sagrado. La tarea 15 lo comprueba contando asignaciones.
+    /// El tamano de letra con que nace lo nuevo: el del pincel, o el de
+    /// fabrica (20, el `fontSize` de `ItemStyle`).
+    fn tam_letra_de_lo_nuevo(&self) -> f32 {
+        if self.estilo.tamano_letra > 0.0 {
+            self.estilo.tamano_letra
+        } else {
+            crate::texto::TAM_POR_DEFECTO
+        }
+    }
+
     fn nuevo_elemento(&self, p: Punto2) -> Elemento {
         let reservados = || {
             let mut v = Vec::with_capacity(PUNTOS_RESERVADOS);
@@ -668,7 +986,7 @@ impl Gesto {
             v
         };
         let figura = match self.herramienta {
-            Herramienta::Lapiz => Figura::Lapiz {
+            Herramienta::Lapiz | Herramienta::Grafito => Figura::Lapiz {
                 puntos: reservados(),
                 // Reservadas igual que los puntos: la primera presion real no
                 // puede pedir memoria en el camino caliente.
@@ -682,21 +1000,26 @@ impl Gesto {
                 puntos: reservados(),
             },
             Herramienta::Linea => Figura::Linea { puntos: vec![p, p] },
+            // Puntas y tipo, los que el panel dejo como «actual»
+            // (`currentItemArrowType` y compania en Excalidraw).
             Herramienta::Flecha => Figura::Flecha {
                 puntos: vec![p, p],
-                punta_inicio: TipoPunta::Ninguna,
-                punta_fin: TipoPunta::Flecha,
-                codos: false,
+                punta_inicio: self.estilo.punta_inicio,
+                punta_fin: self.estilo.punta_fin,
+                codos: self.estilo.codos,
             },
             Herramienta::Elipse => Figura::Elipse,
             Herramienta::Rombo => Figura::Rombo,
-            Herramienta::Mosaico => Figura::Mosaico { desenfoque: false },
+            // Pixelado o desenfocado, lo que el panel dejo puesto (`mosaicBlur`).
+            Herramienta::Mosaico => Figura::Mosaico {
+                desenfoque: self.estilo.desenfoque,
+            },
             // Por dentro es una flecha, como en el movil: asi se edita, se
             // exporta y viaja por el mismo camino que la recta.
             Herramienta::FlechaLibre => Figura::Flecha {
                 puntos: reservados(),
-                punta_inicio: TipoPunta::Ninguna,
-                punta_fin: TipoPunta::Flecha,
+                punta_inicio: self.estilo.punta_inicio,
+                punta_fin: self.estilo.punta_fin,
                 codos: false,
             },
             // **Nace YA doblando.** `codo.rs` es el porte entero de
@@ -707,8 +1030,8 @@ impl Gesto {
             // asi que llega al movil diciendo lo que es.
             Herramienta::FlechaCodos => Figura::Flecha {
                 puntos: vec![p, p],
-                punta_inicio: TipoPunta::Ninguna,
-                punta_fin: TipoPunta::Flecha,
+                punta_inicio: self.estilo.punta_inicio,
+                punta_fin: self.estilo.punta_fin,
                 codos: true,
             },
             // Nace como la GUIA —el ovalo sin repasar—, que es el primer
@@ -726,11 +1049,18 @@ impl Gesto {
                 angulo: -std::f32::consts::FRAC_PI_4,
                 radio: 14.0,
             },
-            Herramienta::Foco => Figura::Foco { elipse: false },
+            // No nace arrastrando: es una varita (`dibujo::lupa`), como la lupa.
+            Herramienta::Foco => Figura::Foco { cristal: Default::default() },
             Herramienta::Cota => Figura::Cota {
                 puntos: reservados(),
             },
             Herramienta::EscalaGrafica => Figura::EscalaGrafica,
+            // Nace con filas y no vacio: lo que uno quiere al poner un
+            // cronograma es ver ya la rejilla y empezar a arrastrar barras.
+            Herramienta::Cronograma => Figura::Cronograma {
+                tareas: crate::cronograma::tareas_de_fabrica(),
+                periodos: crate::cronograma::PERIODOS_DE_FABRICA,
+            },
             Herramienta::Marco => Figura::Marco {
                 // Sin nombre: ponerle uno automatico obligaria a contar los
                 // marcos aqui, y el motor no sabe de nombres bonitos.
@@ -758,8 +1088,10 @@ impl Gesto {
                 | Herramienta::Serie => self.estilo.relleno,
                 _ => None,
             },
-            grosor: if self.herramienta == Herramienta::Lapiz {
+            grosor: if matches!(self.herramienta, Herramienta::Lapiz | Herramienta::Grafito) {
                 self.grosor_tinta
+            } else if self.herramienta == Herramienta::Resaltador {
+                self.estilo.grosor.de_resaltador()
             } else {
                 self.estilo.grosor.de_forma()
             },
@@ -772,12 +1104,55 @@ impl Gesto {
             grupos: Vec::new(),
             bloqueado: false,
             enlace: None,
-            redondo: false,
+            // Las esquinas del «actual», solo en lo que `pintado.rs` sabe
+            // redondear: en otra figura seria un `roundness` que no se ve.
+            // La flecha recta nace curva si ese es el tipo «actual»: en una
+            // flecha, `roundness` es la curva (`curva.rs`).
+            redondo: (self.estilo.redondo
+                && matches!(self.herramienta, Herramienta::Rectangulo | Herramienta::Rombo))
+                || (self.estilo.curva
+                    && !self.estilo.codos
+                    && self.herramienta == Herramienta::Flecha),
             // **El trazo nuevo nace con el material elegido**, igual que
             // nace con el color y con el grosor: el panel deja el «actual» y
             // lo siguiente que se dibuje sale de ahi.
-            material: self.estilo.material,
-            extras: Default::default(),
+            material: self.material_de_lo_nuevo(),
+            // El texto nace con la alineacion «actual», escrita: es lo que
+            // hace `newElement` del movil con `textAlign` y `verticalAlign`.
+            extras: if self.herramienta == Herramienta::Texto {
+                crate::elemento::Extras {
+                    alineacion: Some(self.estilo.alineacion),
+                    alineacion_vertical: Some(self.estilo.alineacion_vertical),
+                    ..Default::default()
+                }
+            } else if matches!(
+                self.herramienta,
+                Herramienta::Serie | Herramienta::Cota | Herramienta::Punto | Herramienta::EscalaGrafica
+            ) {
+                // **La letra del pincel, si se eligio una** (`fontFamily`, como
+                // la cota del movil): sin elegir, su letra de siempre.
+                crate::elemento::Extras {
+                    familia: self
+                        .estilo
+                        .familia
+                        .map(|n| crate::texto::nombre_de_familia(Some(n)).to_string()),
+                    ..Default::default()
+                }
+            } else if self.herramienta == Herramienta::Cronograma {
+                // Con la letra del pincel, como `newElement` del movil con
+                // `fontFamily`: la de los textos de alrededor.
+                crate::elemento::Extras {
+                    familia: Some(crate::texto::nombre_de_familia(self.estilo.familia).to_string()),
+                    tam_letra: Some(if self.estilo.tamano_letra > 0.0 {
+                        self.estilo.tamano_letra
+                    } else {
+                        crate::texto::TAM_POR_DEFECTO
+                    }),
+                    ..Default::default()
+                }
+            } else {
+                Default::default()
+            },
         }
     }
 
@@ -832,6 +1207,10 @@ impl Gesto {
         // El punto llega crudo y todas las cribas de abajo lo usan crudo.
         // La pista de un gesto anterior no puede sobrevivir a este clic.
         self.anclaje_activo = None;
+        self.arrastrado = false;
+        self.seguidoras.limpiar();
+        self.con_clavos = !escena.alfileres.is_empty();
+        self.clavo_en_mano = None;
 
         // Elegir, agarrar tiradores y mover es SOLO de la mano (el selector).
         // Con el lapiz en la mano, pulsar encima de un trazo tiene que
@@ -839,12 +1218,64 @@ impl Gesto {
         // que acababa de trazar y llevandoselo por delante.
         let selecciona = self.herramienta == Herramienta::Mano;
 
+        // 0. ¿Un clavo de soldar? **Antes que nada** (`beginSelectionGesture`
+        //    del movil): un clavo y un tirador en el mismo sitio son dos
+        //    reglas peleandose por el mismo clic, y donde hay clavo manda el
+        //    clavo. Cogerlo es arrancarlo para clavarlo en otro sitio con todo
+        //    lo que atraviesa (`nudos::mover_clavo`).
+        if selecciona
+            && self.con_clavos
+            && let Some(i) = crate::nudos::clavo_en(escena, p, crate::nudos::RADIO_DEL_CLAVO * escala)
+        {
+            self.clavo_en_mano = Some(i);
+            self.estado = Estado::Moviendo { anterior: p };
+            return Respuesta {
+                region: Region::Nada,
+                cursor: FormaCursor::Mover,
+                pide: None,
+            };
+        }
+
+        // Con otra herramienta en la mano, un clic cierra el texto que se
+        // estuviera escribiendo (el de la de texto lo cierra su rama, abajo).
+        if self.herramienta != Herramienta::Texto && self.escribiendo.is_some() {
+            self.cerrar_texto(escena);
+        }
+
         // 1. Un tirador manda sobre lo que haya debajo. Este SI vale con
         // cualquier herramienta: si se ve el tirador, tiene que agarrar.
+        //
+        // Los puntos de una flecha elegida van antes que los de su caja: en
+        // una flecha en diagonal dos esquinas de la caja caen justo sobre sus
+        // extremos, y lo que se quiere al pinchar ahi es llevar la punta a
+        // otra figura, no estirar la flecha entera.
+        if let Some((id, agarre)) = self.agarre_de_punta(p, escena, escala) {
+            escena.apuntar_edicion(id);
+            self.candidatas = [None; 2];
+            self.estado = Estado::ArrastrandoPunta { id, agarre };
+            return Respuesta {
+                region: Region::Nada,
+                cursor: FormaCursor::Mover,
+                pide: None,
+            };
+        }
         if let Some(ts) = self.tiradores(escena, escala) {
             match ts.en(p, escala) {
                 Some(Agarre::Tamano(t)) => {
                     self.estado = Estado::Escalando { tirador: t };
+                    // Con varios elegidos se estiran como bloque desde como
+                    // estaban al pulsar (`estirar_bloque`).
+                    self.originales_del_bloque = if self.seleccion.cuantos() > 1 {
+                        escena
+                            .elementos
+                            .iter()
+                            .filter(|e| self.seleccion.contiene(e.id))
+                            .cloned()
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+                    self.preparar_seguidoras(escena);
                     return Respuesta {
                         region: Region::Nada,
                         cursor: FormaCursor::Escalar {
@@ -858,6 +1289,7 @@ impl Gesto {
                     self.estado = Estado::Girando {
                         anterior: angulo_hacia(ts.centro, p),
                     };
+                    self.preparar_seguidoras(escena);
                     return Respuesta {
                         region: Region::Nada,
                         cursor: FormaCursor::Giro,
@@ -866,6 +1298,44 @@ impl Gesto {
                 }
                 None => {}
             }
+        }
+
+        // 1.a ¿La barra de un cronograma? (F12) Va antes que mover la figura:
+        //     dentro de un plan, lo que uno quiere arrastrar casi siempre es
+        //     una barra, no la lamina. La lamina se sigue moviendo agarrandola
+        //     por cualquier otro sitio.
+        if selecciona
+            && !shift
+            && let [id] = self.seleccion.ids()
+            && let Some(plan) = escena.buscar(*id).filter(|e| {
+                !e.bloqueado && matches!(e.figura, Figura::Cronograma { .. })
+            })
+            && let Some((indice, mano)) =
+                crate::cronograma::toque_en_barra(plan, p, 4.0 * escala)
+        {
+            let id = *id;
+            let col = crate::cronograma::ancho_de_columna(plan);
+            let desde = match &plan.figura {
+                Figura::Cronograma { tareas, .. } => tareas[indice].desde,
+                _ => 0.0,
+            };
+            let agarre = if col <= 0.0 {
+                0.0
+            } else {
+                (p.x - crate::cronograma::x_de_la_escala(plan)) / col - desde
+            };
+            escena.apuntar_edicion(id);
+            self.estado = Estado::BarraDelPlan {
+                id,
+                indice,
+                mano,
+                agarre,
+            };
+            return Respuesta {
+                region: Region::Nada,
+                cursor: FormaCursor::Mover,
+                pide: None,
+            };
         }
 
         // 2. Lo ya seleccionado manda sobre lo de encima.
@@ -885,6 +1355,7 @@ impl Gesto {
                 escena.apuntar_edicion(id);
             }
             self.estado = Estado::Moviendo { anterior: p };
+            self.preparar_seguidoras(escena);
             return Respuesta {
                 region: Region::Nada,
                 cursor: FormaCursor::Mover,
@@ -894,12 +1365,27 @@ impl Gesto {
 
         // 3. Lo que haya bajo el cursor.
         if selecciona && let Some(id) = elemento_en(&escena.elementos, p) {
+            // **Pinchar uno de un grupo coge el grupo entero**, como en
+            // Excalidraw. Sin esto «Agrupar» del panel no hacia nada que se
+            // viera: se guardaba el grupo y el clic seguia eligiendo una
+            // sola pieza.
+            let grupo = crate::organizar::hermanos_de(escena, id);
+            // **El marco de un texto, del tamano del texto.** Un texto
+            // guardado con la caja medida a ojo, o traido del movil con su
+            // letra, se remide al elegirlo: el marco que aparece al hacerle
+            // clic es el de lo escrito y no el de la cuenta de antes.
+            for &h in &grupo {
+                Self::ajustar_caja_de_texto(escena, h);
+            }
             if shift {
-                self.seleccion.alternar(id);
+                for h in grupo {
+                    self.seleccion.alternar(h);
+                }
             } else {
-                self.seleccion.poner(id);
+                self.seleccion.poner_todos(grupo);
             }
             self.estado = Estado::Moviendo { anterior: p };
+            self.preparar_seguidoras(escena);
             return Respuesta {
                 region: Region::Todo,
                 cursor: FormaCursor::Mover,
@@ -958,8 +1444,15 @@ impl Gesto {
                     let mut e = self.nuevo_elemento(p);
                     e.figura = Figura::Texto {
                         texto: String::new(),
-                        tam: crate::texto::TAM_POR_DEFECTO,
-                        familia: crate::texto::FAMILIA_POR_DEFECTO.to_string(),
+                        // La letra que el panel dejo como «actual».
+                        tam: self.estilo.tamano_letra,
+                        familia: self
+                            .estilo
+                            .familia
+                            .map_or(crate::texto::FAMILIA_POR_DEFECTO, |n| {
+                                crate::texto::nombre_de_familia(Some(n))
+                            })
+                            .to_string(),
                     };
                     e.x = p.x;
                     e.y = p.y;
@@ -969,7 +1462,15 @@ impl Gesto {
                     (id, String::new())
                 }
             };
+            // **Elegido, pero sin marco ni tiradores mientras se escribe**
+            // (`marco_visible`): como en Excalidraw, se escribe donde se hizo
+            // clic y solo se ve el cursor. Queda elegido para que el panel
+            // cambie la letra, el tamano o el color de lo que se esta
+            // escribiendo y no los del siguiente.
             self.seleccion.poner(id);
+            // La caja, ya a la medida (un texto vacio mide un espacio): la del
+            // texto de antes podia venir medida a ojo o con otra letra.
+            Self::volcar_texto(escena, id, &contenido);
             self.escribiendo = Some((id, crate::texto::EdicionTexto::nueva(contenido)));
             return Respuesta {
                 region: Region::Todo,
@@ -1008,9 +1509,34 @@ impl Gesto {
                     o.streamline = crate::tinta::STREAMLINE_LAPIZ;
                 }
             }
+            // **Un toque = un numero, ya hecho** (`Tool.SERIAL` del movil:
+            // «no se arrastra, igual que el texto»). Nacia con el 1 y sin
+            // tamano, y habia que agrandarlo como un circulo: ahora sale el
+            // siguiente de la escena (`serie::siguiente`), centrado en el
+            // clic y del tamano de la letra del pincel (radio `fontSize` x
+            // 0,9), y el siguiente clic pone el que sigue.
+            if self.herramienta == Herramienta::Serie {
+                let s = crate::serie::nuevo(&escena.elementos, p, self.tam_letra_de_lo_nuevo(), &e);
+                escena.anadir(s);
+                self.trazo.clear();
+                self.estado = Estado::Reposo;
+                return Respuesta {
+                    region: Region::Todo,
+                    cursor: FormaCursor::Cruz,
+                    pide: None,
+                };
+            }
             let id = escena.anadir(e);
             self.forma_elipse = None;
+            self.forma_por_gesto = false;
             self.estado = Estado::Dibujando { id };
+            // Una flecha que nace encima de una figura sale de ella: se
+            // resalta desde el primer momento, como en Excalidraw.
+            self.candidatas = [None; 2];
+            if self.dibujando_flecha() {
+                self.candidatas[0] =
+                    crate::enlace::figura_bajo(&escena.elementos, p, 1.0 / escala.max(0.0001), id);
+            }
             return Respuesta {
                 region: Region::Todo,
                 cursor: FormaCursor::Cruz,
@@ -1160,6 +1686,26 @@ impl Gesto {
                         )
                     }
                 };
+                // La figura a la que se ataria la punta si se soltase aqui.
+                // Cuando cambia, el resaltado se va de una figura y aparece en
+                // otra, lejos de la caja de la flecha: se repinta todo ese
+                // aviso. Mientras no cambia, basta la caja de siempre.
+                let region = if self.dibujando_flecha() {
+                    let antes = self.candidatas[1];
+                    self.candidatas[1] = crate::enlace::figura_bajo(
+                        &escena.elementos,
+                        p,
+                        1.0 / escala.max(0.0001),
+                        id,
+                    );
+                    if antes != self.candidatas[1] {
+                        Region::Todo
+                    } else {
+                        region
+                    }
+                } else {
+                    region
+                };
                 Respuesta {
                     region,
                     cursor: FormaCursor::Cruz,
@@ -1173,31 +1719,47 @@ impl Gesto {
                 // sirve. Se pregunta primero si hay alguno porque lo normal
                 // es que no: `con_contenidos` reserva memoria, y esto corre en
                 // cada movimiento del raton (prueba `asignaciones`).
-                let hay_marco = self
-                    .seleccion
-                    .ids()
+                // Una pasada por la escena preguntando a la seleccion (que
+                // contesta en tiempo constante), y no una busqueda en la
+                // escena por cada elegido: con mil elegidos de dos mil eran
+                // 2,2 ms por aviso del raton (`tests/puertas.rs`).
+                let hay_marco = escena
+                    .elementos
                     .iter()
-                    .any(|id| escena.buscar(*id).is_some_and(crate::marco::es_marco));
-                let ids: Vec<u64> = if hay_marco {
-                    crate::marco::con_contenidos(&escena.elementos, self.seleccion.ids())
+                    .any(|e| self.seleccion.contiene(e.id) && crate::marco::es_marco(e));
+                if let Some(i) = self.clavo_en_mano {
+                    // El clavo cogido: se lleva lo que atraviesa (`nudos`).
+                    crate::nudos::mover_clavo(escena, i, p);
+                } else if self.con_clavos && !hay_marco {
+                    // Con clavos cada figura hace lo que su ley le deja:
+                    // trasladarse, girar sobre su clavo o quedarse quieta.
+                    let ids = self.seleccion.ids().to_vec();
+                    crate::nudos::arrastrar(escena, &ids, anterior, p);
+                } else if hay_marco {
+                    let ids =
+                        crate::marco::con_contenidos(&escena.elementos, self.seleccion.ids());
+                    for &id in &ids {
+                        escena.apuntar_edicion(id);
+                        if let Some(e) = escena.buscar_mut(id) {
+                            e.mover(dx, dy);
+                        }
+                    }
                 } else {
-                    Vec::new()
-                };
-                let sueltos;
-                let ids: &[u64] = if hay_marco {
-                    &ids
-                } else {
-                    sueltos = self.seleccion.ids();
-                    sueltos
-                };
-                for &id in ids {
                     // Sin esto el paso queda vacio y no hay nada que
-                    // deshacer. Es el error mas facil de cometer aqui.
-                    escena.apuntar_edicion(id);
-                    if let Some(e) = escena.buscar_mut(id) {
-                        e.mover(dx, dy);
+                    // deshacer. Es el error mas facil de cometer aqui. Ya
+                    // apuntado, `apuntar_edicion` solo mira un conjunto.
+                    for &id in self.seleccion.ids() {
+                        escena.apuntar_edicion(id);
+                    }
+                    for e in escena.elementos.iter_mut() {
+                        if self.seleccion.contiene(e.id) {
+                            e.mover(dx, dy);
+                        }
                     }
                 }
+                // Las flechas atadas a lo movido se re-trazan en este mismo
+                // aviso, no al soltar. Vacia —lo normal— no cuesta nada.
+                self.seguidoras.seguir(&mut escena.elementos);
                 self.estado = Estado::Moviendo { anterior: p };
                 Respuesta {
                     region: Region::Todo,
@@ -1209,10 +1771,37 @@ impl Gesto {
             Estado::Escalando { tirador } => {
                 for &id in self.seleccion.ids() {
                     escena.apuntar_edicion(id);
-                    if let Some(e) = escena.buscar_mut(id) {
-                        transformar::escalar(e, tirador, p, shift, alt);
+                }
+                if self.originales_del_bloque.len() > 1 {
+                    // Un bloque (grafica, tabla, figura de la biblioteca): se
+                    // estira entero y no cada pieza hacia el cursor.
+                    let nuevos = crate::estirar_bloque::estirar(
+                        &self.originales_del_bloque,
+                        tirador,
+                        p,
+                        shift.then_some(true),
+                    );
+                    for n in nuevos {
+                        if let Some(e) = escena.buscar_mut(n.id) {
+                            (e.figura, e.x, e.y, e.ancho, e.alto) = (n.figura, n.x, n.y, n.ancho, n.alto);
+                            e.extras.tam_letra = n.extras.tam_letra;
+                            e.tocar();
+                        }
+                    }
+                } else {
+                    for e in escena.elementos.iter_mut() {
+                        if self.seleccion.contiene(e.id) {
+                            transformar::escalar(e, tirador, p, shift, alt);
+                        }
                     }
                 }
+                // Lo clavado vuelve a su clavo: estirar no lo despega.
+                if self.con_clavos {
+                    let ids = self.seleccion.ids().to_vec();
+                    crate::nudos::sujetar(escena, &ids);
+                }
+                // Estirar una caja cambia su borde: la flecha atada lo sigue.
+                self.seguidoras.seguir(&mut escena.elementos);
                 let angulo = self.tiradores(escena, escala).map_or(0.0, |t| t.angulo);
                 Respuesta {
                     region: Region::Todo,
@@ -1232,12 +1821,21 @@ impl Gesto {
                 let ahora = angulo_hacia(centro, p);
                 let ahora = if shift { a_saltos(ahora) } else { ahora };
                 let delta = ahora - anterior;
-                for &id in self.seleccion.ids() {
-                    escena.apuntar_edicion(id);
-                    if let Some(e) = escena.buscar_mut(id) {
-                        transformar::girar(e, centro, delta);
+                if self.con_clavos {
+                    // Con un clavo se gira sobre el clavo; con dos, nada.
+                    let ids = self.seleccion.ids().to_vec();
+                    crate::nudos::girar(escena, &ids, centro, delta);
+                } else {
+                    for &id in self.seleccion.ids() {
+                        escena.apuntar_edicion(id);
+                    }
+                    for e in escena.elementos.iter_mut() {
+                        if self.seleccion.contiene(e.id) {
+                            transformar::girar(e, centro, delta);
+                        }
                     }
                 }
+                self.seguidoras.seguir(&mut escena.elementos);
                 self.estado = Estado::Girando { anterior: ahora };
                 Respuesta {
                     region: Region::Todo,
@@ -1251,6 +1849,61 @@ impl Gesto {
                 Respuesta {
                     region: Region::Todo,
                     cursor: FormaCursor::Flecha,
+                    pide: None,
+                }
+            }
+
+            // La barra del cronograma sigue al raton, enganchada a cuartos de
+            // columna (`tareaArrastrada` del movil).
+            Estado::BarraDelPlan {
+                id,
+                indice,
+                mano,
+                agarre,
+            } => {
+                let nueva = escena
+                    .buscar(id)
+                    .and_then(|e| crate::cronograma::tarea_arrastrada(e, indice, mano, p, agarre));
+                let mut cambio = false;
+                if let (Some(nueva), Some(e)) = (nueva, escena.buscar_mut(id))
+                    && let Figura::Cronograma { tareas, .. } = &mut e.figura
+                    && tareas.get(indice) != Some(&nueva)
+                {
+                    tareas[indice] = nueva;
+                    e.tocar();
+                    cambio = true;
+                }
+                self.arrastrado |= cambio;
+                Respuesta {
+                    region: if cambio { Region::Todo } else { Region::Nada },
+                    cursor: FormaCursor::Mover,
+                    pide: None,
+                }
+            }
+
+            Estado::ArrastrandoPunta { id, agarre } => {
+                // `mover_punta` suelta el enganche de la punta que se lleva:
+                // mientras se arrastra, la punta va con el cursor y no con su
+                // figura vieja. Al soltar se decide si se ata de nuevo.
+                if let Some(e) = escena.buscar_mut(id) {
+                    crate::tiradores::mover_punta(e, agarre, p);
+                }
+                let indice = match agarre {
+                    crate::tiradores::AgarrePunta::Principio => Some(0),
+                    crate::tiradores::AgarrePunta::Final => Some(1),
+                    _ => None,
+                };
+                if let Some(i) = indice {
+                    self.candidatas[i] = crate::enlace::figura_bajo(
+                        &escena.elementos,
+                        p,
+                        1.0 / escala.max(0.0001),
+                        id,
+                    );
+                }
+                Respuesta {
+                    region: Region::Todo,
+                    cursor: FormaCursor::Mover,
                     pide: None,
                 }
             }
@@ -1312,24 +1965,48 @@ impl Gesto {
         } else {
             None
         };
-        // **Las flechas siguen a lo que se acaba de mover**, y lo hacen
-        // DENTRO del paso de deshacer que sigue abierto: si `seguir` abriera
-        // el suyo, un solo Ctrl+Z dejaria la caja en su sitio viejo y la
-        // flecha en el nuevo, que es peor que no seguirla.
-        //
-        // Solo despues de mover, escalar o girar. Tras dibujar una figura
-        // nueva no hay nada que recolocar —todavia no le cuelga ninguna
-        // flecha—, y recorrer la escena entera por cada trazo seria pagar el
-        // repaso del organigrama cada vez que se apoya el lapiz.
-        if matches!(
-            self.estado,
-            Estado::Moviendo { .. } | Estado::Escalando { .. } | Estado::Girando { .. }
-        ) {
-            crate::enlace::seguir(escena, self.seleccion.ids());
+        // **Las flechas, al soltar**: atar o soltar sus puntas. Las que
+        // seguian a lo movido ya van donde tienen que ir —se re-trazaron en
+        // cada aviso—; aqui se decide a que queda atada cada punta que se ha
+        // dejado en un sitio. Todo DENTRO del paso de deshacer que sigue
+        // abierto: si abriera el suyo, un solo Ctrl+Z dejaria la caja en su
+        // sitio viejo y la flecha en el nuevo.
+        // **Un compas que no llego a abrirse no deja nada.** Se clavo la
+        // punta, se espero, y se solto sin arrastrar: un circulo de radio
+        // cero no es un dibujo (el movil descarta en `finishCreating` las
+        // figuras de menos de 2). Se cancela el paso entero, que es lo que
+        // lo hizo nacer, y asi no gasta un Ctrl+Z.
+        if self.forma_por_gesto
+            && let Estado::Dibujando { id } = self.estado
+            && escena.buscar(id).is_some_and(|e| {
+                matches!(e.figura, Figura::Elipse)
+                    && e.ancho.max(e.alto) < 2.0 * escala.max(f32::EPSILON)
+            })
+        {
+            escena.cancelar_paso();
         }
+        self.forma_por_gesto = false;
+        self.soltar_flechas(escena, escala);
         // Un paso sin cambios no entra en el historial, asi que hacer clic
         // sin arrastrar no consume un Ctrl+Z. De eso se encarga cerrar_paso.
         escena.cerrar_paso();
+        // **La cota pide su medida nada mas trazarla** (`pendingCotaId` del
+        // movil, con `pedirLaMedida` encendido de fabrica): es el momento en
+        // que uno sabe cuanto mide. Una raya de menos de dos pixeles de
+        // pantalla es un clic, no una cota que dictar.
+        let pide = match (pide, self.estado) {
+            (None, Estado::Dibujando { id })
+                if self.herramienta == Herramienta::Cota
+                    && self.pedir_la_medida
+                    && escena.buscar(id).is_some_and(|e| {
+                        !e.borrado
+                            && crate::medida::longitud_de(e) >= 2.0 * escala.max(f32::EPSILON)
+                    }) =>
+            {
+                Some(Peticion::DictarCota { id })
+            }
+            (pide, _) => pide,
+        };
         self.forma_elipse = None;
         self.estado = Estado::Reposo;
         Respuesta {
@@ -1337,6 +2014,29 @@ impl Gesto {
             cursor: FormaCursor::Flecha,
             pide,
         }
+    }
+
+    /// **Aplica lo dictado a la cota `id`**: el largo en las unidades de la
+    /// escala (o en pixeles sin ella) y el angulo como en un plano. Un paso de
+    /// deshacer propio, como `aplicarCota` del movil. `false` si no cambio
+    /// nada (la cota ya no esta, o los numeros no valen).
+    pub fn dictar_cota(escena: &mut Escena, id: u64, largo: f32, grados: f32) -> bool {
+        let largo_px = crate::medida::largo_en_pixeles(largo, escena.escala.as_ref());
+        let Some(antes) = escena.buscar(id).filter(|e| !e.borrado && !e.bloqueado).cloned() else {
+            return false;
+        };
+        let mut nueva = antes.clone();
+        crate::medida::con_largo_y_angulo(&mut nueva, largo_px, grados);
+        if nueva == antes {
+            return false;
+        }
+        escena.abrir_paso();
+        escena.apuntar_edicion(id);
+        if let Some(e) = escena.buscar_mut(id) {
+            *e = nueva;
+        }
+        escena.cerrar_paso();
+        true
     }
 }
 
@@ -1464,15 +2164,43 @@ impl Gesto {
         true
     }
 
-    /// Termina de escribir.
+    /// Termina de escribir **porque se pulso en otro sitio**: el texto queda
+    /// sin elegir, como en Excalidraw (su `onSubmit` solo deja elegido lo
+    /// que se cerro con el teclado). Lo que se ve al salir es el texto, sin
+    /// marco; el marco sale cuando se le hace clic.
     ///
     /// Un texto que quedo vacio se borra: dejarlo seria un elemento
     /// invisible que se puede elegir sin querer y que nadie sabria quitar.
     pub fn cerrar_texto(&mut self, escena: &mut Escena) -> bool {
-        let Some((id, edicion)) = self.escribiendo.take() else {
+        if self.terminar_texto(escena).is_none() {
+            return false;
+        }
+        self.seleccion.limpiar();
+        true
+    }
+
+    /// Termina de escribir **con el teclado** (Escape): el texto se queda
+    /// elegido, con su marco ya ajustado a lo escrito, que es lo que hace
+    /// Excalidraw cuando se sale con el teclado (`viaKeyboard`). Si quedo
+    /// vacio se borra y no queda nada elegido.
+    pub fn cerrar_texto_con_teclado(&mut self, escena: &mut Escena) -> bool {
+        let Some(id) = self.terminar_texto(escena) else {
             return false;
         };
-        if edicion.esta_vacio() {
+        let sigue = escena.buscar(id).is_some_and(|e| !e.borrado);
+        if sigue {
+            self.seleccion.poner(id);
+        } else {
+            self.seleccion.limpiar();
+        }
+        true
+    }
+
+    /// Lo comun a las dos maneras de cerrar: soltar la edicion y borrar el
+    /// texto si quedo vacio. Devuelve el id del texto que se escribia.
+    fn terminar_texto(&mut self, escena: &mut Escena) -> Option<u64> {
+        let (id, edicion) = self.escribiendo.take()?;
+        if edicion.texto().trim().is_empty() {
             escena.abrir_paso();
             escena.apuntar_edicion(id);
             if let Some(e) = escena.buscar_mut(id) {
@@ -1480,9 +2208,8 @@ impl Gesto {
                 e.tocar();
             }
             escena.cerrar_paso();
-            self.seleccion.limpiar();
         }
-        true
+        Some(id)
     }
 
     /// Si se esta escribiendo ahora mismo. La ventana lo mira para saber si
@@ -1491,12 +2218,76 @@ impl Gesto {
         self.escribiendo.is_some()
     }
 
+    /// Si hay que pintar el marco y los tiradores de lo elegido. **No
+    /// mientras se escribe**: el texto que se escribe esta elegido (para que
+    /// el panel le cambie la letra), pero lo que se ve es solo el cursor,
+    /// como en Excalidraw.
+    pub fn marco_visible(&self) -> bool {
+        self.escribiendo.is_none()
+    }
+
     /// Lo escrito y donde va el cursor, para pintarlo.
     pub fn texto_en_curso(&self) -> Option<(u64, &crate::texto::EdicionTexto)> {
         self.escribiendo.as_ref().map(|(id, e)| (*id, e))
     }
 
-    /// Escribe el texto en su elemento y le ajusta la caja.
+    /// **La barra del cursor del texto que se escribe**, como una raya del
+    /// mundo: de arriba abajo de su renglon, detras de lo que va delante de
+    /// el en ese renglon, medido con la misma letra con que se pinta (el
+    /// medidor del anfitrion). `None` si no se esta escribiendo.
+    ///
+    /// Fija y no parpadeante a proposito: parpadear pide repintar el lienzo
+    /// dos veces por segundo mientras se escribe, y en el suelo (HD 4000)
+    /// cada repintado del lienzo entero cuesta lo que cuesta.
+    pub fn cursor_de_texto(&self, escena: &Escena, zoom: f32) -> Option<crate::pintado::Orden> {
+        let (id, edicion) = self.escribiendo.as_ref()?;
+        let e = escena.buscar(*id)?;
+        let Figura::Texto { tam, familia, .. } = &e.figura else {
+            return None;
+        };
+        let estilo = crate::texto::EstiloDeTexto {
+            negrita: e.extras.negrita,
+            cursiva: e.extras.cursiva,
+            tachado: false,
+        };
+        let paso = tam * crate::texto::interlineado_de(familia).unwrap_or(crate::texto::INTERLINEADO);
+        let fila = edicion.fila();
+        // Centrado o a la derecha, el renglon empieza donde lo aparta
+        // `pintado` (la misma cuenta).
+        let apartado = e
+            .extras
+            .alineacion
+            .filter(|a| *a != crate::texto::AlineacionTexto::Izquierda)
+            .and_then(|a| {
+                crate::texto::apartados_de_renglones(edicion.texto(), *tam, familia, estilo, e.ancho, a)
+                    .get(fila)
+                    .copied()
+            })
+            .unwrap_or(0.0);
+        let x = e.x + apartado + crate::texto::ancho_real(edicion.prefijo(), *tam, familia, estilo);
+        let y0 = e.y + fila as f32 * paso;
+        // Un pixel y medio de pantalla, o un dieciseisavo de la letra si es
+        // mas: a mucho zoom una raya de pixel se pierde junto a letras
+        // gordas.
+        let grosor = (1.5 / zoom.max(1e-3)).max(tam / 16.0);
+        Some(crate::pintado::Orden::Polilinea {
+            puntos: vec![
+                crate::vector::Punto2::nuevo(x, y0 + paso * 0.1),
+                crate::vector::Punto2::nuevo(x, y0 + paso * 0.9),
+            ],
+            color: crate::ColorRgba {
+                a: e.trazo.a * e.opacidad.clamp(0.0, 1.0),
+                ..e.trazo
+            },
+            grosor,
+            estilo: crate::EstiloTrazo::Solido,
+        })
+    }
+
+    /// Escribe el texto en su elemento y le ajusta la caja a lo escrito
+    /// (`texto::medida`, con la letra del texto: la caja de Excalidraw con
+    /// `autoResize`). Si nada cambia, no toca la version: abrir un texto y
+    /// salir sin escribir no deja el dibujo por guardar.
     ///
     /// Todo dentro de UN paso de deshacer por pulsacion no vale: serian
     /// treinta pasos para una palabra. Se apunta la edicion una vez, al
@@ -1505,18 +2296,236 @@ impl Gesto {
         let Some(e) = escena.buscar_mut(id) else {
             return;
         };
-        let tam = match &e.figura {
-            Figura::Texto { tam, .. } => *tam,
-            _ => crate::texto::TAM_POR_DEFECTO,
+        let estilo = crate::texto::EstiloDeTexto {
+            negrita: e.extras.negrita,
+            cursiva: e.extras.cursiva,
+            tachado: false,
         };
-        if let Figura::Texto { texto: dentro, .. } = &mut e.figura {
+        let Figura::Texto {
+            texto: dentro,
+            tam,
+            familia,
+        } = &mut e.figura
+        else {
+            return;
+        };
+        let cambia_texto = dentro != texto;
+        if cambia_texto {
             dentro.clear();
             dentro.push_str(texto);
         }
-        let (ancho, alto) = crate::texto::medida_estimada(texto, tam);
-        e.ancho = ancho;
-        e.alto = alto;
-        e.tocar();
+        let (ancho, alto) = crate::texto::medida(texto, *tam, familia, estilo);
+        let cambia_caja = (e.ancho - ancho).abs() > 0.01 || (e.alto - alto).abs() > 0.01;
+        if cambia_caja {
+            e.ancho = ancho;
+            e.alto = alto;
+        }
+        if cambia_texto || cambia_caja {
+            e.tocar();
+        }
+    }
+
+    /// **Ajusta la caja de un texto suelto a lo que mide de verdad**, sin
+    /// tocar lo escrito: para los textos que llegan con la caja medida a ojo
+    /// (los de antes de medir con DirectWrite) o con la letra de otro
+    /// aparato. Solo con medidor de verdad —a ojo no se «corrige» nada— y
+    /// solo en los sueltos: el de dentro de una figura lo coloca su figura.
+    pub fn ajustar_caja_de_texto(escena: &mut Escena, id: u64) {
+        if !crate::texto::hay_medidor() {
+            return;
+        }
+        let suelto = escena.buscar(id).is_some_and(|e| {
+            e.extras.contenedor.is_none() && matches!(e.figura, Figura::Texto { .. })
+        });
+        if !suelto {
+            return;
+        }
+        let texto = match escena.buscar(id).map(|e| &e.figura) {
+            Some(Figura::Texto { texto, .. }) => texto.clone(),
+            _ => return,
+        };
+        Self::volcar_texto(escena, id, &texto);
+    }
+}
+
+/// **Las flechas atadas** (`binding.ts` de Excalidraw): unir al dibujar,
+/// resaltar la figura candidata, seguir en vivo y re-atar al soltar.
+///
+/// Van en su propio bloque porque son un solo asunto repartido por los tres
+/// momentos del gesto; la maquina de estados de arriba solo los llama.
+impl Gesto {
+    /// Si lo que se esta dibujando es una flecha de las que se atan: la
+    /// recta y la de codos. La de pulso no, que es un trazo con punta y no
+    /// un conector.
+    fn dibujando_flecha(&self) -> bool {
+        matches!(self.estado, Estado::Dibujando { .. })
+            && matches!(
+                self.herramienta,
+                Herramienta::Flecha | Herramienta::FlechaCodos
+            )
+    }
+
+    /// Apunta, una vez al pulsar, las flechas que tienen que seguir a lo que
+    /// se va a mover (ver `enlace::Seguidoras`), y guarda su instantanea de
+    /// deshacer ya: el arrastre que sigue no pide memoria por ellas.
+    fn preparar_seguidoras(&mut self, escena: &mut Escena) {
+        // Un marco se lleva lo que encierra: lo de dentro tambien se mueve,
+        // y una flecha que va dentro con su caja no tiene que estirarse.
+        let hay_marco = escena
+            .elementos
+            .iter()
+            .any(|e| self.seleccion.contiene(e.id) && crate::marco::es_marco(e));
+        let del_marco: std::collections::HashSet<u64> = if hay_marco {
+            crate::marco::con_contenidos(&escena.elementos, self.seleccion.ids())
+                .into_iter()
+                .collect()
+        } else {
+            Default::default()
+        };
+        let seleccion = &self.seleccion;
+        self.seguidoras.preparar(&escena.elementos, |id| {
+            seleccion.contiene(id) || del_marco.contains(&id)
+        });
+        for &id in self.seguidoras.ids() {
+            escena.apuntar_edicion(id);
+        }
+    }
+
+    /// El punto de flecha que hay bajo `p`, si la seleccion es una flecha
+    /// sola. El de «anadir punto» no: ese crea, y aqui solo se arrastra.
+    fn agarre_de_punta(
+        &self,
+        p: Punto2,
+        escena: &Escena,
+        escala: f32,
+    ) -> Option<(u64, crate::tiradores::AgarrePunta)> {
+        use crate::tiradores::AgarrePunta;
+        let [id] = self.seleccion.ids() else {
+            return None;
+        };
+        let e = escena.buscar(*id)?;
+        if !matches!(e.figura, Figura::Flecha { .. }) {
+            return None;
+        }
+        match crate::tiradores::TiradoresDePunta::de_elemento(e, escala)?.en(p, escala)? {
+            AgarrePunta::Anadir(_) => None,
+            agarre => Some((*id, agarre)),
+        }
+    }
+
+    /// Al soltar: a que queda atada cada punta que se acaba de dejar.
+    fn soltar_flechas(&mut self, escena: &mut Escena, escala: f32) {
+        use crate::elemento::ModoEnganche;
+        use crate::enlace::{Extremo, revisar_extremo_en};
+        use crate::tiradores::AgarrePunta;
+        let zoom = 1.0 / escala.max(0.0001);
+        // **La punta se queda donde se solto** (lo pidio el usuario el
+        // 2026-09-23: «si inicie al centro de una figura ahi se sujeta, y si lo
+        // solte en la esquina ahi se queda»). Es el `bindMode: "inside"` de
+        // Excalidraw hecho norma: el punto fijo sigue a la figura al moverla,
+        // estirarla o girarla. Alt hace lo de Excalidraw por omision: la
+        // punta al borde, en orbita.
+        let modo = |alt: bool| {
+            if alt {
+                ModoEnganche::Orbita
+            } else {
+                ModoEnganche::Dentro
+            }
+        };
+        let (al_pulsar, al_soltar) = (modo(self.alt[0]), modo(self.alt[1]));
+        match self.estado {
+            // Recien dibujada: las dos puntas, la de salida —que se dejo al
+            // pulsar, con el Alt de entonces— y la de llegada.
+            Estado::Dibujando { id } if self.dibujando_flecha() => {
+                revisar_extremo_en(escena, id, Extremo::Inicio, zoom, al_pulsar);
+                revisar_extremo_en(escena, id, Extremo::Fin, zoom, al_soltar);
+            }
+            Estado::ArrastrandoPunta { id, agarre } if self.arrastrado => match agarre {
+                // `mover_punta` ya solto el enganche al empezar a arrastrar,
+                // asi que la figura de antes todavia la cree suya: se pone
+                // al dia su `boundElements` aunque la punta no se ate a nada.
+                AgarrePunta::Principio => {
+                    revisar_extremo_en(escena, id, Extremo::Inicio, zoom, al_soltar);
+                    crate::enlace::sincronizar_atados(escena, id);
+                }
+                AgarrePunta::Final => {
+                    revisar_extremo_en(escena, id, Extremo::Fin, zoom, al_soltar);
+                    crate::enlace::sincronizar_atados(escena, id);
+                }
+                // Un codo de en medio: las puntas atadas no cambian de
+                // figura, pero se vuelven a posar mirando al tramo nuevo.
+                _ => {
+                    if let Some(mut copia) = escena.buscar(id).cloned() {
+                        if crate::enlace::recolocar(&mut copia, &escena.elementos) {
+                            if let Some(f) = escena.buscar_mut(id) {
+                                *f = copia;
+                            }
+                        }
+                    }
+                }
+            },
+            // Una flecha movida SIN su figura: si su punta sigue encima,
+            // sigue atada; si se la ha llevado lejos, se suelta. Sin esto, la
+            // proxima vez que se moviera la caja la punta volveria sola a
+            // ella, deshaciendo lo que el usuario acaba de hacer.
+            // La misma revision que tras alinear o repartir: vive en
+            // `enlace` para que las dos no discrepen. Cada punta conserva su
+            // modo: mover la flecha no es pedir otro.
+            Estado::Moviendo { .. } | Estado::Escalando { .. } | Estado::Girando { .. }
+                if self.arrastrado =>
+            {
+                let seleccion = &self.seleccion;
+                crate::enlace::revisar_flechas_movidas(escena, |id| seleccion.contiene(id), zoom);
+            }
+            _ => {}
+        }
+        self.seguidoras.limpiar();
+        self.candidatas = [None; 2];
+    }
+
+    /// Si esta flecha se esta re-trazando en vivo porque se mueve algo a lo
+    /// que esta atada. La ventana la saca de la capa congelada: si no, se
+    /// veria quieta en su sitio viejo debajo de la que se mueve.
+    pub fn sigue_la_flecha(&self, id: u64) -> bool {
+        self.seguidoras.contiene(id)
+    }
+
+    /// Las flechas que se re-trazan en vivo en este arrastre, ordenadas.
+    pub fn flechas_que_siguen(&self) -> &[u64] {
+        self.seguidoras.ids()
+    }
+
+    /// El resaltado de las figuras a las que se atarian las puntas de la
+    /// flecha en curso, listo para pintar encima de todo.
+    pub fn resaltado_de_union(&self, escena: &Escena, zoom: f32) -> Vec<crate::pintado::Orden> {
+        let [a, b] = self.candidatas;
+        [a, b.filter(|b| Some(*b) != a)]
+            .into_iter()
+            .flatten()
+            .filter_map(|id| escena.buscar(id))
+            .flat_map(|e| crate::enlace::resaltado(e, zoom))
+            .collect()
+    }
+
+    /// Los puntos de agarre de la flecha elegida, si lo elegido es una
+    /// flecha sola y no se esta arrastrando entera. Son los mismos que mira
+    /// `pulsar`, asi que lo que se pinta es lo que se puede coger.
+    pub fn tiradores_de_punta(
+        &self,
+        escena: &Escena,
+        escala: f32,
+    ) -> Option<crate::tiradores::TiradoresDePunta> {
+        if self.moviendo() {
+            return None;
+        }
+        let [id] = self.seleccion.ids() else {
+            return None;
+        };
+        let e = escena.buscar(*id)?;
+        if !matches!(e.figura, Figura::Flecha { .. }) {
+            return None;
+        }
+        crate::tiradores::TiradoresDePunta::de_elemento(e, escala)
     }
 }
 #[cfg(test)]
@@ -2832,7 +3841,7 @@ mod pruebas {
             .collect();
         dibujar_a_mano(&mut g, &mut escena, &circulo);
         let cursor = *circulo.last().unwrap();
-        assert!(g.convertir_en_forma(&mut escena, cursor).is_some());
+        assert!(g.convertir_en_forma(&mut escena, cursor, 1.0).is_some());
         let (id, _) = g.elemento_en_curso().unwrap();
         assert!(matches!(escena.buscar(id).unwrap().figura, Figura::Elipse));
         // Alejarse al doble del centro dobla los radios sin mover el centro.
@@ -2855,7 +3864,7 @@ mod pruebas {
         l.extend((1..=30).map(|i| Punto2::nuevo(5.0 * i as f32, 0.0)));
         dibujar_a_mano(&mut g, &mut escena, &l);
         assert!(
-            g.convertir_en_forma(&mut escena, Punto2::nuevo(150.0, 0.0))
+            g.convertir_en_forma(&mut escena, Punto2::nuevo(150.0, 0.0), 1.0)
                 .is_some()
         );
         let (id, _) = g.elemento_en_curso().unwrap();
@@ -2885,7 +3894,7 @@ mod pruebas {
         let mut escena = Escena::nueva();
         let mut g = Gesto::nuevo();
         assert!(
-            g.convertir_en_forma(&mut escena, Punto2::nuevo(0.0, 0.0))
+            g.convertir_en_forma(&mut escena, Punto2::nuevo(0.0, 0.0), 1.0)
                 .is_none()
         );
         let zig: Vec<Punto2> = (0..40)
@@ -2893,7 +3902,7 @@ mod pruebas {
             .collect();
         dibujar_a_mano(&mut g, &mut escena, &zig);
         assert!(
-            g.convertir_en_forma(&mut escena, Punto2::nuevo(195.0, 30.0))
+            g.convertir_en_forma(&mut escena, Punto2::nuevo(195.0, 30.0), 1.0)
                 .is_none()
         );
     }

@@ -240,6 +240,8 @@ pub fn ordenes_de_angulos(angulos: &[AnguloInterno], zoom: f32, color: ColorRgba
             familia: "Segoe UI".to_string(),
             color,
             ancho_max: ancho.max(1.0),
+            negrita: false,
+            cursiva: false,
         });
     }
     salida

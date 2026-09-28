@@ -141,34 +141,78 @@ pub fn se_puede_atar(e: &Elemento) -> bool {
 /// 3. entre los candidatos gana **el mas pequeno**: con una caja dentro de
 ///    otra, anclar a la de fuera nunca es lo que se quiere.
 pub fn figura_bajo(elementos: &[Elemento], p: Punto2, zoom: f32, excluir: u64) -> Option<u64> {
-    let mut candidatos: Vec<(u64, f32)> = Vec::new();
+    // Sin lista de candidatos: se lleva el mejor sobre la marcha. Esto corre
+    // en cada aviso del raton mientras se dibuja una flecha o se arrastra su
+    // punta, y una lista nueva por aviso es memoria pedida en el camino
+    // caliente.
+    let mut mejor: Option<(u64, f32)> = None;
     for e in elementos.iter().rev() {
         if e.id == excluir || !se_puede_atar(e) {
             continue;
         }
-        let dentro = crate::impacto::dentro_de_la_caja_girada(e, p);
-        let roza = distancia_al_borde(e, p) <= distancia_maxima(e, zoom);
-        if !dentro && !roza {
+        // El rotulo de dentro de una caja no recibe flechas: la flecha va a
+        // la caja, que es la que lo lleva. Atada al rotulo, se quedaria
+        // apuntando al texto cuando la caja crece.
+        if matches!(e.figura, Figura::Texto { .. }) && e.extras.contenedor.is_some() {
             continue;
         }
+        let alcance = distancia_maxima(e, zoom);
+        // Criba barata antes de la cara: un circulo que envuelve la figura
+        // aunque este girada. Recortar el contorno de las dos mil figuras de
+        // un plano en cada aviso del raton costaria milisegundos; con esto
+        // solo pagan las que estan cerca de la punta.
         let (x0, y0, x1, y1) = e.caja();
-        candidatos.push((e.id, (x1 - x0) * (y1 - y0)));
+        let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+        let radio = Punto2::nuevo(x0, y0).distancia(Punto2::nuevo(x1, y1)) / 2.0;
+        if p.distancia(centro) > radio + alcance {
+            continue;
+        }
+        let dentro = crate::impacto::dentro_de_la_caja_girada(e, p);
+        if !dentro && distancia_al_borde(e, p) > alcance {
+            continue;
+        }
+        // Regla 3: gana el mas pequeno. Con empate, el de delante, que es el
+        // que se ve.
+        let area = (x1 - x0) * (y1 - y0);
+        if mejor.is_none_or(|(_, a)| area < a) {
+            mejor = Some((e.id, area));
+        }
         // Regla 2: lo que quede detras de una figura opaca no se ve, asi que
         // no es candidato.
         if dentro && e.tiene_relleno() {
             break;
         }
     }
-    // Regla 3: gana el mas pequeno.
-    candidatos
-        .into_iter()
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(id, _)| id)
+    mejor.map(|(id, _)| id)
+}
+
+/// Los tramos del borde de `e` contra los que se posa una punta.
+///
+/// Los de [`perimetros`], y para el texto y el emoji —que alli no tienen
+/// borde, porque su recuadro no se pinta— **su caja girada**: una flecha
+/// atada a un rotulo suelto se posa donde acaba el rotulo, que es como lo
+/// hace Excalidraw. Sin esto el rayo no cortaba nada y la punta se iba al
+/// centro del texto, encima de las letras.
+fn silueta(e: &Elemento) -> Vec<(Punto2, Punto2)> {
+    let tramos = perimetros::segmentos_de(e, PASO_PERIMETRO);
+    if !tramos.is_empty() {
+        return tramos;
+    }
+    let (x0, y0, x1, y1) = e.caja();
+    let centro = Punto2::nuevo((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+    let esquinas = [
+        Punto2::nuevo(x0, y0),
+        Punto2::nuevo(x1, y0),
+        Punto2::nuevo(x1, y1),
+        Punto2::nuevo(x0, y1),
+    ]
+    .map(|q| q.girar(centro, e.angulo));
+    (0..4).map(|i| (esquinas[i], esquinas[(i + 1) % 4])).collect()
 }
 
 /// Lo que se separa `p` del borde dibujado de `e`. Grande si no hay borde.
 fn distancia_al_borde(e: &Elemento, p: Punto2) -> f32 {
-    perimetros::segmentos_de(e, PASO_PERIMETRO)
+    silueta(e)
         .into_iter()
         .map(|(a, b)| crate::vector::distancia_a_segmento(p, a, b))
         .fold(f32::MAX, f32::min)
@@ -307,7 +351,7 @@ pub fn punto_de_enganche(objetivo: &Elemento, desde: Punto2, b: &Enganche) -> Pu
 /// y la otra no, la flecha se posaria en un borde que no es el que se pinta.
 fn cortar_silueta(e: &Elemento, desde: Punto2, hasta: Punto2) -> Option<Punto2> {
     let mut mejor: Option<(f32, Punto2)> = None;
-    for (a, b) in perimetros::segmentos_de(e, PASO_PERIMETRO) {
+    for (a, b) in silueta(e) {
         if let Some(q) = perimetros::interseccion(desde, hasta, a, b) {
             let d = q.distancia(desde);
             if mejor.is_none_or(|(mejor_d, _)| d < mejor_d) {
@@ -346,10 +390,33 @@ pub fn id_de_texto(id: u64) -> String {
     format!("pc{id:x}")
 }
 
+/// Si `texto` es el id de fichero de `e` (el que devolveria
+/// [`id_de_texto_de`]), sin montar ninguna cadena.
+///
+/// # Por que se compara el TEXTO y no el numero
+///
+/// Porque el numero de un elemento **no es el del fichero** cuando el dibujo
+/// se abre para editarlo: `excalidraw::a_escena` los mete en la escena con
+/// `Escena::anadir`, que les da 1, 2, 3... para que `con_escena` sepa luego
+/// cual es cual. Comparando `id_del_fichero(texto)` con ese numero, ningun
+/// enganche del movil encontraba nunca a su figura —el FNV de `"a1"` no es
+/// un 3— y las flechas no seguian a nada. El texto, en cambio, viaja intacto
+/// en `extras.id_de_fichero`.
+pub fn tiene_id_de_texto(e: &Elemento, texto: &str) -> bool {
+    match &e.extras.id_de_fichero {
+        Some(suyo) => suyo == texto,
+        None => texto
+            .strip_prefix("pc")
+            .and_then(|hex| u64::from_str_radix(hex, 16).ok())
+            .is_some_and(|n| n == e.id),
+    }
+}
+
 /// El elemento al que apunta un enganche, si sigue existiendo.
 pub fn resolver<'a>(elementos: &'a [Elemento], b: &Enganche) -> Option<&'a Elemento> {
-    let id = id_del_fichero(&b.elemento);
-    elementos.iter().find(|e| e.id == id && !e.borrado)
+    elementos
+        .iter()
+        .find(|e| !e.borrado && tiene_id_de_texto(e, &b.elemento))
 }
 
 /// Recoloca los extremos atados de `flecha` (`updateBoundPoints`).
@@ -360,39 +427,65 @@ pub fn resolver<'a>(elementos: &'a [Elemento], b: &Enganche) -> Option<&'a Eleme
 /// sigue viajando intacto al fichero, que es lo unico que se le puede
 /// prometer.
 pub fn recolocar(flecha: &mut Elemento, elementos: &[Elemento]) -> bool {
-    if flecha.extras.enganche_inicio.is_none() && flecha.extras.enganche_fin.is_none() {
-        return false;
-    }
-    let Figura::Flecha { puntos, .. } = &flecha.figura else {
-        return false;
-    };
-    if puntos.len() < 2 {
-        return false;
-    }
-    let (primero, ultimo) = (puntos[0], puntos[puntos.len() - 1]);
-
-    let nuevo_inicio = flecha
+    let inicio = flecha
         .extras
         .enganche_inicio
         .as_ref()
-        .and_then(|b| resolver(elementos, b).map(|o| punto_de_enganche(o, ultimo, b)));
-    let nuevo_fin = flecha
+        .and_then(|b| resolver(elementos, b));
+    let fin = flecha
         .extras
         .enganche_fin
         .as_ref()
-        .and_then(|b| resolver(elementos, b).map(|o| punto_de_enganche(o, primero, b)));
-
-    if nuevo_inicio.is_none() && nuevo_fin.is_none() {
+        .and_then(|b| resolver(elementos, b));
+    let Some((a, b)) = puntos_atados(flecha, inicio, fin) else {
         return false;
+    };
+    poner_extremos(flecha, a, b)
+}
+
+/// Donde tienen que quedar los dos extremos de `flecha` con estas figuras
+/// ya resueltas (`updateBoundPoint`). `None` si no hay nada que mover.
+///
+/// Separado de [`recolocar`] para que quien ya sabe donde esta cada figura
+/// —el arrastre en vivo, con sus indices apuntados al empezar— no tenga que
+/// buscarla por id en cada aviso del raton.
+fn puntos_atados(
+    flecha: &Elemento,
+    inicio: Option<&Elemento>,
+    fin: Option<&Elemento>,
+) -> Option<(Option<Punto2>, Option<Punto2>)> {
+    let Figura::Flecha { puntos, .. } = &flecha.figura else {
+        return None;
+    };
+    if puntos.len() < 2 {
+        return None;
     }
+    let (primero, ultimo) = (puntos[0], puntos[puntos.len() - 1]);
+    let nuevo_inicio = match (&flecha.extras.enganche_inicio, inicio) {
+        (Some(b), Some(o)) => Some(punto_de_enganche(o, ultimo, b)),
+        _ => None,
+    };
+    let nuevo_fin = match (&flecha.extras.enganche_fin, fin) {
+        (Some(b), Some(o)) => Some(punto_de_enganche(o, primero, b)),
+        _ => None,
+    };
+    if nuevo_inicio.is_none() && nuevo_fin.is_none() {
+        return None;
+    }
+    Some((nuevo_inicio, nuevo_fin))
+}
+
+/// Pone los extremos calculados y sube la version, para que la cache del
+/// pintado no sirva la flecha de antes.
+fn poner_extremos(flecha: &mut Elemento, inicio: Option<Punto2>, fin: Option<Punto2>) -> bool {
     let Figura::Flecha { puntos, .. } = &mut flecha.figura else {
         return false;
     };
     let ultimo_indice = puntos.len() - 1;
-    if let Some(p) = nuevo_inicio {
+    if let Some(p) = inicio {
         puntos[0] = p;
     }
-    if let Some(p) = nuevo_fin {
+    if let Some(p) = fin {
         puntos[ultimo_indice] = p;
     }
     // `x`/`y` pasan a ser el primer punto, como en el movil: los puntos se
@@ -417,7 +510,8 @@ pub fn flechas_colgando_de(elementos: &[Elemento], ids: &[u64]) -> Vec<u64> {
             [&e.extras.enganche_inicio, &e.extras.enganche_fin]
                 .into_iter()
                 .flatten()
-                .any(|b| ids.contains(&id_del_fichero(&b.elemento)))
+                .filter_map(|b| resolver(elementos, b))
+                .any(|o| ids.contains(&o.id))
         })
         .map(|e| e.id)
         .collect()
@@ -430,28 +524,209 @@ pub fn flechas_colgando_de(elementos: &[Elemento], ids: &[u64]) -> Vec<u64> {
 /// ella, no en un segundo Ctrl+Z que descoloca el dibujo a medias.
 ///
 /// Devuelve cuantas flechas se recolocaron.
+///
+/// Es la version de una sola vez de [`Seguidoras`] —para quien mueve algo
+/// fuera de un arrastre, como alinear o las flechas del teclado—: la misma
+/// cuenta, sin copiar la escena entera como hacia antes.
 pub fn seguir(escena: &mut Escena, movidos: &[u64]) -> usize {
-    let instantanea: Vec<Elemento> = escena.visibles().cloned().collect();
-    let flechas = flechas_colgando_de(&instantanea, movidos);
-    let mut cuantas = 0;
-    for id in flechas {
-        if movidos.contains(&id) {
-            // Una flecha que se mueve con su caja ya va donde tiene que ir:
-            // recolocarla ademas la estiraria hacia un objetivo que tambien
-            // se movio, y el arrastre de una seleccion entera se deformaria.
-            continue;
-        }
+    let mut seguidoras = Seguidoras::default();
+    // Ordenados para preguntar con busqueda binaria: `preparar` pregunta por
+    // cada elemento de la escena, y alinear mil de dos mil con `contains`
+    // serian dos millones de comparaciones.
+    let mut orden = movidos.to_vec();
+    orden.sort_unstable();
+    // Una flecha que se mueve con su caja ya va donde tiene que ir:
+    // recolocarla ademas la estiraria hacia un objetivo que tambien se
+    // movio, y el arrastre de una seleccion entera se deformaria.
+    seguidoras.preparar(&escena.elementos, |id| orden.binary_search(&id).is_ok());
+    for &id in seguidoras.ids() {
         escena.apuntar_edicion(id);
-        let Some(f) = escena.buscar_mut(id) else {
-            continue;
-        };
-        let mut copia = f.clone();
-        if recolocar(&mut copia, &instantanea) {
-            *escena.buscar_mut(id).expect("acaba de encontrarse") = copia;
-            cuantas += 1;
+    }
+    seguidoras.seguir(&mut escena.elementos);
+    seguidoras.ids().len()
+}
+
+/// **Lo que se llama despues de mover algo fuera de un arrastre** —alinear,
+/// repartir, voltear—, dentro del paso de deshacer que lo movio.
+///
+/// Hace las dos mitades que el arrastre hace en dos momentos:
+///
+/// 1. las flechas que cuelgan de lo movido lo siguen ([`seguir`]);
+/// 2. las flechas movidas **sin** su figura se revisan como al soltarlas
+///    ([`revisar_flechas_movidas`]): si la punta sigue encima de la figura,
+///    sigue atada; si se la llevo lejos, se suelta. Sin esto, la flecha
+///    alineada lejos de su caja volveria sola a ella la proxima vez que la
+///    caja se moviera, deshaciendo lo que se acaba de pedir.
+///
+/// Con nada atado no cuesta mas que un recorrido que no encuentra nada.
+pub fn despues_de_mover(escena: &mut Escena, movidos: &[u64]) -> usize {
+    let n = seguir(escena, movidos);
+    let mut orden = movidos.to_vec();
+    orden.sort_unstable();
+    revisar_flechas_movidas(escena, |id| orden.binary_search(&id).is_ok(), 1.0);
+    n
+}
+
+/// Revisa las puntas atadas de las flechas que se han movido **sin** la
+/// figura a la que estaban atadas: se atan a lo que tengan debajo, o se
+/// sueltan.
+///
+/// La punta que estaba **dentro** (Alt) sigue dentro si aun cae encima: el
+/// modo lo eligio el usuario al atarla, y mover la flecha no es pedir otro.
+///
+/// Si la figura viajo con la flecha, esa punta no se toca. Y si el enganche
+/// no resuelve —un tipo del movil que el PC no dibuja—, tampoco: un enganche
+/// que no resuelve viaja intacto.
+pub fn revisar_flechas_movidas(escena: &mut Escena, se_mueve: impl Fn(u64) -> bool, zoom: f32) {
+    let elementos = &escena.elementos;
+    let revisar: Vec<(u64, Extremo, ModoEnganche)> = elementos
+        .iter()
+        .filter(|e| !e.borrado && se_mueve(e.id) && matches!(e.figura, Figura::Flecha { .. }))
+        .flat_map(|e| {
+            [
+                (&e.extras.enganche_inicio, Extremo::Inicio),
+                (&e.extras.enganche_fin, Extremo::Fin),
+            ]
+            .into_iter()
+            .filter_map(|(b, extremo)| {
+                let b = b.as_ref()?;
+                let quieta = resolver(elementos, b)?;
+                (!se_mueve(quieta.id)).then_some((e.id, extremo, b.modo))
+            })
+            .collect::<Vec<_>>()
+        })
+        .collect();
+    for (id, extremo, modo) in revisar {
+        revisar_extremo_en(escena, id, extremo, zoom, modo);
+    }
+}
+
+/// Vuelve a atar un extremo **a la misma figura y en el mismo modo**,
+/// recalculando `foco` y `punto_fijo` desde donde esta ahora la punta.
+///
+/// Es para cuando la flecha y su figura se han transformado juntas de una
+/// forma que cambia de lado el sitio al que apunta —voltear—: la figura no
+/// cambia, pero lo guardado describe el lado de antes. No se busca la figura
+/// bajo la punta, como en [`revisar_extremo`], porque una punta en orbita
+/// esta justo a un hueco del borde, en el limite exacto de lo que atrae, y
+/// un redondeo la soltaria.
+///
+/// Devuelve si ato; `false` si no habia enganche o no resuelve, y entonces
+/// no toca nada.
+pub fn reatar_a_su_figura(escena: &mut Escena, flecha: u64, extremo: Extremo) -> bool {
+    let Some(f) = escena.buscar(flecha) else {
+        return false;
+    };
+    let Some(puntos) = f.puntos().filter(|p| p.len() >= 2) else {
+        return false;
+    };
+    let (punta, otro, b) = match extremo {
+        Extremo::Inicio => (puntos[0], puntos[puntos.len() - 1], &f.extras.enganche_inicio),
+        Extremo::Fin => (puntos[puntos.len() - 1], puntos[0], &f.extras.enganche_fin),
+    };
+    let Some(b) = b.as_ref() else {
+        return false;
+    };
+    let Some(o) = resolver(&escena.elementos, b) else {
+        return false;
+    };
+    let nuevo = Enganche {
+        modo: b.modo,
+        ..enganche_para(o, b.elemento.clone(), punta, otro)
+    };
+    escena.apuntar_edicion(flecha);
+    let Some(mut copia) = escena.buscar(flecha).cloned() else {
+        return false;
+    };
+    match extremo {
+        Extremo::Inicio => copia.extras.enganche_inicio = Some(nuevo),
+        Extremo::Fin => copia.extras.enganche_fin = Some(nuevo),
+    }
+    copia.tocar();
+    recolocar(&mut copia, &escena.elementos);
+    if let Some(f) = escena.buscar_mut(flecha) {
+        *f = copia;
+    }
+    true
+}
+
+/// **Lo que hay que hacer al borrar `id`**, dentro del mismo paso de
+/// deshacer que lo borra (`fixBindingsAfterDeletion` de Excalidraw):
+///
+/// - si es una **figura**, las flechas atadas a ella se sueltan de ese
+///   extremo (se queda donde estaba, sin enganche). Si no, la flecha llevaria
+///   al fichero un `startBinding` hacia algo que no existe, y el movil —o
+///   Excalidraw— la recolocaria contra una figura borrada;
+/// - si es una **flecha**, se quita de la lista `boundElements` de sus
+///   figuras, que si no dirian al movil que les cuelga una flecha borrada.
+///
+/// Solo mira la escena entera cuando hay algo que buscar: una figura sin
+/// nada en `atados` y una flecha sin enganches no cuestan un recorrido, que
+/// es lo que hace que borrar mil trazos siga siendo borrar mil trazos.
+///
+/// Devuelve cuantos elementos, ademas del borrado, se tocaron.
+pub fn soltar_lo_borrado(escena: &mut Escena, id: u64) -> usize {
+    let Some(e) = escena.buscar(id) else {
+        return 0;
+    };
+    let es_flecha = matches!(e.figura, Figura::Flecha { .. });
+    let con_enganche = e.extras.enganche_inicio.is_some() || e.extras.enganche_fin.is_some();
+    let con_flechas = e.extras.atados.iter().any(|a| a.tipo == "arrow");
+    if es_flecha && con_enganche {
+        // Se quita de TODA figura que la lleve, no solo de sus dos
+        // objetivos: una lista del movil puede traerla de antes, y una flecha
+        // borrada no le cuelga a nadie. Los enganches de la propia flecha se
+        // quedan: si se deshace el borrado, vuelve atada como estaba.
+        let texto = id_de_texto_de(e);
+        let tocar: Vec<u64> = escena
+            .elementos
+            .iter()
+            .filter(|o| o.id != id && o.extras.atados.iter().any(|a| a.id == texto))
+            .map(|o| o.id)
+            .collect();
+        for o in &tocar {
+            escena.apuntar_edicion(*o);
+            if let Some(o) = escena.buscar_mut(*o) {
+                o.extras.atados.retain(|a| a.id != texto);
+                o.tocar();
+            }
+        }
+        return tocar.len();
+    }
+    if !con_flechas {
+        return 0;
+    }
+    // Se miran los enganches de las flechas y no solo la lista `atados`: la
+    // lista es la pista para no recorrer en balde, pero la verdad de a quien
+    // se ata una flecha la dice su enganche (ver `flechas_colgando_de`).
+    let figura = e.clone();
+    let sueltas: Vec<(u64, bool, bool)> = escena
+        .elementos
+        .iter()
+        .filter(|f| !f.borrado && f.id != id && matches!(f.figura, Figura::Flecha { .. }))
+        .filter_map(|f| {
+            let apunta = |b: &Option<Enganche>| {
+                b.as_ref()
+                    .is_some_and(|b| tiene_id_de_texto(&figura, &b.elemento))
+            };
+            let (i, fin) = (apunta(&f.extras.enganche_inicio), apunta(&f.extras.enganche_fin));
+            (i || fin).then_some((f.id, i, fin))
+        })
+        .collect();
+    for &(f, inicio, fin) in &sueltas {
+        escena.apuntar_edicion(f);
+        if let Some(f) = escena.buscar_mut(f) {
+            if inicio {
+                desatar(f, Extremo::Inicio);
+            }
+            if fin {
+                desatar(f, Extremo::Fin);
+            }
         }
     }
-    cuantas
+    // La figura borrada se queda con su lista tal cual: si se deshace el
+    // borrado vuelve entera, y con ella las flechas, que estan en este paso.
+    sueltas.len()
 }
 
 /// Suelta un extremo (`unbindBindingElement`).
@@ -461,6 +736,370 @@ pub fn desatar(flecha: &mut Elemento, extremo: Extremo) {
         Extremo::Fin => flecha.extras.enganche_fin = None,
     }
     flecha.tocar();
+}
+
+/// El id de TEXTO con el que `e` va al fichero: el que traia, o el `pc<hex>`
+/// con el que `excalidraw::sellar` escribe lo nacido aqui.
+///
+/// Es el que tiene que ir en `elementId` y en `boundElements`: el movil los
+/// compara con el `id` del JSON, no con nuestro numero.
+pub fn id_de_texto_de(e: &Elemento) -> String {
+    match &e.extras.id_de_fichero {
+        Some(suyo) => suyo.clone(),
+        None => id_de_texto(e.id),
+    }
+}
+
+/// Lo que se hace con un extremo de flecha al soltarlo
+/// (`bindOrUnbindBindingElement`): **se ata a la figura que tenga debajo, o
+/// se suelta si no hay ninguna.**
+///
+/// Vale para los dos momentos en que una punta se deja en un sitio: al
+/// terminar de dibujar la flecha y al terminar de arrastrar una punta de una
+/// que ya existia. Y para cuando se mueve la flecha sola: si su punta sigue
+/// encima de la caja, sigue atada; si se la ha llevado lejos, se suelta, que
+/// es lo que el usuario acaba de pedir al llevarsela.
+///
+/// Todo va al paso de deshacer que este abierto, flecha y figura juntas: un
+/// Ctrl+Z que devolviera la flecha y dejara a la caja creyendo que la tiene
+/// atada dejaria un `boundElements` mintiendo en el fichero.
+///
+/// Devuelve si el extremo quedo atado.
+pub fn revisar_extremo(escena: &mut Escena, flecha: u64, extremo: Extremo, zoom: f32) -> bool {
+    revisar_extremo_en(escena, flecha, extremo, zoom, ModoEnganche::Orbita)
+}
+
+/// Como [`revisar_extremo`], pero eligiendo **como** se ata la punta.
+///
+/// `ModoEnganche::Dentro` es el `bindMode: "inside"` de Excalidraw, el que se
+/// pide manteniendo **Alt** al soltar: la punta se queda clavada en el sitio
+/// exacto de la figura donde se solto (`fixedPoint`) y lo sigue al mover o
+/// estirar la figura, en vez de ir al borde. Sirve para senalar un detalle
+/// de una imagen o de un mosaico, que es justo lo que el borde no puede.
+/// Sin Alt, orbita: ver la nota de dentro.
+pub fn revisar_extremo_en(
+    escena: &mut Escena,
+    flecha: u64,
+    extremo: Extremo,
+    zoom: f32,
+    modo: ModoEnganche,
+) -> bool {
+    let Some(f) = escena.buscar(flecha) else {
+        return false;
+    };
+    let Some(puntos) = f.puntos().filter(|_| matches!(f.figura, Figura::Flecha { .. })) else {
+        return false;
+    };
+    if puntos.len() < 2 {
+        return false;
+    }
+    let (punta, otro) = match extremo {
+        Extremo::Inicio => (puntos[0], puntos[puntos.len() - 1]),
+        Extremo::Fin => (puntos[puntos.len() - 1], puntos[0]),
+    };
+    // Una flecha de un clic, sin largo, no dice hacia donde va: atarla haria
+    // que el rayo de `punto_de_enganche` saliera de ella misma.
+    let objetivo = if punta.distancia(otro) < 1.0 {
+        None
+    } else {
+        figura_bajo(&escena.elementos, punta, zoom, flecha)
+    };
+    let tenia = match extremo {
+        Extremo::Inicio => f.extras.enganche_inicio.is_some(),
+        Extremo::Fin => f.extras.enganche_fin.is_some(),
+    };
+    // Ni lo estaba ni lo va a estar: no se toca nada. Tocarla subiria su
+    // version y el paso de deshacer apuntaria un cambio que no se ve.
+    if objetivo.is_none() && !tenia {
+        return false;
+    }
+    // **En orbita salvo que se pida dentro**, que es lo que hace Excalidraw
+    // (`bindingStrategyForNewSimpleArrowEndpointDragging`: `orbit` salvo que
+    // se pida `inside` con Alt). La punta va al borde, mirando hacia donde se
+    // solto —eso lo guardan `foco` y `punto_fijo`—, y no se queda clavada
+    // dentro de la caja: una flecha que acaba a media caja tapa su rotulo, y
+    // al estirar la caja se quedaria dentro en vez de seguir al borde. Por
+    // eso dentro solo cuando se pide: nunca se adivina por donde cayo.
+    let enganche = objetivo.and_then(|id| escena.buscar(id)).map(|o| Enganche {
+        modo,
+        ..enganche_para(o, id_de_texto_de(o), punta, otro)
+    });
+    let atado = enganche.is_some();
+
+    escena.apuntar_edicion(flecha);
+    if let Some(f) = escena.buscar_mut(flecha) {
+        match extremo {
+            Extremo::Inicio => f.extras.enganche_inicio = enganche,
+            Extremo::Fin => f.extras.enganche_fin = enganche,
+        }
+        f.tocar();
+    }
+    sincronizar_atados(escena, flecha);
+    // Y la punta se posa ya en el borde: es lo que ve el usuario al soltar
+    // en Excalidraw, y lo que evita que el primer movimiento de la caja haga
+    // saltar la punta a un sitio que nadie eligio.
+    if atado {
+        let Some(copia) = escena.buscar(flecha).cloned() else {
+            return false;
+        };
+        let mut copia = copia;
+        if recolocar(&mut copia, &escena.elementos) {
+            if let Some(f) = escena.buscar_mut(flecha) {
+                *f = copia;
+            }
+        }
+    }
+    atado
+}
+
+/// Pone al dia la otra mitad de la atadura: **la lista `boundElements` de
+/// las figuras** (`applyBinding` / `unbindBindingElement`).
+///
+/// La flecha dice a quien se ata (`startBinding`/`endBinding`), y la figura
+/// dice quien le cuelga. Excalidraw y el movil usan la segunda para saber
+/// que flechas recolocar al mover una caja, asi que una figura que no la
+/// tenga al dia deja a la flecha quieta **en el movil** aunque aqui la siga.
+///
+/// Recorre la escena una vez: se llama al soltar, no en cada aviso del
+/// raton. Quita la flecha de toda figura que ya no sea su objetivo —la de
+/// antes de arrastrar la punta, por ejemplo— y la pone en las que lo son,
+/// sin repetirla.
+pub fn sincronizar_atados(escena: &mut Escena, flecha: u64) {
+    let Some(f) = escena.buscar(flecha) else {
+        return;
+    };
+    let texto = id_de_texto_de(f);
+    let objetivos: [Option<String>; 2] = [
+        f.extras.enganche_inicio.as_ref().map(|b| b.elemento.clone()),
+        f.extras.enganche_fin.as_ref().map(|b| b.elemento.clone()),
+    ];
+    let es_objetivo = |e: &Elemento| {
+        objetivos
+            .iter()
+            .flatten()
+            .any(|t| tiene_id_de_texto(e, t))
+    };
+    let tocar: Vec<u64> = escena
+        .elementos
+        .iter()
+        .filter(|e| e.id != flecha)
+        .filter(|e| {
+            let lo_tiene = e.extras.atados.iter().any(|a| a.id == texto);
+            let debe = es_objetivo(e) && !e.borrado;
+            lo_tiene != debe
+        })
+        .map(|e| e.id)
+        .collect();
+    for id in tocar {
+        escena.apuntar_edicion(id);
+        let Some(e) = escena.buscar_mut(id) else {
+            continue;
+        };
+        if e.extras.atados.iter().any(|a| a.id == texto) {
+            e.extras.atados.retain(|a| a.id != texto);
+        } else {
+            e.extras.atados.push(crate::elemento::Atado {
+                id: texto.clone(),
+                tipo: "arrow".into(),
+            });
+        }
+        e.tocar();
+    }
+}
+
+/// Una flecha que sigue en vivo a lo que se arrastra: donde esta ella y
+/// donde estan sus dos figuras en `Escena::elementos`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Seguidora {
+    flecha: usize,
+    id: u64,
+    inicio: Option<usize>,
+    fin: Option<usize>,
+}
+
+/// **Las flechas que se re-trazan en cada aviso del raton** mientras se
+/// mueve, estira o gira lo que tienen atado (`updateBoundElements`).
+///
+/// # Por que indices apuntados al empezar
+///
+/// Buscar en cada aviso que flechas cuelgan de lo elegido seria recorrer la
+/// escena por cada elegido —O(n·k)— justo en el arrastre, que tiene una
+/// puerta de 400 µs con mil elegidos de dos mil. Aqui se recorre **una vez
+/// al pulsar** y se apunta, para cada flecha afectada, en que posicion de la
+/// escena esta ella y en cual cada una de sus figuras. Durante el arrastre
+/// la escena no gana ni pierde elementos, asi que esas posiciones valen
+/// hasta soltar; y aun asi se comprueba el id antes de usarlas, que es un
+/// comparar y no cuesta nada.
+///
+/// Con nada atado a lo que se mueve la lista esta vacia y [`Self::seguir`]
+/// no hace nada: el arrastre de siempre no paga esto.
+#[derive(Debug, Clone, Default)]
+pub struct Seguidoras {
+    lista: Vec<Seguidora>,
+    /// Los ids de las flechas, ordenados, para contestar
+    /// [`Self::contiene`] sin recorrer la lista: el pintado lo pregunta por
+    /// cada elemento en cada fotograma.
+    ids: Vec<u64>,
+}
+
+impl Seguidoras {
+    /// Apunta las flechas atadas a lo que `se_mueve` sin moverse ellas.
+    ///
+    /// Una flecha que va dentro de lo que se mueve no se re-traza: ya viaja
+    /// entera, y estirarla ademas hacia un objetivo que tambien se movio la
+    /// deformaria (`simultaneouslyUpdated` de Excalidraw).
+    pub fn preparar(&mut self, elementos: &[Elemento], se_mueve: impl Fn(u64) -> bool) {
+        self.limpiar();
+        // Lo normal es que no haya ni una flecha atada: se mira antes de
+        // montar el indice, que si pide memoria.
+        let alguna = elementos.iter().any(|e| {
+            !e.borrado
+                && (e.extras.enganche_inicio.is_some() || e.extras.enganche_fin.is_some())
+                && !se_mueve(e.id)
+        });
+        if !alguna {
+            return;
+        }
+        // Dos indices y no uno, para no montar una cadena por elemento: lo
+        // que vino de un fichero se busca por su texto, lo nacido aqui por
+        // su numero (ver `tiene_id_de_texto`, que es la misma regla).
+        let mut por_texto: std::collections::HashMap<&str, usize> = Default::default();
+        let mut por_numero: std::collections::HashMap<u64, usize> = Default::default();
+        for (i, e) in elementos.iter().enumerate().filter(|(_, e)| !e.borrado) {
+            match &e.extras.id_de_fichero {
+                Some(texto) => {
+                    por_texto.insert(texto.as_str(), i);
+                }
+                None => {
+                    por_numero.insert(e.id, i);
+                }
+            }
+        }
+        let donde = |b: &Option<Enganche>| {
+            let texto = b.as_ref()?.elemento.as_str();
+            por_texto.get(texto).copied().or_else(|| {
+                let n = u64::from_str_radix(texto.strip_prefix("pc")?, 16).ok()?;
+                por_numero.get(&n).copied()
+            })
+        };
+        for (i, e) in elementos.iter().enumerate() {
+            if e.borrado || !matches!(e.figura, Figura::Flecha { .. }) || se_mueve(e.id) {
+                continue;
+            }
+            let inicio = donde(&e.extras.enganche_inicio);
+            let fin = donde(&e.extras.enganche_fin);
+            let le_toca = [inicio, fin]
+                .into_iter()
+                .flatten()
+                .any(|j| se_mueve(elementos[j].id));
+            if le_toca {
+                self.lista.push(Seguidora {
+                    flecha: i,
+                    id: e.id,
+                    inicio,
+                    fin,
+                });
+                self.ids.push(e.id);
+            }
+        }
+        self.ids.sort_unstable();
+    }
+
+    /// Vacia la lista sin soltar su memoria: el siguiente arrastre la
+    /// reutiliza.
+    pub fn limpiar(&mut self) {
+        self.lista.clear();
+        self.ids.clear();
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lista.is_empty()
+    }
+
+    /// Los ids de las flechas que se re-trazan, ordenados.
+    pub fn ids(&self) -> &[u64] {
+        &self.ids
+    }
+
+    pub fn contiene(&self, id: u64) -> bool {
+        self.ids.binary_search(&id).is_ok()
+    }
+
+    /// Re-traza cada flecha contra donde estan ahora sus figuras.
+    ///
+    /// Es lo que se llama en cada aviso del raton despues de mover, estirar o
+    /// girar. Cuesta lo que cuesten las flechas afectadas, no la escena.
+    pub fn seguir(&self, elementos: &mut [Elemento]) {
+        for s in &self.lista {
+            let valida = |i: Option<usize>| i.filter(|&i| i < elementos.len());
+            let (inicio, fin) = (valida(s.inicio), valida(s.fin));
+            if elementos.get(s.flecha).is_none_or(|f| f.id != s.id) {
+                continue;
+            }
+            let nuevos = puntos_atados(
+                &elementos[s.flecha],
+                inicio.map(|i| &elementos[i]),
+                fin.map(|i| &elementos[i]),
+            );
+            if let Some((a, b)) = nuevos {
+                poner_extremos(&mut elementos[s.flecha], a, b);
+            }
+        }
+    }
+}
+
+/// Color del resaltado de la figura candidata: el morado de seleccion de
+/// Excalidraw, translucido para que no tape el borde de la figura.
+const COLOR_RESALTADO: crate::elemento::ColorRgba = crate::elemento::ColorRgba {
+    r: 0x69 as f32 / 255.0,
+    g: 0x65 as f32 / 255.0,
+    b: 0xdb as f32 / 255.0,
+    a: 0.45,
+};
+
+/// Ancho del resaltado, en pixeles de pantalla.
+const GROSOR_RESALTADO_PX: f32 = 6.0;
+
+/// **El aviso de «aqui se va a atar»**: el borde de la figura candidata,
+/// ancho y translucido (`renderBindingHighlight` de Excalidraw).
+///
+/// Sin el, atar es una sorpresa: la punta salta al borde al soltar sin que
+/// nada lo anunciara, y soltar cerca de una caja sin querer atarla no tiene
+/// vuelta atras visible. Con el, se ve antes de soltar y se corrige.
+///
+/// El grosor va en pixeles de pantalla —dividido por el zoom—, igual que la
+/// pista del iman: una marca de ayuda no crece al acercarse.
+pub fn resaltado(e: &Elemento, zoom: f32) -> Vec<crate::pintado::Orden> {
+    let grosor = GROSOR_RESALTADO_PX / zoom.max(0.0001);
+    let mut contornos: Vec<Vec<Punto2>> = perimetros::contornos_de(e, PASO_PERIMETRO)
+        .into_iter()
+        .filter(|c| c.puntos.len() >= 2)
+        .map(|c| {
+            let mut puntos = c.puntos;
+            if c.cerrado {
+                puntos.push(puntos[0]);
+            }
+            puntos
+        })
+        .collect();
+    if contornos.is_empty() {
+        // El texto y el emoji: su caja, que es contra lo que se posa la punta.
+        let tramos = silueta(e);
+        let mut puntos: Vec<Punto2> = tramos.iter().map(|(a, _)| *a).collect();
+        if let Some(p) = puntos.first().copied() {
+            puntos.push(p);
+        }
+        contornos.push(puntos);
+    }
+    contornos
+        .into_iter()
+        .map(|puntos| crate::pintado::Orden::Polilinea {
+            puntos,
+            color: COLOR_RESALTADO,
+            grosor,
+            estilo: crate::elemento::EstiloTrazo::Solido,
+        })
+        .collect()
 }
 
 #[cfg(test)]

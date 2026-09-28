@@ -398,6 +398,371 @@ pub fn escribir(mapa: &mut Map<String, Value>, cr: &Cristal) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// La lupa en el lienzo (`Lupa.kt`: la varita, el contorno y la guia)
+// ---------------------------------------------------------------------------
+
+/// Con cuantos lados se hace el aro de un cristal redondo (`LADOS_DEL_ARO`).
+/// A 64 lados, a la vista es un ovalo, y los tres sitios que lo necesitan
+/// —pantalla, picado y guia— saben de polilineas y no de curvas.
+pub const LADOS_DEL_ARO: usize = 64;
+
+/// Lo menos que puede medir de lado el cristal de una lupa
+/// (`LADO_MINIMO_DE_LUPA`): mas pequeno no se ve nada dentro.
+pub const LADO_MINIMO: f32 = 60.0;
+
+/// La caja `(x, y, ancho, alto)` de un elemento, en el orden de este modulo.
+pub fn caja_de(e: &crate::elemento::Elemento) -> Caja {
+    let (x0, y0, x1, y1) = e.caja();
+    (x0, y0, x1 - x0, y1 - y0)
+}
+
+fn ovalo(c: Punto2, rx: f32, ry: f32) -> Vec<Punto2> {
+    (0..LADOS_DEL_ARO)
+        .map(|i| {
+            let a = std::f32::consts::TAU * i as f32 / LADOS_DEL_ARO as f32;
+            Punto2::nuevo(c.x + rx * a.cos(), c.y + ry * a.sin())
+        })
+        .collect()
+}
+
+fn esquinas(c: Caja) -> Vec<Punto2> {
+    vec![
+        Punto2::nuevo(c.0, c.1),
+        Punto2::nuevo(c.0 + c.2, c.1),
+        Punto2::nuevo(c.0 + c.2, c.1 + c.3),
+        Punto2::nuevo(c.0, c.1 + c.3),
+    ]
+}
+
+/// Un contorno de proporciones (0-1) puesto en una caja del documento.
+fn en_la_caja(forma: &[Punto2], c: Caja) -> Vec<Punto2> {
+    forma
+        .iter()
+        .map(|p| Punto2::nuevo(c.0 + p.x * c.2, c.1 + p.y * c.3))
+        .collect()
+}
+
+/// **El contorno del cristal**, en el documento (`puntosDelCristal`). La
+/// forma copiada de una figura manda sobre todo lo demas; si no, un
+/// recuadro o un ovalo segun `redonda`. Es LA lista que usan el pintado, el
+/// recorte del contenido y la guia: si cada uno sacara la suya, el recorte
+/// no coincidiria con el marco.
+pub fn puntos_del_cristal(cr: &Cristal, caja: Caja) -> Vec<Punto2> {
+    if let Some(f) = cr.forma.as_ref().filter(|f| f.len() >= 3) {
+        return en_la_caja(f, caja);
+    }
+    if !cr.redonda {
+        return esquinas(caja);
+    }
+    ovalo(centro(caja), caja.2 / 2.0, caja.3 / 2.0)
+}
+
+/// **El contorno de lo que se mira**, con la misma forma que el cristal
+/// (`puntosDelFoco`): con el cristal redondo lo que entra es un ovalo, y
+/// dibujar un recuadro seria ensenar una zona que no es la que se ve.
+pub fn puntos_del_foco(cr: &Cristal, caja: Caja) -> Vec<Punto2> {
+    let r = region(cr, caja);
+    if let Some(f) = cr.forma.as_ref().filter(|f| f.len() >= 3) {
+        return en_la_caja(f, r);
+    }
+    if !cr.redonda {
+        return esquinas(r);
+    }
+    ovalo(centro(r), r.2 / 2.0, r.3 / 2.0)
+}
+
+/// **Si la lupa esta apoyada sobre lo que mira** (`laLupaEstaEncima`):
+/// mientras lo este no hay nada que senalar —el detalle esta debajo—, asi
+/// que ni contorno de la zona ni raya.
+pub fn esta_encima(cr: &Cristal, caja: Caja) -> bool {
+    let r = region(cr, caja);
+    r.0 < caja.0 + caja.2 && r.0 + r.2 > caja.0 && r.1 < caja.1 + caja.3 && r.1 + r.3 > caja.1
+}
+
+/// Donde corta el rayo `centro + t·d` al tramo `a-b`.
+fn corte_del_rayo(centro: Punto2, dx: f32, dy: f32, a: Punto2, b: Punto2) -> Option<f32> {
+    let (ex, ey) = (b.x - a.x, b.y - a.y);
+    let den = dx * ey - dy * ex;
+    if den.abs() < 1e-9 {
+        return None;
+    }
+    let (cx, cy) = (a.x - centro.x, a.y - centro.y);
+    let t = (cx * ey - cy * ex) / den;
+    let u = (cx * dy - cy * dx) / den;
+    (t >= 0.0 && (0.0..=1.0).contains(&u)).then_some(t)
+}
+
+/// **Por donde sale de un contorno un rayo que parte de su centro**
+/// (`salidaDelContorno`). El corte mas lejano: en una figura con entrantes
+/// el primero dejaria la raya metida dentro de la propia figura.
+pub fn salida_del_contorno(centro: Punto2, contorno: &[Punto2], dx: f32, dy: f32) -> Punto2 {
+    if contorno.len() < 2 {
+        return centro;
+    }
+    let mut mejor = 0.0f32;
+    for i in 0..contorno.len() {
+        let (a, b) = (contorno[i], contorno[(i + 1) % contorno.len()]);
+        if let Some(t) = corte_del_rayo(centro, dx, dy, a, b) {
+            mejor = mejor.max(t);
+        }
+    }
+    if mejor <= 0.0 {
+        return centro;
+    }
+    Punto2::nuevo(centro.x + dx * mejor, centro.y + dy * mejor)
+}
+
+/// **Las rayas de la guia, de borde a borde** (`lineasDeLaGuia`): cada una
+/// va de la zona mirada (primer punto) al cristal (segundo). Una con la
+/// flecha y el punto, dos con el cono, ninguna si esta apagada o si la lupa
+/// esta encima de lo que mira.
+pub fn lineas_de_la_guia(cr: &Cristal, caja: Caja) -> Vec<(Punto2, Punto2)> {
+    if cr.guia == GuiaDeLupa::Ninguna || esta_encima(cr, caja) {
+        return Vec::new();
+    }
+    let r = region(cr, caja);
+    let (cc, cf) = (centro(caja), centro(r));
+    let (dx, dy) = (cc.x - cf.x, cc.y - cf.y);
+    let largo = dx.hypot(dy);
+    if largo < 1e-6 {
+        return Vec::new();
+    }
+    let del_cristal = puntos_del_cristal(cr, caja);
+    let del_foco = puntos_del_foco(cr, caja);
+    match cr.guia {
+        GuiaDeLupa::Flecha | GuiaDeLupa::Punto => {
+            // Con el punto la raya llega al punto, que es lo que la une a su
+            // marca: el contorno de la zona ni se dibuja en ese modo.
+            let desde = if cr.guia == GuiaDeLupa::Punto {
+                cf
+            } else {
+                salida_del_contorno(cf, &del_foco, dx, dy)
+            };
+            vec![(desde, salida_del_contorno(cc, &del_cristal, -dx, -dy))]
+        }
+        GuiaDeLupa::DosLineas => {
+            // El cono: de costado, perpendiculares a lo que une las dos
+            // figuras, y por eso se abren en vez de cruzarse.
+            let (px, py) = (-dy / largo, dx / largo);
+            [1.0f32, -1.0]
+                .iter()
+                .map(|l| {
+                    (
+                        salida_del_contorno(cf, &del_foco, px * l, py * l),
+                        salida_del_contorno(cc, &del_cristal, px * l, py * l),
+                    )
+                })
+                .collect()
+        }
+        GuiaDeLupa::Ninguna => Vec::new(),
+    }
+}
+
+/// Si el punto cae dentro de un contorno cerrado (par/impar).
+pub fn dentro_del_contorno(p: Punto2, contorno: &[Punto2]) -> bool {
+    let n = contorno.len();
+    if n < 3 {
+        return false;
+    }
+    let mut dentro = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let (a, b) = (contorno[i], contorno[j]);
+        if (a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x {
+            dentro = !dentro;
+        }
+        j = i;
+    }
+    dentro
+}
+
+/// El primer contorno cerrado de una figura, ya girado, o `None`.
+fn contorno_cerrado(e: &crate::elemento::Elemento) -> Option<Vec<Punto2>> {
+    crate::perimetros::contornos_de(e, crate::perimetros::PASO_PERIMETRO)
+        .into_iter()
+        .find(|c| c.cerrado && c.puntos.len() >= 3)
+        .map(|c| c.puntos)
+}
+
+/// **Si de esta figura se puede sacar una lupa** (`sirveDeLupa`): tiene que
+/// encerrar algo. Una raya, una flecha o una cota no tienen dentro; y una
+/// lupa o un foco ya son ventanas.
+pub fn sirve_de_lupa(e: &crate::elemento::Elemento) -> bool {
+    use crate::elemento::Figura;
+    !e.borrado
+        && !matches!(e.figura, Figura::Lupa { .. } | Figura::Foco { .. })
+        && contorno_cerrado(e).is_some()
+}
+
+/// **La figura que la varita convierte al tocar `p`**: la de mas arriba
+/// que encierra el punto (por dentro, no solo por su borde: un circulo sin
+/// relleno se toca por donde se ve el hueco), o `None` sobre el vacio.
+pub fn figura_bajo(elementos: &[crate::elemento::Elemento], p: Punto2) -> Option<u64> {
+    elementos
+        .iter()
+        .rev()
+        .filter(|e| sirve_de_lupa(e))
+        .find(|e| {
+            contorno_cerrado(e).is_some_and(|c| dentro_del_contorno(p, &c))
+                || crate::impacto::toca(e, p)
+        })
+        .map(|e| e.id)
+}
+
+/// **Convierte una figura cerrada en una lupa con su misma forma**
+/// (`lupaDesdeFigura`). El marco nace derecho, con la figura girada dentro
+/// (el giro ya va en los puntos del contorno), agrandado `aumento` veces
+/// desde el mismo centro; y lo mirado es la figura tocada, con su tamano
+/// guardado, que es lo que no se mueve por mucho que crezca el cristal.
+/// Devuelve el cristal y su caja, o `None` si la figura no encierra nada.
+pub fn desde_figura(
+    fuente: &crate::elemento::Elemento,
+    aumento: f32,
+    redonda: bool,
+    guia: GuiaDeLupa,
+) -> Option<(Cristal, Caja)> {
+    if !sirve_de_lupa(fuente) {
+        return None;
+    }
+    let contorno = contorno_cerrado(fuente)?;
+    let (mut x0, mut y0, mut x1, mut y1) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+    for p in &contorno {
+        x0 = x0.min(p.x);
+        y0 = y0.min(p.y);
+        x1 = x1.max(p.x);
+        y1 = y1.max(p.y);
+    }
+    let (ancho, alto) = (x1 - x0, y1 - y0);
+    if ancho < 1.0 || alto < 1.0 {
+        return None;
+    }
+    let forma = contorno
+        .iter()
+        .map(|p| Punto2::nuevo((p.x - x0) / ancho, (p.y - y0) / alto))
+        .collect();
+    let z = aumento.clamp(AUMENTO_MINIMO, AUMENTO_MAXIMO);
+    let c = Punto2::nuevo(x0 + ancho / 2.0, y0 + alto / 2.0);
+    let cristal = Cristal {
+        foco: Some(c),
+        aumento: Some(z),
+        foco_ancho: Some(ancho),
+        foco_alto: Some(alto),
+        oscurecer: None,
+        redonda,
+        guia,
+        forma: Some(forma),
+    };
+    Some((cristal, (c.x - ancho * z / 2.0, c.y - alto * z / 2.0, ancho * z, alto * z)))
+}
+
+/// El grueso de la montura, de la zona y de la guia: el del trazo por 1,6 y
+/// nunca menos de 2,5 (`strokeWidth * 1.6` del movil). Es el borde de una
+/// ventana y por donde se agarra: a un punto casi no se ve donde acaba.
+pub fn grueso_de_montura(grosor: f32) -> f32 {
+    (grosor * 1.6).max(2.5)
+}
+
+/// El rojo del punto gordo de la guia `Punto` (`argb(220, 38, 38)`).
+pub const ROJO_DEL_PUNTO: crate::elemento::ColorRgba = crate::elemento::ColorRgba {
+    r: 220.0 / 255.0,
+    g: 38.0 / 255.0,
+    b: 38.0 / 255.0,
+    a: 1.0,
+};
+
+fn cerrar(mut v: Vec<Punto2>) -> Vec<Punto2> {
+    if let Some(p) = v.first().copied() {
+        v.push(p);
+    }
+    v
+}
+
+/// **Lo que se pinta de una lupa que no es su contenido** (`drawLupa` sin la
+/// escena y `dibujarLaGuia`): la montura, el contorno de lo mirado (con la
+/// flecha y el cono), las rayas de la guia y la punta o el punto rojo. El
+/// contenido agrandado lo pinta quien tiene la escena, recortado a
+/// [`puntos_del_cristal`], y vuelve a poner la montura encima.
+pub fn ordenes_de_la_lupa(
+    cr: &Cristal,
+    caja: Caja,
+    color: crate::elemento::ColorRgba,
+    grosor: f32,
+) -> Vec<crate::pintado::Orden> {
+    use crate::elemento::EstiloTrazo;
+    use crate::pintado::Orden;
+    let g = grueso_de_montura(grosor);
+    let mut salida = vec![Orden::Polilinea {
+        puntos: cerrar(puntos_del_cristal(cr, caja)),
+        color,
+        grosor: g,
+        estilo: EstiloTrazo::Solido,
+    }];
+    if esta_encima(cr, caja) {
+        return salida;
+    }
+    if matches!(cr.guia, GuiaDeLupa::Flecha | GuiaDeLupa::DosLineas) {
+        salida.push(Orden::Polilinea {
+            puntos: cerrar(puntos_del_foco(cr, caja)),
+            color,
+            grosor: g,
+            estilo: EstiloTrazo::Solido,
+        });
+    }
+    let lineas = lineas_de_la_guia(cr, caja);
+    for (a, b) in &lineas {
+        salida.push(Orden::Polilinea {
+            puntos: vec![*b, *a],
+            color,
+            grosor: g,
+            estilo: EstiloTrazo::Solido,
+        });
+    }
+    match cr.guia {
+        GuiaDeLupa::Punto => {
+            let r = region(cr, caja);
+            let radio = g.max(6.0);
+            salida.push(Orden::Poligono {
+                puntos: ovalo(centro(r), radio, radio),
+                color: ROJO_DEL_PUNTO,
+            });
+        }
+        GuiaDeLupa::Flecha => {
+            // La punta en el extremo del foco, que es lo que se senala; crece
+            // con el grosor para no quedarse dentro de la propia raya.
+            if let Some((desde, hasta)) = lineas.first().copied() {
+                let ang = (desde.y - hasta.y).atan2(desde.x - hasta.x);
+                let largo = (grosor * 4.0).max(12.0);
+                let abre = 22.0f32.to_radians();
+                salida.push(Orden::Poligono {
+                    puntos: vec![
+                        desde,
+                        Punto2::nuevo(
+                            desde.x - largo * (ang - abre).cos(),
+                            desde.y - largo * (ang - abre).sin(),
+                        ),
+                        Punto2::nuevo(
+                            desde.x - largo * (ang + abre).cos(),
+                            desde.y - largo * (ang + abre).sin(),
+                        ),
+                    ],
+                    color,
+                });
+            }
+        }
+        GuiaDeLupa::DosLineas | GuiaDeLupa::Ninguna => {}
+    }
+    salida
+}
+
+/// El cristal de un elemento, si es una lupa.
+pub fn de(e: &crate::elemento::Elemento) -> Option<&Cristal> {
+    match &e.figura {
+        crate::elemento::Figura::Lupa { cristal } => Some(cristal),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -609,5 +974,154 @@ mod pruebas {
         escribir(&mut m, &cr);
         assert!(!m.contains_key("focoAncho"), "se escribio un cero: {m:?}");
         assert!(!m.contains_key("foco"));
+    }
+
+    // --- La lupa en el lienzo ---
+
+    use crate::elemento::{Elemento, Figura};
+
+    fn figura(f: Figura, x: f32, y: f32, ancho: f32, alto: f32) -> Elemento {
+        Elemento {
+            id: 7,
+            figura: f,
+            x,
+            y,
+            ancho,
+            alto,
+            grosor: 2.0,
+            ..Default::default()
+        }
+    }
+
+    fn lupa(cr: Cristal, c: Caja) -> Elemento {
+        Elemento {
+            id: 9,
+            figura: Figura::Lupa { cristal: cr },
+            x: c.0,
+            y: c.1,
+            ancho: c.2,
+            alto: c.3,
+            grosor: 2.0,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn la_varita_convierte_un_circulo_en_una_lupa_del_doble_con_su_misma_forma() {
+        let circulo = figura(Figura::Elipse, 0.0, 0.0, 100.0, 50.0);
+        let (cr, caja) = desde_figura(&circulo, 2.0, true, GuiaDeLupa::Flecha).unwrap();
+        // Centrada donde estaba el circulo y el doble de grande.
+        let c = centro(caja);
+        assert!((c.x - 50.0).abs() < 1.0 && (c.y - 25.0).abs() < 1.0, "{caja:?}");
+        assert!((caja.2 - 200.0).abs() < 2.0 && (caja.3 - 100.0).abs() < 2.0, "{caja:?}");
+        // Mira a la figura tocada, con su tamano guardado.
+        assert!((cr.foco_ancho.unwrap() - 100.0).abs() < 2.0);
+        assert!((aumento_de(&cr, caja) - 2.0).abs() < 0.05);
+        // Y el cristal tiene la forma del circulo, no la de su caja: el
+        // punto de la esquina de la caja queda fuera.
+        let contorno = puntos_del_cristal(&cr, caja);
+        assert!(contorno.len() >= 16, "un ovalo, no cuatro esquinas");
+        assert!(!dentro_del_contorno(Punto2::nuevo(caja.0 + 2.0, caja.1 + 2.0), &contorno));
+        assert!(dentro_del_contorno(c, &contorno));
+    }
+
+    #[test]
+    fn una_raya_ni_una_lupa_sirven_de_lupa() {
+        let raya = figura(
+            Figura::Linea {
+                puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(100.0, 0.0)],
+            },
+            0.0,
+            0.0,
+            100.0,
+            0.0,
+        );
+        assert!(!sirve_de_lupa(&raya), "una raya no encierra nada");
+        assert!(desde_figura(&raya, 2.0, true, GuiaDeLupa::Flecha).is_none());
+        let otra = lupa(Cristal::default(), (0.0, 0.0, 100.0, 100.0));
+        assert!(!sirve_de_lupa(&otra), "una lupa mirando a otra no tiene fondo");
+        // Y un rectangulo si.
+        assert!(sirve_de_lupa(&figura(Figura::Rectangulo, 0.0, 0.0, 50.0, 50.0)));
+    }
+
+    #[test]
+    fn la_varita_toca_un_circulo_sin_relleno_por_dentro_y_en_el_vacio_no_hace_nada() {
+        let circulo = figura(Figura::Elipse, 0.0, 0.0, 100.0, 100.0);
+        let v = vec![circulo];
+        assert_eq!(figura_bajo(&v, Punto2::nuevo(50.0, 50.0)), Some(7), "por el hueco");
+        assert_eq!(figura_bajo(&v, Punto2::nuevo(300.0, 300.0)), None, "en el aire");
+        // La esquina de la caja no es del circulo.
+        assert_eq!(figura_bajo(&v, Punto2::nuevo(3.0, 3.0)), None);
+    }
+
+    #[test]
+    fn apartada_la_lupa_la_flecha_va_del_borde_de_lo_mirado_al_borde_del_cristal() {
+        // Mira un recuadro de 40 x 20 en (100, 100) y el cristal esta a la
+        // derecha, lejos.
+        let cr = Cristal {
+            foco: Some(Punto2::nuevo(100.0, 100.0)),
+            aumento: Some(2.0),
+            foco_ancho: Some(40.0),
+            foco_alto: Some(20.0),
+            guia: GuiaDeLupa::Flecha,
+            ..Default::default()
+        };
+        let caja = (300.0, 80.0, 80.0, 40.0);
+        let l = lineas_de_la_guia(&cr, caja);
+        assert_eq!(l.len(), 1);
+        let (desde, hasta) = l[0];
+        assert!((desde.x - 120.0).abs() < 0.01, "sale del borde derecho de lo mirado: {desde:?}");
+        assert!((hasta.x - 300.0).abs() < 0.01, "llega al borde izquierdo del cristal: {hasta:?}");
+        // El cono da dos, y el punto una que llega al centro.
+        let cono = Cristal { guia: GuiaDeLupa::DosLineas, ..cr.clone() };
+        assert_eq!(lineas_de_la_guia(&cono, caja).len(), 2);
+        let punto = Cristal { guia: GuiaDeLupa::Punto, ..cr.clone() };
+        let (p, _) = lineas_de_la_guia(&punto, caja)[0];
+        assert!((p.x - 100.0).abs() < 0.01 && (p.y - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn apoyada_sobre_lo_que_mira_la_lupa_solo_pinta_su_montura() {
+        let cr = Cristal {
+            guia: GuiaDeLupa::Flecha,
+            ..Default::default()
+        };
+        let caja = (0.0, 0.0, 100.0, 60.0);
+        assert!(esta_encima(&cr, caja), "sin foco mira a su centro");
+        assert!(lineas_de_la_guia(&cr, caja).is_empty());
+        let o = ordenes_de_la_lupa(&cr, caja, crate::elemento::ColorRgba::opaco(0.0, 0.0, 0.0), 2.0);
+        assert_eq!(o.len(), 1, "solo la montura");
+        // Apartada: montura, zona, raya y punta.
+        let lejos = Cristal {
+            foco: Some(Punto2::nuevo(500.0, 500.0)),
+            foco_ancho: Some(20.0),
+            foco_alto: Some(20.0),
+            ..cr
+        };
+        let o = ordenes_de_la_lupa(&lejos, caja, crate::elemento::ColorRgba::opaco(0.0, 0.0, 0.0), 2.0);
+        assert_eq!(o.len(), 4, "{o:?}");
+    }
+
+    #[test]
+    fn una_lupa_nacida_en_el_escritorio_llega_al_movil_como_pixpin_lupa_y_vuelve_igual() {
+        use crate::excalidraw::{Entrada, Lienzo, escribir, leer};
+        let circulo = figura(Figura::Elipse, 0.0, 0.0, 100.0, 50.0);
+        let (cr, caja) = desde_figura(&circulo, 3.0, true, GuiaDeLupa::DosLineas).unwrap();
+        let mut l = Lienzo::vacio();
+        l.entradas.push(Entrada::Nuestro {
+            elemento: lupa(cr.clone(), caja),
+            original: Box::new(Value::Object(Map::new())),
+        });
+        let json = escribir(&l);
+        assert!(json.contains("\"pixpin-lupa\""), "{json}");
+        assert!(json.contains("\"DOS_LINEAS\""), "{json}");
+        let vuelta = leer(&json).unwrap();
+        let e = &vuelta.elementos()[0];
+        let Figura::Lupa { cristal } = &e.figura else {
+            panic!("volvio como otra cosa: {:?}", e.figura);
+        };
+        assert_eq!(cristal.guia, GuiaDeLupa::DosLineas);
+        assert_eq!(cristal.forma.as_ref().map(Vec::len), cr.forma.as_ref().map(Vec::len));
+        assert!((cristal.aumento.unwrap() - 3.0).abs() < 1e-4);
     }
 }

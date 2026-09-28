@@ -11,14 +11,35 @@
 //! El orden de los ids no significa nada, pero es estable a proposito: un
 //! `HashSet` lo cambiaria de un recorrido a otro, y con el cambiaria el
 //! orden en que se pintan los marcos.
+//!
+//! **Y ademas un `HashSet` al lado (2026-09-22).** «De uno a veinte» dejo de
+//! ser verdad con la marquesina y `Ctrl+A`: con mil elegidos, `contiene`
+//! recorria mil ids, y el arrastre y el pintado lo preguntan por cada
+//! elemento en cada aviso del raton (2,2 ms por aviso medidos moviendo mil
+//! de dos mil, `tests/puertas.rs`). Excalidraw pregunta a un mapa. El `Vec`
+//! se queda para el orden estable; el conjunto contesta `contiene`. Los dos
+//! se vacian con `clear()`, que conserva la memoria: la regla de cero
+//! asignaciones en el camino caliente sigue en pie.
+
+use std::collections::HashSet;
 
 use crate::elemento::Elemento;
 use crate::escena::Escena;
 use crate::vector::Punto2;
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default)]
 pub struct Seleccion {
     ids: Vec<u64>,
+    /// Los mismos ids que `ids`, para contestar `contiene` sin recorrerlos.
+    conjunto: HashSet<u64>,
+}
+
+/// Dos selecciones son iguales si eligen lo mismo en el mismo orden; el
+/// conjunto es un indice y no cuenta.
+impl PartialEq for Seleccion {
+    fn eq(&self, otra: &Self) -> bool {
+        self.ids == otra.ids
+    }
 }
 
 impl Seleccion {
@@ -39,30 +60,33 @@ impl Seleccion {
     }
 
     pub fn contiene(&self, id: u64) -> bool {
-        self.ids.contains(&id)
+        self.conjunto.contains(&id)
     }
 
     /// Lo que hace un clic normal: sustituye la seleccion entera.
     pub fn poner(&mut self, id: u64) {
-        self.ids.clear();
+        self.limpiar();
         self.ids.push(id);
+        self.conjunto.insert(id);
     }
 
     /// Lo que hace `Shift` + clic: lo anade si no estaba, lo quita si estaba.
     pub fn alternar(&mut self, id: u64) {
-        match self.ids.iter().position(|x| *x == id) {
-            Some(i) => {
-                self.ids.remove(i);
-            }
-            None => self.ids.push(id),
+        if self.conjunto.remove(&id) {
+            self.ids.retain(|x| *x != id);
+        } else {
+            self.ids.push(id);
+            self.conjunto.insert(id);
         }
     }
 
     /// Lo que hace la marquesina o `Ctrl+A`: sustituye por todos estos.
     pub fn poner_todos(&mut self, ids: impl IntoIterator<Item = u64>) {
-        self.ids.clear();
+        self.limpiar();
         for id in ids {
-            if !self.ids.contains(&id) {
+            // `insert` dice si era nuevo: sin esto, poner mil costaba
+            // medio millon de comparaciones.
+            if self.conjunto.insert(id) {
                 self.ids.push(id);
             }
         }
@@ -71,6 +95,7 @@ impl Seleccion {
     /// Vacia la seleccion **conservando la memoria pedida** (D26).
     pub fn limpiar(&mut self) {
         self.ids.clear();
+        self.conjunto.clear();
     }
 
     /// Para la prueba de que `limpiar` no reasigna.
@@ -84,10 +109,13 @@ impl Seleccion {
     /// sigue en la lista, y si contara, el marco abarcaria cosas que el
     /// usuario no ve en la pantalla.
     fn vivos<'a>(&'a self, escena: &'a Escena) -> impl Iterator<Item = &'a Elemento> + 'a {
-        self.ids
+        // Una pasada por la escena preguntando al conjunto, y no una
+        // busqueda en la escena por cada elegido: con mil elegidos eso eran
+        // mil recorridos, y la caja se pide en cada fotograma para el marco.
+        escena
+            .elementos
             .iter()
-            .filter_map(move |id| escena.buscar(*id))
-            .filter(|e| !e.borrado)
+            .filter(move |e| !e.borrado && self.conjunto.contains(&e.id))
     }
 
     /// La caja que abarca todo lo elegido, paralela a los ejes.

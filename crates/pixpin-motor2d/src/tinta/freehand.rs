@@ -355,6 +355,93 @@ fn contorno_de_puntos(puntos: &[PuntoTrazo], o: &Opciones) -> Vec<V> {
     izquierda
 }
 
+/// Cuantas veces se repasa lo rapido. Las del movil.
+const PASADAS_DE_ASIENTO: usize = 3;
+/// Por debajo de este paso medio entre muestras no se toca nada: es escritura.
+const PASO_LENTO: f64 = 5.0;
+/// Desde este paso se asienta del todo (la mitad hacia el medio de los vecinos).
+const PASO_RAPIDO: f64 = 16.0;
+
+/// **Una raya tirada deprisa sale derecha** (F4, `asentarLoRapido` de
+/// `Freehand.kt`, v0.76 del movil).
+///
+/// No es de perfect-freehand: es un paso previo del PixPin. Una linea rapida
+/// salia «medio ondulada, levemente, pero se nota». No es el pulso —un gesto
+/// rapido es recto por naturaleza—: es el **digitalizador**, que entrega cada
+/// muestra con un error de un pixel o dos, y a esa velocidad las muestras caen
+/// tan separadas que el `streamline` ya no las junta y el error se queda
+/// dibujado como una onda.
+///
+/// Se asienta **solo lo rapido**: cada punto se acerca al medio de sus dos
+/// vecinos tanto mas cuanto mas separados estan. Escribiendo —muestras a dos o
+/// tres unidades— no se toca nada y la letra no se redondea; en una raya
+/// lanzada —a quince o treinta— el error desaparece. Las puntas no se mueven
+/// ni cambia el numero de puntos, para que las presiones sigan casando una a
+/// una.
+///
+/// En el sitio y sin asignar: cada pasada guarda el valor viejo del vecino
+/// anterior en una variable, que es lo unico que la version con lista nueva
+/// necesitaba de la copia.
+pub fn asentar_lo_rapido(puntos: &mut [V]) {
+    asentar_con(puntos, |p| *p, |p, v| *p = v);
+}
+
+/// [`asentar_lo_rapido`] sobre la entrada del trazo, sin tocar las presiones.
+pub fn asentar_entrada(entrada: &mut [Entrada]) {
+    asentar_con(
+        entrada,
+        |e| [e.x, e.y],
+        |e, v| {
+            e.x = v[0];
+            e.y = v[1];
+        },
+    );
+}
+
+fn asentar_con<T>(puntos: &mut [T], leer: impl Fn(&T) -> V, poner: impl Fn(&mut T, V)) {
+    let n = puntos.len();
+    if n < 4 {
+        return;
+    }
+    // Se pinta en cada fotograma del trazo entero (puerta de 5.000 puntos en
+    // dos milisegundos), asi que una raiz por punto y pasada y no dos: el
+    // tramo q-p de un punto es el p-r del anterior, ambos con valores viejos.
+    // Y la escritura, que es casi todo lo que se pinta, ni llega a la raiz:
+    // con los dos tramos por debajo de PASO_LENTO la media tambien lo esta.
+    let cuadrado = |a: V, b: V| (a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]);
+    const LENTO2: f64 = PASO_LENTO * PASO_LENTO;
+    for _ in 0..PASADAS_DE_ASIENTO {
+        let mut q = leer(&puntos[0]);
+        let mut izquierda = cuadrado(leer(&puntos[1]), q);
+        for i in 1..n - 1 {
+            let p = leer(&puntos[i]);
+            let r = leer(&puntos[i + 1]);
+            let derecha = cuadrado(r, p);
+            let lento = izquierda < LENTO2 && derecha < LENTO2;
+            let paso = if lento {
+                0.0
+            } else {
+                (izquierda.sqrt() + derecha.sqrt()) / 2.0
+            };
+            izquierda = derecha;
+            let cuanto = ((paso - PASO_LENTO) / (PASO_RAPIDO - PASO_LENTO)).clamp(0.0, 1.0) * 0.5;
+            if cuanto > 0.0 {
+                let medio = [(q[0] + r[0]) / 2.0, (q[1] + r[1]) / 2.0];
+                poner(
+                    &mut puntos[i],
+                    [
+                        p[0] + (medio[0] - p[0]) * cuanto,
+                        p[1] + (medio[1] - p[1]) * cuanto,
+                    ],
+                );
+            }
+            // El vecino de la izquierda del siguiente es el valor de ANTES de
+            // esta pasada, como en el movil, que escribia en una lista nueva.
+            q = p;
+        }
+    }
+}
+
 /// `getStroke`: puntos de entrada a contorno cerrado, listo para rellenar.
 pub fn contorno(entrada: &[Entrada], o: &Opciones) -> Vec<V> {
     contorno_de_puntos(&puntos_del_trazo(entrada, o), o)
@@ -382,6 +469,54 @@ mod pruebas {
             y,
             presion: None,
         }
+    }
+
+    #[test]
+    fn lo_rapido_se_asienta_y_lo_lento_no_se_toca() {
+        // Una recta tirada deprisa, con el error del digitalizador: +-1,5
+        // alternando. La prueba del movil, tal cual.
+        let original: Vec<V> = (0..30)
+            .map(|i| [i as f64 * 20.0, if i % 2 == 0 { 1.5 } else { -1.5 }])
+            .collect();
+        let mut rapida = original.clone();
+        asentar_lo_rapido(&mut rapida);
+        assert_eq!(rapida.len(), original.len());
+        assert_eq!(rapida[0], original[0]);
+        assert_eq!(rapida[29], original[29]);
+        let peor = rapida[3..27].iter().map(|p| p[1].abs()).fold(0.0, f64::max);
+        assert!(peor < 0.25, "la onda sigue ahi: {peor}");
+
+        // Letra: muestras a dos unidades. Ni se mueve.
+        let lenta: Vec<V> = (0..30)
+            .map(|i| [i as f64 * 2.0, if i % 2 == 0 { 1.0 } else { -1.0 }])
+            .collect();
+        let mut tocada = lenta.clone();
+        asentar_lo_rapido(&mut tocada);
+        assert_eq!(tocada, lenta);
+    }
+
+    #[test]
+    fn con_tres_puntos_o_menos_no_hay_nada_que_asentar() {
+        let mut tres: Vec<V> = vec![[0.0, 0.0], [50.0, 9.0], [100.0, 0.0]];
+        let antes = tres.clone();
+        asentar_lo_rapido(&mut tres);
+        assert_eq!(tres, antes);
+    }
+
+    #[test]
+    fn asentar_la_entrada_no_toca_las_presiones() {
+        let mut entrada: Vec<Entrada> = (0..10)
+            .map(|i| Entrada {
+                x: i as f64 * 25.0,
+                y: if i % 2 == 0 { 2.0 } else { -2.0 },
+                presion: Some(0.1 * i as f64),
+            })
+            .collect();
+        asentar_entrada(&mut entrada);
+        for (i, e) in entrada.iter().enumerate() {
+            assert_eq!(e.presion, Some(0.1 * i as f64));
+        }
+        assert!(entrada[4].y.abs() < 2.0, "lo rapido tenia que moverse");
     }
 
     #[test]

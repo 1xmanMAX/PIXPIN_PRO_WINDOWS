@@ -264,6 +264,7 @@ fn sellar(mapa: &mut Map<String, Value>, e: &Elemento, original: &Value) {
             // como un rectangulo transparente cualquiera: dejaba de
             // oscurecer, que es lo unico que un foco hace.
             Figura::Foco { .. } => "pixpin-spotlight",
+            Figura::Lupa { .. } => "pixpin-lupa",
             Figura::Rombo => "diamond",
             Figura::Mosaico { .. } => "pixpin-mosaic",
             Figura::Elipse => "ellipse",
@@ -282,6 +283,7 @@ fn sellar(mapa: &mut Map<String, Value>, e: &Elemento, original: &Value) {
             Figura::Serie { .. } => "pixpin-serial",
             Figura::Region { .. } => "pixpin-region",
             Figura::Punto { .. } => "pixpin-point",
+            Figura::Cronograma { .. } => "pixpin-gantt",
         };
         mapa.insert("type".into(), Value::String(tipo.into()));
     }
@@ -299,7 +301,54 @@ pub fn a_escena(lienzo: &Lienzo) -> crate::Escena {
     for e in lienzo.elementos() {
         escena.anadir(e);
     }
+    // A mano y no con `poner_fondo`: abrir un lienzo no es un cambio que se
+    // pueda deshacer.
+    escena.fondo = fondo(lienzo);
+    // Los clavos de soldar (`alfileres` del movil): siguen en `resto` y aqui
+    // se traducen a los numeros de la escena. Ver `nudos::leer_del_fichero`.
+    escena.alfileres = crate::nudos::leer_del_fichero(&lienzo.resto, &escena.elementos);
     escena
+}
+
+/// **El papel del lienzo**: su `appState.viewBackgroundColor`, o blanco si
+/// no lo trae o no se entiende.
+///
+/// Es el campo que escriben los dos: Excalidraw y el movil
+/// (`ExcalidrawAppState.viewBackgroundColor`, `"#ffffff"` por defecto). Sin
+/// alfa, como lo lee el movil (`DrawTheme.colorDe` se queda con los seis
+/// ultimos digitos): un papel medio transparente se veria distinto en cada
+/// lado. `"transparent"` tampoco es un papel: blanco, como el movil.
+pub fn fondo(lienzo: &Lienzo) -> ColorRgba {
+    lienzo
+        .resto
+        .get("appState")
+        .and_then(|a| color_desde(a.get("viewBackgroundColor")))
+        .map_or(crate::escena::FONDO_DE_FABRICA, |c| ColorRgba { a: 1.0, ..c })
+}
+
+/// Pone el papel de la escena en el `appState` del lienzo, **solo si
+/// cambio**: el `appState` que vino (con su `gridSize`, su tema, lo que sea)
+/// sale intacto, y un lienzo del movil que nadie repinto no cambia ni un
+/// byte por haberlo abierto aqui.
+fn fondo_hacia(salida: &mut Lienzo, papel: ColorRgba) {
+    if fondo(salida) == papel {
+        return;
+    }
+    let estado = salida
+        .resto
+        .entry("appState")
+        .or_insert_with(|| Value::Object(Map::new()));
+    // Un `appState` que no es un objeto no se puede completar: se sustituye,
+    // porque el movil lo lee como objeto y rechazaria el fichero entero.
+    if !estado.is_object() {
+        *estado = Value::Object(Map::new());
+    }
+    if let Value::Object(mapa) = estado {
+        mapa.insert(
+            "viewBackgroundColor".into(),
+            Value::String(color_hacia(papel)),
+        );
+    }
 }
 
 /// El lienzo con lo que se hizo en la escena que salio de `a_escena`.
@@ -310,6 +359,7 @@ pub fn a_escena(lienzo: &Lienzo) -> crate::Escena {
 /// nunca». Lo nuevo va al final, que es encima de todo.
 pub fn con_escena(lienzo: &Lienzo, escena: &crate::Escena) -> Lienzo {
     let mut salida = lienzo.clone();
+    fondo_hacia(&mut salida, escena.fondo);
     let mut n: u64 = 0;
     for entrada in &mut salida.entradas {
         let Entrada::Nuestro { elemento, .. } = entrada else {
@@ -348,6 +398,8 @@ pub fn con_escena(lienzo: &Lienzo, escena: &crate::Escena) -> Lienzo {
             original: Box::new(Value::Null),
         });
     }
+    // Los clavos, solo si cambiaron (un lienzo que nadie toco sale igual).
+    crate::nudos::escribir_al_fichero(&mut salida.resto, escena);
     salida
 }
 
@@ -591,14 +643,17 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
         },
-        // El foco del movil. `forma` dice si su hueco es redondo; el resto de
-        // sus campos —`oscurecer`, `foco`, `focoAncho`, `focoAlto`— se
-        // quedan en el original y vuelven intactos, que es todo lo que puede
-        // prometer el puente hasta que el PC sepa leerlos.
+        // El foco del movil, entero: su hueco (`forma`, `foco`, `focoAncho`,
+        // `focoAlto`, `lupaRedonda`) y cuanto oscurece (`oscurecer`), los
+        // mismos campos que la lupa (`lupa_elemento::leer`). Antes solo se
+        // miraba si era redondo y aqui oscurecia el lienzo entero.
         "pixpin-spotlight" => Figura::Foco {
-            elipse: v.get("forma").and_then(Value::as_str).is_some_and(|f| {
-                f.eq_ignore_ascii_case("elipse") || f.eq_ignore_ascii_case("ovalo")
-            }) || v.get("lupaRedonda").and_then(Value::as_bool) == Some(true),
+            cristal: crate::lupa_elemento::leer(v),
+        },
+        // La lupa del movil (F: lienzo-imagen): se lee entera. Antes viajaba
+        // como ajena y aqui no se veia.
+        "pixpin-lupa" => Figura::Lupa {
+            cristal: crate::lupa_elemento::leer(v),
         },
         "ellipse" => Figura::Elipse,
         "line" => Figura::Linea {
@@ -723,8 +778,17 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
             angulo: num_o(v, "etiquetaAngulo", -std::f32::consts::FRAC_PI_4),
             radio: num_o(v, "etiquetaRadio", 22.0),
         },
+        // El cronograma (F12). Si sus filas o su escala traen algo que no se
+        // entiende, cae al carril ajeno y viaja intacto en vez de perderlo.
+        "pixpin-gantt" => Figura::Cronograma {
+            tareas: tareas_desde(v.get("tareas"))?,
+            periodos: match v.get("periodos") {
+                None | Some(Value::Null) => crate::cronograma::PERIODOS_DE_FABRICA,
+                Some(n) => n.as_f64().filter(|p| *p >= 1.0 && p.fract() == 0.0)? as u32,
+            },
+        },
         // El resto son suyos y no sabemos dibujarlos: `pixpin-solid`,
-        // `pixpin-gantt`, `pixpin-lupa`... Se conservan como ajenos.
+        // `pixpin-nudo`... Se conservan como ajenos.
         _ => return None,
     };
     Some(Elemento {
@@ -808,6 +872,7 @@ fn extras_desde(v: &Value) -> Extras {
     let si = |clave: &str| v.get(clave).and_then(Value::as_bool).unwrap_or(false);
     Extras {
         presion_firme: si("presionFirme"),
+        referencia: si("reference"),
         negrita: si("negrita"),
         cursiva: si("cursiva"),
         tachado: si("tachado"),
@@ -858,7 +923,49 @@ fn extras_desde(v: &Value) -> Extras {
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
             .map(str::to_string),
+        recorte: v.get("crop").and_then(recorte_desde),
+        // Una palabra que no conocemos se lee como «no lo dice» y **se
+        // conserva**: la rama del texto de `elemento_hacia` no la pisa
+        // mientras aqui no se elija otra. La regla del `fillStyle`.
+        alineacion: v
+            .get("textAlign")
+            .and_then(Value::as_str)
+            .and_then(crate::texto::AlineacionTexto::desde_palabra),
+        alineacion_vertical: v
+            .get("verticalAlign")
+            .and_then(Value::as_str)
+            .and_then(crate::texto::AlineacionVertical::desde_palabra),
+        // La letra de lo que rotula sin ser un texto (su `fontFamily`: el
+        // cronograma, la cota, el numero de serie, el punto, la escala); la
+        // de un texto va en su figura y no aqui. Antes solo la del cronograma:
+        // una cota del movil en Caveat se veia aqui en la letra del sistema.
+        familia: (v.get("type").and_then(Value::as_str).is_some_and(|t| t != "text"))
+            .then(|| v.get("fontFamily").and_then(Value::as_u64))
+            .flatten()
+            .map(|n| crate::texto::nombre_de_familia(Some(n.min(u8::MAX as u64) as u8)).to_string()),
+        tam_letra: (v.get("type").and_then(Value::as_str) == Some("pixpin-gantt"))
+            .then(|| num(v, "fontSize"))
+            .flatten()
+            .filter(|t| t.is_finite() && *t > 0.0),
     }
+}
+
+/// El `crop` de una imagen. Sin sus cuatro medidas no hay recorte: uno a
+/// medias no dice que trozo ensenar, y ensenar la foto entera es mejor que
+/// inventarse el trozo. Si falta el tamano natural se lee como cero: el
+/// recorte se conserva (vuelve tal cual al guardar) pero `trozo_en` lo
+/// rechaza y se ensena la foto entera, porque sin saber contra que tamano se
+/// midio no se puede llevar a los pixeles que hay.
+fn recorte_desde(v: &Value) -> Option<crate::elemento::RecorteImagen> {
+    let (ancho, alto) = (num(v, "width")?, num(v, "height")?);
+    Some(crate::elemento::RecorteImagen {
+        x: num(v, "x")?,
+        y: num(v, "y")?,
+        ancho,
+        alto,
+        ancho_natural: num(v, "naturalWidth").unwrap_or(0.0),
+        alto_natural: num(v, "naturalHeight").unwrap_or(0.0),
+    })
 }
 
 /// Un `Binding` del movil. Sin `elementId` no hay enganche que valga: un
@@ -912,6 +1019,21 @@ fn enganche_hacia(b: &Enganche) -> Value {
 /// deja intacto un `papel` de una version futura del movil que aqui se leyo
 /// como «ninguno».
 fn extras_hacia(mapa: &mut Map<String, Value>, x: &Extras) {
+    // El recorte va por su cuenta y solo si el JSON no lo trae ya: aqui no se
+    // edita, asi que el del original es el bueno —reescribirlo cambiaria
+    // `10` por `10.0` en un fichero que nadie toco—. Lo que cubre es el
+    // elemento que perdio su original (un duplicado, una copia pegada).
+    if let Some(r) = &x.recorte
+        && !mapa.contains_key("crop")
+    {
+        mapa.insert(
+            "crop".into(),
+            serde_json::json!({
+                "x": r.x, "y": r.y, "width": r.ancho, "height": r.alto,
+                "naturalWidth": r.ancho_natural, "naturalHeight": r.alto_natural,
+            }),
+        );
+    }
     // ...pero si el original SI traia alguno, hay que escribirlos todos
     // aunque aqui esten vacios: si no, quitar aqui el rotulo de dentro de una
     // caja dejaria su `containerId` viejo y el movil lo volveria a ver atado.
@@ -1077,9 +1199,17 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
             Value::from(e.rugosidad as f64)
         },
     );
+    // **El resaltador viaja como el del movil**: un freedraw al 40 %
+    // (`HIGHLIGHTER_OPACITY`) con el grosor ya engordado. Iba con la opacidad
+    // del elemento (100) y alli se veia un lapiz opaco.
+    let opacidad = if matches!(e.figura, Figura::Resaltador { .. }) {
+        e.opacidad * crate::tinta::OPACIDAD_DEL_RESALTADOR
+    } else {
+        e.opacidad
+    };
     mapa.insert(
         "opacity".into(),
-        Value::from((e.opacidad * 100.0).round() as i64),
+        Value::from((opacidad * 100.0).round() as i64),
     );
     // Un `Int` del movil: no le cabe el bit de arriba de nuestro u32.
     mapa.insert("seed".into(), Value::from(e.semilla & 0x7fff_ffff));
@@ -1096,6 +1226,23 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
             if mapa.get("roundness").is_none_or(Value::is_null) {
                 let mut r = Map::new();
                 r.insert("type".into(), Value::from(3));
+                mapa.insert("roundness".into(), Value::Object(r));
+            }
+        } else {
+            mapa.insert("roundness".into(), Value::Null);
+        }
+    }
+    // **La flecha curva** (`roundness` en una flecha = tipo «round» de
+    // Excalidraw, `FormaDeFlecha.CURVA` del movil). Va con el 2, el radio
+    // proporcional, que es el que ponen los dos al elegir «curva»; si el
+    // original ya traia otro —el 3 de fabrica del movil— se respeta, porque
+    // para una flecha cualquier `roundness` quiere decir lo mismo. La de
+    // codos nunca lo lleva: el movil la pasa a `null` al elegirla.
+    if let Figura::Flecha { codos, .. } = &e.figura {
+        if e.redondo && !*codos {
+            if mapa.get("roundness").is_none_or(Value::is_null) {
+                let mut r = Map::new();
+                r.insert("type".into(), Value::from(2));
                 mapa.insert("roundness".into(), Value::Object(r));
             }
         } else {
@@ -1140,7 +1287,14 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
                 );
             }
         }
-        Figura::Resaltador { puntos } | Figura::Linea { puntos } => {
+        Figura::Resaltador { puntos } => {
+            // Como el lapiz del movil con presion simulada: sin esto alli se
+            // leia un freedraw sin tinta de Excalidraw.
+            mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y, objetos));
+            mapa.insert("pressures".into(), Value::Array(Vec::new()));
+            mapa.insert("simulatePressure".into(), Value::Bool(true));
+        }
+        Figura::Linea { puntos } => {
             mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y, objetos));
         }
         Figura::Flecha {
@@ -1175,6 +1329,16 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
                 "fontFamily".into(),
                 Value::from(crate::texto::numero_de_familia(familia)),
             );
+            // La alineacion, solo si aqui se sabe cual es: sin ella (`None`)
+            // el original se queda como vino, traiga lo que traiga. Las dos
+            // palabras son las del `enum` de kotlinx del movil, que rechaza
+            // el fichero con cualquier otra.
+            if let Some(a) = e.extras.alineacion {
+                mapa.insert("textAlign".into(), Value::String(a.palabra().into()));
+            }
+            if let Some(v) = e.extras.alineacion_vertical {
+                mapa.insert("verticalAlign".into(), Value::String(v.palabra().into()));
+            }
         }
         Figura::Emoji { caracter } => {
             // Un texto normal para los demas, con una marca para que aqui
@@ -1249,11 +1413,50 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
             mapa.insert("type".into(), Value::String("pixpin-mosaic".to_string()));
             mapa.insert("mosaicBlur".into(), Value::Bool(*desenfoque));
         }
+        // El cronograma con sus filas y su escala, como `TareaDelCronograma`
+        // del movil: `nombre`, `desde`, `cuanto` y `color` (nulo = el de la
+        // figura, y entonces no se escribe).
+        Figura::Cronograma { tareas, periodos } => {
+            mapa.insert("type".into(), Value::String("pixpin-gantt".to_string()));
+            mapa.insert("tareas".into(), tareas_hacia(tareas));
+            mapa.insert("periodos".into(), Value::from(*periodos));
+            if let Some(f) = &e.extras.familia {
+                mapa.insert("fontFamily".into(), Value::from(crate::texto::numero_de_familia(f)));
+            }
+            if let Some(t) = e.extras.tam_letra {
+                mapa.insert("fontSize".into(), Value::from(t as f64));
+            }
+        }
+        // La lupa con sus nueve campos, como `Element` del movil. Lo que
+        // vale `None` se borra en vez de escribirse a cero (ver
+        // `lupa_elemento::escribir`).
+        Figura::Lupa { cristal } => {
+            mapa.insert("type".into(), Value::String("pixpin-lupa".to_string()));
+            // Solo si aqui se cambio algo: una lupa del movil que solo se
+            // movio vuelve con sus campos tal como vinieron (5.4 del
+            // inventario: lo que viene de alla se escribe encima de lo suyo).
+            if crate::lupa_elemento::leer(&Value::Object(mapa.clone())) != *cristal {
+                crate::lupa_elemento::escribir(&mut mapa, cristal);
+            }
+        }
+        // El foco, con los mismos campos: su hueco y cuanto oscurece.
+        Figura::Foco { cristal } => {
+            if crate::lupa_elemento::leer(&Value::Object(mapa.clone())) != *cristal {
+                crate::lupa_elemento::escribir(&mut mapa, cristal);
+            }
+        }
         Figura::Rectangulo
         | Figura::Rombo
         | Figura::Elipse
-        | Figura::Foco { .. }
         | Figura::Imagen { .. } => {}
+    }
+    // La letra elegida de lo que rotula sin ser un texto, en su `fontFamily`
+    // como en el movil (`newElement` la pone en la cota; el panel, en todo lo
+    // que ofrece FUENTE).
+    if !matches!(e.figura, Figura::Texto { .. })
+        && let Some(f) = &e.extras.familia
+    {
+        mapa.insert("fontFamily".into(), Value::from(crate::texto::numero_de_familia(f)));
     }
     extras_hacia(&mut mapa, &e.extras);
     Value::Object(mapa)
@@ -1272,6 +1475,52 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
 /// cuenta no era esa caja. Dos verdades sobre el mismo texto.
 fn id_estable(texto: &str) -> u64 {
     crate::enlace::id_del_fichero(texto)
+}
+
+// --- El cronograma ---
+
+/// Las filas de un cronograma (`tareas` del movil). Sin el campo, ninguna;
+/// con algo que no es una lista de objetos, `None` y el elemento viaja como
+/// ajeno.
+fn tareas_desde(v: Option<&Value>) -> Option<Vec<crate::cronograma::Tarea>> {
+    let lista = match v {
+        None | Some(Value::Null) => return Some(Vec::new()),
+        Some(Value::Array(a)) => a,
+        Some(_) => return None,
+    };
+    lista
+        .iter()
+        .map(|t| {
+            let t = t.as_object()?;
+            let num = |k: &str, d: f32| t.get(k).and_then(Value::as_f64).map_or(d, |n| n as f32);
+            Some(crate::cronograma::Tarea {
+                nombre: t.get("nombre").and_then(Value::as_str).unwrap_or("").to_string(),
+                desde: num("desde", 0.0),
+                cuanto: num("cuanto", 1.0),
+                color: color_desde(t.get("color")),
+            })
+        })
+        .collect()
+}
+
+/// Y de vuelta, con los nombres del movil. El color solo si la fila tiene
+/// el suyo (`explicitNulls = false` alli).
+fn tareas_hacia(tareas: &[crate::cronograma::Tarea]) -> Value {
+    Value::Array(
+        tareas
+            .iter()
+            .map(|t| {
+                let mut m = serde_json::Map::new();
+                m.insert("nombre".into(), Value::String(t.nombre.clone()));
+                m.insert("desde".into(), Value::from(t.desde as f64));
+                m.insert("cuanto".into(), Value::from(t.cuanto as f64));
+                if let Some(c) = t.color {
+                    m.insert("color".into(), Value::String(color_hacia(c)));
+                }
+                Value::Object(m)
+            })
+            .collect(),
+    )
 }
 
 // --- Colores ---
@@ -1633,28 +1882,112 @@ mod pruebas {
     }
 
     #[test]
+    fn un_resaltador_llega_al_movil_como_su_marcador_al_cuarenta_por_ciento() {
+        let mut l = Lienzo::vacio();
+        l.entradas.push(Entrada::Nuestro {
+            elemento: Elemento {
+                id: 1,
+                figura: Figura::Resaltador {
+                    puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(50.0, 0.0)],
+                },
+                grosor: 5.0,
+                ..Default::default()
+            },
+            original: Box::new(Value::Object(Map::new())),
+        });
+        let v: Value = serde_json::from_str(&escribir(&l)).unwrap();
+        let e = &v["elements"][0];
+        assert_eq!(e["type"], "freedraw");
+        assert_eq!(e["opacity"], 40, "HIGHLIGHTER_OPACITY");
+        assert_eq!(e["strokeWidth"].as_f64(), Some(5.0));
+        assert_eq!(e["simulatePressure"], true);
+        // Caso negativo: un lapiz normal no se apaga al 40.
+        let mut l = Lienzo::vacio();
+        l.entradas.push(Entrada::Nuestro {
+            elemento: Elemento {
+                id: 1,
+                figura: Figura::Linea {
+                    puntos: vec![Punto2::nuevo(0.0, 0.0), Punto2::nuevo(50.0, 0.0)],
+                },
+                ..Default::default()
+            },
+            original: Box::new(Value::Object(Map::new())),
+        });
+        let v: Value = serde_json::from_str(&escribir(&l)).unwrap();
+        assert_eq!(v["elements"][0]["opacity"], 100);
+    }
+
+    #[test]
+    fn la_letra_de_una_cota_y_de_un_numero_viaja_en_su_font_family() {
+        // Como en el movil: la cota del telefono en Caveat (104) se lee aqui
+        // en Caveat, y un numero de serie en Nunito sale con su 6.
+        let json = r##"{"type":"excalidraw","elements":[
+            {"id":"c1","type":"pixpin-measure","x":0,"y":0,"width":10,"height":0,
+             "points":[[0,0],[10,0]],"fontFamily":104,"seed":1},
+            {"id":"s1","type":"pixpin-serial","x":0,"y":0,"width":36,"height":36,
+             "text":"3","fontFamily":6,"seed":2}
+        ]}"##;
+        let l = leer(json).unwrap();
+        let familias: Vec<Option<String>> =
+            l.elementos().iter().map(|e| e.extras.familia.clone()).collect();
+        assert_eq!(familias, [Some("Caveat".to_string()), Some("Nunito".to_string())]);
+        let v: Value = serde_json::from_str(&escribir(&l)).unwrap();
+        assert_eq!(v["elements"][0]["fontFamily"], 104);
+        assert_eq!(v["elements"][1]["fontFamily"], 6);
+        // Caso negativo: un rectangulo sin letra no estrena `fontFamily`.
+        let mut r = Lienzo::vacio();
+        r.entradas.push(Entrada::Nuestro {
+            elemento: Elemento {
+                id: 1,
+                figura: Figura::Rectangulo,
+                ancho: 5.0,
+                alto: 5.0,
+                ..Default::default()
+            },
+            original: Box::new(Value::Object(Map::new())),
+        });
+        assert!(!escribir(&r).contains("fontFamily"));
+    }
+
+    #[test]
     fn un_foco_va_y_vuelve_con_su_tipo_propio_y_no_como_un_rectangulo() {
         // El puente estaba roto en los dos sentidos: lo que salia de aqui
         // llegaba al movil como un rectangulo transparente —dejaba de
         // oscurecer— y lo que venia de alla entraba como ajeno y no se veia.
         let json = r##"{"type":"excalidraw","elements":[
             {"id":"f1","type":"pixpin-spotlight","x":0,"y":0,"width":200,"height":100,
-             "oscurecer":60,"forma":"elipse","seed":5}
+             "oscurecer":60,"lupaRedonda":true,"foco":{"x":100,"y":50},
+             "focoAncho":111,"focoAlto":55,"seed":5}
         ]}"##;
         let l = leer(json).unwrap();
         assert_eq!(l.cuantos_ajenos(), 0, "ya no es ajeno");
-        assert_eq!(l.elementos()[0].figura, Figura::Foco { elipse: true });
+        // Ahora se lee entero: el hueco, su sitio y cuanto oscurece.
+        let Figura::Foco { cristal } = &l.elementos()[0].figura else {
+            panic!("{:?}", l.elementos()[0].figura);
+        };
+        assert!(cristal.redonda);
+        assert_eq!(cristal.oscurecer, Some(60));
+        assert_eq!(cristal.foco, Some(Punto2::nuevo(100.0, 50.0)));
+        assert_eq!((cristal.foco_ancho, cristal.foco_alto), (Some(111.0), Some(55.0)));
         let vuelta = escribir(&l);
         assert!(vuelta.contains("pixpin-spotlight"), "{vuelta}");
-        // Lo que el PC todavia no sabe leer del foco vuelve intacto.
         assert!(vuelta.contains("\"oscurecer\""), "{vuelta}");
+        assert!(vuelta.contains("\"focoAncho\""), "{vuelta}");
 
-        // Y uno nacido aqui sale con el tipo bueno, no como «rectangle».
+        // Y uno nacido aqui sale con el tipo bueno, no como «rectangle», y
+        // con su hueco escrito para el movil.
         let mut nuevo = Lienzo::vacio();
         nuevo.entradas.push(Entrada::Nuestro {
             elemento: Elemento {
                 id: 1,
-                figura: Figura::Foco { elipse: false },
+                figura: Figura::Foco {
+                    cristal: crate::lupa_elemento::Cristal {
+                        foco_ancho: Some(5.0),
+                        foco_alto: Some(5.0),
+                        oscurecer: Some(45),
+                        ..Default::default()
+                    },
+                },
                 ancho: 10.0,
                 alto: 10.0,
                 ..Default::default()
@@ -1664,6 +1997,7 @@ mod pruebas {
         let salida = escribir(&nuevo);
         assert!(salida.contains("pixpin-spotlight"), "{salida}");
         assert!(!salida.contains("\"rectangle\""), "{salida}");
+        assert!(salida.contains("\"focoAncho\""), "{salida}");
     }
 
     #[test]
@@ -1961,6 +2295,94 @@ mod pruebas {
         movido(&mut recta);
         let vuelta: Value = serde_json::from_str(&escribir(&recta)).unwrap();
         assert_eq!(vuelta["elements"][0]["elbowed"], false);
+    }
+
+    /// **La flecha curva**: una flecha con `roundness` es la «round» de
+    /// Excalidraw y la CURVA del movil. Se leia (el campo `redondo`) pero no
+    /// se escribia en flechas, asi que curvarla aqui no llegaba alla.
+    #[test]
+    fn la_flecha_curva_va_y_vuelve_por_su_roundness() {
+        let json = r#"{"elements":[
+          {"id":"f","type":"arrow","x":0,"y":0,"width":10,"height":10,
+           "points":[[0,0],[5,8],[10,10]],"roundness":{"type":3}}
+        ]}"#;
+        let mut l = leer(json).unwrap();
+        assert!(l.elementos()[0].redondo, "la curva del movil entro recta");
+        movido(&mut l);
+        let vuelta: Value = serde_json::from_str(&escribir(&l)).unwrap();
+        // El tipo que traia se respeta: para una flecha, cualquiera es curva.
+        assert_eq!(vuelta["elements"][0]["roundness"]["type"], 3);
+
+        // Una recta curvada aqui sale con el tipo 2 de Excalidraw, entero.
+        let mut recta = leer(
+            r#"{"elements":[{"id":"g","type":"arrow","x":0,"y":0,"width":10,"height":0,
+                "points":[[0,0],[10,0]]}]}"#,
+        )
+        .unwrap();
+        primero_mut(&mut recta).redondo = true;
+        let vuelta: Value = serde_json::from_str(&escribir(&recta)).unwrap();
+        assert_eq!(vuelta["elements"][0]["roundness"], serde_json::json!({"type": 2}));
+        assert!(vuelta["elements"][0]["roundness"]["type"].is_i64());
+
+        // Caso negativo: enderezarla la deja sin `roundness`, o el movil la
+        // seguiria viendo curva; y una de codos nunca lo lleva.
+        primero_mut(&mut recta).redondo = false;
+        let vuelta: Value = serde_json::from_str(&escribir(&recta)).unwrap();
+        assert!(vuelta["elements"][0]["roundness"].is_null());
+        let e = primero_mut(&mut recta);
+        e.redondo = true;
+        if let Figura::Flecha { codos, .. } = &mut e.figura {
+            *codos = true;
+        }
+        let vuelta: Value = serde_json::from_str(&escribir(&recta)).unwrap();
+        assert!(vuelta["elements"][0]["roundness"].is_null());
+    }
+
+    #[test]
+    fn la_alineacion_de_un_texto_va_y_vuelve_con_sus_palabras() {
+        use crate::texto::{AlineacionTexto, AlineacionVertical};
+        let json = r#"{"elements":[
+          {"id":"t","type":"text","x":0,"y":0,"width":50,"height":20,"text":"a",
+           "fontSize":20,"fontFamily":5,"textAlign":"center","verticalAlign":"bottom"}
+        ]}"#;
+        let mut l = leer(json).unwrap();
+        let e = &l.elementos()[0];
+        assert_eq!(e.extras.alineacion, Some(AlineacionTexto::Centro));
+        assert_eq!(e.extras.alineacion_vertical, Some(AlineacionVertical::Abajo));
+        // Caso negativo: la alineacion no son extras del movil; un texto
+        // alineado no estrena `negrita`, `papel` y compania al guardarse.
+        assert!(e.extras.vacios());
+        let t = primero_mut(&mut l);
+        t.extras.alineacion = Some(AlineacionTexto::Derecha);
+        t.extras.alineacion_vertical = Some(AlineacionVertical::Medio);
+        let vuelta: Value = serde_json::from_str(&escribir(&l)).unwrap();
+        let v = &vuelta["elements"][0];
+        assert_eq!(v["textAlign"], "right");
+        assert_eq!(v["verticalAlign"], "middle");
+        assert!(v.get("negrita").is_none(), "{v}");
+    }
+
+    #[test]
+    fn una_alineacion_que_no_conocemos_no_se_borra_al_guardar() {
+        let json = r#"{"elements":[
+          {"id":"t","type":"text","x":0,"y":0,"width":50,"height":20,"text":"a",
+           "fontSize":20,"textAlign":"justify"}
+        ]}"#;
+        let mut l = leer(json).unwrap();
+        assert_eq!(l.elementos()[0].extras.alineacion, None);
+        movido(&mut l);
+        let vuelta: Value = serde_json::from_str(&escribir(&l)).unwrap();
+        assert_eq!(vuelta["elements"][0]["textAlign"], "justify");
+        // Caso negativo: un texto que nunca la trajo no la estrena.
+        let mut sin = leer(
+            r#"{"elements":[{"id":"u","type":"text","x":0,"y":0,"width":9,"height":9,
+                "text":"b","fontSize":20}]}"#,
+        )
+        .unwrap();
+        movido(&mut sin);
+        let vuelta: Value = serde_json::from_str(&escribir(&sin)).unwrap();
+        assert!(vuelta["elements"][0].get("textAlign").is_none());
+        assert!(vuelta["elements"][0].get("verticalAlign").is_none());
     }
 
     /// **`fontFamily` ni se leia ni se escribia.**
@@ -2293,19 +2715,56 @@ mod pruebas {
         //
         // El tipo de muestra tiene que ser uno que no vayamos a implementar:
         // `pixpin-measure` sirvio hasta que la tarea 3 le enseno a
-        // `elemento_desde` a entenderlo. El cronograma no esta en ninguna
-        // fase del plan, asi que es el candidato con menos riesgo de que
-        // esto vuelva a pasar con la proxima herramienta.
+        // `elemento_desde` a entenderlo, y el cronograma hasta F12. El solido
+        // 3D del movil no esta en ninguna fase del plan.
         let json = r#"{"type":"excalidraw","elements":[
-            {"type":"pixpin-gantt","x":0,"y":0,"groupIds":["g9"],"tareas":[]}
+            {"type":"pixpin-solid","x":0,"y":0,"groupIds":["g9"],"altura":80}
         ]}"#;
         let lienzo = leer(json).unwrap();
         assert_eq!(lienzo.cuantos_ajenos(), 1);
 
         let vuelta = escribir(&lienzo);
-        assert!(vuelta.contains("pixpin-gantt"), "el tipo ajeno sigue");
+        assert!(vuelta.contains("pixpin-solid"), "el tipo ajeno sigue");
         assert!(vuelta.contains("\"g9\""), "y su grupo tambien");
-        assert!(vuelta.contains("\"tareas\""), "y sus campos propios");
+        assert!(vuelta.contains("\"altura\""), "y sus campos propios");
+    }
+
+    #[test]
+    fn un_cronograma_del_movil_se_lee_con_sus_filas_y_vuelve_igual() {
+        // F12: el `pixpin-gantt` del movil ya no es ajeno: se pinta y se
+        // edita aqui, y vuelve con los nombres de `TareaDelCronograma`.
+        let json = r##"{"type":"excalidraw","elements":[
+            {"id":"c1","type":"pixpin-gantt","x":10,"y":20,"width":400,"height":200,
+             "strokeColor":"#1e1e1e","groupIds":["g2"],"periodos":8,
+             "tareas":[{"nombre":"Obra","desde":0,"cuanto":2.5},
+                       {"nombre":"Acabados","desde":2.5,"cuanto":1,"color":"#e03131"}]}
+        ]}"##;
+        let l = leer(json).unwrap();
+        assert_eq!(l.cuantos_ajenos(), 0);
+        let e = &l.elementos()[0];
+        let Figura::Cronograma { tareas, periodos } = &e.figura else {
+            panic!("no se leyo como cronograma: {:?}", e.figura);
+        };
+        assert_eq!(*periodos, 8);
+        assert_eq!(tareas[0].nombre, "Obra");
+        assert_eq!((tareas[0].desde, tareas[0].cuanto), (0.0, 2.5));
+        assert!(tareas[0].color.is_none());
+        assert!(tareas[1].color.is_some());
+        let vuelta = escribir(&l);
+        assert!(vuelta.contains("pixpin-gantt") && vuelta.contains("\"Acabados\""), "{vuelta}");
+        assert!(vuelta.contains("\"periodos\""), "{vuelta}");
+        assert!(vuelta.contains("#e03131"), "{vuelta}");
+        let otra = leer(&vuelta).unwrap();
+        assert_eq!(otra.elementos()[0].figura, e.figura, "va y vuelve igual");
+    }
+
+    #[test]
+    fn un_cronograma_con_campos_que_no_se_entienden_viaja_como_ajeno() {
+        // Caso negativo: mejor intacto que mal leido.
+        let json = r#"{"type":"excalidraw","elements":[
+            {"type":"pixpin-gantt","x":0,"y":0,"tareas":"tres","periodos":4}
+        ]}"#;
+        assert_eq!(leer(json).unwrap().cuantos_ajenos(), 1);
     }
 
     #[test]
@@ -2549,7 +3008,7 @@ mod pruebas {
         {"id":"t1","type":"freedraw","x":10,"y":20,"width":5,"height":5,"seed":7,
          "roughness":0,"version":3,"points":[{"x":0,"y":0},{"x":5,"y":5}],
          "campoDelFuturo":"se queda"},
-        {"id":"g1","type":"pixpin-gantt","x":0,"y":0,"width":1,"height":1},
+        {"id":"g1","type":"pixpin-solid","x":0,"y":0,"width":1,"height":1},
         {"id":"r1","type":"rectangle","x":0,"y":0,"width":10,"height":10,"seed":9,
          "roughness":0,"version":1}
       ]}"##;
@@ -2631,7 +3090,7 @@ mod pruebas {
         assert!(escena.borrar_apuntando(2));
         let salida = elementos_de(&escribir(&con_escena(&lienzo, &escena)));
         assert_eq!(salida.len(), 3);
-        assert_eq!(salida[1]["type"], "pixpin-gantt");
+        assert_eq!(salida[1]["type"], "pixpin-solid");
         assert_eq!(salida[2]["id"], "r1");
         assert_eq!(salida[2]["isDeleted"], true);
     }
@@ -2663,5 +3122,95 @@ mod pruebas {
         escena.anadir(lienzo.elementos()[0].clone());
         let salida = elementos_de(&escribir(&con_escena(&lienzo, &escena)));
         assert!(salida[1]["points"][0].is_array());
+    }
+
+    /// Un lienzo como lo escribe el movil (`ExcalidrawStore.exportar`): su
+    /// papel «Crema» de `DrawTheme.PAPELES` y un `gridSize` que aqui no se
+    /// usa y tiene que volver.
+    const LIENZO_CREMA_DEL_MOVIL: &str = r##"{"type":"excalidraw","version":2,
+      "source":"https://github.com/1xmanMAX/PIXPIN_PRO_ANDROID",
+      "elements":[
+        {"id":"r1","type":"rectangle","x":0,"y":0,"width":40,"height":20,
+         "strokeColor":"#1e1e1e","backgroundColor":"transparent"}],
+      "appState":{"gridSize":20,"viewBackgroundColor":"#fdf6e3"}}"##;
+
+    fn app_state_de(json: &str) -> Value {
+        let v: Value = serde_json::from_str(json).unwrap();
+        v["appState"].clone()
+    }
+
+    #[test]
+    fn el_papel_del_movil_se_lee_en_la_escena_y_sale_intacto_si_no_se_toca() {
+        let lienzo = leer(LIENZO_CREMA_DEL_MOVIL).unwrap();
+        let escena = a_escena(&lienzo);
+        assert_eq!(color_hacia(escena.fondo), "#fdf6e3");
+        // Abrir no es un cambio: deshacerlo todo no le quita el papel.
+        let mut deshecha = escena.clone();
+        while deshecha.deshacer() {}
+        assert_eq!(deshecha.fondo, escena.fondo, "abrir no es un cambio");
+        let salida = escribir(&con_escena(&lienzo, &escena));
+        assert_eq!(
+            app_state_de(&salida),
+            app_state_de(LIENZO_CREMA_DEL_MOVIL),
+            "el appState cambio sin haber tocado el papel"
+        );
+    }
+
+    #[test]
+    fn cambiar_el_papel_lo_escribe_donde_lo_lee_el_movil_sin_tocar_el_resto() {
+        let lienzo = leer(LIENZO_CREMA_DEL_MOVIL).unwrap();
+        let mut escena = a_escena(&lienzo);
+        // «Azul noche» del movil.
+        assert!(escena.poner_fondo(color_desde(Some(&Value::from("#14213d"))).unwrap()));
+        let salida = escribir(&con_escena(&lienzo, &escena));
+        let estado = app_state_de(&salida);
+        assert_eq!(estado["viewBackgroundColor"], "#14213d");
+        assert_eq!(estado["gridSize"], 20, "se perdio lo que no es el papel");
+        // Y de vuelta: el mismo papel al reabrir.
+        let otra = a_escena(&leer(&salida).unwrap());
+        assert_eq!(otra.fondo, escena.fondo);
+    }
+
+    #[test]
+    fn un_lienzo_sin_app_state_y_con_papel_blanco_no_gana_un_app_state() {
+        // Caso negativo: nada que decir, nada que escribir.
+        let web = r#"{"type":"excalidraw","elements":[]}"#;
+        let lienzo = leer(web).unwrap();
+        let escena = a_escena(&lienzo);
+        assert_eq!(escena.fondo, crate::escena::FONDO_DE_FABRICA);
+        let salida = escribir(&con_escena(&lienzo, &escena));
+        assert!(!salida.contains("appState"), "{salida}");
+    }
+
+    #[test]
+    fn un_lienzo_nuevo_con_papel_elegido_se_crea_su_app_state() {
+        let mut escena = crate::Escena::nueva();
+        escena.poner_fondo(color_desde(Some(&Value::from("#f5faff"))).unwrap());
+        let salida = escribir(&con_escena(&Lienzo::vacio(), &escena));
+        assert_eq!(app_state_de(&salida)["viewBackgroundColor"], "#f5faff");
+    }
+
+    #[test]
+    fn un_papel_que_no_se_entiende_se_ve_blanco_y_no_se_pisa_al_guardar() {
+        // Caso negativo: «transparent» o basura de una version futura. Se
+        // pinta blanco, como el movil, pero si nadie elige otro papel el
+        // texto original vuelve tal cual.
+        for raro in [r#""transparent""#, r#""azulito""#, "42"] {
+            let json = format!(
+                r#"{{"type":"excalidraw","elements":[],"appState":{{"viewBackgroundColor":{raro}}}}}"#
+            );
+            let lienzo = leer(&json).unwrap();
+            let escena = a_escena(&lienzo);
+            assert_eq!(escena.fondo, crate::escena::FONDO_DE_FABRICA, "{raro}");
+            let salida = escribir(&con_escena(&lienzo, &escena));
+            assert_eq!(app_state_de(&salida), app_state_de(&json), "{raro}");
+        }
+    }
+
+    #[test]
+    fn un_papel_con_alfa_se_lee_opaco_como_en_el_movil() {
+        let json = r##"{"type":"excalidraw","elements":[],"appState":{"viewBackgroundColor":"#11223380"}}"##;
+        let escena = a_escena(&leer(json).unwrap());
+        assert_eq!(color_hacia(escena.fondo), "#112233");
     }
 }

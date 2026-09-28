@@ -433,6 +433,50 @@ pub fn voltear(elementos: &mut [Elemento], eje: EjeVolteo) {
     }
 }
 
+/// **Las flechas atadas, despues de voltear** `volteados` en una escena. Se
+/// llama dentro del paso de deshacer que volteo.
+///
+/// [`voltear`] trabaja sobre un trozo de elementos y no ve la escena, asi que
+/// esto va aparte. Hace dos cosas, como `actionFlip` de Excalidraw:
+///
+/// - las flechas que cuelgan de lo volteado y no se voltearon, lo siguen;
+/// - las flechas volteadas **se vuelven a atar por las dos puntas**, aunque
+///   su figura se volteara con ellas. Reflejar cambia de lado el sitio al que
+///   apuntan —el `foco` y el `punto_fijo` guardados son del lado de antes—,
+///   y sin re-atarlas la proxima vez que se moviera la caja la punta saltaria
+///   al lado opuesto. Cada punta conserva su modo (borde o dentro).
+pub fn atar_tras_voltear(escena: &mut crate::escena::Escena, volteados: &[u64]) {
+    use crate::enlace::{self, Extremo};
+    enlace::seguir(escena, volteados);
+    // Solo las puntas cuya figura se volteo con la flecha. Lo que no
+    // resuelve no se toca: viaja intacto al movil.
+    let elementos = &escena.elementos;
+    let puntas: Vec<(u64, Extremo)> = elementos
+        .iter()
+        .filter(|e| {
+            !e.borrado && volteados.contains(&e.id) && matches!(e.figura, Figura::Flecha { .. })
+        })
+        .flat_map(|e| {
+            [
+                (&e.extras.enganche_inicio, Extremo::Inicio),
+                (&e.extras.enganche_fin, Extremo::Fin),
+            ]
+            .into_iter()
+            .filter_map(|(b, x)| {
+                let o = enlace::resolver(elementos, b.as_ref()?)?;
+                volteados.contains(&o.id).then_some((e.id, x))
+            })
+            .collect::<Vec<_>>()
+        })
+        .collect();
+    for (id, extremo) in puntas {
+        enlace::reatar_a_su_figura(escena, id, extremo);
+    }
+    // Y la punta cuya figura se quedo quieta se revisa como al soltar una
+    // flecha movida sola: sigue atada si aun cae encima, si no se suelta.
+    enlace::revisar_flechas_movidas(escena, |id| volteados.contains(&id), 1.0);
+}
+
 /// La caja que abarca a todos los que cuentan.
 fn caja_comun(elementos: &[Elemento]) -> Option<(f32, f32, f32, f32)> {
     let mut caja: Option<(f32, f32, f32, f32)> = None;

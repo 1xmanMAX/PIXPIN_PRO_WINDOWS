@@ -128,6 +128,29 @@ pub fn estampar(
     piezas
 }
 
+/// **Estampa la figura en la escena**, centrada en `centro`, en un solo paso
+/// de deshacer, y devuelve los ids de lo estampado (para dejarlo elegido y
+/// llevarlo a su sitio de un tiron, como lo pegado).
+///
+/// El nombre del grupo sale como en `organizar::agrupar` (`g` y el siguiente
+/// id): unico en la escena sin llevar una cuenta aparte.
+pub fn estampar_en_escena(
+    escena: &mut crate::escena::Escena,
+    figura: &FiguraGuardada,
+    centro: Punto2,
+) -> Vec<u64> {
+    if figura.elementos.is_empty() {
+        return Vec::new();
+    }
+    let primero = escena.siguiente_id.max(1);
+    let grupo = format!("g{primero}");
+    let piezas = estampar(figura, centro, primero, &grupo);
+    escena.abrir_paso();
+    let ids = piezas.into_iter().map(|e| escena.anadir(e)).collect();
+    escena.cerrar_paso();
+    ids
+}
+
 /// Una semilla nunca cero a partir de un identificador. Cero significaria
 /// «sin sembrar» y el dibujo temblaria en cada apertura.
 fn semilla_de(id: u64) -> u32 {

@@ -68,6 +68,12 @@ struct Entrada {
 /// version y su nivel de detalle, para no volver a calcularla si ninguno de
 /// los dos cambio.
 ///
+/// **Una por escena.** La clave es el id, y los ids solo son unicos dentro
+/// de una escena: dos escenas (dos hojas de un PDF) tienen cada una su
+/// elemento 1, y dos trazos con el mismo numero de puntos llegan a la misma
+/// version. Compartida, una escena pintaria la geometria de la otra (ver
+/// `lector_tinta::Calculado`).
+///
 /// **No tiene techo de memoria.** Guarda la geometria de los elementos que
 /// se han pintado, que son los que caben en pantalla mas los que se hayan
 /// visto al pasar; con ocho mil elementos y unas pocas ordenes por elemento
@@ -116,6 +122,28 @@ impl Cache {
     /// Se llama al borrar de verdad un elemento (`Escena::compactar`).
     pub fn olvidar(&mut self, id: u64) {
         self.mapa.remove(&id);
+    }
+
+    /// **Echa la geometria de lo que ya no se ve nunca**: los elementos que
+    /// salieron de la escena o estan borrados.
+    ///
+    /// `olvidar` no lo llamaba nadie, asi que cada trazo borrado, deshecho o
+    /// convertido en forma dejaba aqui su geometria para toda la sesion: la
+    /// cache crecia con todo lo que se habia dibujado alguna vez y no con lo
+    /// que hay. Quien pinta lo llama de vez en cuando (cuando hay bastantes
+    /// mas entradas que elementos vivos), no en cada fotograma: recorre la
+    /// escena entera. Lo borrado que vuelva con un Ctrl+Z se recalcula una
+    /// vez, que es lo mismo que cuesta pintarlo por primera vez.
+    pub fn podar(&mut self, escena: &crate::escena::Escena) {
+        let vivos: std::collections::HashSet<u64> =
+            escena.visibles().map(|e| e.id).collect();
+        self.mapa.retain(|id, _| vivos.contains(id));
+    }
+
+    /// Si ya merece la pena `podar`: bastantes mas entradas que elementos
+    /// vivos. La holgura evita podar por un solo borrado, que no pesa nada.
+    pub fn sobran(&self, vivos: usize) -> bool {
+        self.mapa.len() > vivos + vivos / 4 + 64
     }
 
     /// Se llama al abrir otro documento.

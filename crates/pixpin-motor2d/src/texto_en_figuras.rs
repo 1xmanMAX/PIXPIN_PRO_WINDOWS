@@ -37,6 +37,7 @@
 //! mira `extras.contenedor`. Ver el informe del grupo A.
 
 use crate::elemento::{Atado, Elemento, Figura};
+use crate::texto::{AlineacionTexto, AlineacionVertical};
 use crate::vector::Punto2;
 
 /// El aire entre el texto y el borde de su figura. El de Excalidraw.
@@ -120,12 +121,52 @@ pub fn figura_que_lo_contiene(medida: f32, f: &Figura) -> f32 {
 ///
 /// `medida_del_texto` es `(ancho, alto)` de lo ya compuesto.
 pub fn sitio_del_texto_dentro(contenedor: &Elemento, medida_del_texto: (f32, f32)) -> Punto2 {
+    sitio_alineado_dentro(
+        contenedor,
+        medida_del_texto,
+        AlineacionTexto::Centro,
+        AlineacionVertical::Medio,
+    )
+}
+
+/// **Donde va el texto dentro de su figura con su alineacion**: arriba,
+/// en medio o abajo, y a la izquierda, al centro o a la derecha.
+///
+/// Es `computeBoundTextPosition` de Excalidraw (`textElement.ts`): el hueco
+/// empieza en [`esquina_del_hueco`] y lo que sobra de [`ancho_que_cabe`] y
+/// [`alto_que_cabe`] se reparte segun la alineacion —nada arriba, la mitad
+/// en medio, todo abajo—. Con la misma cuenta que el centrado, las nueve
+/// posiciones quedan dentro del mismo hueco y ninguna pisa el borde.
+pub fn sitio_alineado_dentro(
+    contenedor: &Elemento,
+    medida_del_texto: (f32, f32),
+    horizontal: AlineacionTexto,
+    vertical: AlineacionVertical,
+) -> Punto2 {
     let hueco = esquina_del_hueco(contenedor);
     let (ancho, alto) = medida_del_texto;
     Punto2::nuevo(
-        hueco.x + (ancho_que_cabe(contenedor) / 2.0 - ancho / 2.0),
-        hueco.y + (alto_que_cabe(contenedor) / 2.0 - alto / 2.0),
+        hueco.x + (ancho_que_cabe(contenedor) - ancho) * horizontal.fraccion(),
+        hueco.y + (alto_que_cabe(contenedor) - alto) * vertical.fraccion(),
     )
+}
+
+/// **Donde tiene que ir `texto` ahora**, si vive dentro de una figura de
+/// `elementos`: el sitio que le dan su alineacion y la de su figura. `None`
+/// si es un texto suelto, que no tiene hueco en el que moverse.
+///
+/// Sin alineacion en el fichero se toman las de fabrica —izquierda y
+/// arriba—, las mismas que pone `restore` de Excalidraw a un texto que no las
+/// trae y las mismas que marca el panel: si aqui se supusiera otra, el boton
+/// marcado y el sitio del rotulo dirian cosas distintas.
+pub fn sitio_en_su_contenedor(texto: &Elemento, elementos: &[Elemento]) -> Option<Punto2> {
+    let contenedor = contenedor_de(texto, elementos, &crate::enlace::id_de_texto_de)?;
+    Some(sitio_alineado_dentro(
+        contenedor,
+        (texto.ancho, texto.alto),
+        texto.extras.alineacion.unwrap_or_default(),
+        texto.extras.alineacion_vertical.unwrap_or_default(),
+    ))
 }
 
 /// Parte el texto en lineas que quepan en `ancho`.
@@ -341,6 +382,60 @@ mod pruebas {
         // Centro de la caja menos medio texto.
         assert!((p.x - (100.0 + 100.0 - 20.0)).abs() < 0.01, "{p:?}");
         assert!((p.y - (50.0 + 50.0 - 10.0)).abs() < 0.01, "{p:?}");
+    }
+
+    #[test]
+    fn arriba_a_la_izquierda_y_abajo_a_la_derecha_se_quedan_dentro_del_hueco() {
+        // Caja 100,50 de 200 x 100; hueco de 190 x 90 desde 105,55.
+        let c = caja(Figura::Rectangulo, 200.0, 100.0);
+        let medida = (40.0, 20.0);
+        let arriba = sitio_alineado_dentro(
+            &c,
+            medida,
+            AlineacionTexto::Izquierda,
+            AlineacionVertical::Arriba,
+        );
+        assert_eq!(arriba, Punto2::nuevo(105.0, 55.0));
+        let abajo = sitio_alineado_dentro(
+            &c,
+            medida,
+            AlineacionTexto::Derecha,
+            AlineacionVertical::Abajo,
+        );
+        // Su esquina de abajo a la derecha, pegada al borde del hueco.
+        assert!((abajo.x + 40.0 - 295.0).abs() < 0.01, "{abajo:?}");
+        assert!((abajo.y + 20.0 - 145.0).abs() < 0.01, "{abajo:?}");
+        // Caso negativo: el centrado de siempre no se ha movido.
+        assert_eq!(
+            sitio_alineado_dentro(&c, medida, AlineacionTexto::Centro, AlineacionVertical::Medio),
+            sitio_del_texto_dentro(&c, medida)
+        );
+    }
+
+    #[test]
+    fn un_rotulo_se_recoloca_en_su_caja_y_un_texto_suelto_no() {
+        let mut c = caja(Figura::Rectangulo, 200.0, 100.0);
+        c.extras.id_de_fichero = Some("caja".into());
+        let mut t = Elemento {
+            figura: Figura::Texto {
+                texto: "hola".into(),
+                tam: 20.0,
+                familia: "Excalifont".into(),
+            },
+            ancho: 40.0,
+            alto: 20.0,
+            ..Default::default()
+        };
+        t.extras.contenedor = Some("caja".into());
+        t.extras.alineacion_vertical = Some(AlineacionVertical::Abajo);
+        let elementos = vec![c.clone(), t.clone()];
+        let p = sitio_en_su_contenedor(&t, &elementos).expect("vive en la caja");
+        // Sin `textAlign` va a la izquierda, la de fabrica; abajo, porque
+        // lo pide.
+        assert!((p.x - 105.0).abs() < 0.01 && (p.y - 125.0).abs() < 0.01, "{p:?}");
+        // Caso negativo: suelto no tiene donde ir.
+        t.extras.contenedor = None;
+        assert!(sitio_en_su_contenedor(&t, &elementos).is_none());
     }
 
     #[test]

@@ -154,6 +154,7 @@ pub fn alinear(escena: &mut Escena, sel: &Seleccion, como: Alineacion) {
         return;
     };
     escena.abrir_paso();
+    let mut movidos = Vec::new();
     for id in sel.ids().to_vec() {
         let Some(e) = escena.buscar(id) else { continue };
         let (x0, y0, x1, y1) = e.caja();
@@ -173,8 +174,14 @@ pub fn alinear(escena: &mut Escena, sel: &Seleccion, como: Alineacion) {
             e.mover(dx, dy);
             // Sin subir la version la cache pintaria el sitio viejo.
             e.tocar();
+            movidos.push(id);
         }
     }
+    // Las flechas atadas siguen a lo alineado EN ESTE MISMO PASO: un Ctrl+Z
+    // que devolviera las cajas y dejara las flechas estiradas hacia donde
+    // estuvieron descolocaria el dibujo a medias. Solo lo que se movio de
+    // verdad: una flecha elegida que ya estaba alineada no se revisa.
+    crate::enlace::despues_de_mover(escena, &movidos);
     escena.cerrar_paso();
 }
 
@@ -205,6 +212,7 @@ pub fn repartir(escena: &mut Escena, sel: &Seleccion, como: Reparto) {
     let hueco = (ultimo - primero) / (orden.len() - 1) as f32;
 
     escena.abrir_paso();
+    let mut movidos = Vec::new();
     for (i, (id, actual)) in orden.iter().enumerate().skip(1).take(orden.len() - 2) {
         let quiero = primero + hueco * i as f32;
         let d = quiero - actual;
@@ -218,8 +226,11 @@ pub fn repartir(escena: &mut Escena, sel: &Seleccion, como: Reparto) {
                 Reparto::Vertical => e.mover(0.0, d),
             }
             e.tocar();
+            movidos.push(*id);
         }
     }
+    // Igual que al alinear: las flechas atadas, en el mismo paso.
+    crate::enlace::despues_de_mover(escena, &movidos);
     escena.cerrar_paso();
 }
 

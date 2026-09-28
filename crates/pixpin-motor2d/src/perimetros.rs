@@ -113,6 +113,12 @@ pub fn contornos_de(e: &Elemento, paso: f32) -> Vec<Contorno> {
         | Figura::Foco { .. }
         | Figura::Punto { .. } => Vec::new(),
 
+        // La lupa, por el contorno de su cristal: es lo que se ve de ella.
+        Figura::Lupa { cristal } => cerrado(crate::lupa_elemento::puntos_del_cristal(
+            cristal,
+            (e.x, e.y, e.ancho, e.alto),
+        )),
+
         // El rombo pasa por los puntos medios de los lados, no por las
         // esquinas: cruzarlo por su caja seria cruzarlo por donde no esta.
         Figura::Rombo => {
@@ -178,6 +184,7 @@ pub fn contornos_de(e: &Elemento, paso: f32) -> Vec<Contorno> {
         | Figura::Imagen { .. }
         | Figura::Mosaico { .. }
         | Figura::Marco { .. }
+        | Figura::Cronograma { .. }
         | Figura::EscalaGrafica => cerrado(caja()),
     }
 }
@@ -530,7 +537,7 @@ mod pruebas {
                 tam: 20.0,
                 familia: "Segoe UI".into(),
             },
-            Figura::Foco { elipse: false },
+            Figura::Foco { cristal: Default::default() },
             Figura::Punto {
                 letra: "A".into(),
                 angulo: 0.0,

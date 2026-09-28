@@ -125,12 +125,83 @@ pub fn vertices_de_rombo(x: f32, y: f32, ancho: f32, alto: f32) -> [Punto2; 4] {
     ]
 }
 
-/// Una elipse "a mano": dos vueltas completas ligeramente distintas.
+/// Una elipse "a mano": dos vueltas completas ligeramente distintas, lisas.
+///
+/// Pasa por los mismos vertices de siempre (`vertices_de_elipse`, con la
+/// misma semilla y el mismo azar gastado, asi que la figura guardada no cambia
+/// de sitio ni de temblor), pero los une con la spline de rough.js (`_curve`:
+/// Catmull-Rom convertida en cubicas) en vez de con rectas. Unidos con rectas,
+/// 32 vertices sacudidos cada uno por su lado dejaban un poligono: con el
+/// trazo a mano medio o alto se veian las esquinas (lo vio el usuario). En
+/// Excalidraw la elipse tambien es una curva por puntos sacudidos, nunca una
+/// quebrada.
+pub fn elipse(
+    x: f32,
+    y: f32,
+    ancho: f32,
+    alto: f32,
+    rugosidad: f32,
+    azar: &mut Azar,
+) -> Vec<Vec<Punto2>> {
+    let vueltas = vertices_de_elipse(x, y, ancho, alto, rugosidad, azar);
+    // Sin temblor es una vuelta exacta que cierra en su primer punto: se
+    // alisa como lazo cerrado para que la costura tampoco haga pico.
+    let cerrada = rugosidad <= 0.0;
+    vueltas
+        .iter()
+        .map(|v| spline_por_puntos(v, cerrada))
+        .collect()
+}
+
+/// Lo que mide, como mucho, cada trocito recto de la spline. Tres unidades
+/// es menos de lo que el ojo distingue de una curva al 100 %, y una elipse de
+/// 200 de ancho se queda en unos 250 puntos por vuelta.
+const TROCITO_DE_SPLINE: f32 = 3.0;
+
+/// La spline de rough.js (`_curve` con `curveTightness` 0) por `puntos`,
+/// muestreada en rectas cortas. Cada tramo de `p[i]` a `p[i+1]` es la cubica
+/// con controles `p[i] + (p[i+1] - p[i-1]) / 6` y `p[i+1] - (p[i+2] - p[i]) / 6`:
+/// pasa por todos los puntos y sale de cada uno con la tangente de sus dos
+/// vecinos, que es lo que borra el pico. `cerrada` toma los vecinos dando la
+/// vuelta; abierta, repite el extremo.
+fn spline_por_puntos(puntos: &[Punto2], cerrada: bool) -> Vec<Punto2> {
+    let n = puntos.len();
+    if n < 3 {
+        return puntos.to_vec();
+    }
+    // En un lazo cerrado el ultimo punto repite el primero: los vecinos se
+    // buscan entre los `n - 1` distintos.
+    let distintos = if cerrada { n - 1 } else { n };
+    let en = |i: isize| -> Punto2 {
+        if cerrada {
+            puntos[i.rem_euclid(distintos as isize) as usize]
+        } else {
+            puntos[i.clamp(0, n as isize - 1) as usize]
+        }
+    };
+    let mut salida = Vec::with_capacity(n * 4);
+    salida.push(puntos[0]);
+    for i in 0..n - 1 {
+        let i = i as isize;
+        let (p0, p1, p2, p3) = (en(i - 1), en(i), en(i + 1), en(i + 2));
+        let c1 = Punto2::nuevo(p1.x + (p2.x - p0.x) / 6.0, p1.y + (p2.y - p0.y) / 6.0);
+        let c2 = Punto2::nuevo(p2.x - (p3.x - p1.x) / 6.0, p2.y - (p3.y - p1.y) / 6.0);
+        let trozos = ((p1.distancia(p2) / TROCITO_DE_SPLINE).ceil() as usize).clamp(1, 16);
+        for k in 1..=trozos {
+            salida.push(cubica(p1, c1, c2, p2, k as f32 / trozos as f32));
+        }
+    }
+    salida
+}
+
+/// Los vertices sacudidos de la elipse "a mano", sin alisar: dos vueltas.
 ///
 /// No se cierra en el mismo punto donde empieza a proposito: una elipse
 /// dibujada a mano casi nunca cierra exacta, y ese pequeño exceso es lo que
-/// la hace creible.
-pub fn elipse(
+/// la hace creible. Es lo que se pintaba antes, unido con rectas; se deja
+/// aparte para que `elipse` los alise sin tocar el azar, y para poder
+/// comparar el antes y el despues.
+pub fn vertices_de_elipse(
     x: f32,
     y: f32,
     ancho: f32,
@@ -425,80 +496,207 @@ pub fn contorno_de_punta(f: &FormaDePunta) -> Vec<Punto2> {
     }
 }
 
-/// Un rombo con las puntas redondeadas.
+/// Un tramo de un contorno redondeado: una recta o una esquina curva.
 ///
-/// **Faltaba entero.** El estilo de fabrica trae `roundness`, asi que el rombo
-/// pide puntas redondeadas desde el primer dia y aqui se dibuja en pico igual
-/// que los demas; en un rombo la diferencia canta, porque sus cuatro vertices
-/// son angulos agudos.
+/// Es la misma ruta que escribe Excalidraw en `shape.ts` (`M … L … Q …` para
+/// el rectangulo, `L … C …` para el rombo): una sola descripcion de la forma
+/// de la que salen **las tres cosas que tienen que coincidir** —el contorno
+/// liso, el contorno a mano y el relleno—. Con tres cuentas sueltas, lo que
+/// pasaba es lo que vio el usuario: el contorno redondo y el relleno recto,
+/// asomando por las cuatro esquinas.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Tramo {
+    Recta(Punto2, Punto2),
+    /// Bezier cubica: inicio, dos tiradores y fin. La `Q` del rectangulo se
+    /// pasa a cubica sin cambiar la curva (tiradores a 2/3 del de control).
+    Curva(Punto2, Punto2, Punto2, Punto2),
+}
+
+/// Cuantos tramos rectos por esquina al muestrearla: a los zooms de trabajo
+/// no se distingue de una curva de verdad.
+const TRAMOS_ESQUINA: usize = 8;
+
+/// La esquina cuadratica de `a` a `b` con control `c`, como cubica.
+fn esquina_cuadratica(a: Punto2, c: Punto2, b: Punto2) -> Tramo {
+    Tramo::Curva(a, a.hacia(c, 2.0 / 3.0), b.hacia(c, 2.0 / 3.0), b)
+}
+
+fn cubica(p0: Punto2, c1: Punto2, c2: Punto2, p3: Punto2, t: f32) -> Punto2 {
+    let u = 1.0 - t;
+    let (a, b, c, d) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
+    Punto2::nuevo(
+        p0.x * a + c1.x * b + c2.x * c + p3.x * d,
+        p0.y * a + c1.y * b + c2.y * c + p3.y * d,
+    )
+}
+
+/// El contorno liso y CERRADO de unos tramos: el mismo para el trazo sin
+/// temblor y para el relleno, que asi no se sale de su contenedor.
+fn contorno_liso(tramos: &[Tramo]) -> Vec<Punto2> {
+    let mut salida = Vec::with_capacity(tramos.len() * (TRAMOS_ESQUINA + 1) + 1);
+    for t in tramos {
+        match *t {
+            Tramo::Recta(a, _) => salida.push(a),
+            Tramo::Curva(a, c1, c2, b) => {
+                for i in 0..TRAMOS_ESQUINA {
+                    salida.push(cubica(a, c1, c2, b, i as f32 / TRAMOS_ESQUINA as f32));
+                }
+            }
+        }
+    }
+    if let Some(primero) = salida.first().copied() {
+        salida.push(primero);
+    }
+    salida
+}
+
+/// Los tramos a mano alzada: cada recta con sus dos pasadas de [`linea`] y
+/// cada esquina con dos pasadas de una curva desviada, como hace rough.js
+/// con cada orden de la ruta (`_bezierTo` con su desvio). Las pasadas no
+/// empalman exactas, igual que en Excalidraw: las tapa la punta redonda del
+/// trazo (`lineCap: round`), y es parte de que parezca dibujado.
+fn contorno_a_mano(tramos: &[Tramo], rugosidad: f32, azar: &mut Azar) -> Vec<Vec<Punto2>> {
+    let mut salida = Vec::with_capacity(tramos.len() * 2);
+    for t in tramos {
+        match *t {
+            Tramo::Recta(a, b) => salida.extend(linea(a, b, rugosidad, azar)),
+            Tramo::Curva(a, c1, c2, b) => {
+                // Un desvio pequeno: la esquina es corta y temblarla como
+                // una recta larga la convertiria en un garabato.
+                let d = (a.distancia(b) / 40.0).clamp(0.5, 2.0) * rugosidad;
+                for pasada in 0..2 {
+                    let d = if pasada == 0 { d } else { d * 0.7 };
+                    let mut mueve =
+                        |p: Punto2| Punto2::nuevo(p.x + azar.desvio(d), p.y + azar.desvio(d));
+                    let (a, c1, c2, b) = (mueve(a), mueve(c1), mueve(c2), mueve(b));
+                    salida.push(
+                        (0..=TRAMOS_ESQUINA)
+                            .map(|i| cubica(a, c1, c2, b, i as f32 / TRAMOS_ESQUINA as f32))
+                            .collect(),
+                    );
+                }
+            }
+        }
+    }
+    salida
+}
+
+/// La ruta del rectangulo redondeado de Excalidraw (`shape.ts`, rama
+/// `roundness`): radio `getCornerRadius` del lado menor, rectas entre las
+/// esquinas y cada esquina una `Q` con el vertice de control.
+fn tramos_de_rectangulo_redondo(x: f32, y: f32, ancho: f32, alto: f32) -> Option<[Tramo; 8]> {
+    // Normalizado: una caja estirada hacia arriba o a la izquierda tiene
+    // ancho o alto negativo, y el radio va con el tamano, no con el signo.
+    let (x0, x1) = (x.min(x + ancho), x.max(x + ancho));
+    let (y0, y1) = (y.min(y + alto), y.max(y + alto));
+    let r = radio_de_esquina((x1 - x0).min(y1 - y0));
+    if r <= 0.5 {
+        return None;
+    }
+    let p = Punto2::nuevo;
+    Some([
+        Tramo::Recta(p(x0 + r, y0), p(x1 - r, y0)),
+        esquina_cuadratica(p(x1 - r, y0), p(x1, y0), p(x1, y0 + r)),
+        Tramo::Recta(p(x1, y0 + r), p(x1, y1 - r)),
+        esquina_cuadratica(p(x1, y1 - r), p(x1, y1), p(x1 - r, y1)),
+        Tramo::Recta(p(x1 - r, y1), p(x0 + r, y1)),
+        esquina_cuadratica(p(x0 + r, y1), p(x0, y1), p(x0, y1 - r)),
+        Tramo::Recta(p(x0, y1 - r), p(x0, y0 + r)),
+        esquina_cuadratica(p(x0, y0 + r), p(x0, y0), p(x0 + r, y0)),
+    ])
+}
+
+/// La ruta del rombo redondeado de Excalidraw (`shape.ts`, rama `diamond`).
 ///
 /// La clave esta en **como recorta**: no avanza por la arista una distancia,
 /// sino que se desplaza `vr` en horizontal y `hr` en vertical, con **un radio
 /// distinto por eje** —el de la media anchura y el de la media altura—. Por
 /// eso un rombo aplastado no se redondea igual arriba que a los lados, que es
 /// como tiene que ser: con un radio unico las puntas laterales quedarian romas
-/// y las de arriba en pico.
-pub fn rombo_redondo(x: f32, y: f32, ancho: f32, alto: f32) -> Vec<Punto2> {
-    let v = vertices_de_rombo(x, y, ancho, alto);
-    let (arriba, derecha, abajo, izquierda) = (v[0], v[1], v[2], v[3]);
-    let (media_ancho, media_alto) = (ancho / 2.0, alto / 2.0);
-    if media_ancho <= 0.0 || media_alto <= 0.0 {
-        return v.to_vec();
+/// y las de arriba en pico. Cada punta es una `C` con los dos tiradores en el
+/// vertice, y la costura queda sobre el tramo recto que baja a la derecha,
+/// como en el original: partirla en mitad de una curva dejaria el empalme a
+/// la vista.
+fn tramos_de_rombo_redondo(x: f32, y: f32, ancho: f32, alto: f32) -> Option<[Tramo; 8]> {
+    let [arriba, derecha, abajo, izquierda] = vertices_de_rombo(x, y, ancho, alto);
+    let vr = radio_de_esquina((ancho / 2.0).abs());
+    let hr = radio_de_esquina((alto / 2.0).abs());
+    if vr <= 0.0 || hr <= 0.0 {
+        return None;
     }
-    let vr = radio_de_esquina(media_ancho);
-    let hr = radio_de_esquina(media_alto);
-    if vr <= 0.0 && hr <= 0.0 {
-        return v.to_vec();
-    }
-
-    // Seis tramos por punta, el mismo criterio que el rectangulo redondeado y
-    // que el codo: es un cuarto de vuelta corto.
-    const TRAMOS_PUNTA: usize = 6;
-    let mut salida: Vec<Punto2> = Vec::with_capacity(4 * (TRAMOS_PUNTA + 2) + 1);
-    // La costura queda justo despues de la punta de arriba y sobre el tramo
-    // recto que baja a la derecha, como en el original: partirla en mitad de
-    // una curva dejaria el empalme a la vista.
-    salida.push(Punto2::nuevo(arriba.x + vr, arriba.y + hr));
-    for (vertice, entrada, salida_p) in [
-        (
+    let p = Punto2::nuevo;
+    let punta = |v: Punto2, entrada: Punto2, salida: Punto2| Tramo::Curva(entrada, v, v, salida);
+    Some([
+        Tramo::Recta(
+            p(arriba.x + vr, arriba.y + hr),
+            p(derecha.x - vr, derecha.y - hr),
+        ),
+        punta(
             derecha,
-            Punto2::nuevo(derecha.x - vr, derecha.y - hr),
-            Punto2::nuevo(derecha.x - vr, derecha.y + hr),
+            p(derecha.x - vr, derecha.y - hr),
+            p(derecha.x - vr, derecha.y + hr),
         ),
-        (
+        Tramo::Recta(
+            p(derecha.x - vr, derecha.y + hr),
+            p(abajo.x + vr, abajo.y - hr),
+        ),
+        punta(
             abajo,
-            Punto2::nuevo(abajo.x + vr, abajo.y - hr),
-            Punto2::nuevo(abajo.x - vr, abajo.y - hr),
+            p(abajo.x + vr, abajo.y - hr),
+            p(abajo.x - vr, abajo.y - hr),
         ),
-        (
+        Tramo::Recta(
+            p(abajo.x - vr, abajo.y - hr),
+            p(izquierda.x + vr, izquierda.y + hr),
+        ),
+        punta(
             izquierda,
-            Punto2::nuevo(izquierda.x + vr, izquierda.y + hr),
-            Punto2::nuevo(izquierda.x + vr, izquierda.y - hr),
+            p(izquierda.x + vr, izquierda.y + hr),
+            p(izquierda.x + vr, izquierda.y - hr),
         ),
-        (
+        Tramo::Recta(
+            p(izquierda.x + vr, izquierda.y - hr),
+            p(arriba.x - vr, arriba.y + hr),
+        ),
+        punta(
             arriba,
-            Punto2::nuevo(arriba.x - vr, arriba.y + hr),
-            Punto2::nuevo(arriba.x + vr, arriba.y + hr),
+            p(arriba.x - vr, arriba.y + hr),
+            p(arriba.x + vr, arriba.y + hr),
         ),
-    ] {
-        salida.push(entrada);
-        // Cuadratica con el vertice de tirador: la misma que redondea el codo.
-        for s in 1..=TRAMOS_PUNTA {
-            let t = s as f32 / TRAMOS_PUNTA as f32;
-            let u = 1.0 - t;
-            salida.push(Punto2::nuevo(
-                u * u * entrada.x + 2.0 * u * t * vertice.x + t * t * salida_p.x,
-                u * u * entrada.y + 2.0 * u * t * vertice.y + t * t * salida_p.y,
-            ));
-        }
-    }
-    salida
+    ])
 }
 
-/// El radio de una esquina redondeada para un lado de `corto` (el
-/// `getCornerRadius` del movil con `ADAPTIVE_RADIUS`, que es el que escribe
-/// Excalidraw hoy: proporcional en formas pequenas y fijo a partir de cierto
-/// tamano, o un rectangulo enorme quedaria con unas curvas desmedidas).
+/// Un rombo con las puntas redondeadas, liso y cerrado. Es el contorno del
+/// relleno y el trazo sin temblor; sin tamano, sus cuatro vertices.
+pub fn rombo_redondo(x: f32, y: f32, ancho: f32, alto: f32) -> Vec<Punto2> {
+    match tramos_de_rombo_redondo(x, y, ancho, alto) {
+        Some(t) => contorno_liso(&t),
+        None => vertices_de_rombo(x, y, ancho, alto).to_vec(),
+    }
+}
+
+/// El trazo de un rombo redondeado con cualquier rugosidad: con 0, el
+/// contorno liso en una pasada; con mas, a mano alzada por tramos.
+pub fn rombo_redondo_a_mano(
+    x: f32,
+    y: f32,
+    ancho: f32,
+    alto: f32,
+    rugosidad: f32,
+    azar: &mut Azar,
+) -> Vec<Vec<Punto2>> {
+    match tramos_de_rombo_redondo(x, y, ancho, alto) {
+        Some(t) if rugosidad > 0.0 => contorno_a_mano(&t, rugosidad, azar),
+        Some(t) => vec![contorno_liso(&t)],
+        None => rombo(x, y, ancho, alto, rugosidad, azar),
+    }
+}
+
+/// El radio de una esquina redondeada para un lado de `corto`: el
+/// `getCornerRadius` de Excalidraw con `ADAPTIVE_RADIUS`, que es el que
+/// escribe hoy (`{"type":3}`): proporcional (`DEFAULT_PROPORTIONAL_RADIUS`,
+/// 0,25) en formas pequenas y fijo (`DEFAULT_ADAPTIVE_RADIUS`, 32) a partir
+/// de 128, o un rectangulo enorme quedaria con unas curvas desmedidas.
 pub fn radio_de_esquina(corto: f32) -> f32 {
     const PROPORCIONAL: f32 = 0.25;
     const FIJO: f32 = 32.0;
@@ -510,47 +708,42 @@ pub fn radio_de_esquina(corto: f32) -> f32 {
     }
 }
 
-/// Un rectangulo de esquinas redondeadas, en una sola pasada.
+/// Un rectangulo de esquinas redondeadas, liso y cerrado: el contorno del
+/// relleno y el trazo sin temblor.
 ///
-/// El `roundness` de Excalidraw con radio proporcional, como el movil: un
-/// cuarto del lado menor, con tope. Va aparte de `rectangulo` porque este no
-/// tiembla: los recuadros redondeados que manda el movil son las «zonas» que
-/// enlazan con otra hoja, y ahi la forma tiene que coincidir exactamente o
-/// parece otro recuadro dibujado encima del suyo.
+/// Los recuadros redondeados sin temblor que manda el movil son las «zonas»
+/// que enlazan con otra hoja, y ahi la forma tiene que coincidir exactamente
+/// con la suya o parece otro recuadro dibujado encima: por eso es la ruta de
+/// Excalidraw tal cual y en una sola pasada.
 pub fn rectangulo_redondo(x: f32, y: f32, ancho: f32, alto: f32) -> Vec<Punto2> {
-    let radio = (ancho.abs().min(alto.abs()) * 0.25).clamp(0.0, 32.0);
-    if radio <= 0.5 {
-        return vec![
+    match tramos_de_rectangulo_redondo(x, y, ancho, alto) {
+        Some(t) => contorno_liso(&t),
+        None => vec![
             Punto2::nuevo(x, y),
             Punto2::nuevo(x + ancho, y),
             Punto2::nuevo(x + ancho, y + alto),
             Punto2::nuevo(x, y + alto),
             Punto2::nuevo(x, y),
-        ];
+        ],
     }
-    // Cuatro esquinas, cada una un cuarto de vuelta. Ocho tramos por esquina
-    // bastan: a los zooms de trabajo no se distingue de una curva de verdad.
-    const TRAMOS_ESQUINA: usize = 8;
-    let (x1, y1) = (x + ancho, y + alto);
-    let cuarto = std::f32::consts::FRAC_PI_2;
-    let esquinas = [
-        (x1 - radio, y + radio, -cuarto, 0.0),
-        (x1 - radio, y1 - radio, 0.0, cuarto),
-        (x + radio, y1 - radio, cuarto, cuarto * 2.0),
-        (x + radio, y + radio, cuarto * 2.0, cuarto * 3.0),
-    ];
-    let mut salida = Vec::with_capacity(4 * (TRAMOS_ESQUINA + 1) + 1);
-    for (cx, cy, desde, hasta) in esquinas {
-        for i in 0..=TRAMOS_ESQUINA {
-            let t = i as f32 / TRAMOS_ESQUINA as f32;
-            let a = desde + (hasta - desde) * t;
-            salida.push(Punto2::nuevo(cx + radio * a.cos(), cy + radio * a.sin()));
-        }
+}
+
+/// El trazo de un rectangulo redondeado con cualquier rugosidad. Antes solo
+/// se redondeaba con rugosidad 0, asi que «Bordes: redondo» con el trazo «a
+/// mano» de fabrica no cambiaba nada de lo que se ve.
+pub fn rectangulo_redondo_a_mano(
+    x: f32,
+    y: f32,
+    ancho: f32,
+    alto: f32,
+    rugosidad: f32,
+    azar: &mut Azar,
+) -> Vec<Vec<Punto2>> {
+    match tramos_de_rectangulo_redondo(x, y, ancho, alto) {
+        Some(t) if rugosidad > 0.0 => contorno_a_mano(&t, rugosidad, azar),
+        Some(t) => vec![contorno_liso(&t)],
+        None => rectangulo(x, y, ancho, alto, rugosidad, azar),
     }
-    if let Some(primero) = salida.first().copied() {
-        salida.push(primero);
-    }
-    salida
 }
 
 #[cfg(test)]
@@ -651,6 +844,76 @@ mod pruebas {
             y0 < 10.0 && y1 > 90.0,
             "no llega arriba y abajo: {y0}..{y1}"
         );
+    }
+
+    /// El giro mas brusco, en grados, entre dos tramos seguidos de un trazo.
+    /// Un circulo liso gira poco en cada punto; una quebrada, de golpe.
+    fn peor_giro(v: &[Punto2]) -> f32 {
+        v.windows(3)
+            .filter(|w| w[0].distancia(w[1]) > 1e-3 && w[1].distancia(w[2]) > 1e-3)
+            .map(|w| {
+                let (ax, ay) = (w[1].x - w[0].x, w[1].y - w[0].y);
+                let (bx, by) = (w[2].x - w[1].x, w[2].y - w[1].y);
+                let c = (ax * bx + ay * by) / ((ax.hypot(ay)) * (bx.hypot(by)));
+                c.clamp(-1.0, 1.0).acos().to_degrees()
+            })
+            .fold(0.0, f32::max)
+    }
+
+    #[test]
+    fn un_circulo_con_trazo_a_mano_medio_o_alto_no_tiene_esquinas() {
+        // Con vertices cada ~20 unidades unidos con rectas, el giro de un
+        // tramo al siguiente era de 35-45 grados en el trazo medio y de 64-76
+        // en el alto: esquinas. Alisado, el medio no pasa de 15 y el sin
+        // temblor de 2. El alto sigue ondulando (su temblor es de hasta 8
+        // unidades por vertice, y eso es su aspecto), pero ya sin picos.
+        for (rugosidad, tope) in [(0.0, 2.0), (1.0, 16.0), (2.0, f32::MAX)] {
+            for semilla in [1, 4, 9, 1234] {
+                let lisa = elipse(0.0, 0.0, 200.0, 200.0, rugosidad, &mut Azar::nuevo(semilla));
+                let antes = vertices_de_elipse(
+                    0.0,
+                    0.0,
+                    200.0,
+                    200.0,
+                    rugosidad,
+                    &mut Azar::nuevo(semilla),
+                );
+                for (liso, quebrado) in lisa.iter().zip(&antes) {
+                    let (g, g0) = (peor_giro(liso), peor_giro(quebrado));
+                    assert!(
+                        g < tope,
+                        "r{rugosidad} s{semilla}: gira {g} grados de golpe"
+                    );
+                    assert!(
+                        g < 0.85 * g0 || g < 2.0,
+                        "r{rugosidad} s{semilla}: {g} no es mas liso que {g0}"
+                    );
+                }
+            }
+        }
+        // Caso negativo: la quebrada de antes si hacia pico, o la prueba no
+        // distingue nada.
+        let antes = vertices_de_elipse(0.0, 0.0, 200.0, 200.0, 1.0, &mut Azar::nuevo(4));
+        assert!(peor_giro(&antes[0]) > 30.0, "{}", peor_giro(&antes[0]));
+    }
+
+    #[test]
+    fn el_circulo_liso_pasa_por_los_mismos_vertices_que_antes() {
+        // Misma semilla, mismo temblor: lo que se guardo se sigue viendo en
+        // el mismo sitio y con la misma mano; solo cambian las uniones.
+        for rugosidad in [0.0, 1.0, 2.0] {
+            let v = vertices_de_elipse(10.0, 20.0, 180.0, 90.0, rugosidad, &mut Azar::nuevo(77));
+            let lisa = elipse(10.0, 20.0, 180.0, 90.0, rugosidad, &mut Azar::nuevo(77));
+            assert_eq!(v.len(), lisa.len());
+            for (vuelta, liso) in v.iter().zip(&lisa) {
+                for p in vuelta {
+                    assert!(
+                        liso.iter().any(|q| q.distancia(*p) < 1e-3),
+                        "r{rugosidad}: el vertice {p:?} ya no esta en la curva"
+                    );
+                }
+            }
+        }
     }
 
     /// Una flecha recta de cien pixeles hacia la derecha.

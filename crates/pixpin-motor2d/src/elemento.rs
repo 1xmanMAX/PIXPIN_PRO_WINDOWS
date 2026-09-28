@@ -102,11 +102,25 @@ pub enum Figura {
     /// donde pasan los lados.
     Rombo,
     Elipse,
-    /// Oscurece todo menos su caja (D51). El motor entrega el hueco; quien
-    /// pinta sabe cuanto mide el lienzo y oscurece el resto.
+    /// **El foco del movil** (`pixpin-spotlight`, `Tool.SPOTLIGHT`): dos
+    /// figuras, como alli. El **marco** es la caja del elemento —se estira con
+    /// sus tiradores— y el **hueco** es la figura que se toco con la varita
+    /// (`cristal`: su forma, donde esta y cuanto mide, lo mismo que la lupa).
+    /// Se oscurece **solo el anillo entre los dos**, no el lienzo entero: asi
+    /// se resalta algo sin esconder lo demas, y caben varios focos sin que se
+    /// sumen sus sombras (`drawSpotlights`).
     Foco {
         #[serde(default)]
-        elipse: bool,
+        cristal: crate::lupa_elemento::Cristal,
+    },
+    /// **La lupa** (`pixpin-lupa`, `Tool.LUPA` del movil): un trozo del
+    /// dibujo ensenado en grande en otro sitio. La caja del elemento es el
+    /// cristal; `cristal` dice a donde mira, cuanto agranda, de que forma es
+    /// y con que guia se senala (`lupa_elemento`). Lo de dentro no es una
+    /// orden: lo vuelve a pintar quien tiene la escena, agrandado.
+    Lupa {
+        #[serde(default)]
+        cristal: crate::lupa_elemento::Cristal,
     },
     Texto {
         texto: String,
@@ -214,6 +228,22 @@ pub enum Figura {
         #[serde(default = "radio_de_etiqueta")]
         radio: f32,
     },
+    /// **El cronograma** (`pixpin-gantt` del movil, F12): un plan dibujado,
+    /// no una hoja de calculo. Una columna de nombres, una escala arriba y una
+    /// barra por fila, todo repartido dentro de la caja: estirar la figura
+    /// estira el plan sin descuadrarlo, porque nada esta en coordenadas sino
+    /// en filas y columnas. Ver `cronograma.rs`.
+    Cronograma {
+        #[serde(default)]
+        tareas: Vec<crate::cronograma::Tarea>,
+        #[serde(default = "periodos_de_fabrica")]
+        periodos: u32,
+    },
+}
+
+/// Las columnas de un cronograma que no dice cuantas: las del movil.
+fn periodos_de_fabrica() -> u32 {
+    crate::cronograma::PERIODOS_DE_FABRICA
 }
 
 /// Lo que el movil pone de fabrica cuando planta un punto etiquetado.
@@ -372,6 +402,12 @@ pub struct Extras {
     /// el, lo escrito adelgaza en las curvas y la letra se rompe.
     #[serde(default)]
     pub presion_firme: bool,
+    /// **Es una linea de referencia, no dibujo** (`reference` del movil): el
+    /// «lapiz azul» de los planos. Se pinta translucida (`pintado::ordenes`).
+    /// Se lee y no se escribe: nada de lo que nace aqui es referencia todavia,
+    /// y la de un elemento del movil vuelve intacta con su original.
+    #[serde(default)]
+    pub referencia: bool,
     #[serde(default)]
     pub negrita: bool,
     #[serde(default)]
@@ -412,6 +448,88 @@ pub struct Extras {
     /// enganche que se hizo hoy sigue atado manana.
     #[serde(default)]
     pub id_de_fichero: Option<String>,
+    /// **El trozo de la imagen que se ensena** (`crop`), solo en imagenes.
+    ///
+    /// Se lee para PINTARLO, no para editarlo: ninguna herramienta de aqui ni
+    /// del movil lo crea —llega de un `.excalidraw` de la web—, pero el movil
+    /// lo pinta (`Renderer.kt`) y lo exporta (`DrawSvg.recortar`). Mientras
+    /// vivia solo en el JSON original, la pantalla y todo lo exportado
+    /// ensenaban la foto entera, con lo que el recorte habia quitado.
+    #[serde(default)]
+    pub recorte: Option<RecorteImagen>,
+    /// **A que lado van los renglones** (`textAlign`), solo en textos.
+    ///
+    /// `None` es «el fichero no lo dice», y no es lo mismo que izquierda
+    /// aunque se pinte igual: asi un texto que nunca lo trajo no estrena la
+    /// clave al moverlo, y uno con una palabra que aqui no se conoce la
+    /// conserva intacta hasta que alguien elija otra.
+    #[serde(default)]
+    pub alineacion: Option<crate::texto::AlineacionTexto>,
+    /// **A que altura va el rotulo dentro de su figura** (`verticalAlign`).
+    /// `None` por lo mismo que `alineacion`.
+    #[serde(default)]
+    pub alineacion_vertical: Option<crate::texto::AlineacionVertical>,
+    /// **La letra de una figura con rotulos que no es un texto** (el
+    /// cronograma: `fontFamily` del movil, que pinta sus nombres con ella).
+    /// Sin ella sus nombres salian en la letra del sistema, distinta de la
+    /// de los textos de alrededor.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub familia: Option<String>,
+    /// Y su tamano de letra (`fontSize`): el del pincel al crearla. Sin el,
+    /// la letra salia de la mitad del alto de la fila y en una fila alta los
+    /// nombres no cabian («Cimien…»).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tam_letra: Option<f32>,
+}
+
+/// **El recorte de una imagen** (`crop` de Excalidraw).
+///
+/// Las cuatro primeras medidas van en pixeles del ORIGINAL, y por eso hacen
+/// falta las dos ultimas: sin saber contra que tamano se midio, un recorte
+/// no se puede llevar a una copia de otro tamano (el bitmap reducido que se
+/// sube a la GPU, por ejemplo).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RecorteImagen {
+    pub x: f32,
+    pub y: f32,
+    pub ancho: f32,
+    pub alto: f32,
+    pub ancho_natural: f32,
+    pub alto_natural: f32,
+}
+
+impl RecorteImagen {
+    /// El trozo `(x0, y0, x1, y1)` en pixeles de una copia de la imagen de
+    /// `ancho` x `alto`.
+    ///
+    /// `None` cuando el recorte no dice nada util —area cero, tamano natural
+    /// cero, menos de un pixel— y entonces se pinta la imagen entera: un
+    /// recorte roto no puede hacer desaparecer la foto. Lo que se salga del
+    /// original se recorta a lo que existe, porque pedir pixeles que no estan
+    /// pinta basura en el borde.
+    pub fn trozo_en(&self, ancho: f32, alto: f32) -> Option<(f32, f32, f32, f32)> {
+        let finitos = [self.x, self.y, self.ancho, self.alto, ancho, alto]
+            .iter()
+            .all(|v| v.is_finite());
+        if !finitos
+            || self.ancho <= 0.0
+            || self.alto <= 0.0
+            || self.ancho_natural.is_nan()
+            || self.alto_natural.is_nan()
+            || self.ancho_natural <= 0.0
+            || self.alto_natural <= 0.0
+            || ancho <= 0.0
+            || alto <= 0.0
+        {
+            return None;
+        }
+        let (kx, ky) = (ancho / self.ancho_natural, alto / self.alto_natural);
+        let x0 = (self.x * kx).clamp(0.0, ancho);
+        let y0 = (self.y * ky).clamp(0.0, alto);
+        let x1 = ((self.x + self.ancho) * kx).clamp(0.0, ancho);
+        let y1 = ((self.y + self.alto) * ky).clamp(0.0, alto);
+        (x1 - x0 >= 1.0 && y1 - y0 >= 1.0).then_some((x0, y0, x1, y1))
+    }
 }
 
 impl Extras {
@@ -425,7 +543,21 @@ impl Extras {
     /// justo el ensuciado que esta funcion viene a evitar.
     pub fn vacios(&self) -> bool {
         Extras {
+            // La referencia vuelve con su original (`reference`), no es de
+            // las diez claves.
+            referencia: false,
             id_de_fichero: None,
+            // Tampoco el recorte: no es de las diez claves, vuelve por su
+            // propia clave `crop`, y contarlo ensuciaria igual.
+            recorte: None,
+            // Ni la alineacion: son claves de Excalidraw que se escriben en la
+            // rama del texto (`textAlign`/`verticalAlign`), y con ellas aqui
+            // un texto alineado estrenaria las diez claves del movil.
+            alineacion: None,
+            alineacion_vertical: None,
+            // Ni la letra del cronograma: viaja en su `fontFamily`.
+            familia: None,
+            tam_letra: None,
             ..self.clone()
         } == Extras::default()
     }

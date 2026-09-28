@@ -6,6 +6,7 @@
 //! factores de tamano y pasa a `Punto2`.
 
 pub mod freehand;
+pub mod grafito;
 pub mod laser;
 pub mod material;
 pub mod prediccion;
@@ -84,7 +85,11 @@ pub fn contorno_de_lapiz(
     };
     match o.variabilidad {
         Variabilidad::Constante => {
-            let pts: Vec<[f64; 2]> = puntos.iter().map(|p| [p.x as f64, p.y as f64]).collect();
+            let mut pts: Vec<[f64; 2]> = puntos.iter().map(|p| [p.x as f64, p.y as f64]).collect();
+            // F4: lo tirado deprisa, derecho. Se asienta al pintar y no en los
+            // puntos guardados: el movil hace lo mismo con los suyos, y si el
+            // PC guardara los asentados el movil los asentaria otra vez.
+            freehand::asentar_lo_rapido(&mut pts);
             laser::contorno(
                 &pts,
                 (grosor * FACTOR_CONSTANTE) as f64,
@@ -99,7 +104,7 @@ pub fn contorno_de_lapiz(
             // otra longitud no puede venir de un lapiz y se trata como
             // simulada en vez de leer fuera de rango.
             let simular = presiones.len() != puntos.len();
-            let entrada: Vec<freehand::Entrada> = puntos
+            let mut entrada: Vec<freehand::Entrada> = puntos
                 .iter()
                 .enumerate()
                 .map(|(i, p)| freehand::Entrada {
@@ -112,6 +117,10 @@ pub fn contorno_de_lapiz(
                     },
                 })
                 .collect();
+            // F4, como en `strokeOptionsFor` del movil (`asentarLoRapido =
+            // true`): antes del streamline, que es quien no llega a juntar
+            // muestras tan separadas.
+            freehand::asentar_entrada(&mut entrada);
             let op = freehand::Opciones {
                 size: (grosor * FACTOR_VARIABLE) as f64,
                 thinning: 0.6,
@@ -183,32 +192,41 @@ pub fn contorno_de_lapiz_firme(
     )
 }
 
-/// El resaltador (D45): grueso, sin adelgazar y translucido. No existe en
-/// Excalidraw; se hace con la misma maquina con `thinning = 0`, que da
-/// grosor constante y tapas redondas. `grosor * 3` conserva su tamano de
-/// antes de E1.
+/// **El resaltador del movil** (`Tool.HIGHLIGHTER`, `DrawController`): no es
+/// un tipo propio, es **el lapiz translucido y gordo** —mismo FREEDRAW, misma
+/// tinta de `strokeOptionsFor` (tamano x4,25, adelgazado 0,6, presion
+/// simulada, tapas redondas)— con el grosor x5 (`ENGORDE_DEL_MARCADOR`) y la
+/// opacidad al 40 % (`HIGHLIGHTER_OPACITY`). Antes (D45) iba a grosor
+/// constante y `grosor * 3` de tamano: un tercio de ancho que en el movil, y
+/// el usuario lo veia «muy delgado y extrano».
+///
+/// El suavizado es el del movil para su pulso de fabrica (arquitecto, 0,55).
+pub const STREAMLINE_RESALTADOR: f32 = 0.55;
+/// `HIGHLIGHTER_OPACITY` del movil, en fraccion.
+pub const OPACIDAD_DEL_RESALTADOR: f32 = 0.40;
+/// `ItemStyle.ENGORDE_DEL_MARCADOR`: cuanto engorda respecto al lapiz.
+pub const ENGORDE_DEL_MARCADOR: f32 = 5.0;
+
+/// Lo que mide de ancho, en unidades del mundo, la tinta de un resaltador de
+/// `grosor` (`anchoPintadoDelLapiz` del movil, con su presion tipica 0,5). En
+/// un solo sitio para que la figura que sale de el al pararse (`gesto.rs`) no
+/// pueda medir otra cosa que su tinta.
+pub fn ancho_del_resaltador(grosor: f32) -> f32 {
+    let size = (grosor * FACTOR_VARIABLE) as f64;
+    // strokeRadius(size, 0,6, 0,5, easeOutSine) = size * sen(0,5 * pi/2).
+    (2.0 * size * freehand::seno(0.5)) as f32
+}
+
 pub fn contorno_de_resaltador(puntos: &[Punto2], grosor: f32) -> Vec<Punto2> {
-    let entrada: Vec<freehand::Entrada> = puntos
-        .iter()
-        .map(|p| freehand::Entrada {
-            x: p.x as f64,
-            y: p.y as f64,
-            presion: None,
-        })
-        .collect();
-    let op = freehand::Opciones {
-        size: (grosor * 3.0) as f64,
-        thinning: 0.0,
-        smoothing: 0.5,
-        streamline: STREAMLINE_RATON as f64,
-        simular_presion: true,
-        last: true,
-        easing: freehand::seno,
-    };
-    freehand::contorno(&entrada, &op)
-        .into_iter()
-        .map(a_punto)
-        .collect()
+    contorno_de_lapiz(
+        puntos,
+        &[],
+        grosor,
+        Some(OpcionesTinta {
+            variabilidad: Variabilidad::Variable,
+            streamline: STREAMLINE_RESALTADOR,
+        }),
+    )
 }
 
 #[cfg(test)]
@@ -253,6 +271,72 @@ mod pruebas {
         let simulada = contorno_de_lapiz(&p, &[], 1.0, Some(OpcionesTinta::default()));
         let rota = contorno_de_lapiz(&p, &[0.9, 0.9], 1.0, Some(OpcionesTinta::default()));
         assert_eq!(simulada, rota);
+    }
+
+    /// Un zigzag de +-`amplitud` con muestras cada `paso` unidades.
+    fn zigzag(paso: f32, amplitud: f32) -> Vec<Punto2> {
+        (0..30)
+            .map(|i| {
+                Punto2::nuevo(
+                    i as f32 * paso,
+                    if i % 2 == 0 { amplitud } else { -amplitud },
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn una_raya_lanzada_con_temblor_de_digitalizador_pinta_como_una_recta() {
+        // F4 de punta a punta: el temblor de +-1,5 a muestras de 20 no llega
+        // al contorno. Se compara la franja central (sin las tapas, que las
+        // puntas no se asientan) contra la de una recta del mismo grosor.
+        let o = Some(OpcionesTinta::default());
+        let franja = |c: &[Punto2]| {
+            let (mn, mx) = c
+                .iter()
+                .filter(|p| p.x > 100.0 && p.x < 480.0)
+                .fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p.y), b.max(p.y)));
+            mx - mn
+        };
+        let lanzada = franja(&contorno_de_lapiz(&zigzag(20.0, 1.5), &[], 1.0, o));
+        let recta: Vec<Punto2> = (0..30)
+            .map(|i| Punto2::nuevo(i as f32 * 20.0, 0.0))
+            .collect();
+        let limpia = franja(&contorno_de_lapiz(&recta, &[], 1.0, o));
+        assert!(
+            (lanzada - limpia).abs() < 0.6,
+            "la onda se sigue viendo: {lanzada} frente a {limpia}"
+        );
+    }
+
+    #[test]
+    fn la_letra_escrita_despacio_se_pinta_igual_que_sin_asentar() {
+        // El negativo de F4: a dos unidades por muestra no se toca nada, asi
+        // que el contorno es el de perfect-freehand a pelo, bit a bit.
+        let p = zigzag(2.0, 1.0);
+        let de_lapiz = contorno_de_lapiz(&p, &[], 1.0, Some(OpcionesTinta::default()));
+        let entrada: Vec<freehand::Entrada> = p
+            .iter()
+            .map(|q| freehand::Entrada {
+                x: q.x as f64,
+                y: q.y as f64,
+                presion: None,
+            })
+            .collect();
+        let op = freehand::Opciones {
+            size: FACTOR_VARIABLE as f64,
+            thinning: 0.6,
+            smoothing: 0.5,
+            streamline: STREAMLINE_RATON as f64,
+            simular_presion: true,
+            last: true,
+            easing: freehand::seno,
+        };
+        let a_pelo: Vec<Punto2> = freehand::contorno(&entrada, &op)
+            .into_iter()
+            .map(a_punto)
+            .collect();
+        assert_eq!(de_lapiz, a_pelo);
     }
 
     #[test]
@@ -321,6 +405,67 @@ mod pruebas {
         // fabrica y solo cambia de pluma.
         let legado = opciones_con_presion_firme(None, true).unwrap();
         assert_eq!(legado.variabilidad, Variabilidad::Constante);
+    }
+
+    /// El ancho de un contorno medido de canto a canto a traves del trazo
+    /// (de `a` a `b`), en su tercio central: lo que se ve de la raya sin las
+    /// tapas.
+    fn ancho_a_traves(c: &[Punto2], a: Punto2, b: Punto2) -> f32 {
+        let (dx, dy) = (b.x - a.x, b.y - a.y);
+        let largo = (dx * dx + dy * dy).sqrt();
+        let (ux, uy) = (dx / largo, dy / largo);
+        let (mn, mx) = c
+            .iter()
+            .filter(|p| {
+                let t = (p.x - a.x) * ux + (p.y - a.y) * uy;
+                t > largo / 3.0 && t < largo * 2.0 / 3.0
+            })
+            .map(|p| (p.x - a.x) * -uy + (p.y - a.y) * ux)
+            .fold((f32::MAX, f32::MIN), |(a, b), d| (a.min(d), b.max(d)));
+        mx - mn
+    }
+
+    #[test]
+    fn el_resaltador_es_el_lapiz_del_movil_con_su_grosor() {
+        // `DrawController`: el marcador es un FREEDRAW como el lapiz, con la
+        // misma tinta (`strokeOptionsFor`: 4,25, adelgazado 0,6, presion
+        // simulada). Solo cambian el grosor (x5) y la opacidad (40).
+        for grosor in [2.5_f32, 5.0, 10.0] {
+            let lapiz = contorno_de_lapiz(
+                &recta(),
+                &[],
+                grosor,
+                Some(OpcionesTinta {
+                    variabilidad: Variabilidad::Variable,
+                    streamline: STREAMLINE_RESALTADOR,
+                }),
+            );
+            assert_eq!(contorno_de_resaltador(&recta(), grosor), lapiz, "grosor {grosor}");
+        }
+    }
+
+    #[test]
+    fn el_resaltador_mediano_mide_lo_que_el_del_movil() {
+        // `anchoPintadoDelLapiz(5)`: 2 * 5 * 4,25 * sen(45 grados) = 30,05.
+        // El de antes media 9 (grosor 3 por 3): un tercio, «muy delgado».
+        let tipico = ancho_del_resaltador(5.0);
+        assert!((tipico - 30.05).abs() < 0.05, "{tipico}");
+        // Y una raya real, trazada a ritmo normal, sale de ese orden y no de
+        // nueve: entre el ancho tipico y el de presion llena.
+        let a = Punto2::nuevo(0.0, 0.0);
+        let b = Punto2::nuevo(195.0, 0.0);
+        let ancho = ancho_a_traves(&contorno_de_resaltador(&recta(), 5.0), a, b);
+        assert!(ancho > 25.0 && ancho < 42.0, "{ancho}");
+    }
+
+    #[test]
+    fn el_resaltador_grueso_es_mas_ancho_que_el_fino() {
+        // Caso negativo: medir el ancho no sirve si todo midiera lo mismo.
+        let a = Punto2::nuevo(0.0, 0.0);
+        let b = Punto2::nuevo(195.0, 0.0);
+        let fino = ancho_a_traves(&contorno_de_resaltador(&recta(), 2.5), a, b);
+        let grueso = ancho_a_traves(&contorno_de_resaltador(&recta(), 10.0), a, b);
+        assert!(grueso > fino * 2.0, "{grueso} frente a {fino}");
     }
 
     #[test]

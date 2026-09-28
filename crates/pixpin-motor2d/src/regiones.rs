@@ -31,6 +31,12 @@
 //! dedo, dos trazos que «se tocan» casi nunca se tocan de verdad; sin
 //! tolerancia el bote no funcionaria casi nunca y nadie sabria por que.
 //!
+//! **Pero la rejilla ya no va sola** (F2, v0.76 del movil): delante de ella
+//! se intenta la cara exacta de [`crate::cara_exacta`], que cose los cabos a
+//! menos de dos unidades y, si el recinto cierra, devuelve un borde que esta
+//! sobre los trazos y no a una celda de ellos. Solo cuando no cierra —una
+//! rendija de verdad, o demasiados tramos— decide la rejilla.
+//!
 //! # De donde salen las paredes
 //!
 //! De `perimetros::segmentos_de`, que es el cimiento que comparte con el iman
@@ -129,6 +135,17 @@ pub fn region_en(elementos: &[Elemento], p: Punto2, ajustes: &AjustesRelleno) ->
         return None;
     }
 
+    // **Primero, exacto** (F2, `CaraExacta.kt`): la cara del plano que forman
+    // los propios tramos, con las esquinas donde se cruzan. La rejilla se
+    // abombaba en las curvas y se comia los picos del hueco entre figuras; se
+    // queda para lo que no cierra del todo —rendijas de mas de un par de
+    // unidades—, que es justo la tolerancia de la que habla la cabecera.
+    if let Some(r) =
+        crate::cara_exacta::cara_exacta(&segmentos, p, crate::cara_exacta::TOLERANCIA_DE_CARA)
+    {
+        return Some(r);
+    }
+
     let mut rejilla = Rejilla::para(&segmentos, p, ajustes)?;
     for (a, b) in &segmentos {
         rejilla.pintar_pared(*a, *b);
@@ -214,11 +231,15 @@ pub fn es_pared(e: &Elemento) -> bool {
         Figura::Imagen { .. }
         | Figura::Marco { .. }
         | Figura::Foco { .. }
+        | Figura::Lupa { .. }
         | Figura::Mosaico { .. }
         | Figura::Texto { .. }
         | Figura::Emoji { .. }
         | Figura::EscalaGrafica
         | Figura::Punto { .. }
+        // El cronograma tampoco (`esPared` del movil): es una lamina con
+        // datos, y contar su marco dejaria cada celda como un hueco.
+        | Figura::Cronograma { .. }
         | Figura::Region { .. } => false,
 
         Figura::Rectangulo
@@ -280,6 +301,57 @@ pub fn sitio_del_relleno(elementos: &[Elemento], relleno: &Elemento) -> usize {
         .iter()
         .position(|e| !e.borrado && !e.bloqueado && es_pared(e) && se_solapan(caja, e.caja()))
         .unwrap_or(elementos.len())
+}
+
+/// **La figura cerrada que se rellena ella sola, exacta** (F3,
+/// `figuraQueSeRellenaSola` del movil, v0.67), o `None` si el hueco tocado no
+/// es de una sola figura.
+///
+/// Las figuras son vectoriales y su relleno deberia ser exacto; la rejilla
+/// —que esta para los huecos ENTRE varias figuras— no puede serlo. Pero el
+/// caso de todos los dias es el facil: se toca dentro de un rectangulo, un
+/// rombo o una elipse y dentro no hay nada mas. Ahi el hueco ES la figura, y
+/// su propio fondo la rellena con su forma de verdad —curvas, esquinas
+/// redondas y giro incluidos—, se mueve y se estira con ella.
+///
+/// Vale solo si nada mas se mete en la figura: ninguna otra pared la cruza
+/// ni tiene un extremo dentro. Si lo hay, se devuelve `None` y decide la
+/// rejilla, con sus agujeros. De las que el PC pinta con fondo: rectangulo,
+/// rombo y elipse (la mas pequena si hay varias una dentro de otra).
+pub fn figura_que_se_rellena_sola(elementos: &[Elemento], p: Punto2) -> Option<u64> {
+    let paredes: Vec<&Elemento> = elementos.iter().filter(|e| !e.borrado && es_pared(e)).collect();
+    let (figura, anillo) = paredes
+        .iter()
+        .filter(|e| {
+            !e.bloqueado && matches!(e.figura, Figura::Rectangulo | Figura::Rombo | Figura::Elipse)
+        })
+        .filter_map(|e| {
+            let anillo = crate::perimetros::contornos_de(e, PASO_PERIMETRO)
+                .into_iter()
+                .find(|c| c.cerrado && c.puntos.len() >= 3)?
+                .puntos;
+            cruza_impar(p, &anillo).then_some((*e, anillo))
+        })
+        .min_by(|a, b| area_de(&a.1).abs().total_cmp(&area_de(&b.1).abs()))?;
+    let caja = caja_de(&anillo);
+    let n = anillo.len();
+    for otra in paredes {
+        if otra.id == figura.id || !se_solapan(caja, otra.caja()) {
+            continue;
+        }
+        for (a, b) in segmentos_de(otra, PASO_PERIMETRO) {
+            if cruza_impar(a, &anillo) || cruza_impar(b, &anillo) {
+                return None;
+            }
+            let corta = (0..n).any(|i| {
+                crate::perimetros::interseccion(a, b, anillo[i], anillo[(i + 1) % n]).is_some()
+            });
+            if corta {
+                return None;
+            }
+        }
+    }
+    Some(figura.id)
 }
 
 /// Los rellenos que ya habia en ese sitio, para quitarlos antes de poner el
@@ -906,6 +978,47 @@ mod pruebas {
             raya(3, (200.0, 200.0), (0.0, 200.0)),
             raya(4, (0.0, 200.0), (0.0, 0.0)),
         ]
+    }
+
+    #[test]
+    fn el_bote_en_una_caja_partida_por_una_raya_cae_justo_sobre_las_lineas() {
+        // F2: con la rejilla el trozo salia con una celda de mas o de menos
+        // por cada lado; con la cara exacta el area es la del dibujo.
+        let mut e = caja_de_cuatro_rayas();
+        e.push(raya(5, (80.0, -30.0), (80.0, 230.0)));
+        let r = region_en(&e, Punto2::nuevo(20.0, 100.0), &AjustesRelleno::default())
+            .expect("el trozo de la izquierda esta cerrado");
+        let area = area_de(&r.contorno).abs();
+        assert!((area - 16_000.0).abs() < 1.0, "area del trozo: {area}");
+        assert!(
+            r.contorno
+                .iter()
+                .all(|q| q.x >= -1e-3 && q.x <= 80.001 && q.y >= -1e-3 && q.y <= 200.001),
+            "ningun vertice fuera del trozo: {:?}",
+            r.contorno
+        );
+    }
+
+    #[test]
+    fn una_rendija_gorda_no_la_cierra_la_cara_exacta_sino_la_rejilla() {
+        // El reparto de trabajo: la cara exacta solo cose juntas de dos
+        // unidades; una de cinco la decide la rejilla, que la da por cerrada
+        // con su celda. Si la cara exacta se tragara esto, su tolerancia
+        // estaria mal y cerraria rendijas que el usuario dejo a proposito.
+        let mut e = caja_de_cuatro_rayas();
+        e[0] = raya(1, (0.0, 0.0), (195.0, 0.0));
+        let tramos: Vec<(Punto2, Punto2)> = e
+            .iter()
+            .flat_map(|x| segmentos_de(x, PASO_PERIMETRO))
+            .collect();
+        assert!(
+            crate::cara_exacta::cara_exacta(
+                &tramos,
+                Punto2::nuevo(100.0, 100.0),
+                crate::cara_exacta::TOLERANCIA_DE_CARA
+            )
+            .is_none()
+        );
     }
 
     #[test]

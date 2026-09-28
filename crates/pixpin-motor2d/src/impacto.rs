@@ -37,10 +37,23 @@ pub fn toca(e: &Elemento, p: Punto2) -> bool {
 
     let margen = e.grosor / 2.0 + TOLERANCIA;
 
+    // **La flecha curva se toca por la curva**, que es lo que se ve, y no
+    // por la quebrada de sus puntos: en una vuelta cerrada las dos se
+    // separan varios pixeles y se agarraba aire. Su caja tambien es la de la
+    // curva, que se pasa un poco de la de los puntos.
+    let curva = crate::curva::trazado_curvo(e);
+    let (x0, y0, x1, y1) = match curva.as_deref().and_then(crate::curva::caja) {
+        Some((cx0, cy0, cx1, cy1)) => (x0.min(cx0), y0.min(cy0), x1.max(cx1), y1.max(cy1)),
+        None => (x0, y0, x1, y1),
+    };
+
     // Descarte rapido por caja: barato y evita el trabajo fino en la inmensa
     // mayoria de los elementos de una escena grande.
     if p.x < x0 - margen || p.x > x1 + margen || p.y < y0 - margen || p.y > y1 + margen {
         return false;
+    }
+    if let Some(c) = &curva {
+        return cerca_de_la_polilinea(c, p, margen);
     }
 
     match &e.figura {
@@ -64,8 +77,16 @@ pub fn toca(e: &Elemento, p: Punto2) -> bool {
         // que contiene, y pinchar ahi tiene que elegir eso y no el marco.
         Figura::Marco { .. } => cerca_del_borde_del_rectangulo(p, e, margen),
 
+        // El cronograma es una lamina llena de barras: se agarra por
+        // cualquier sitio de dentro, como en el movil.
+        Figura::Cronograma { .. } => dentro_de_la_caja(p, e, margen),
+
         // Lo que se ve del foco es el hueco: se agarra por dentro.
         Figura::Foco { .. } => dentro_de_la_caja(p, e, margen),
+
+        // La lupa se agarra por su cristal entero, como el foco: lo de
+        // dentro es ella (`hitElementItself` del movil).
+        Figura::Lupa { .. } => dentro_de_la_caja(p, e, margen),
 
         // El arco se toca por la raya que se ve, no por su caja: la caja es
         // la del ovalo entero y agarrarlo por ahi seria agarrar aire en tres
@@ -269,6 +290,33 @@ mod pruebas {
     }
 
     #[test]
+    fn una_flecha_curva_se_toca_por_la_curva_que_se_ve() {
+        let flecha = |redondo| Elemento {
+            figura: Figura::Flecha {
+                puntos: vec![
+                    Punto2::nuevo(0.0, 0.0),
+                    Punto2::nuevo(100.0, 100.0),
+                    Punto2::nuevo(200.0, 0.0),
+                ],
+                punta_inicio: crate::formas::TipoPunta::Ninguna,
+                punta_fin: crate::formas::TipoPunta::Flecha,
+                codos: false,
+            },
+            redondo,
+            ..base()
+        };
+        // A mitad del primer tramo la curva pasa por (43.75, 56.25), casi
+        // nueve pixeles fuera de la quebrada.
+        let en_la_curva = Punto2::nuevo(43.75, 56.25);
+        assert!(toca(&flecha(true), en_la_curva));
+        // Caso negativo: la misma flecha recta no se agarra por ahi, que
+        // alli no hay nada pintado.
+        assert!(!toca(&flecha(false), en_la_curva));
+        // Y el vertice, por donde pasan las dos, se toca en las dos.
+        assert!(toca(&flecha(true), Punto2::nuevo(100.0, 99.0)));
+    }
+
+    #[test]
     fn una_linea_fina_se_toca_sin_apuntar_al_pixel_exacto() {
         let e = Elemento {
             figura: Figura::Linea {
@@ -409,10 +457,10 @@ mod pruebas {
     }
 
     #[test]
-    fn el_foco_se_agarra_por_dentro_del_hueco() {
-        // Lo que se ve es el hueco: es lo que el usuario intenta mover.
+    fn el_foco_se_agarra_por_dentro_de_su_marco() {
+        // Lo que se ve es el anillo de su marco: es lo que se intenta mover.
         let e = Elemento {
-            figura: Figura::Foco { elipse: false },
+            figura: Figura::Foco { cristal: Default::default() },
             ..base()
         };
         assert!(toca(&e, Punto2::nuevo(200.0, 150.0)));

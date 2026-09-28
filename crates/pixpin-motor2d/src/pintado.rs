@@ -60,7 +60,15 @@ pub enum Orden {
         tam: f32,
         familia: String,
         color: ColorRgba,
+        /// Donde se parten los renglones. `texto::SIN_PARTIR` o mas: no se
+        /// parten (un texto suelto del lienzo).
         ancho_max: f32,
+        /// La cara de la letra (`extras.negrita`/`cursiva` del texto). Van
+        /// en la orden y no se dejan a quien pinta porque son cinco los que
+        /// pintan texto (pantalla, PNG, SVG, PDF, pin) y cada uno tendria que
+        /// ir a buscarlas al elemento.
+        negrita: bool,
+        cursiva: bool,
     },
     /// Un bitmap que el consumidor tiene que resolver por su id.
     Imagen {
@@ -70,6 +78,12 @@ pub enum Orden {
         ancho: f32,
         alto: f32,
         opacidad: f32,
+        /// El trozo del original que se estira dentro de la caja (`crop`).
+        /// Va en la orden y no se deja a quien pinta porque son cinco los que
+        /// pintan una imagen (pantalla, PNG, SVG, PDF, papel) y, si cada uno
+        /// fuera a buscarlo al elemento, bastaria que uno se olvidara para
+        /// que un formato ensenara lo que el recorte habia quitado.
+        recorte: Option<crate::elemento::RecorteImagen>,
     },
 }
 
@@ -112,7 +126,7 @@ fn ancho_de_la_tinta(e: &Elemento) -> f32 {
         Figura::Lapiz {
             opciones: Some(_), ..
         } => e.grosor * crate::tinta::FACTOR_VARIABLE,
-        Figura::Resaltador { .. } => e.grosor * 3.0,
+        Figura::Resaltador { .. } => e.grosor * crate::tinta::FACTOR_VARIABLE,
         _ => e.grosor,
     }
     .max(1.0)
@@ -141,6 +155,34 @@ pub fn grano_de(e: &Elemento) -> Option<Grano> {
         paso: crate::tinta::paso_del_grano(ancho_de_la_tinta(e)),
         inclinada: e.material.se_inclina(),
     })
+}
+
+/// Cuanto de su opacidad conserva una linea de referencia, en tanto por uno
+/// (`REFERENCIA_OPACIDAD = 35` del movil, `Renderer.kt`).
+pub const OPACIDAD_DE_REFERENCIA: f32 = 0.35;
+
+/// **La referencia se pinta translucida** (`Renderer.kt`: «no es decoracion:
+/// es lo que dice que no es dibujo»). Devuelve la copia con la opacidad ya
+/// rebajada y sin la marca, o `None` si no es referencia.
+fn como_referencia(e: &Elemento) -> Option<Elemento> {
+    if !e.extras.referencia {
+        return None;
+    }
+    let mut t = e.clone();
+    t.extras.referencia = false;
+    t.opacidad *= OPACIDAD_DE_REFERENCIA;
+    Some(t)
+}
+
+/// **La letra del rotulo de una figura que no es un texto** (la cifra de
+/// una cota, la letra de un punto, los numeros de la escala grafica): la que
+/// se eligio en el panel (`fontFamily` del movil, en `extras.familia`) o,
+/// sin elegir, la del sistema de siempre.
+fn letra_de_rotulo(e: &Elemento) -> String {
+    e.extras
+        .familia
+        .clone()
+        .unwrap_or_else(|| "Segoe UI".to_string())
 }
 
 /// Aplica la opacidad del elemento a un color.
@@ -198,6 +240,17 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
     let color = con_opacidad(r, e.opacidad);
     let mut azar = Azar::nuevo(e.semilla);
     let rombo = matches!(e.figura, Figura::Rombo);
+    // **Redondeada, el relleno sigue la MISMA ruta que el contorno**, como en
+    // Excalidraw (el `fill` de rough.js va sobre la ruta redondeada). Antes
+    // se rellenaba la caja recta y el color asomaba por las cuatro esquinas,
+    // fuera de su contenedor.
+    let redondeo = match e.figura {
+        Figura::Rectangulo if e.redondo => {
+            Some(formas::rectangulo_redondo(e.x, e.y, e.ancho, e.alto))
+        }
+        Figura::Rombo if e.redondo => Some(formas::rombo_redondo(e.x, e.y, e.ancho, e.alto)),
+        _ => None,
+    };
 
     if e.estilo_relleno == EstiloRelleno::Solido {
         // La figura LISA, no la rugosa: rellenar la temblorosa deja huecos
@@ -207,6 +260,8 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
                 .into_iter()
                 .next()
                 .unwrap_or_default()
+        } else if let Some(contorno) = &redondeo {
+            contorno.clone()
         } else if rombo {
             formas::vertices_de_rombo(e.x, e.y, e.ancho, e.alto).to_vec()
         } else {
@@ -236,7 +291,11 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
     // que cada raya se recorta a sus cuatro lados. Sin esto el sombreado se
     // saldria por las cuatro esquinas y el rombo se leeria como un cuadrado.
     .filter_map(|(a, b)| {
-        if rombo {
+        // Las dos rutas redondeadas son convexas, asi que el mismo recorte
+        // del rombo en pico vale para ellas.
+        if let Some(contorno) = &redondeo {
+            crate::relleno::recortar_a_convexo(a, b, contorno)
+        } else if rombo {
             crate::relleno::recortar_a_convexo(
                 a,
                 b,
@@ -329,6 +388,9 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
     if e.borrado {
         return Vec::new();
     }
+    if let Some(t) = como_referencia(e) {
+        return ordenes(&t);
+    }
     // Un generador propio, sembrado con la semilla del elemento: asi su
     // aspecto no depende de cuantos elementos se dibujaron antes (D38).
     let mut azar = Azar::nuevo(e.semilla);
@@ -365,16 +427,31 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
         }
 
         Figura::Resaltador { puntos } => {
-            // D45: grueso, translucido y SIN adelgazar. Un resaltador de
-            // grosor variable deja el texto medio tapado.
+            // El del movil: el lapiz gordo (x5) y al 40 %, con la misma tinta
+            // que adelgaza con la velocidad (`tinta::contorno_de_resaltador`).
             let contorno = crate::tinta::contorno_de_resaltador(puntos, e.grosor);
             if !contorno.is_empty() {
                 salida.push(Orden::Tinta {
                     contorno,
                     color: ColorRgba {
-                        a: 0.35 * e.opacidad,
+                        a: crate::tinta::OPACIDAD_DEL_RESALTADOR * e.opacidad,
                         ..e.trazo
                     },
+                });
+            }
+        }
+
+        // **La linea curva** (`roundness` en una linea): la spline que pasa
+        // por sus puntos, como en Excalidraw y en el movil. Sin esto una
+        // linea redondeada del movil —su estilo de fabrica lo es— salia aqui
+        // quebrada en cada vertice.
+        Figura::Linea { puntos } if crate::curva::trazado_curvo(e).is_some() => {
+            for pasada in crate::curva::pasadas_a_mano(puntos, e.rugosidad, &mut azar) {
+                salida.push(Orden::Polilinea {
+                    puntos: pasada,
+                    color,
+                    grosor: e.grosor,
+                    estilo: e.estilo,
                 });
             }
         }
@@ -407,13 +484,33 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             // flecha normal es el caso de siempre y no tiene por que pagar la
             // reserva de la de codos.
             let escalera;
+            // **La flecha curva**: el camino es la spline que pasa por los
+            // puntos (`curva.rs`), y las puntas miran su final y no el
+            // ultimo tramo recto, que en una curva apunta a otro sitio.
+            let curva = if *codos {
+                None
+            } else {
+                crate::curva::trazado_curvo(e)
+            };
             let trazado: &[Punto2] = if *codos {
                 escalera = crate::codo::trazado_de_flecha(puntos, true);
                 &escalera
+            } else if let Some(c) = &curva {
+                c
             } else {
                 puntos
             };
-            for par in trazado.windows(2) {
+            if curva.is_some() {
+                for pasada in crate::curva::pasadas_a_mano(puntos, e.rugosidad, &mut azar) {
+                    salida.push(Orden::Polilinea {
+                        puntos: pasada,
+                        color,
+                        grosor: e.grosor,
+                        estilo: e.estilo,
+                    });
+                }
+            }
+            for par in trazado.windows(2).filter(|_| curva.is_none()) {
                 for pasada in formas::linea(par[0], par[1], e.rugosidad, &mut azar) {
                     salida.push(Orden::Polilinea {
                         puntos: pasada,
@@ -502,47 +599,46 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             // El relleno va PRIMERO, como en el rectangulo: si fuera despues
             // taparia el trazo por dentro.
             salida.extend(ordenes_de_relleno(e, false));
-            // **El rombo redondeado.** El estilo de fabrica del movil trae
-            // `roundness`, asi que un rombo pide puntas redondeadas desde el
-            // primer dia; dibujado en pico la diferencia canta, porque sus
-            // cuatro vertices son angulos agudos. Va liso y no a mano alzada
-            // porque el redondeo ya es la forma: temblarlo encima convierte
-            // el cuarto de vuelta en un garabato.
-            if e.redondo {
+            // **El rombo redondeado**, con la ruta de Excalidraw y con
+            // cualquier rugosidad: liso con 0, a mano alzada por tramos con
+            // mas (como rough.js sobre la ruta `L … C …`). El estilo de
+            // fabrica del movil trae `roundness`, asi que un rombo pide
+            // puntas redondeadas desde el primer dia.
+            let pasadas = if e.redondo {
+                formas::rombo_redondo_a_mano(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar)
+            } else {
+                formas::rombo(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar)
+            };
+            for pasada in pasadas {
                 salida.push(Orden::Polilinea {
-                    puntos: formas::rombo_redondo(e.x, e.y, e.ancho, e.alto),
+                    puntos: pasada,
                     color,
                     grosor: e.grosor,
                     estilo: e.estilo,
                 });
-            } else {
-                for pasada in formas::rombo(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar) {
-                    salida.push(Orden::Polilinea {
-                        puntos: pasada,
-                        color,
-                        grosor: e.grosor,
-                        estilo: e.estilo,
-                    });
-                }
             }
         }
 
         Figura::Rectangulo => {
             // El relleno va PRIMERO: si fuera despues taparia el trazo.
             salida.extend(ordenes_de_relleno(e, false));
-            // Redondeado y sin temblor es el recuadro de una «zona» del movil:
-            // una sola pasada y las esquinas curvas, o no coincide con el
-            // suyo y se lee como otro recuadro encima.
-            if e.redondo && e.rugosidad <= 0.0 {
-                salida.push(Orden::Polilinea {
-                    puntos: formas::rectangulo_redondo(e.x, e.y, e.ancho, e.alto),
-                    color,
-                    grosor: e.grosor,
-                    estilo: e.estilo,
-                });
-                return salida;
-            }
-            for pasada in formas::rectangulo(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar) {
+            // Redondeado, con cualquier rugosidad: antes solo se redondeaba
+            // con rugosidad 0 y «Bordes: redondo» con el trazo «a mano» de
+            // fabrica no cambiaba nada de lo que se veia. Con 0 sale en una
+            // sola pasada, que es el recuadro de una «zona» del movil.
+            let pasadas = if e.redondo {
+                formas::rectangulo_redondo_a_mano(
+                    e.x,
+                    e.y,
+                    e.ancho,
+                    e.alto,
+                    e.rugosidad,
+                    &mut azar,
+                )
+            } else {
+                formas::rectangulo(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar)
+            };
+            for pasada in pasadas {
                 salida.push(Orden::Polilinea {
                     puntos: pasada,
                     color,
@@ -564,81 +660,135 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             }
         }
 
-        Figura::Foco { elipse } => {
-            // Hueco LISO siempre: un velo tembloroso deja rendijas por las
-            // que se cuela el fondo oscurecido.
-            let mut lisa = Azar::nuevo(e.semilla);
-            let hueco = if *elipse {
-                formas::elipse(e.x, e.y, e.ancho, e.alto, 0.0, &mut lisa)
-                    .into_iter()
-                    .next()
-                    .unwrap_or_default()
-            } else {
-                vec![
-                    Punto2::nuevo(e.x, e.y),
-                    Punto2::nuevo(e.x + e.ancho, e.y),
-                    Punto2::nuevo(e.x + e.ancho, e.y + e.alto),
-                    Punto2::nuevo(e.x, e.y + e.alto),
-                ]
-            };
-            // **El movil oscurece 45, no 60.** Aqui estaba puesto a mano y un
-            // foco del telefono abierto en el escritorio apagaba de mas: lo
-            // de alrededor, que un foco existe para dejar ver en contexto, se
-            // perdia. El numero es el de `lupa_elemento`, que es donde vive lo
-            // que se sabe de un foco, y no una segunda constante aqui.
-            let oscuridad = e.relleno.unwrap_or(ColorRgba {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: crate::lupa_elemento::OSCURECER_POR_DEFECTO as f32 / 100.0,
-            });
-            salida.push(Orden::Velo {
-                hueco: hueco.clone(),
-                color: con_opacidad(oscuridad, e.opacidad),
-            });
-            // El borde del hueco, cerrado: ayuda a ver donde acaba el foco
-            // sobre fondos ya oscuros.
-            let mut borde = hueco;
-            if let Some(primero) = borde.first().copied() {
-                borde.push(primero);
-            }
-            salida.push(Orden::Polilinea {
-                puntos: borde,
-                color,
-                grosor: e.grosor,
-                estilo: EstiloTrazo::Solido,
+        Figura::Foco { cristal } => {
+            // **El anillo entre el marco y el hueco** (`drawSpotlights` del
+            // movil): el marco es la caja del elemento, derecho, y el hueco la
+            // figura que se toco (`puntos_del_foco`, la misma geometria que la
+            // lupa). Antes se oscurecia TODO el lienzo menos la caja, y el
+            // usuario lo vio: «en el celular se oscurece dentro de una caja».
+            // Un solo poligono con el agujero recortado (`anillo_con_huecos`,
+            // el de las regiones): todo pintor lo sabe rellenar.
+            let caja = (e.x, e.y, e.ancho, e.alto);
+            let marco = vec![
+                Punto2::nuevo(e.x, e.y),
+                Punto2::nuevo(e.x + e.ancho, e.y),
+                Punto2::nuevo(e.x + e.ancho, e.y + e.alto),
+                Punto2::nuevo(e.x, e.y + e.alto),
+            ];
+            let hueco = crate::lupa_elemento::puntos_del_foco(cristal, caja);
+            // Cuanto apaga lo dice el propio foco (10-90 %, 45 de fabrica), y
+            // su opacidad no: en el movil el foco no pinta tinta.
+            let cuanto = crate::lupa_elemento::oscurecimiento_de(cristal) as f32 / 100.0;
+            salida.push(Orden::Relleno {
+                puntos: anillo_con_huecos(&marco, &[hueco]),
+                color: ColorRgba {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: cuanto,
+                },
             });
         }
+
+        // La lupa: montura, zona mirada y guia. Lo de dentro no es una orden:
+        // lo repinta agrandado quien tiene la escena (`imagen::lupa` del
+        // editor), igual que el mosaico lee lo de debajo.
+        Figura::Lupa { cristal } => salida.extend(crate::lupa_elemento::ordenes_de_la_lupa(
+            cristal,
+            (e.x, e.y, e.ancho, e.alto),
+            color,
+            e.grosor,
+        )),
 
         Figura::Texto {
             texto,
             tam,
             familia,
         } => {
-            salida.push(Orden::Texto {
-                texto: texto.clone(),
-                x: e.x,
-                y: e.y,
-                tam: *tam,
-                familia: familia.clone(),
-                color,
-                ancho_max: e.ancho.max(1.0),
-            });
-            // **El tachado, renglon a renglon.** No es un adorno de la fuente
-            // sino una raya del dibujo: `Orden::Texto` no lleva tachado y el
-            // motor es puro, asi que la altura la da `texto::raya_del_tachado`
-            // -la misma cuenta para el editor, la exportacion y la miniatura,
-            // porque tres copias acabarian poniendo la raya a tres alturas-.
             let estilo_texto = crate::texto::EstiloDeTexto {
                 negrita: e.extras.negrita,
                 cursiva: e.extras.cursiva,
                 tachado: e.extras.tachado,
             };
+            // **Un texto suelto no parte renglones**, como en Excalidraw: sus
+            // renglones son los que se escribieron y la caja se ajusta a
+            // ellos (`texto::medida`), no al reves. Partirlo al ancho de su
+            // caja hacia que una caja medida un pelo corta mandara la ultima
+            // palabra al renglon de abajo. El de dentro de una figura si se
+            // parte, al hueco de su figura, como siempre.
+            let ancho_max = if e.extras.contenedor.is_none() {
+                crate::texto::SIN_PARTIR
+            } else {
+                e.ancho.max(1.0)
+            };
+            // **Centrado o a la derecha, renglon a renglon** (`textAlign`).
+            // `Orden::Texto` solo sabe pintar pegado a la izquierda, y darle
+            // un campo nuevo tocaria a todos los que la pintan; asi que cada
+            // renglon sale en su propia orden, apartado lo que le toca. Va
+            // precedido de tantos saltos como renglones tiene encima: quien
+            // pinta lo coloca entonces a la altura exacta que le daria su
+            // propio interlineado, sin que aqui haya que adivinarlo.
+            //
+            // A la izquierda —o sin decirlo— sigue saliendo en una sola
+            // orden, como siempre: es el caso de casi todo texto y no tiene
+            // por que pagar el reparto.
+            let alineado = e
+                .extras
+                .alineacion
+                .filter(|a| *a != crate::texto::AlineacionTexto::Izquierda);
+            let apartados = alineado
+                .map(|a| {
+                    crate::texto::apartados_de_renglones(
+                        texto,
+                        *tam,
+                        familia,
+                        estilo_texto,
+                        e.ancho,
+                        a,
+                    )
+                })
+                .unwrap_or_default();
+            if alineado.is_some() {
+                for (fila, (renglon, dx)) in texto.split('\n').zip(&apartados).enumerate() {
+                    salida.push(Orden::Texto {
+                        texto: format!("{}{renglon}", "\n".repeat(fila)),
+                        x: e.x + dx,
+                        y: e.y,
+                        tam: *tam,
+                        familia: familia.clone(),
+                        color,
+                        ancho_max,
+                        negrita: estilo_texto.negrita,
+                        cursiva: estilo_texto.cursiva,
+                    });
+                }
+            } else {
+                salida.push(Orden::Texto {
+                    texto: texto.clone(),
+                    x: e.x,
+                    y: e.y,
+                    tam: *tam,
+                    familia: familia.clone(),
+                    color,
+                    ancho_max,
+                    negrita: estilo_texto.negrita,
+                    cursiva: estilo_texto.cursiva,
+                });
+            }
+            // **El tachado, renglon a renglon.** No es un adorno de la fuente
+            // sino una raya del dibujo: `Orden::Texto` no lleva tachado y el
+            // motor es puro, asi que la altura la da `texto::raya_del_tachado`
+            // -la misma cuenta para el editor, la exportacion y la miniatura,
+            // porque tres copias acabarian poniendo la raya a tres alturas-.
             if estilo_texto.tachado {
+                let paso = *tam
+                    * crate::texto::interlineado_de(familia).unwrap_or(crate::texto::INTERLINEADO);
                 for (fila, renglon) in texto.split('\n').enumerate() {
-                    let y = e.y + fila as f32 * *tam * crate::texto::INTERLINEADO;
+                    let y = e.y + fila as f32 * paso;
+                    // La raya va con su renglon: centrado, centrada.
+                    let x = e.x + apartados.get(fila).copied().unwrap_or(0.0);
                     let Some((a, b, gordo)) =
-                        crate::texto::raya_del_tachado(renglon, e.x, y, *tam, estilo_texto)
+                        crate::texto::raya_del_tachado(renglon, x, y, *tam, familia, estilo_texto)
                     else {
                         continue;
                     };
@@ -662,7 +812,12 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             familia: "Segoe UI Emoji".to_string(),
             color,
             ancho_max: e.ancho.max(1.0),
+            negrita: false,
+            cursiva: false,
         }),
+
+        // El cronograma: rejilla, nombres y barras, liso (`cronograma.rs`).
+        Figura::Cronograma { .. } => salida.extend(crate::cronograma::ordenes(e, color)),
 
         Figura::Marco { nombre } => {
             // Liso y gris, no a mano alzada: el marco es andamiaje para
@@ -694,6 +849,8 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
                     familia: "Segoe UI".to_string(),
                     color: gris,
                     ancho_max: e.ancho.max(1.0),
+                    negrita: false,
+                    cursiva: false,
                 });
             }
         }
@@ -705,6 +862,7 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             ancho: e.ancho,
             alto: e.alto,
             opacidad: e.opacidad,
+            recorte: e.extras.recorte,
         }),
 
         // La raya y sus marcas en los extremos. **Sin texto**: el rotulo
@@ -759,39 +917,45 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             }
         }
 
-        // El circulito con su numero. El radio sale del alto de la caja, no
-        // de un `fontSize` aparte: aqui la caja ES el circulo, y asi estirar
-        // el elemento agranda el numero con el, que es lo que hace el movil.
+        // **El circulito con su numero, como el del movil** (`drawSerial`):
+        // un disco macizo del color del trazo y el numero en negrita, blanco
+        // o negro segun lo que se lea sobre ese color, de `radio * 1,25` y
+        // centrado de verdad. Antes era un aro con el numero del color del
+        // trazo, que sobre un circulo relleno de otro color no se leia. El
+        // radio sale de la caja: estirarlo agranda el numero con el.
         Figura::Serie { numero } => {
-            salida.extend(ordenes_de_relleno(e, true));
-            for pasada in formas::elipse(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar) {
-                salida.push(Orden::Polilinea {
-                    puntos: pasada,
+            let radio = e.ancho.min(e.alto) / 2.0;
+            if radio > 0.0 {
+                let (cx, cy) = (e.x + e.ancho / 2.0, e.y + e.alto / 2.0);
+                let mut lisa = Azar::nuevo(e.semilla);
+                let disco = formas::elipse(cx - radio, cy - radio, radio * 2.0, radio * 2.0, 0.0, &mut lisa)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_default();
+                salida.push(Orden::Relleno {
+                    puntos: disco,
                     color,
-                    grosor: e.grosor,
-                    estilo: e.estilo,
+                });
+                let texto = numero.to_string();
+                let tam = radio * crate::serie::TEXTO_POR_RADIO;
+                let familia = crate::serie::familia_de(e);
+                let negrita = crate::texto::EstiloDeTexto {
+                    negrita: true,
+                    ..Default::default()
+                };
+                let (ancho, alto) = crate::texto::medida(&texto, tam, &familia, negrita);
+                salida.push(Orden::Texto {
+                    texto,
+                    x: cx - ancho / 2.0,
+                    y: cy - alto / 2.0,
+                    tam,
+                    familia,
+                    color: crate::serie::tinta_sobre(color),
+                    ancho_max: ancho.max(1.0) * 1.05,
+                    negrita: true,
+                    cursiva: false,
                 });
             }
-            let texto = numero.to_string();
-            let tam = (e.alto.min(e.ancho) * 0.6).max(1.0);
-            // **Centrado a ojo, y a proposito.** `Orden::Texto` no sabe
-            // centrar —solo ajusta al ancho— y el motor es puro: no puede
-            // medir una fuente sin DirectWrite. Se estima el ancho a
-            // `ANCHO_DE_CIFRA` por cifra, que en Segoe UI es lo que mide un
-            // digito, y se aparta lo que sobra. Un numero de serie sin esto
-            // sale pegado al borde izquierdo del circulo y se lee como otra
-            // cosa; con esto cae en el medio con el error de un pelo.
-            const ANCHO_DE_CIFRA: f32 = 0.6;
-            let ancho_texto = tam * ANCHO_DE_CIFRA * texto.chars().count() as f32;
-            salida.push(Orden::Texto {
-                texto,
-                x: e.x + (e.ancho - ancho_texto).max(0.0) / 2.0,
-                y: e.y + (e.alto - tam) / 2.0,
-                tam,
-                familia: "Segoe UI".to_string(),
-                color,
-                ancho_max: ancho_texto.max(1.0),
-            });
         }
 
         // Lo que encontro el bote: el contorno macizo con sus agujeros
@@ -854,9 +1018,11 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
                     x: e.x + radio * angulo.cos(),
                     y: e.y + radio * angulo.sin() - tam / 2.0,
                     tam,
-                    familia: "Segoe UI".to_string(),
+                    familia: letra_de_rotulo(e),
                     color,
                     ancho_max: tam * letra.chars().count() as f32,
+                    negrita: false,
+                    cursiva: false,
                 });
             }
         }
@@ -927,6 +1093,9 @@ pub const TINTA_MINIMA_PX: f32 = 2.0;
 /// Se trabaja sobre una **copia**: los puntos guardados del elemento no se
 /// tocan nunca. Ver `aligerar` para por que eso no es negociable.
 pub fn ordenes_a_distancia(e: &Elemento, zoom: f32) -> Vec<Orden> {
+    if let Some(t) = como_referencia(e) {
+        return ordenes_a_distancia(&t, zoom);
+    }
     if zoom <= 0.0 || e.borrado {
         return ordenes(e);
     }
@@ -1094,9 +1263,11 @@ pub fn ordenes_medibles(e: &Elemento, escala: Option<&Escala>, coma: char) -> Ve
                 x: p.x,
                 y: p.y,
                 tam: alto * 2.0,
-                familia: "Segoe UI".to_string(),
+                familia: letra_de_rotulo(e),
                 color: con_opacidad(color_base, e.opacidad),
                 ancho_max: a.distancia(b),
+                negrita: false,
+                cursiva: false,
             }]
         }
         Figura::EscalaGrafica => barra(e, escala, coma),
@@ -1164,9 +1335,11 @@ fn barra(e: &Elemento, escala: Option<&Escala>, coma: char) -> Vec<Orden> {
             x,
             y: e.y + alto + 2.0,
             tam: alto,
-            familia: "Segoe UI".to_string(),
+            familia: letra_de_rotulo(e),
             color: tinta,
             ancho_max: ancho_cuadro * 2.0,
+            negrita: false,
+            cursiva: false,
         });
     }
     fuera
@@ -1227,6 +1400,98 @@ mod pruebas {
         }
     }
 
+    fn textos_con_sitio(o: &[Orden]) -> Vec<(String, f32, f32)> {
+        o.iter()
+            .filter_map(|x| match x {
+                Orden::Texto { texto, x, y, .. } => Some((texto.clone(), *x, *y)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn un_texto_centrado_aparta_cada_renglon_y_uno_a_la_izquierda_no() {
+        use crate::texto::AlineacionTexto;
+        let mut e = Elemento {
+            figura: Figura::Texto {
+                texto: "abcd\nab".into(),
+                tam: 10.0,
+                familia: "Excalifont".into(),
+            },
+            ancho: 24.8,
+            ..base()
+        };
+        // Sin decir nada, una sola orden como siempre.
+        assert_eq!(textos_con_sitio(&ordenes(&e)), vec![("abcd\nab".into(), 10.0, 10.0)]);
+        e.extras.alineacion = Some(AlineacionTexto::Izquierda);
+        assert_eq!(textos_con_sitio(&ordenes(&e)).len(), 1, "a la izquierda no se reparte");
+
+        e.extras.alineacion = Some(AlineacionTexto::Centro);
+        let t = textos_con_sitio(&ordenes(&e));
+        assert_eq!(t.len(), 2, "un renglon por orden");
+        assert!((t[0].1 - 10.0).abs() < 1e-3, "el largo llena la caja");
+        assert!((t[1].1 - 16.2).abs() < 1e-3, "el corto, centrado: {t:?}");
+        // El segundo lleva un salto delante: asi cae en su renglon con el
+        // interlineado de quien pinta, sin adivinarlo aqui.
+        assert_eq!(t[1].0, "\nab");
+        assert_eq!(t[0].2, t[1].2);
+
+        e.extras.alineacion = Some(AlineacionTexto::Derecha);
+        let t = textos_con_sitio(&ordenes(&e));
+        assert!((t[1].1 - 22.4).abs() < 1e-3, "{t:?}");
+        // Y el tachado va con su renglon, no pegado a la izquierda.
+        e.extras.tachado = true;
+        let raya = ordenes(&e)
+            .into_iter()
+            .filter_map(|o| match o {
+                Orden::Polilinea { puntos, grosor, .. } if grosor < 2.0 => Some(puntos),
+                _ => None,
+            })
+            .last()
+            .expect("hay tachado");
+        assert!((raya[0].x - 22.4).abs() < 1e-3, "{raya:?}");
+    }
+
+    #[test]
+    fn una_flecha_curva_se_pinta_por_la_curva_y_su_punta_mira_el_final_de_la_curva() {
+        let puntos = vec![
+            Punto2::nuevo(0.0, 0.0),
+            Punto2::nuevo(100.0, 100.0),
+            Punto2::nuevo(200.0, 0.0),
+        ];
+        let flecha = |redondo| Elemento {
+            figura: Figura::Flecha {
+                puntos: puntos.clone(),
+                punta_inicio: TipoPunta::Ninguna,
+                punta_fin: TipoPunta::Flecha,
+                codos: false,
+            },
+            redondo,
+            rugosidad: 0.0,
+            ..base()
+        };
+        let rayas = |e: &Elemento| -> Vec<Vec<Punto2>> {
+            ordenes(e)
+                .into_iter()
+                .filter_map(|o| match o {
+                    Orden::Polilinea { puntos, .. } => Some(puntos),
+                    _ => None,
+                })
+                .collect()
+        };
+        let curva = rayas(&flecha(true));
+        // Lisa: una pasada por la curva entera y la punta.
+        assert_eq!(curva[0], crate::curva::muestrear(&puntos));
+        assert_eq!(curva[0].last(), Some(&puntos[2]));
+        // Caso negativo: la recta sigue siendo sus dos rectas de siempre.
+        let recta = rayas(&flecha(false));
+        assert_eq!(recta[0], vec![puntos[0], puntos[1]]);
+        assert_ne!(curva, recta);
+        // La punta cambia: la curva llega al final con otra direccion que
+        // la ultima recta de la quebrada.
+        assert_ne!(curva.last(), recta.last());
+    }
+
     #[test]
     fn un_elemento_borrado_no_produce_ninguna_orden() {
         let e = Elemento {
@@ -1260,6 +1525,121 @@ mod pruebas {
                 _ => None,
             })
             .collect()
+    }
+
+    /// Si `q` queda dentro del contorno convexo `c` (cerrado), con una
+    /// centesima de holgura por el redondeo de los flotantes.
+    fn dentro_de(c: &[Punto2], q: Punto2) -> bool {
+        let area: f32 = c.windows(2).map(|w| w[0].x * w[1].y - w[1].x * w[0].y).sum();
+        c.windows(2).all(|w| {
+            let cruz = (w[1].x - w[0].x) * (q.y - w[0].y) - (w[1].y - w[0].y) * (q.x - w[0].x);
+            let largo = w[0].distancia(w[1]).max(1e-6);
+            cruz * area.signum() / largo >= -0.01
+        })
+    }
+
+    /// Dentro del rectangulo redondeado de `e`: la ruta de Excalidraw, que
+    /// es la que se ve como contorno.
+    fn dentro_del_redondeado(e: &Elemento, q: Punto2) -> bool {
+        dentro_de(&formas::rectangulo_redondo(e.x, e.y, e.ancho, e.alto), q)
+    }
+
+    fn redondo(estilo_relleno: EstiloRelleno, rugosidad: f32) -> Elemento {
+        Elemento {
+            redondo: true,
+            rugosidad,
+            relleno: Some(ColorRgba::opaco(1.0, 0.0, 0.0)),
+            estilo_relleno,
+            ..base()
+        }
+    }
+
+    #[test]
+    fn el_rectangulo_redondo_se_ve_redondo_tambien_a_mano() {
+        // Antes solo se redondeaba con rugosidad 0: con el «a mano» de
+        // fabrica el boton de bordes no cambiaba nada de lo que se ve.
+        for rugosidad in [0.0, 1.0, 2.0] {
+            let e = redondo(EstiloRelleno::Solido, rugosidad);
+            let pico = Elemento {
+                redondo: false,
+                ..e.clone()
+            };
+            assert_ne!(ordenes(&e), ordenes(&pico), "rugosidad {rugosidad}");
+            // Ninguna pasada del contorno llega a la esquina de la caja: la
+            // mas cercana se queda a mas de medio radio.
+            let esquina = Punto2::nuevo(e.x, e.y);
+            let cerca = ordenes(&e)
+                .into_iter()
+                .filter_map(|o| match o {
+                    Orden::Polilinea { puntos, color, .. } if color == e.trazo => Some(puntos),
+                    _ => None,
+                })
+                .flatten()
+                .map(|p| p.distancia(esquina))
+                .fold(f32::MAX, f32::min);
+            assert!(cerca > 2.0, "rugosidad {rugosidad}: el trazo llega al pico ({cerca})");
+        }
+    }
+
+    #[test]
+    fn el_relleno_de_un_redondo_no_se_sale_por_las_esquinas() {
+        for rugosidad in [0.0, 1.0, 2.0] {
+            let e = redondo(EstiloRelleno::Solido, rugosidad);
+            let mancha = ordenes(&e)
+                .into_iter()
+                .find_map(|o| match o {
+                    Orden::Relleno { puntos, .. } => Some(puntos),
+                    _ => None,
+                })
+                .expect("relleno solido");
+            for q in &mancha {
+                assert!(dentro_del_redondeado(&e, *q), "{q:?} se sale");
+            }
+            for estilo in [EstiloRelleno::Rayado, EstiloRelleno::Cruzado] {
+                let e = redondo(estilo, rugosidad);
+                let rayas = rayas_de(&e);
+                assert!(!rayas.is_empty());
+                for q in rayas.iter().flatten() {
+                    assert!(dentro_del_redondeado(&e, *q), "{estilo:?}: {q:?} se sale");
+                }
+            }
+        }
+        // Caso negativo: en pico el relleno SI llega a la esquina de la caja.
+        let pico = Elemento {
+            redondo: false,
+            ..redondo(EstiloRelleno::Solido, 0.0)
+        };
+        let llega = ordenes(&pico).into_iter().any(|o| {
+            matches!(o, Orden::Relleno { puntos, .. }
+                if puntos.contains(&Punto2::nuevo(pico.x, pico.y)))
+        });
+        assert!(llega);
+    }
+
+    #[test]
+    fn el_rombo_redondo_rellena_y_raya_por_su_ruta_redondeada() {
+        let e = Elemento {
+            figura: Figura::Rombo,
+            ..redondo(EstiloRelleno::Solido, 1.0)
+        };
+        let contorno = formas::rombo_redondo(e.x, e.y, e.ancho, e.alto);
+        let mancha = ordenes(&e)
+            .into_iter()
+            .find_map(|o| match o {
+                Orden::Relleno { puntos, .. } => Some(puntos),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(mancha, contorno, "el relleno va por la misma ruta");
+        let e = Elemento {
+            estilo_relleno: EstiloRelleno::Cruzado,
+            ..e
+        };
+        let rayas = rayas_de(&e);
+        assert!(!rayas.is_empty());
+        for q in rayas.iter().flatten() {
+            assert!(dentro_de(&contorno, *q), "una raya del rombo redondo se sale: {q:?}");
+        }
     }
 
     #[test]
@@ -1386,7 +1766,7 @@ mod pruebas {
     }
 
     #[test]
-    fn el_resaltador_es_translucido_y_de_grosor_constante() {
+    fn el_resaltador_es_translucido_al_cuarenta_por_ciento_como_el_movil() {
         // D45: si adelgazara o fuera opaco, el texto de debajo quedaria
         // ilegible, que es justo lo contrario de resaltar.
         let e = Elemento {
@@ -1398,7 +1778,7 @@ mod pruebas {
         };
         match &ordenes(&e)[0] {
             Orden::Tinta { color, .. } => {
-                assert!(color.a < 0.5, "no es translucido: alfa {}", color.a)
+                assert!((color.a - 0.40).abs() < 1e-6, "HIGHLIGHTER_OPACITY es 40: alfa {}", color.a)
             }
             otra => panic!("el resaltador deberia ser tinta, es {otra:?}"),
         }
@@ -1476,8 +1856,10 @@ mod pruebas {
     }
 
     #[test]
-    fn un_texto_produce_una_orden_de_texto_con_su_ancho() {
-        let e = Elemento {
+    fn un_texto_de_figura_produce_una_orden_de_texto_con_su_ancho() {
+        // El suelto no se parte (`SIN_PARTIR`, en `texto_como_excalidraw.rs`);
+        // el de dentro de una figura se parte al ancho de su caja.
+        let mut e = Elemento {
             figura: Figura::Texto {
                 texto: "hola".into(),
                 tam: 14.0,
@@ -1485,6 +1867,7 @@ mod pruebas {
             },
             ..base()
         };
+        e.extras.contenedor = Some("caja".into());
         match &ordenes(&e)[0] {
             Orden::Texto {
                 texto, ancho_max, ..
@@ -1496,71 +1879,79 @@ mod pruebas {
         }
     }
 
-    fn foco(elipse: bool) -> Elemento {
+    /// Un foco como los que deja la varita: marco de 100 x 50 y, dentro, el
+    /// hueco de 40 x 20 centrado en (60, 45).
+    fn foco(redonda: bool) -> Elemento {
         Elemento {
-            figura: Figura::Foco { elipse },
+            figura: Figura::Foco {
+                cristal: crate::lupa_elemento::Cristal {
+                    foco: Some(Punto2::nuevo(60.0, 45.0)),
+                    foco_ancho: Some(40.0),
+                    foco_alto: Some(20.0),
+                    redonda,
+                    ..Default::default()
+                },
+            },
             x: 10.0,
             y: 20.0,
             ancho: 100.0,
             alto: 50.0,
-            trazo: ColorRgba::opaco(1.0, 1.0, 1.0),
-            relleno: Some(ColorRgba {
-                r: 0.0,
-                g: 0.0,
-                b: 0.0,
-                a: 0.6,
-            }),
             rugosidad: 0.0,
             ..base()
         }
     }
 
-    #[test]
-    fn el_foco_produce_un_velo_con_hueco_rectangular_y_su_borde() {
-        // D51: el motor no sabe cuanto mide el lienzo, asi que entrega el
-        // HUECO y el consumidor oscurece todo lo demas.
-        let o = ordenes(&foco(false));
-        let Orden::Velo { hueco, color } = &o[0] else {
-            panic!("la primera orden del foco debe ser el velo, fue {:?}", o[0]);
+    /// Lo que pinta un foco: el anillo y su color.
+    fn anillo(e: &Elemento) -> (Vec<Punto2>, ColorRgba) {
+        let o = ordenes(e);
+        assert_eq!(o.len(), 1, "un foco es solo su sombra: {o:?}");
+        let Orden::Relleno { puntos, color } = &o[0] else {
+            panic!("el foco deberia ser un relleno, fue {:?}", o[0]);
         };
-        assert_eq!(hueco.len(), 4);
-        assert_eq!(hueco[0], Punto2::nuevo(10.0, 20.0));
-        assert_eq!(hueco[2], Punto2::nuevo(110.0, 70.0));
-        assert!((color.a - 0.6).abs() < 1e-6);
-        assert!(
-            matches!(o[1], Orden::Polilinea { .. }),
-            "tras el velo va el borde del hueco"
-        );
+        (puntos.clone(), *color)
     }
 
     #[test]
-    fn el_foco_eliptico_tiene_un_hueco_redondo() {
-        let o = ordenes(&foco(true));
-        let Orden::Velo { hueco, .. } = &o[0] else {
-            panic!("velo esperado");
-        };
-        // Una elipse lisa tiene muchos mas vertices que un rectangulo.
-        assert!(hueco.len() > 16, "hueco con {} puntos", hueco.len());
+    fn el_foco_oscurece_solo_dentro_de_su_marco_y_no_el_lienzo_entero() {
+        // `drawSpotlights` del movil: el marco menos el hueco. Nada del
+        // anillo sale de la caja del elemento (caso negativo del velo viejo,
+        // que oscurecia hasta el borde de la ventana).
+        let (puntos, color) = anillo(&foco(false));
+        for p in &puntos {
+            assert!(p.x >= 10.0 && p.x <= 110.0 && p.y >= 20.0 && p.y <= 70.0, "{p:?} fuera del marco");
+        }
+        // Lleva las cuatro esquinas del marco y las cuatro del hueco.
+        for esquina in [(10.0, 20.0), (110.0, 70.0), (40.0, 35.0), (80.0, 55.0)] {
+            assert!(
+                puntos.contains(&Punto2::nuevo(esquina.0, esquina.1)),
+                "falta {esquina:?} en {puntos:?}"
+            );
+        }
+        assert_eq!(color.r + color.g + color.b, 0.0, "sombra negra");
     }
 
-    /// Un foco sin relleno oscurece lo que oscurece el movil, que son 45 y no
-    /// 60: con 60, un foco del telefono abierto aqui apagaba de mas y lo de
-    /// alrededor —que es para lo que sirve un foco— dejaba de verse.
     #[test]
-    fn el_foco_sin_relleno_oscurece_lo_mismo_que_en_el_movil() {
-        // Y el caso negativo del que ya estaba: un fichero antiguo o un
-        // consumidor descuidado que no ponga relleno tampoco puede dejar el
-        // velo transparente.
-        let e = Elemento {
-            relleno: None,
-            ..foco(false)
-        };
-        let Orden::Velo { color, .. } = &ordenes(&e)[0] else {
-            panic!("velo esperado");
-        };
+    fn el_hueco_de_un_foco_redondo_es_un_ovalo() {
+        let (recto, _) = anillo(&foco(false));
+        let (redondo, _) = anillo(&foco(true));
+        // Un ovalo lleva muchos mas vertices que un recuadro.
+        assert!(redondo.len() > recto.len() + 16, "{} frente a {}", redondo.len(), recto.len());
+    }
+
+    #[test]
+    fn el_foco_oscurece_lo_que_dice_el_suyo_y_no_su_opacidad() {
+        // De fabrica 45, como el movil.
+        let (_, color) = anillo(&foco(false));
         let esperado = crate::lupa_elemento::OSCURECER_POR_DEFECTO as f32 / 100.0;
         assert!((color.a - esperado).abs() < 1e-6, "oscurece {}", color.a);
-        assert!(color.a > 0.0, "un velo transparente no es un foco");
+        // Con su numero puesto, ese; y la opacidad del elemento no cuenta.
+        let mut e = foco(false);
+        if let Figura::Foco { cristal } = &mut e.figura {
+            cristal.oscurecer = Some(70);
+        }
+        e.opacidad = 0.2;
+        let (_, color) = anillo(&e);
+        assert!((color.a - 0.70).abs() < 1e-6, "oscurece {}", color.a);
     }
 
     /// Todos los puntos de una lista de ordenes, para poder compararlas.

@@ -115,6 +115,19 @@ pub enum MaterialTinta {
     /// rellenos de plano que se leen de lejos.
     #[serde(rename = "trama")]
     Trama,
+    /// **Grafito** (`CUADRITOS` del movil, v0.73-v0.80.2): un lapiz de
+    /// verdad, hecho de sellos rascados estampados a lo largo del trazo sobre
+    /// una rejilla fija de cuadritos del dibujo. Ver `tinta::grafito`.
+    ///
+    /// La palabra del fichero es «cuadritos» y no «grafito» porque es la que
+    /// escribe el movil: fue el nombre de su primera version, y cambiarla
+    /// aqui haria que un trazo de grafito del telefono se abriera liso.
+    ///
+    /// **No esta en [`MATERIALES`]** a proposito: en el movil dejo de ser un
+    /// material del panel y paso a ser una herramienta (v0.75, «Grafito»),
+    /// asi que el panel no la ofrece como tinta. Se lee y se escribe igual.
+    #[serde(rename = "cuadritos")]
+    Cuadritos,
 }
 
 /// Todas, en el orden del enum del movil. Es el orden en que las ofrece el
@@ -146,6 +159,7 @@ impl MaterialTinta {
             MaterialTinta::Lapiz2b => "lapiz2b",
             MaterialTinta::Seco => "seco",
             MaterialTinta::Trama => "trama",
+            MaterialTinta::Cuadritos => "cuadritos",
         }
     }
 
@@ -153,7 +167,19 @@ impl MaterialTinta {
     /// quien lee decide que hacer, y lo que hace es pintarla como pluma y
     /// devolverla intacta al guardar.
     pub fn desde_palabra(s: &str) -> Option<MaterialTinta> {
-        MATERIALES.into_iter().find(|m| m.palabra() == s)
+        // El grafito va aparte porque no esta en el panel, pero se lee igual:
+        // sin esto, lo que llega del movil con `material:"cuadritos"` se
+        // tomaba por desconocido y se pintaba liso.
+        MATERIALES
+            .into_iter()
+            .chain([MaterialTinta::Cuadritos])
+            .find(|m| m.palabra() == s)
+    }
+
+    /// Si se pinta como grafito: sellos sobre la rejilla fija, no un
+    /// contorno relleno. Ver `tinta::grafito`.
+    pub fn es_grafito(self) -> bool {
+        self == MaterialTinta::Cuadritos
     }
 
     /// Si el cuerpo del trazo va mas flojo de lo normal porque lo que se ve
@@ -172,8 +198,12 @@ impl MaterialTinta {
     }
 
     /// Si hay tela que estampar dentro del trazo.
+    ///
+    /// El grafito no: su grano no es una tela que se repite dentro de una
+    /// silueta, son los propios sellos y el diente del papel casilla a
+    /// casilla. Con tela encima saldria dos veces granulado.
     pub fn hay_grano(self) -> bool {
-        self != MaterialTinta::Lisa && !self.alumbra()
+        self != MaterialTinta::Lisa && !self.alumbra() && !self.es_grafito()
     }
 
     /// Si su tela va inclinada. El punteado y las motas no tienen direccion;
@@ -376,7 +406,8 @@ pub fn paso_del_grano(gordo: f32) -> f32 {
 /// aparatos**, o la misma tiza se veria de dos maneras. Asi que no vale
 /// cualquier generador: hace falta ESTE, que es un congruencial lineal de 48
 /// bits con las constantes de la biblioteca de Java.
-struct AzarJava {
+#[derive(Clone)]
+pub(crate) struct AzarJava {
     semilla: u64,
 }
 
@@ -385,7 +416,7 @@ const SUMANDO: u64 = 0xB;
 const MASCARA: u64 = (1 << 48) - 1;
 
 impl AzarJava {
-    fn nuevo(semilla: u64) -> Self {
+    pub(crate) fn nuevo(semilla: u64) -> Self {
         Self {
             semilla: (semilla ^ MULTIPLICADOR) & MASCARA,
         }
@@ -400,14 +431,14 @@ impl AzarJava {
         (self.semilla >> (48 - bits)) as i32
     }
 
-    fn flotante(&mut self) -> f32 {
+    pub(crate) fn flotante(&mut self) -> f32 {
         self.siguiente(24) as f32 / (1 << 24) as f32
     }
 
     /// `nextInt(tope)` de Java, con su rechazo y todo: sin el, los valores
     /// altos saldrian un poco mas veces y la secuencia se desviaria de la del
     /// movil en cuanto hubiera un rechazo.
-    fn entero(&mut self, tope: i32) -> i32 {
+    pub(crate) fn entero(&mut self, tope: i32) -> i32 {
         if tope & -tope == tope {
             return ((tope as i64).wrapping_mul(self.siguiente(31) as i64) >> 31) as i32;
         }
@@ -525,6 +556,8 @@ pub fn tejido(material: MaterialTinta) -> Vec<u8> {
     let mut telar = Telar::nuevo();
     match material {
         MaterialTinta::Lisa | MaterialTinta::Luz | MaterialTinta::Hdr => {}
+        // El grafito no se teje: se estampa (`tinta::grafito`).
+        MaterialTinta::Cuadritos => {}
 
         MaterialTinta::Puntos => {
             telar.circulo(lado / 2.0, lado / 2.0, lado * GORDO_DEL_GRANO * 2.4, 1.0);
@@ -612,6 +645,26 @@ mod pruebas {
         assert_eq!(MaterialTinta::desde_palabra("acuarela-del-futuro"), None);
         assert_eq!(MaterialTinta::desde_palabra(""), None);
         assert_eq!(MaterialTinta::desde_palabra("LISA"), None);
+    }
+
+    #[test]
+    fn el_grafito_se_lee_y_se_escribe_como_cuadritos_aunque_no_este_en_el_panel() {
+        // Es lo que llega del movil: sin esto un trazo de grafito se tomaba
+        // por material desconocido y se pintaba liso.
+        assert_eq!(
+            MaterialTinta::desde_palabra("cuadritos"),
+            Some(MaterialTinta::Cuadritos)
+        );
+        assert_eq!(MaterialTinta::Cuadritos.palabra(), "cuadritos");
+        let texto = serde_json::to_string(&MaterialTinta::Cuadritos).unwrap();
+        assert_eq!(texto, "\"cuadritos\"");
+        // Caso negativo: el panel no lo ofrece como tinta (en el movil es una
+        // herramienta) y «grafito» no es una palabra del fichero.
+        assert!(!MATERIALES.contains(&MaterialTinta::Cuadritos));
+        assert_eq!(MaterialTinta::desde_palabra("grafito"), None);
+        // Ni lleva tela: su grano son los sellos.
+        assert!(!MaterialTinta::Cuadritos.hay_grano());
+        assert_eq!(lo_mas_tapado(&tejido(MaterialTinta::Cuadritos)), 0);
     }
 
     #[test]
