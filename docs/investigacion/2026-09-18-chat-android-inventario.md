@@ -101,8 +101,8 @@ por `OPEN_IN_NEW`; los iconos de Excalidraw del menú del clip por los de Materi
 | Mantener el título: buscar | — | **no** (no hay pulsación larga); la lupa hace lo mismo | — |
 | Lupa: buscar en la conversación | Search | **sí**: filtra las burbujas; con la lupa encendida salen debajo los chips de las etiquetas que de verdad hay puestas, y pulsar uno filtra por ese emoji (pulsarlo otra vez lo quita). Apagar la lupa se lleva las dos cosas, al revés que el móvil, que deja el filtro de emoji puesto sin enseñarlo | `Zona::Buscar` y `Zona::Chip`, `chips_de`, `pixpin_ui::chat::fila_de_chips` |
 | ⋮ Biblioteca de audio (solo general) | LibraryMusic | **aviso** | `menu_de_cabecera`, l. 6758 |
-| ⋮ Conversaciones de proyectos (solo general) | — | **a medias**: en Windows son la lista de la izquierda; enfoca su buscador y lo dice | l. 660 |
-| ⋮ Proyectos | — | **a medias**: igual que la anterior | l. 660 |
+| ⋮ Conversaciones de proyectos (solo general) | — | **a medias** (26-sep): comparte acción con «Proyectos» y lleva a la pantalla de Proyectos (H13); los chats siguen en la lista de la izquierda | `proyectos.rs` |
+| ⋮ Proyectos | — | **sí** (26-sep): abre la pantalla de Proyectos del móvil (H13), sin cambiar lo que recuerda el interruptor de la barra | `ventana_chat/proyectos.rs` |
 | ⋮ Comenzar (arrancar la bola) | — | **aviso**: PixPin ya está en marcha | — |
 | ⋮ Fondo del chat | Palette | **sí**: 6 papeles, se guarda en `fondo-del-chat.txt` junto al almacén | l. 654, `fondo_guardado` l. 7396 |
 | ⋮ Ajustes | — | **aviso**: se abren desde la bandeja (abrirlos desde el chat necesita `main.rs`) | — |
