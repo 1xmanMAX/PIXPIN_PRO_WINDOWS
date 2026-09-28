@@ -1,7 +1,8 @@
 //! La ventana de ajustes (P6).
 //!
 //! Hasta ahora todo se tocaba editando el TOML a mano y reiniciando. Esto
-//! ensena lo mismo en cuatro pestanas —atajos, general, captura y dibujo—
+//! ensena lo mismo en cinco pestanas —atajos, general, captura, dibujo y
+//! las herramientas de dibujo que salen—
 //! y lo guarda al cerrar SIN borrar los comentarios del fichero, que era la
 //! condicion para poder escribirlo desde el programa.
 //!
@@ -20,7 +21,9 @@ use pixpin_geom::{Punto, Rect};
 use pixpin_render::{Color, MotorRender, RectF, Superficie};
 use pixpin_shell::Atajo;
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
-use pixpin_store::ajustes::{Ajustes, FormatoColor, PreferenciaIdioma, PreferenciaNivel};
+use pixpin_store::ajustes::{
+    Ajustes, FormatoColor, ModoDeIdiomas, NivelPdf, PreferenciaIdioma, PreferenciaNivel,
+};
 use pixpin_store::comandos::{CATALOGO, Comando, Enlaces};
 use pixpin_store::{Catalogo, Ubicacion};
 use pixpin_ui::ajustes::{
@@ -34,6 +37,8 @@ const ANCHO: u32 = 660;
 const ALTO: u32 = 540;
 /// Cuantos pixeles baja la lista por cada muesca de la rueda.
 const PASO_RUEDA: i32 = 48;
+/// La pestana de las herramientas de dibujo (la quinta).
+const PESTANA_HERRAMIENTAS: usize = 4;
 
 const FONDO: Color = Color {
     r: 0.11,
@@ -95,8 +100,13 @@ enum Clave {
     Comando(Comando),
     Idioma,
     Arranque,
+    TemaCosmos,
     Color,
     Nivel,
+    PdfAligerar,
+    PdfNivel,
+    VozSegundo,
+    VozModo,
     RetardoCaptura,
     LimiteScroll,
     GifRitmo,
@@ -106,6 +116,11 @@ enum Clave {
     ImanMedios,
     ImanCentros,
     ImanRadio,
+    /// Una herramienta de dibujo, por su nombre estable del TOML
+    /// (`pixpin_store::herramientas::NOMBRES`).
+    Herramienta(&'static str),
+    /// Un titulo de seccion: no hay nada detras.
+    Seccion,
 }
 
 /// Abre la ventana y no vuelve hasta que se cierra.
@@ -150,6 +165,7 @@ pub fn abrir(
         textos.t("ajustes-pestana-general"),
         textos.t("ajustes-pestana-captura"),
         textos.t("ajustes-pestana-dibujo"),
+        textos.t("ajustes-pestana-herramientas"),
     ];
     // Copia de trabajo: se toca esta y se guarda al cerrar. Tocar los
     // ajustes de verdad en cada clic obligaria a deshacer a mano si se
@@ -339,6 +355,17 @@ pub fn abrir(
 
 /// Las filas de una pestana, con la clave de lo que hay detras de cada
 /// una.
+/// El segundo idioma de las notas de voz que se ofrece (B6): ninguno y los
+/// tres que el usuario mezcla. El codigo va al TOML; el rotulo, del catalogo.
+/// Un codigo escrito a mano en el TOML que no este aqui sale como «ninguno»
+/// en la ventana pero se respeta mientras no se toque.
+const SEGUNDOS_IDIOMAS: [(&str, &str); 4] = [
+    ("", "ajustes-voz-ninguno"),
+    ("en", "ajustes-voz-ingles"),
+    ("es", "ajustes-voz-espanol"),
+    ("pt", "ajustes-voz-portugues"),
+];
+
 fn filas_de(pestana: usize, a: &Ajustes, enlaces: &Enlaces, t: &Catalogo) -> Vec<(Clave, Fila)> {
     match pestana {
         0 => CATALOGO
@@ -393,6 +420,14 @@ fn filas_de(pestana: usize, a: &Ajustes, enlaces: &Enlaces, t: &Catalogo) -> Vec
                     control: Control::Interruptor(a.arranque_con_windows),
                 },
             ),
+            // M1: el tema Cosmos del movil (`tema_cosmos.rs`).
+            (
+                Clave::TemaCosmos,
+                Fila {
+                    etiqueta: t.t("ajustes-tema-cosmos"),
+                    control: Control::Interruptor(a.tema_cosmos),
+                },
+            ),
             (
                 Clave::Color,
                 Fila {
@@ -421,6 +456,67 @@ fn filas_de(pestana: usize, a: &Ajustes, enlaces: &Enlaces, t: &Catalogo) -> Vec
                             PreferenciaNivel::Auto => 0,
                             PreferenciaNivel::Completo => 1,
                             PreferenciaNivel::Ligero => 2,
+                        },
+                    },
+                },
+            ),
+            // Aligerar los PDF al meterlos al chat (`crate::aligerar`). Dos
+            // filas y no una con «No» entre los niveles, como el movil: cinco
+            // opciones no caben en la zona de control.
+            (
+                Clave::PdfAligerar,
+                Fila {
+                    etiqueta: t.t("ajustes-pdf-aligerar"),
+                    control: Control::Interruptor(a.pdf.aligerar_al_entrar),
+                },
+            ),
+            (
+                Clave::PdfNivel,
+                Fila {
+                    etiqueta: t.t("ajustes-pdf-nivel"),
+                    control: Control::Opcion {
+                        opciones: vec![
+                            t.t("ajustes-pdf-nivel-sin-perdida"),
+                            t.t("ajustes-pdf-nivel-equilibrado"),
+                            t.t("ajustes-pdf-nivel-pequeno"),
+                            t.t("ajustes-pdf-nivel-extremo"),
+                        ],
+                        elegida: match a.pdf.nivel {
+                            NivelPdf::SinPerdida => 0,
+                            NivelPdf::Equilibrado => 1,
+                            NivelPdf::Pequeno => 2,
+                            NivelPdf::Extremo => 3,
+                        },
+                    },
+                },
+            ),
+            // Voz (B6): el segundo idioma de las notas y que hace Whisper
+            // con los dos, como `segundoIdiomaDeVoz` y `modoDeIdiomas`.
+            (
+                Clave::VozSegundo,
+                Fila {
+                    etiqueta: t.t("ajustes-voz-segundo"),
+                    control: Control::Opcion {
+                        opciones: SEGUNDOS_IDIOMAS.iter().map(|(_, k)| t.t(k)).collect(),
+                        elegida: SEGUNDOS_IDIOMAS
+                            .iter()
+                            .position(|(c, _)| *c == a.voz.segundo_idioma)
+                            .unwrap_or(0),
+                    },
+                },
+            ),
+            (
+                Clave::VozModo,
+                Fila {
+                    etiqueta: t.t("ajustes-voz-modo"),
+                    control: Control::Opcion {
+                        opciones: vec![
+                            t.t("ajustes-voz-modo-cada-uno"),
+                            t.t("ajustes-voz-modo-todo-en-uno"),
+                        ],
+                        elegida: match a.voz.modo_de_idiomas {
+                            ModoDeIdiomas::CadaUno => 0,
+                            ModoDeIdiomas::TodoEnUno => 1,
                         },
                     },
                 },
@@ -521,6 +617,40 @@ fn filas_de(pestana: usize, a: &Ajustes, enlaces: &Enlaces, t: &Catalogo) -> Vec
                 },
             ),
         ],
+        // Las herramientas de dibujo que salen en el lienzo, el lector, los
+        // pines y el anotador de pantalla: una casilla cada una.
+        // Agrupadas como en la barra (`permitidas::secciones_de_ajustes`):
+        // un titulo por grupo y sus herramientas debajo. Un grupo con todas
+        // apagadas desaparece de la barra.
+        PESTANA_HERRAMIENTAS => {
+            let mut v = Vec::new();
+            for (grupo, nombres) in crate::dibujo::permitidas::secciones_de_ajustes() {
+                let titulo = match grupo {
+                    Some(g) => t.t(&format!("barra-grupo-{}", g.nombre())),
+                    None if v.is_empty() => t.t("ajustes-herramientas-sueltas"),
+                    None => String::new(),
+                };
+                if !titulo.is_empty() {
+                    v.push((
+                        Clave::Seccion,
+                        Fila {
+                            etiqueta: titulo,
+                            control: Control::Seccion,
+                        },
+                    ));
+                }
+                for n in nombres {
+                    v.push((
+                        Clave::Herramienta(n),
+                        Fila {
+                            etiqueta: t.t(&format!("herramientas-{n}")),
+                            control: Control::Interruptor(a.herramientas.activa(n)),
+                        },
+                    ));
+                }
+            }
+            v
+        }
         _ => vec![],
     }
 }
@@ -528,10 +658,16 @@ fn filas_de(pestana: usize, a: &Ajustes, enlaces: &Enlaces, t: &Catalogo) -> Vec
 fn aplicar_interruptor(a: &mut Ajustes, clave: Clave) {
     match clave {
         Clave::Arranque => a.arranque_con_windows = !a.arranque_con_windows,
+        Clave::TemaCosmos => a.tema_cosmos = !a.tema_cosmos,
+        Clave::PdfAligerar => a.pdf.aligerar_al_entrar = !a.pdf.aligerar_al_entrar,
         Clave::ImanActivo => a.enganche.activo = !a.enganche.activo,
         Clave::ImanEsquinas => a.enganche.esquinas = !a.enganche.esquinas,
         Clave::ImanMedios => a.enganche.medios = !a.enganche.medios,
         Clave::ImanCentros => a.enganche.centros = !a.enganche.centros,
+        Clave::Herramienta(n) => {
+            let activa = a.herramientas.activa(n);
+            a.herramientas.poner(n, !activa);
+        }
         _ => {}
     }
 }
@@ -557,6 +693,24 @@ fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
                 1 => PreferenciaNivel::Completo,
                 2 => PreferenciaNivel::Ligero,
                 _ => PreferenciaNivel::Auto,
+            }
+        }
+        Clave::VozSegundo => {
+            a.voz.segundo_idioma = SEGUNDOS_IDIOMAS.get(cual).map(|(c, _)| c.to_string()).unwrap_or_default();
+        }
+        Clave::VozModo => {
+            a.voz.modo_de_idiomas = if cual == 1 {
+                ModoDeIdiomas::TodoEnUno
+            } else {
+                ModoDeIdiomas::CadaUno
+            };
+        }
+        Clave::PdfNivel => {
+            a.pdf.nivel = match cual {
+                0 => NivelPdf::SinPerdida,
+                2 => NivelPdf::Pequeno,
+                3 => NivelPdf::Extremo,
+                _ => NivelPdf::Equilibrado,
             }
         }
         _ => {}
@@ -597,9 +751,26 @@ fn pintar(
     let Ok(destino) = superficie.empezar(motor) else {
         return;
     };
+    let _ = motor.dibujar(&destino, |p| {
+        dibujar(p, e, nombres_pestanas, filas, estado, resaltado, textos)
+    });
+    let _ = superficie.presentar();
+}
+
+/// Lo que se ve en la ventana, en un pintor cualquiera: el de la ventana o,
+/// en las pruebas, uno fuera de pantalla para dejar la muestra en PNG.
+fn dibujar(
+    p: &pixpin_render::Pintor,
+    e: f32,
+    nombres_pestanas: &[String],
+    filas: &[(Clave, Fila)],
+    estado: &Estado,
+    resaltado: Option<Golpe>,
+    textos: &Catalogo,
+) {
     let (ancho, alto) = (ANCHO as f32, ALTO as f32);
     let sin_atajo = textos.t("ajustes-sin-atajo");
-    let _ = motor.dibujar(&destino, |p| {
+    {
         p.limpiar_transparente();
         p.rellenar_redondeado(
             RectF {
@@ -627,7 +798,7 @@ fn pintar(
         // opaco, para tapar lo que se haya desplazado por debajo de ellos.
         let lista_arriba = PESTANAS_ALTO;
         let lista_abajo = PESTANAS_ALTO + alto_de_lista(alto);
-        for (i, (_, fila)) in filas.iter().enumerate() {
+        for (i, (clave, fila)) in filas.iter().enumerate() {
             let r = rect_de_fila(i, estado.desplazamiento, ancho);
             if r.y + r.alto < lista_arriba || r.y > lista_abajo {
                 continue;
@@ -643,15 +814,23 @@ fn pintar(
                 SEPARADOR,
             );
             let (_, h) = p.medir_texto(&fila.etiqueta, tam);
+            // Un titulo de seccion va en el color de acento y lo que cuelga
+            // de el, un poco metido (como el iman del movil).
+            let (x_etiqueta, color_etiqueta) = match (&fila.control, clave) {
+                (Control::Seccion, _) => (MARGEN, CAJA_ACTIVA),
+                (_, Clave::Herramienta(_)) => (MARGEN + 12.0, TINTA),
+                _ => (MARGEN, TINTA),
+            };
             p.texto(
                 &fila.etiqueta,
-                MARGEN * e,
+                x_etiqueta * e,
                 r.y * e + (FILA_ALTO * e - h) / 2.0,
                 tam,
-                TINTA,
+                color_etiqueta,
             );
             let zona = zona_de_control(r);
             match &fila.control {
+                Control::Seccion => {}
                 Control::Atajo { texto, choca } => {
                     let capturando = estado.capturando == Some(i);
                     let caja = a_rectf(zona, e);
@@ -818,8 +997,7 @@ fn pintar(
             );
             centrar(&rotulo, r, tam, if primario { TINTA } else { TENUE });
         }
-    });
-    let _ = superficie.presentar();
+    }
 }
 
 #[cfg(test)]
@@ -852,6 +1030,63 @@ mod pruebas {
     }
 
     #[test]
+    fn la_pestana_de_herramientas_trae_una_casilla_por_herramienta_y_apaga_de_verdad() {
+        let mut a = Ajustes::default();
+        let (enlaces, _) = Enlaces::de_ajustes(&a);
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let filas = filas_de(PESTANA_HERRAMIENTAS, &a, &enlaces, &textos);
+        // Una casilla por herramienta, TODAS (las nuevas tambien), y un
+        // titulo por grupo de la barra mas el de las sueltas.
+        let casillas = filas
+            .iter()
+            .filter(|(c, _)| matches!(c, Clave::Herramienta(_)))
+            .count();
+        assert_eq!(casillas, pixpin_store::herramientas::NOMBRES.len());
+        let titulos: Vec<&str> = filas
+            .iter()
+            .filter(|(c, _)| *c == Clave::Seccion)
+            .map(|(_, f)| f.etiqueta.as_str())
+            .collect();
+        assert_eq!(titulos.len(), 1 + pixpin_ui::GrupoBarra::TODOS.len());
+        assert_eq!(titulos[0], "Siempre a la vista");
+        assert!(titulos.contains(&"Formas") && titulos.contains(&"Compartir e imprimir"));
+        // Soldar va bajo «Arreglar lo trazado», no suelta al final.
+        let i_arreglar = filas.iter().position(|(_, f)| f.etiqueta == "Arreglar lo trazado").unwrap();
+        let i_nudo = filas.iter().position(|(c, _)| *c == Clave::Herramienta("nudo")).unwrap();
+        assert!(i_nudo > i_arreglar && i_nudo <= i_arreglar + 4);
+        // De fabrica, todas encendidas; los titulos no se pulsan.
+        assert!(filas.iter().all(|(c, f)| match c {
+            Clave::Seccion => f.control == pixpin_ui::ajustes::Control::Seccion,
+            _ => f.control == pixpin_ui::ajustes::Control::Interruptor(true),
+        }));
+        // Cada una con su titulo traducido, no con la clave.
+        for (_, f) in &filas {
+            assert!(
+                !f.etiqueta.starts_with("herramientas-") && !f.etiqueta.starts_with("barra-"),
+                "{}",
+                f.etiqueta
+            );
+        }
+        let (lazo, _) = filas
+            .iter()
+            .find(|(c, _)| *c == Clave::Herramienta("lazo"))
+            .expect("fila del lazo");
+        aplicar_interruptor(&mut a, *lazo);
+        assert!(!a.herramientas.activa("lazo"));
+        // Caso negativo: las demas siguen.
+        assert!(a.herramientas.activa("lapiz"));
+        let filas = filas_de(PESTANA_HERRAMIENTAS, &a, &enlaces, &textos);
+        let (_, f) = filas
+            .iter()
+            .find(|(c, _)| *c == Clave::Herramienta("lazo"))
+            .unwrap();
+        assert_eq!(f.control, pixpin_ui::ajustes::Control::Interruptor(false));
+        // Y se vuelve a encender.
+        aplicar_interruptor(&mut a, *lazo);
+        assert!(a.herramientas.activa("lazo"));
+    }
+
+    #[test]
     fn la_pestana_de_dibujo_trae_las_cinco_filas_del_iman() {
         // `Catalogo::nuevo` no toca disco: el .ftl esta embebido con
         // `include_str!` en tiempo de compilacion, asi que construirlo aqui
@@ -872,5 +1107,61 @@ mod pruebas {
                 Clave::ImanRadio,
             ]
         );
+    }
+
+    /// **Muestra de la pestana de herramientas**, arriba y bajada hasta las
+    /// nuevas, con dos apagadas (el lazo y compartir). Se deja en
+    /// `PIXPIN_MUESTRAS` (o la carpeta temporal) para mirarla.
+    #[test]
+    fn muestra_de_la_pestana_de_herramientas_agrupada() {
+        let mut a = Ajustes::default();
+        a.herramientas.poner("lazo", false);
+        a.herramientas.poner("compartir", false);
+        let (enlaces, _) = Enlaces::de_ajustes(&a);
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let filas = filas_de(PESTANA_HERRAMIENTAS, &a, &enlaces, &textos);
+        let nombres: Vec<String> = [
+            "ajustes-pestana-atajos",
+            "ajustes-pestana-general",
+            "ajustes-pestana-captura",
+            "ajustes-pestana-dibujo",
+            "ajustes-pestana-herramientas",
+        ]
+        .iter()
+        .map(|k| textos.t(k))
+        .collect();
+        let d = pixpin_capture::Dispositivo::nuevo().expect("GPU");
+        let motor = MotorRender::nuevo(d.d3d()).expect("motor");
+        let destino =
+            pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), ANCHO, ALTO)
+                .expect("textura");
+        let dir = std::env::var_os("PIXPIN_MUESTRAS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        std::fs::create_dir_all(&dir).expect("carpeta");
+        let tope = pixpin_ui::ajustes::desplazamiento_maximo(filas.len(), ALTO as f32);
+        for (nombre, bajado) in [("arriba", 0), ("mitad", tope / 2), ("abajo", tope)] {
+            let estado = Estado {
+                pestana: PESTANA_HERRAMIENTAS,
+                desplazamiento: bajado,
+                capturando: None,
+            };
+            motor
+                .dibujar(&destino.destino, |p| {
+                    dibujar(p, 1.0, &nombres, &filas, &estado, None, &textos)
+                })
+                .expect("pinta");
+            let (ancho, alto, pixeles) = destino.leer_rgba().expect("lee");
+            // Hay algo pintado (el fondo de la ventana no es transparente).
+            assert!(pixeles.chunks(4).filter(|px| px[3] > 0).count() > 1000);
+            let png = pixpin_codec::codificar_png(&pixpin_codec::ImagenRgba {
+                ancho,
+                alto,
+                pixeles,
+            })
+            .expect("png");
+            std::fs::write(dir.join(format!("ajustes-herramientas-{nombre}.png")), png)
+                .expect("escribe");
+        }
     }
 }

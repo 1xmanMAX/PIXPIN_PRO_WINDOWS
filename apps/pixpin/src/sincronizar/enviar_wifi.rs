@@ -451,11 +451,42 @@ fn preparar(cx: &Contexto, turno: u64, que: Que) {
         .spawn(move || {
             let hecho = match que {
                 Que::Archivos(rutas) => {
-                    let v: Vec<_> = rutas.iter().filter_map(|r| de_archivo(r, &cx.id)).collect();
+                    // **Un lienzo sale como lienzo**, no como archivo: un
+                    // `.pixpin` de una hoja, que es lo que el movil abre en
+                    // su editor (`EnviarActivity.deLienzo`). Como archivo
+                    // caia en su chat general con `.excalidraw` y no se
+                    // podia abrir. Ver `recibir::lienzo_suelto`.
+                    let carpeta = cx
+                        .raiz
+                        .join("envio")
+                        .join(format!("l-{}", pixpin_shell::entorno::ahora_utc_ms()));
+                    let mut hubo_lienzo = false;
+                    let v: Vec<_> = rutas
+                        .iter()
+                        .filter_map(|r| {
+                            if crate::recibir::lienzo_suelto::es_lienzo(r) {
+                                match crate::recibir::lienzo_suelto::preparar_envio(
+                                    &cx.raiz,
+                                    r,
+                                    &carpeta,
+                                    pixpin_shell::entorno::ahora_utc_ms(),
+                                ) {
+                                    Ok(c) => {
+                                        hubo_lienzo = true;
+                                        return Some(c);
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(%e, ruta = %r.display(), "lienzo que sale como archivo");
+                                    }
+                                }
+                            }
+                            de_archivo(r, &cx.id)
+                        })
+                        .collect();
                     if v.is_empty() {
                         Err("ningún archivo se pudo leer".to_string())
                     } else {
-                        Ok((v, None))
+                        Ok((v, hubo_lienzo.then_some(carpeta)))
                     }
                 }
                 Que::Proyecto(id) => {

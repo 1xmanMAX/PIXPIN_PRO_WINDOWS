@@ -7,6 +7,34 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::OnceLock;
+
+// Las herramientas pineadas (C3, C4, L3) y el panel de propiedades de la
+// anotacion. Modulos hijos: ven los campos del gestor sin hacerlos publicos.
+mod herramienta;
+mod panel;
+mod pizarra;
+mod sacar;
+
+/// El catalogo de los rotulos que pintan las herramientas. El pintor de un
+/// pin se llama desde su `WM_PAINT`, sin el catalogo a mano; como el panel
+/// del lienzo (`panel_dibujo::fijar_idioma`), se fija una vez al arrancar.
+static TEXTOS: OnceLock<pixpin_store::Catalogo> = OnceLock::new();
+
+/// Fija el idioma de lo que pintan las herramientas pineadas. Si nadie lo
+/// llama, el de Windows: mejor el del sistema que uno fijo.
+pub fn fijar_idioma(idioma: pixpin_store::Idioma) {
+    let _ = TEXTOS.set(pixpin_store::Catalogo::nuevo(idioma));
+}
+
+fn textos() -> &'static pixpin_store::Catalogo {
+    TEXTOS.get_or_init(|| {
+        pixpin_store::Catalogo::nuevo(pixpin_store::resolver_idioma(
+            &pixpin_shell::entorno::locale_del_sistema(),
+            pixpin_store::ajustes::PreferenciaIdioma::Sistema,
+        ))
+    })
+}
 
 /// Cuantas paginas se extraen como maximo de un solo golpe.
 ///
@@ -56,7 +84,13 @@ const LIENZO_MARGEN: f32 = 24.0;
 /// funcion que fabrica un fondo. **Solo vale sin fondo.** Sobre una pagina de
 /// PDF las coordenadas tienen que seguir cuadrando con la pagina, y ahi el
 /// desplazamiento seria justo el error que se esta arreglando.
-fn lienzo_en_blanco(elementos: &[pixpin_motor2d::Elemento]) -> (ImagenRgba, f32, f32) {
+///
+/// `papel` es el color del lienzo (`excalidraw::fondo`), opaco: el pin es la
+/// hoja, y la hoja es de ese color.
+fn lienzo_en_blanco(
+    elementos: &[pixpin_motor2d::Elemento],
+    papel: pixpin_motor2d::ColorRgba,
+) -> (ImagenRgba, f32, f32) {
     let mut izquierda = f32::MAX;
     let mut arriba = f32::MAX;
     let mut derecha = f32::MIN;
@@ -76,11 +110,13 @@ fn lienzo_en_blanco(elementos: &[pixpin_motor2d::Elemento]) -> (ImagenRgba, f32,
     let (dx, dy) = (LIENZO_MARGEN - izquierda, LIENZO_MARGEN - arriba);
     let ancho = ((derecha - izquierda + 2.0 * LIENZO_MARGEN) as u32).max(LIENZO_MINIMO);
     let alto = ((abajo - arriba + 2.0 * LIENZO_MARGEN) as u32).max(LIENZO_MINIMO);
+    let canal = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    let pixel = [canal(papel.r), canal(papel.g), canal(papel.b), 255];
     (
         ImagenRgba {
             ancho,
             alto,
-            pixeles: vec![255; ancho as usize * alto as usize * 4],
+            pixeles: pixel.repeat(ancho as usize * alto as usize),
         },
         dx,
         dy,
@@ -92,15 +128,12 @@ use pixpin_codec::{ImagenRgba, cargar, codificar_png};
 use pixpin_geom::{DisposicionMonitores, Monitor, Punto, Rect, recolocar_en_area};
 use pixpin_motor2d::Escena;
 use pixpin_pin::{
-    CambioPin, Contenido, CursorAnotacion, LupaPin, Paleta, Pin, Presentacion, TextosPin, icono_de,
+    CambioPin, Contenido, CursorAnotacion, Paleta, Pin, Presentacion, TextosPin, icono_de,
     miniatura_de, presentacion_de, tamano_humano, tamano_natural,
 };
 use pixpin_render::MotorRender;
 use pixpin_store::{Almacen, ColorGrupo, PinGuardado, TipoEntrada};
-use pixpin_ui::{
-    Anotador, BOTONES, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, Herramienta,
-    Lupa, TeclaAnotador,
-};
+use pixpin_ui::{BotonCaja, CajaHerramientas, EventoAnotador, Herramienta, TeclaAnotador};
 use windows::Win32::Graphics::Direct3D11::ID3D11Device;
 
 /// La paleta de grupos en RGB (D35). Vive aqui porque es la traduccion
@@ -121,6 +154,25 @@ fn rgb_de(color: ColorGrupo) -> (f32, f32, f32) {
 
 /// La ficha de un archivo: icono real, nombre y tamano, o el aviso de que
 /// la ruta ya no lleva a ninguna parte (D28).
+/// La barra de un pin que se anota: la del lienzo (`dibujo::permitidas`,
+/// anfitrion `Pin`), arriba en el centro del area de trabajo de su monitor.
+/// En columna junto al pin, con todas las herramientas, no cabria en una
+/// pantalla de 1080: la del anotador viejo tenia once botones y esta treinta.
+fn caja_del_pin(area_trabajo: Rect, escala_por_cien: u32) -> CajaHerramientas {
+    CajaHerramientas::barra_superior(
+        area_trabajo,
+        escala_por_cien,
+        crate::dibujo::permitidas::botones(crate::dibujo::permitidas::Anfitrion::Pin),
+    )
+}
+
+/// Donde va la ventana de la paleta del pin: la barra y, si hay un grupo
+/// abierto, tambien sus hermanas.
+fn rect_de_paleta(caja: &CajaHerramientas) -> Rect {
+    caja.menu()
+        .map_or(caja.marco, |m| caja.marco.union(m.marco))
+}
+
 /// El cursor de cada herramienta dentro del pin: cruz para dibujar, barra
 /// para escribir, flecha para la mano.
 fn cursor_pin_de(h: Herramienta) -> CursorAnotacion {
@@ -175,6 +227,10 @@ pub struct Pines {
     /// almacen, para que la cola de pedidos no los confunda.
     en_vivo: HashMap<u64, (Pin, Rc<RefCell<pixpin_capture::RecorteVivo>>)>,
     siguiente_en_vivo: u64,
+    /// Si Ctrl+2 escondio los pines en vivo. A ellos no se les cierra para
+    /// ocultarlos, como a los demas: sin entrada en el almacen no habria
+    /// forma de traerlos de vuelta.
+    en_vivo_ocultos: bool,
     /// Ids cerrados desde los callbacks; purgar() los drena en el bucle.
     cerrados: Rc<RefCell<Vec<u64>>>,
     /// Pila de los que se han cerrado, con la posicion que tenian: cerrar
@@ -220,6 +276,14 @@ pub struct Pines {
     /// el nivel de rendimiento al arrancar. `None` si el dispositivo no
     /// soporta video (D66): entonces los videos se ensenan como documento.
     ritmo_video: Option<u32>,
+    /// Las herramientas pineadas (mini-apps y tablas), con su documento y lo
+    /// de su interfaz. El documento tambien esta en el almacen; esto es lo
+    /// que se pinta y se toca.
+    herramientas: HashMap<u64, herramienta::Herramienta>,
+    /// Las pizarras abiertas, con su color y su pauta.
+    pizarras: HashMap<u64, (u8, u8)>,
+    /// Las palabras magicas (las de fabrica del movil).
+    palabras: std::collections::BTreeMap<String, pixpin_pin::magia::MiniApp>,
 }
 
 /// Lo que el gestor deja preparado para abrir un pin en el lienzo. El
@@ -235,21 +299,32 @@ pub struct PedidoLienzo {
     pub fondo: ImagenRgba,
 }
 
-/// Un pin en modo anotacion: su dibujo, su maquina y su elemento en curso.
+/// Un pin en modo anotacion: su dibujo y la mano que dibuja.
+///
+/// Con las herramientas del lienzo (2026-09-24): el `Gesto` del motor y la
+/// `Mano` comun (`dibujo::mano`), anfitrion `Pin`. Antes era la maquina vieja
+/// `Anotador` de `pixpin-ui`, con once herramientas y un elemento en curso
+/// aparte; ahora lo que se dibuja va a la escena desde el primer punto, como
+/// en el lienzo, y se deshace igual.
 struct Anotacion {
     id: u64,
     escena: Escena,
-    anotador: Anotador,
-    /// El elemento que se esta arrastrando ahora mismo: se pinta pero no
-    /// esta en la escena todavia, asi que no se guarda ni se deshace.
-    en_curso: Option<pixpin_motor2d::Elemento>,
-    /// La caja de herramientas junto al pin y la ventana que la muestra
+    gesto: pixpin_motor2d::gesto::Gesto,
+    mano: crate::dibujo::mano::Mano,
+    /// La barra de herramientas del lienzo y la ventana que la muestra
     /// (D58). La paleta muere con la anotacion: su `Drop` la destruye.
     caja: CajaHerramientas,
     paleta: Paleta,
+    /// El panel de propiedades (color, grosor...), en otra ventanita junto
+    /// al pin. Muere con la anotacion, como la paleta.
+    panel: Paleta,
+    /// El area de trabajo del monitor del pin: el panel no se sale de ella.
+    trabajo: Rect,
     escala_por_cien: u32,
-    /// Donde estaba el raton la ultima vez, en coordenadas del contenido:
-    /// la lupa se recalcula desde aqui cuando la rueda cambia el aumento.
+    /// Pixeles de la ventana del pin por pixel del contenido original: el
+    /// grosor de los tiradores y el radio de agarre se miden en pantalla.
+    zoom: f32,
+    /// Donde estaba el raton la ultima vez, en coordenadas del contenido.
     ultimo_cursor: Punto,
     /// El mismo punto en pixeles del dibujo, para ensenar el pincel ahi.
     cursor_documento: pixpin_motor2d::Punto2,
@@ -257,17 +332,65 @@ struct Anotacion {
     /// cursor, hasta que se empieza a dibujar: sin el, el grosor nuevo no
     /// se veia hasta el siguiente trazo y parecia que la rueda no hacia nada.
     ver_grosor: bool,
+    /// El grafito de la escena ya cocido: se repinta con cada movimiento del
+    /// raton, y lo quieto no se vuelve a cocer.
+    grafitos: RefCell<pixpin_motor2d::tinta::grafito::MapasSueltos>,
+}
+
+/// **Lo que se pinta de una escena en un pin**, con el grafito aparte y ya
+/// cocido (`tinta::grafito::ordenes_con_grafito`). A una casilla por unidad,
+/// que el pin se ve al tamano del original; con tope de memoria, pasado el
+/// cual lo que queda sale liso.
+fn anotaciones_de(
+    escena: &Escena,
+    guardados: &mut pixpin_motor2d::tinta::grafito::MapasSueltos,
+) -> (
+    Vec<pixpin_motor2d::Orden>,
+    Vec<pixpin_motor2d::tinta::grafito::GrafitoSuelto>,
+) {
+    const TOPE_DEL_GRAFITO_EN_UN_PIN: usize = 64 * 1024 * 1024;
+    pixpin_motor2d::tinta::grafito::ordenes_con_grafito_guardando(
+        escena,
+        1.0,
+        TOPE_DEL_GRAFITO_EN_UN_PIN,
+        guardados,
+    )
+}
+
+/// El grosor de la tinta que sigue a una muesca de rueda sobre el pin: los
+/// tres del lienzo (teclas 1, 2 y 3), hacia arriba o hacia abajo.
+fn grosor_con_rueda(ahora: f32, delta: i32) -> f32 {
+    use pixpin_motor2d::tinta::{GROSOR_FINO, GROSOR_GRUESO, GROSOR_MEDIO};
+    let escalones = [GROSOR_FINO, GROSOR_MEDIO, GROSOR_GRUESO];
+    let i = escalones
+        .iter()
+        .position(|g| (*g - ahora).abs() < 1e-3)
+        .unwrap_or(1);
+    let j = if delta > 0 {
+        (i + 1).min(escalones.len() - 1)
+    } else if delta < 0 {
+        i.saturating_sub(1)
+    } else {
+        i
+    };
+    escalones[j]
 }
 
 impl Anotacion {
-    /// Las ordenes de dibujo de la escena mas, si lo hay, el trazo en curso.
-    fn ordenes(&self) -> Vec<pixpin_motor2d::Orden> {
-        let mut v = pixpin_motor2d::ordenes_de_escena(&self.escena);
-        if let Some(e) = &self.en_curso {
-            v.extend(pixpin_motor2d::ordenes(e));
-        }
+    /// Las ordenes de dibujo de la escena (el trazo en curso ya esta en
+    /// ella), lo que va encima (marco, tiradores, lazo...) y el grafito de la
+    /// escena, aparte.
+    fn ordenes(
+        &self,
+    ) -> (
+        Vec<pixpin_motor2d::Orden>,
+        Vec<pixpin_motor2d::tinta::grafito::GrafitoSuelto>,
+    ) {
+        let (mut v, grafitos) = anotaciones_de(&self.escena, &mut self.grafitos.borrow_mut());
         if self.ver_grosor {
-            let radio = (self.anotador.grosor() / 2.0).max(1.0);
+            // El radio del trazo a ese grosor: el lapiz de Excalidraw mide
+            // unas 4 veces su `strokeWidth` de ancho.
+            let radio = (self.gesto.grosor_tinta * 2.0).max(1.0);
             let c = self.cursor_documento;
             let puntos: Vec<pixpin_motor2d::Punto2> = (0..=32)
                 .map(|k| {
@@ -287,18 +410,14 @@ impl Anotacion {
                 estilo: pixpin_motor2d::EstiloTrazo::Solido,
             });
         }
-        // El marco va el ultimo: encima de todo, para que se vea que hay
-        // algo elegido aunque quede debajo de otro trazo.
-        if let Some(marco) = self.anotador.seleccion().and_then(|id| {
-            pixpin_motor2d::marco_de_seleccion(
-                &self.escena,
-                id,
-                self.escala_por_cien as f32 / 100.0,
-            )
-        }) {
-            v.push(marco);
-        }
-        v
+        // Lo de encima va el ultimo, como en el lienzo: se ve que hay algo
+        // elegido aunque quede debajo de otro trazo.
+        v.extend(crate::dibujo::pintar::ordenes_encima(
+            &self.gesto,
+            &self.escena,
+            self.zoom,
+        ));
+        (v, grafitos)
     }
 }
 
@@ -323,6 +442,7 @@ impl Pines {
             vivos: HashMap::new(),
             en_vivo: HashMap::new(),
             siguiente_en_vivo: PRIMER_ID_EN_VIVO,
+            en_vivo_ocultos: false,
             cerrados: Rc::new(RefCell::new(Vec::new())),
             reabrir: Rc::new(RefCell::new(Vec::new())),
             pedidos: Rc::new(RefCell::new(Vec::new())),
@@ -337,6 +457,9 @@ impl Pines {
             anotacion: None,
             lienzo_pedido: None,
             ritmo_video,
+            herramientas: HashMap::new(),
+            pizarras: HashMap::new(),
+            palabras: pixpin_pin::magia::por_defecto(),
         })
     }
 
@@ -481,6 +604,8 @@ impl Pines {
         // limpio tras reiniciar y la anotacion parecia perdida, aunque su
         // fichero siguiera ahi: lo encontro la prueba de extremo a extremo.
         self.recargar_anotaciones(id);
+        // Y si es una herramienta o una pizarra, con lo suyo (`sacar`).
+        self.vestir(id);
         Ok(())
     }
 
@@ -494,8 +619,10 @@ impl Pines {
         match pixpin_motor2d::cargar(&ruta) {
             Ok(escena) if escena.cuantos_visibles() > 0 => {
                 if let Some(pin) = self.vivos.get(&id) {
-                    pin.poner_anotaciones(
-                        pixpin_motor2d::ordenes_de_escena(&escena),
+                    let (ordenes, grafitos) = anotaciones_de(&escena, &mut Default::default());
+                    pin.poner_anotaciones_con_grafito(
+                        ordenes,
+                        grafitos,
                         pixpin_motor2d::mosaico::cajas_tapadas(&escena.elementos),
                     );
                 }
@@ -616,8 +743,62 @@ impl Pines {
                 self.en_vivo.remove(&id);
                 Ok(())
             }
+            // Manejar a distancia: el pin dice QUE pixel de la zona se pulso
+            // y aqui se sabe DONDE esta la zona en la pantalla.
+            CambioPin::ClicRemoto { x, y } => {
+                if let Some(p) = self.punto_de_la_zona(id, x, y)? {
+                    pixpin_shell::entrada::clic_en(p);
+                    tracing::info!(id, ?p, "clic a distancia");
+                }
+                Ok(())
+            }
+            CambioPin::ArrastreRemoto { x0, y0, x1, y1 } => {
+                // Basta con que el punto de PULSAR este libre: es donde el
+                // arrastre agarra. El de soltar puede pasar por debajo del pin.
+                if let Some(desde) = self.punto_de_la_zona(id, x0, y0)? {
+                    let zona = self
+                        .en_vivo
+                        .get(&id)
+                        .context("el pin en vivo ya no esta")?
+                        .1
+                        .borrow()
+                        .encuadre()
+                        .zona;
+                    let hasta = pixpin_geom::Punto {
+                        x: zona.x + x1,
+                        y: zona.y + y1,
+                    };
+                    pixpin_shell::entrada::arrastrar_a_distancia(desde, hasta);
+                    tracing::info!(id, ?desde, ?hasta, "arrastre a distancia");
+                }
+                Ok(())
+            }
+            CambioPin::RuedaRemota { x, y, delta } => {
+                if let Some(p) = self.punto_de_la_zona(id, x, y)? {
+                    pixpin_shell::entrada::rueda_a_distancia(p, delta);
+                }
+                Ok(())
+            }
             _ => Ok(()),
         }
+    }
+
+    /// El punto de PANTALLA del pixel `(x, y)` de la zona del pin en vivo
+    /// `id`. `None` si ahi hay ahora una ventana nuestra: con el pin encima
+    /// de su propia zona, el clic caeria en el pin, que lo reenviaria otra
+    /// vez. Mejor no hacer nada que entrar en ese bucle.
+    fn punto_de_la_zona(&self, id: u64, x: i32, y: i32) -> Result<Option<pixpin_geom::Punto>> {
+        let (_, recorte) = self.en_vivo.get(&id).context("el pin en vivo ya no esta")?;
+        let zona = recorte.borrow().encuadre().zona;
+        let p = pixpin_geom::Punto {
+            x: zona.x + x,
+            y: zona.y + y,
+        };
+        if pixpin_shell::entrada::punto_es_nuestro(p) {
+            tracing::info!(id, ?p, "clic a distancia descartado: el punto lo tapa PixPin");
+            return Ok(None);
+        }
+        Ok(Some(p))
     }
 
     /// D26: el recorte queda flotando 1:1 exactamente donde estaba.
@@ -868,6 +1049,9 @@ impl Pines {
             tipo: TipoEntrada,
             objeto: PathBuf,
             ruta: Option<PathBuf>,
+            /// De donde vino: dice si una nota es una herramienta
+            /// (`mini:tareas`) o una imagen una pizarra.
+            origen: String,
         }
 
         let pendientes: Vec<Pendiente> = {
@@ -894,6 +1078,7 @@ impl Pines {
                         tipo: e.tipo,
                         objeto: a.ruta_objeto(e),
                         ruta: e.ruta.clone(),
+                        origen: e.origen.clone(),
                     })
                 })
                 .collect()
@@ -903,14 +1088,23 @@ impl Pines {
             let (id, guardado) = (p.id, p.guardado);
             let contenido = match p.tipo {
                 TipoEntrada::Imagen => match cargar(&p.objeto) {
-                    Ok(i) => Contenido::Imagen(i),
+                    Ok(i) => {
+                        // Una pizarra vuelve con su fondo en el menu.
+                        self.reconocer_al_restaurar(id, &p.origen, None);
+                        Contenido::Imagen(i)
+                    }
                     Err(e) => {
                         tracing::warn!(?e, id, "pin sin objeto legible; queda solo en el almacen");
                         continue;
                     }
                 },
                 TipoEntrada::Nota => match std::fs::read_to_string(&p.objeto) {
-                    Ok(texto) => Contenido::Nota { texto },
+                    // Una herramienta es una nota con su origen: vuelve como
+                    // herramienta, con su documento.
+                    Ok(texto) => match self.reconocer_al_restaurar(id, &p.origen, Some(&texto)) {
+                        Some(c) => c,
+                        None => Contenido::Nota { texto },
+                    },
                     Err(e) => {
                         tracing::warn!(?e, id, "nota sin fichero legible; queda en el almacen");
                         continue;
@@ -968,6 +1162,8 @@ impl Pines {
         let cerrados: Vec<u64> = self.cerrados.borrow_mut().drain(..).collect();
         for id in cerrados {
             self.vivos.remove(&id);
+            self.herramientas.remove(&id);
+            self.pizarras.remove(&id);
             // Soltar el pin en vivo cierra tambien su captura (Drop).
             if let Some((_, recorte)) = self.en_vivo.remove(&id) {
                 tracing::info!(
@@ -996,11 +1192,19 @@ impl Pines {
                     let Some(evento) = evento_de_puntero(cambio) else {
                         continue;
                     };
+                    // Al soltar puede haber cambiado lo elegido, y con ello
+                    // lo que ofrece el panel. Solo entonces, no con cada
+                    // movimiento: mientras se traza no hay nada nuevo que
+                    // ajustar y repintarlo costaria un fotograma por punto.
+                    let solto = matches!(cambio, CambioPin::PunteroSoltado(_));
                     match self.procesar_anotacion(id, evento) {
                         Ok(pide) => sucio |= pide,
                         Err(e) => {
                             tracing::warn!(?e, id, ?cambio, "no se pudo anotar en el pin")
                         }
+                    }
+                    if solto {
+                        self.repintar_panel();
                     }
                 }
                 PasoPedido::Repintar(id) => {
@@ -1016,6 +1220,10 @@ impl Pines {
     fn atender(&mut self, id: u64, cambio: CambioPin) -> Result<()> {
         if self.en_vivo.contains_key(&id) {
             return self.atender_en_vivo(id, cambio);
+        }
+        // Lo de las herramientas, las pizarras y el panel (`sacar`).
+        if self.atender_herramienta(id, cambio)? {
+            return Ok(());
         }
         match cambio {
             // Solo lo pide un pin en vivo, y ese ya salio por arriba.
@@ -1054,7 +1262,10 @@ impl Pines {
                 // Anotando, la rueda cambia el grosor; si no, hace zoom del
                 // pin, que es lo que pidio el usuario (D55).
                 if self.anotacion.as_ref().is_some_and(|a| a.id == id) {
-                    self.anotar(id, EventoAnotador::Rueda(delta))
+                    self.anotar(id, EventoAnotador::Rueda(delta))?;
+                    // El grosor nuevo se ve tambien en el panel.
+                    self.repintar_panel();
+                    Ok(())
                 } else {
                     self.zoom(id, delta, cursor)
                 }
@@ -1100,12 +1311,16 @@ impl Pines {
             .ruta_anotacion(id)
             .context("este pin no tiene contenido que anotar")?;
         let escena = pixpin_motor2d::cargar(&ruta).context("no se pudo leer la anotacion")?;
-        // La semilla arranca del id: dos pines distintos no dibujan igual.
-        let anotador = Anotador::nuevo((id as u32).wrapping_mul(2_654_435_761) | 1);
+        // Las herramientas del lienzo, anfitrion `Pin` (`dibujo::permitidas`):
+        // las mismas teclas y la misma barra, menos lo que el pin no pinta y
+        // lo apagado en los ajustes.
+        let mut gesto = pixpin_motor2d::gesto::Gesto::nuevo();
+        crate::dibujo::permitidas::asegurar(crate::dibujo::permitidas::Anfitrion::Pin, &mut gesto);
+        let mano = crate::dibujo::mano::Mano::nueva(crate::dibujo::permitidas::Anfitrion::Pin);
 
         let pin = self.vivos.get(&id).context("el pin no esta en pantalla")?;
-        // La paleta se coloca respecto al contenido del pin y al area de
-        // trabajo de SU monitor: en otro monitor se saldria de la pantalla.
+        // La barra va en el monitor del pin: en otro se saldria de la
+        // pantalla.
         let contenido = pin.rect_contenido();
         let disposicion = pixpin_capture::enumerar_monitores().context("sin monitores")?;
         let monitor = disposicion
@@ -1120,12 +1335,7 @@ impl Pines {
             .or_else(|| disposicion.principal())
             .copied()
             .context("sin monitor para la paleta")?;
-        let caja = CajaHerramientas::colocar(
-            contenido,
-            monitor.area_trabajo,
-            monitor.escala_por_cien,
-            &BOTONES,
-        );
+        let caja = caja_del_pin(monitor.area_trabajo, monitor.escala_por_cien);
         let pedidos = Rc::clone(&self.pedidos);
         let hwnd_app = self.hwnd_app;
         let paleta = Paleta::nueva(
@@ -1140,24 +1350,34 @@ impl Pines {
             }),
         )
         .context("no se pudo crear la paleta del pin")?;
+        let panel = self.panel_nuevo(id)?;
+        let pin = self.vivos.get(&id).context("el pin no esta en pantalla")?;
 
         pin.poner_modo_anotacion(true);
-        pin.poner_cursor_anotacion(cursor_pin_de(anotador.herramienta()));
-        pin.poner_anotaciones(
-            pixpin_motor2d::ordenes_de_escena(&escena),
+        pin.poner_cursor_anotacion(cursor_pin_de(gesto.herramienta));
+        let zoom = pin.escala_contenido().0.max(1e-3);
+        let mut guardados = pixpin_motor2d::tinta::grafito::MapasSueltos::default();
+        let (ordenes, grafitos) = anotaciones_de(&escena, &mut guardados);
+        pin.poner_anotaciones_con_grafito(
+            ordenes,
+            grafitos,
             pixpin_motor2d::mosaico::cajas_tapadas(&escena.elementos),
         );
         self.anotacion = Some(Anotacion {
             id,
             escena,
-            anotador,
-            en_curso: None,
+            gesto,
+            mano,
             caja,
             paleta,
+            panel,
+            trabajo: monitor.area_trabajo,
             escala_por_cien: monitor.escala_por_cien,
+            zoom,
             ultimo_cursor: Punto { x: 0, y: 0 },
             cursor_documento: pixpin_motor2d::Punto2::nuevo(0.0, 0.0),
             ver_grosor: false,
+            grafitos: RefCell::new(guardados),
         });
         self.repintar_paleta();
         tracing::info!(id, ms = t0.elapsed().as_millis() as u64, "modo anotacion");
@@ -1166,33 +1386,66 @@ impl Pines {
 
     /// Vuelve a pintar la paleta con la herramienta activa resaltada. El
     /// pintor captura COPIAS: la paleta lo reusa en cada `WM_PAINT`.
+    ///
+    /// Con las hermanas de un grupo abiertas la ventana crece hasta
+    /// abarcarlas (una ventana no pinta fuera de si misma, que es por lo que
+    /// el movil las saca del `DrawToolbar`), y vuelve a la barra al cerrarlas.
     fn repintar_paleta(&self) {
         let Some(a) = &self.anotacion else {
             return;
         };
-        let caja = a.caja;
-        let activa = a.anotador.herramienta();
+        let caja = a.caja.con_desplegado(a.mano.desplegado);
+        let activa = a.gesto.herramienta;
         let escala = a.escala_por_cien;
-        let origen = Punto {
-            x: caja.marco.x,
-            y: caja.marco.y,
-        };
+        let rect = rect_de_paleta(&caja);
+        let origen = (rect.x as f32, rect.y as f32);
         a.paleta.poner_pintor(Box::new(move |p| {
-            crate::caja_dibujo::pintar_caja(p, &caja, activa, escala, origen);
+            // La barra del lienzo, en el `(0, 0)` de la ventana de la paleta.
+            p.desplazar(-origen.0, -origen.1);
+            crate::caja_dibujo::pintar_barra(p, &caja, activa, escala, None, |b| match b {
+                BotonCaja::Elegir(h) => crate::dibujo::teclas::tecla_de(h),
+                _ => None,
+            });
+            p.desplazar(0.0, 0.0);
         }));
+        a.paleta.recolocar(Some(rect));
+        // El panel sigue a la herramienta: su color y su grosor.
+        self.repintar_panel();
     }
 
     /// Un clic en la paleta, en coordenadas de la paleta (D58).
     fn paleta_pulsada(&mut self, id: u64, p: Punto) -> Result<()> {
-        let Some(a) = self.anotacion.as_ref().filter(|a| a.id == id) else {
+        let Some(a) = self.anotacion.as_mut().filter(|a| a.id == id) else {
             return Ok(());
         };
+        let caja = a.caja.con_desplegado(a.mano.desplegado);
+        let origen = rect_de_paleta(&caja);
         let global = Punto {
-            x: p.x + a.caja.marco.x,
-            y: p.y + a.caja.marco.y,
+            x: p.x + origen.x,
+            y: p.y + origen.y,
         };
-        let Some(boton) = a.caja.boton_en(global) else {
+        // Cualquier clic cierra las hermanas, como en el lienzo
+        // (`dibujo::mano`); pulsar un grupo decide despues si se abre.
+        let habia = a.mano.desplegado.take();
+        let Some(boton) = caja.boton_en(global) else {
+            if habia.is_some() {
+                self.repintar_paleta();
+            }
             return Ok(());
+        };
+        let boton = match boton {
+            BotonCaja::Grupo(g) => {
+                let r = crate::dibujo::grupos::pulsar(&caja, g, a.gesto.herramienta, habia);
+                a.mano.desplegado = r.desplegado;
+                match r.elegir {
+                    Some(h) => BotonCaja::Elegir(h),
+                    None => {
+                        self.repintar_paleta();
+                        return Ok(());
+                    }
+                }
+            }
+            otro => otro,
         };
         match boton {
             BotonCaja::Elegir(h) => {
@@ -1207,9 +1460,20 @@ impl Pines {
                 self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Deshacer))?
             }
             BotonCaja::Rehacer => self.anotar(id, EventoAnotador::Tecla(TeclaAnotador::Rehacer))?,
-            // La paleta de colores llega con los ajustes visuales (S3-D).
+            // Los colores y grosores estan en el panel de al lado (`panel`),
+            // que ya esta a la vista; la barra del pin no tiene boton propio.
             BotonCaja::Color => {}
             BotonCaja::Salir => self.salir_de_anotar()?,
+            // La imagen y las figuras son del lienzo (`permitidas`): en la
+            // barra del pin no salen.
+            BotonCaja::Imagen
+            | BotonCaja::Figuras
+            | BotonCaja::Imprimir
+            | BotonCaja::Compartir
+            | BotonCaja::Grupo(_) => {}
+        }
+        if habia.is_some() && !matches!(boton, BotonCaja::Elegir(_) | BotonCaja::Salir) {
+            self.repintar_paleta();
         }
         Ok(())
     }
@@ -1334,8 +1598,10 @@ impl Pines {
                 // esa no toca el pin si el fichero quedo vacio, y lo borrado
                 // en el lienzo seguiria viendose en el pin.
                 if let Some(pin) = self.vivos.get(&id) {
-                    pin.poner_anotaciones(
-                        pixpin_motor2d::ordenes_de_escena(&escena),
+                    let (ordenes, grafitos) = anotaciones_de(&escena, &mut Default::default());
+                    pin.poner_anotaciones_con_grafito(
+                        ordenes,
+                        grafitos,
                         pixpin_motor2d::mosaico::cajas_tapadas(&escena.elementos),
                     );
                 }
@@ -1351,14 +1617,36 @@ impl Pines {
         Ok(())
     }
 
-    /// Lleva un evento por la maquina de anotar y aplica su efecto a la
-    /// escena, SIN pintar. Devuelve si el pin necesita repintarse: `purgar`
-    /// junta asi una tanda de puntos en un solo repintado (I1).
+    /// Lleva un evento por las herramientas del lienzo (`dibujo::mano`) y
+    /// aplica su efecto a la escena, SIN pintar. Devuelve si el pin necesita
+    /// repintarse: `purgar` junta asi una tanda de puntos en un solo
+    /// repintado (I1).
+    ///
+    /// `EventoAnotador` sigue siendo el sobre en el que llegan los pedidos
+    /// del pin (lo que ya decia `planificar_pedidos`); lo que cambio es quien
+    /// los atiende.
     fn procesar_anotacion(&mut self, id: u64, evento: EventoAnotador) -> Result<bool> {
+        use crate::dibujo::mano::Vista;
+        use pixpin_shell::overlay::EventoOverlay as E;
         let escala = self
             .vivos
             .get(&id)
             .map_or((1.0, 1.0), |pin| pin.escala_contenido());
+        // Pulsar en el pin (dibujar) o Escape cierran las hermanas de un
+        // grupo de la barra, como en el lienzo; Escape no hace nada mas.
+        let cerrar = matches!(
+            evento,
+            EventoAnotador::Pulsar(_) | EventoAnotador::Tecla(TeclaAnotador::Escape)
+        );
+        if cerrar
+            && let Some(a) = self.anotacion.as_mut().filter(|a| a.id == id)
+            && a.mano.desplegado.take().is_some()
+        {
+            self.repintar_paleta();
+            if matches!(evento, EventoAnotador::Tecla(TeclaAnotador::Escape)) {
+                return Ok(false);
+            }
+        }
         let Some(a) = self.anotacion.as_mut().filter(|a| a.id == id) else {
             return Ok(false);
         };
@@ -1371,151 +1659,170 @@ impl Pines {
                 y: p.y as i32,
             };
         }
-        // El anotador es puro y no lee el teclado: se le dicen los
-        // modificadores justo antes de cada gesto del puntero.
-        if matches!(
-            evento,
-            EventoAnotador::Pulsar(_)
-                | EventoAnotador::Mover(_)
-                | EventoAnotador::Soltar(_)
-                | EventoAnotador::Muestra { .. }
-        ) {
-            let (shift, alt) = pixpin_shell::modificadores();
-            a.anotador.poner_modificadores(shift, alt);
-        }
-        // El dibujo va en pixeles del contenido ORIGINAL; el raton, en los de
-        // la ventana. Con el pin agrandado o reducido la tinta caia lejos
-        // del puntero (lo reporto el usuario).
-        let evento = a_documento(evento, escala);
         match &evento {
             EventoAnotador::Rueda(_) => a.ver_grosor = true,
             EventoAnotador::Pulsar(_) => a.ver_grosor = false,
             _ => {}
         }
+        // El dibujo va en pixeles del contenido ORIGINAL; el raton, en los de
+        // la ventana. La camara es esa escala: con el pin agrandado o reducido
+        // la tinta cae bajo el puntero (lo reporto el usuario).
+        a.zoom = escala.0.max(1e-3);
+        let en_el_documento = a_documento(evento.clone(), escala);
         if let EventoAnotador::Mover(p)
         | EventoAnotador::Pulsar(p)
-        | EventoAnotador::Muestra { p, .. } = &evento
+        | EventoAnotador::Muestra { p, .. } = en_el_documento
         {
-            a.cursor_documento = *p;
+            a.cursor_documento = p;
         }
-        let efecto = a.anotador.procesar(evento);
-        let mut repintar = true;
-        let mut salir = false;
-
-        match efecto {
-            EfectoAnotador::Nada => repintar = false,
-            EfectoAnotador::Repintar => a.en_curso = None,
-            EfectoAnotador::EnCurso(e) => a.en_curso = Some(*e),
-            EfectoAnotador::Terminado(e) => {
-                a.en_curso = None;
-                a.escena.anadir(*e);
-            }
-            EfectoAnotador::BorrarEn(p) => {
-                if let Some(victima) = a.escena.elemento_en(p) {
-                    a.escena.borrar_apuntando(victima);
+        let camara = pixpin_motor2d::camara::Camara {
+            x: 0.0,
+            y: 0.0,
+            zoom: a.zoom,
+        };
+        // El contenido del pin, en sus coordenadas: el raton llega asi.
+        let area = Rect {
+            x: 0,
+            y: 0,
+            ancho: u32::MAX / 4,
+            alto: u32::MAX / 4,
+        };
+        let vista = Vista {
+            camara: &camara,
+            area,
+            interfaz: area,
+            escala_por_cien: a.escala_por_cien,
+        };
+        let punto = |p: pixpin_motor2d::Punto2| Punto {
+            x: p.x.round() as i32,
+            y: p.y.round() as i32,
+        };
+        const VK_ESCAPE: u32 = 0x1B;
+        const VK_ENTRAR: u32 = 0x0D;
+        const VK_RETROCESO: u32 = 0x08;
+        /// Ctrl+Z y Ctrl+Y llegan al pin como su caracter de control.
+        const CTRL_Z: char = '\u{1a}';
+        const CTRL_Y: char = '\u{19}';
+        let tecla = |vk: u32| E::Tecla {
+            vk,
+            shift: false,
+            ctrl: false,
+            alt: false,
+        };
+        let ev = match evento {
+            EventoAnotador::Pulsar(p) => Some(E::BotonPulsado(punto(p))),
+            EventoAnotador::Mover(p) => Some(E::RatonMovido(punto(p))),
+            EventoAnotador::Soltar(p) => Some(E::BotonSoltado(punto(p))),
+            EventoAnotador::Muestra { presion, .. } => {
+                // Un punto fino del lapiz: derecho al motor, con su presion y
+                // su subpixel. La goma, el lazo y el cuentagotas lo siguen por
+                // el `Mover` que le sigue.
+                let por_la_mano = matches!(
+                    a.gesto.herramienta,
+                    Herramienta::Borrador | Herramienta::Lazo | Herramienta::CopiarEstilo
+                );
+                if let (false, EventoAnotador::Muestra { p, .. }) = (por_la_mano, en_el_documento) {
+                    let g = crate::dibujo::teclas::con_modificadores(
+                        pixpin_motor2d::gesto::EventoGesto::Mover {
+                            p,
+                            shift: false,
+                            alt: false,
+                            presion,
+                        },
+                    );
+                    a.mano.al_motor(g, &mut a.gesto, &mut a.escena, &camara);
+                    return Ok(true);
                 }
+                None
             }
-            EfectoAnotador::Deshacer => {
+            EventoAnotador::Rueda(delta) => {
+                a.gesto.grosor_tinta = grosor_con_rueda(a.gesto.grosor_tinta, delta);
+                return Ok(true);
+            }
+            EventoAnotador::Caracter(CTRL_Z) => {
                 a.escena.deshacer();
+                return Ok(true);
             }
-            EfectoAnotador::Rehacer => {
+            EventoAnotador::Caracter(CTRL_Y) => {
                 a.escena.rehacer();
+                return Ok(true);
             }
-            // La mano: el anotador no ve la escena y pregunta.
-            EfectoAnotador::SeleccionarEn(p) => {
-                let elegido = a.escena.elemento_en(p);
-                a.anotador.poner_seleccion(elegido);
-            }
-            EfectoAnotador::MoverSeleccion { dx, dy } => {
-                if let Some(sel) = a.anotador.seleccion() {
-                    a.escena.mover(sel, dx, dy);
+            EventoAnotador::Caracter(c) => Some(E::Caracter(c)),
+            EventoAnotador::Tecla(TeclaAnotador::Escape) => {
+                // Escape suelta lo que haya a medias (el texto, lo elegido,
+                // un gesto); sin nada, sale guardando, como siempre.
+                let algo = a.gesto.esta_escribiendo()
+                    || !a.gesto.seleccion.esta_vacia()
+                    || !a.gesto.en_reposo()
+                    || a.gesto.lazo.is_some();
+                if !algo {
+                    self.salir_de_anotar()?;
+                    return Ok(false);
                 }
+                Some(tecla(VK_ESCAPE))
             }
-            EfectoAnotador::MovimientoTerminado { dx, dy } => {
-                if let Some(sel) = a.anotador.seleccion() {
-                    a.escena.apuntar_movimiento(sel, dx, dy);
-                }
+            EventoAnotador::Tecla(TeclaAnotador::Enter) => Some(tecla(VK_ENTRAR)),
+            EventoAnotador::Tecla(TeclaAnotador::Retroceso) => Some(tecla(VK_RETROCESO)),
+            EventoAnotador::Tecla(TeclaAnotador::Deshacer) => {
+                a.escena.deshacer();
+                return Ok(true);
             }
-            EfectoAnotador::DuplicarSeleccion => {
-                if let Some(copia) = a
-                    .anotador
-                    .seleccion()
-                    .and_then(|sel| a.escena.buscar(sel).cloned())
+            EventoAnotador::Tecla(TeclaAnotador::Rehacer) => {
+                a.escena.rehacer();
+                return Ok(true);
+            }
+            EventoAnotador::CambiarHerramienta(h) => {
+                if crate::dibujo::permitidas::permitida(crate::dibujo::permitidas::Anfitrion::Pin, h)
                 {
-                    let nuevo = a.escena.anadir(copia);
-                    a.anotador.poner_seleccion(Some(nuevo));
+                    crate::dibujo::teclas::elegir_herramienta(&mut a.gesto, h);
                 }
+                return Ok(true);
             }
-            EfectoAnotador::BorrarSeleccion => {
-                if let Some(sel) = a.anotador.seleccion() {
-                    a.escena.borrar_apuntando(sel);
-                    a.anotador.poner_seleccion(None);
-                }
-            }
-            EfectoAnotador::Salir => salir = true,
-        }
-
-        if salir {
-            self.salir_de_anotar()?;
+            _ => None,
+        };
+        let Some(ev) = ev else {
             return Ok(false);
+        };
+        let hecho = a
+            .mano
+            .interfaz(&ev, &mut a.gesto, &mut a.escena, None, false, vista);
+        let hecho = if hecho.consumido {
+            hecho
+        } else {
+            a.mano
+                .herramienta(&ev, &mut a.gesto, &mut a.escena, None, vista, 0.0, 0.0)
+        };
+        let cursor = hecho.paso.as_ref().map(|p| p.r.cursor);
+        let repintar = hecho.consumido || hecho.repinte.algo();
+        let herramienta = a.gesto.herramienta;
+        // Una letra pudo cambiar de herramienta: la paleta y el cursor la
+        // siguen.
+        let letra = matches!(ev, E::Caracter(_));
+        if letra {
+            self.repintar_paleta();
+        }
+        if (cursor.is_some() || letra)
+            && let Some(pin) = self.vivos.get(&id)
+        {
+            pin.poner_cursor_anotacion(cursor_pin_de(herramienta));
         }
         Ok(repintar)
     }
 
-    /// Pinta en el pin lo que la anotacion tiene ahora: dibujo, lupa e IME.
+    /// Pinta en el pin lo que la anotacion tiene ahora.
     fn repintar_anotacion(&self, id: u64) {
         let Some(a) = self.anotacion.as_ref().filter(|a| a.id == id) else {
             return;
         };
-        let ordenes = a.ordenes();
-        // Lo que la lupa no puede ensenar, aparte de las ordenes: una `Orden`
-        // ya no dice de que figura salio.
+        let (ordenes, grafitos) = a.ordenes();
+        // Lo que tapa un mosaico, aparte de las ordenes: una `Orden` ya no
+        // dice de que figura salio.
         let tapadas = pixpin_motor2d::mosaico::cajas_tapadas(&a.escena.elementos);
-        let escribiendo = a.anotador.editando_texto();
-        let con_lupa = a.anotador.herramienta() == Herramienta::Lupa;
-        let aumento = a.anotador.lupa();
-        let cursor = a.ultimo_cursor;
-        let escala = a.escala_por_cien;
         if let Some(pin) = self.vivos.get(&id) {
-            // Con un texto abierto, el IME compone al lado (D57).
-            if let Some(p) = escribiendo {
-                // El texto esta en pixeles del original; el IME, en los de
-                // la ventana.
-                let (fx, fy) = pin.escala_contenido();
-                pin.poner_posicion_ime(Punto {
-                    x: (p.x * fx) as i32,
-                    y: (p.y * fy) as i32,
-                });
-            }
-            // La lupa (D52): la aritmetica aqui, los pixeles en el pin.
-            // Se coloca DENTRO del contenido, huyendo del cursor.
-            let r = pin.rect_contenido();
-            let l = Lupa::con_aumento(escala, aumento);
-            // En un pin mas pequeno que la lupa no cabe: sin lupa, en
-            // vez de una lupa que tape el pin entero.
-            let cabe = r.ancho > l.diametro && r.alto > l.diametro;
-            let lupa = if con_lupa && cabe {
-                let local = Rect {
-                    x: 0,
-                    y: 0,
-                    ancho: r.ancho,
-                    alto: r.alto,
-                };
-                let pos = l.colocar(cursor, local);
-                Some(LupaPin {
-                    fuente: l.region_fuente(cursor, local),
-                    destino: Rect {
-                        x: pos.x,
-                        y: pos.y,
-                        ancho: l.diametro,
-                        alto: l.diametro,
-                    },
-                })
-            } else {
-                None
-            };
-            pin.poner_lupa(lupa);
-            pin.poner_anotaciones(ordenes, tapadas);
+            // La lupa del anotador viejo no esta entre las herramientas del
+            // pin (`permitidas`): se quita por si quedo puesta.
+            pin.poner_lupa(None);
+            pin.poner_anotaciones_con_grafito(ordenes, grafitos, tapadas);
         }
     }
 
@@ -1654,6 +1961,8 @@ impl Pines {
             .eliminar(id)
             .context("no se pudo eliminar del almacen")?;
         self.vivos.remove(&id);
+        self.herramientas.remove(&id);
+        self.pizarras.remove(&id);
         Ok(())
     }
 
@@ -1889,7 +2198,9 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
         // y hay que mover el dibujo lo mismo que se recorto.
         let (imagen, dx, dy) = match fondo {
             Some(i) => (i, 0.0, 0.0),
-            None => lienzo_en_blanco(&elementos),
+            // Del papel del lienzo (su `viewBackgroundColor`): un dibujo
+            // hecho sobre «Crema» en el movil es crema tambien en el pin.
+            None => lienzo_en_blanco(&elementos, pixpin_motor2d::excalidraw::fondo(&lienzo)),
         };
         let id = self.pinear_imagen_centrada(&imagen, monitor)?;
 
@@ -2090,6 +2401,8 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
                 tracing::warn!(?e, id = *id, "no se pudo marcar el pin como cerrado");
             }
             self.vivos.remove(id);
+            self.herramientas.remove(id);
+            self.pizarras.remove(id);
         }
         // Los en vivo no tienen sitio que recordar: se cierran sin mas.
         let en_vivo = self.en_vivo.len();
@@ -2101,22 +2414,40 @@ Todavia no se puede ver aqui; sigue dentro del proyecto.",
     /// dando por abiertos, asi que `mostrar_todos` los devuelve enteros.
     /// Es la diferencia con `cerrar_todos`, que si los cierra.
     pub fn ocultar_todos(&mut self) -> usize {
-        let cuantos = self.vivos.len();
+        let cuantos = self.vivos.len() + self.en_vivo.len();
         self.vivos.clear();
+        // Vuelven del almacen al mostrarlos, con su documento guardado.
+        self.herramientas.clear();
+        self.pizarras.clear();
+        for (pin, _) in self.en_vivo.values() {
+            pin.esconder(true);
+        }
+        self.en_vivo_ocultos = !self.en_vivo.is_empty();
         cuantos
     }
 
-    /// Devuelve a la pantalla todo lo que el almacen da por abierto. Los
-    /// grupos ocultos siguen ocultos: para eso estan.
+    /// Devuelve a la pantalla todo lo que el almacen da por abierto, y los
+    /// pines en vivo escondidos. Los grupos ocultos siguen ocultos: para eso
+    /// estan.
     pub fn mostrar_todos(&mut self, disposicion: &DisposicionMonitores) -> usize {
-        self.restaurar(disposicion)
+        for (pin, _) in self.en_vivo.values() {
+            pin.esconder(false);
+        }
+        let en_vivo = if self.en_vivo_ocultos {
+            self.en_vivo.len()
+        } else {
+            0
+        };
+        self.en_vivo_ocultos = false;
+        self.restaurar(disposicion) + en_vivo
     }
 
-    /// Un solo comando para las dos cosas, como en el original: si hay algo
-    /// en pantalla lo esconde, y si no, lo saca. Devuelve si escondio y
-    /// cuantos pines movio.
+    /// Un solo comando para las dos cosas, como en el original (Ctrl+2): si
+    /// hay algo en pantalla lo esconde, y si no, lo saca. Devuelve si
+    /// escondio y cuantos pines movio.
     pub fn alternar_todos(&mut self, disposicion: &DisposicionMonitores) -> (bool, usize) {
-        if self.vivos.is_empty() {
+        let en_vivo_a_la_vista = !self.en_vivo.is_empty() && !self.en_vivo_ocultos;
+        if self.vivos.is_empty() && !en_vivo_a_la_vista {
             (false, self.mostrar_todos(disposicion))
         } else {
             (true, self.ocultar_todos())
@@ -2318,6 +2649,62 @@ pub(crate) fn guardar_lienzo(
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn la_barra_del_pin_es_la_del_lienzo_sin_lo_apagado_ni_lo_que_el_pin_no_pinta() {
+        let area = Rect {
+            x: 0,
+            y: 0,
+            ancho: 1920,
+            alto: 1040,
+        };
+        crate::dibujo::permitidas::fijar(pixpin_store::herramientas::Herramientas {
+            apagadas: vec!["flecha-codos".into()],
+        });
+        let caja = caja_del_pin(area, 100);
+        // Lo que se puede coger: lo suelto y lo de dentro de cada grupo.
+        let mut b = caja.botones().to_vec();
+        for g in pixpin_ui::GrupoBarra::TODOS {
+            b.extend(caja.miembros(g));
+        }
+        // Mas que las once del anotador viejo: las del lienzo.
+        for h in [
+            Herramienta::Lazo,
+            Herramienta::Rombo,
+            Herramienta::Grafito,
+            Herramienta::FlechaLibre,
+            Herramienta::Marco,
+        ] {
+            assert!(b.contains(&BotonCaja::Elegir(h)), "{h:?}");
+        }
+        // Casos negativos: la apagada y la que el pin no sabe hacer; y el
+        // grupo de medir, sin ninguna que el pin sepa, ni sale.
+        assert!(!b.contains(&BotonCaja::Elegir(Herramienta::FlechaCodos)));
+        assert!(!b.contains(&BotonCaja::Elegir(Herramienta::Lupa)));
+        assert!(!b.contains(&BotonCaja::Elegir(Herramienta::Escalar)));
+        assert!(!caja.botones().contains(&BotonCaja::Grupo(pixpin_ui::GrupoBarra::Medir)));
+        assert!(!caja.botones().contains(&BotonCaja::Grupo(pixpin_ui::GrupoBarra::Sacar)));
+        // Cabe en la pantalla: es una barra, no una columna de treinta.
+        assert!(caja.marco.alto < 100 && caja.marco.ancho <= area.ancho);
+        // Con un grupo abierto, la ventana de la paleta abarca sus hermanas;
+        // cerrado, solo la barra.
+        assert_eq!(rect_de_paleta(&caja), caja.marco);
+        let abierta = caja.con_desplegado(Some(pixpin_ui::GrupoBarra::Formas));
+        let r = rect_de_paleta(&abierta);
+        let m = abierta.menu().expect("abierto").marco;
+        assert!(r.abajo() >= m.abajo() && r.arriba() <= caja.marco.arriba(), "{r:?}");
+        crate::dibujo::permitidas::fijar(Default::default());
+    }
+
+    #[test]
+    fn la_rueda_sobre_el_pin_pasa_por_los_tres_grosores_del_lienzo() {
+        use pixpin_motor2d::tinta::{GROSOR_FINO, GROSOR_GRUESO, GROSOR_MEDIO};
+        assert_eq!(grosor_con_rueda(GROSOR_MEDIO, 120), GROSOR_GRUESO);
+        assert_eq!(grosor_con_rueda(GROSOR_MEDIO, -120), GROSOR_FINO);
+        // En los extremos no se sale.
+        assert_eq!(grosor_con_rueda(GROSOR_GRUESO, 120), GROSOR_GRUESO);
+        assert_eq!(grosor_con_rueda(GROSOR_FINO, -120), GROSOR_FINO);
+    }
     use pixpin_motor2d::gesto::{EventoGesto, Gesto};
     use pixpin_motor2d::{ColorRgba, Elemento, EstiloTrazo, Figura, Punto2};
 
@@ -2456,7 +2843,7 @@ mod pruebas {
         // (1178, 2148). Midiendo desde el origen salia un pin de 1202 x 2172
         // —mas alto que su pantalla—, casi todo en blanco, y al encogerlo
         // para que cupiera el dibujo se veia diminuto y arrinconado.
-        let (imagen, dx, dy) = lienzo_en_blanco(&[trazo(165.0, 228.0, 1178.0, 2148.0)]);
+        let (imagen, dx, dy) = lienzo_en_blanco(&[trazo(165.0, 228.0, 1178.0, 2148.0)], BLANCO);
         let m = LIENZO_MARGEN as u32;
         assert_eq!(
             imagen.ancho,
@@ -2474,7 +2861,7 @@ mod pruebas {
         // Lo que de verdad importa: despues de mover, ni un punto se sale.
         // Si esto falla, al usuario se le pierde parte del dibujo.
         let mut e = trazo(165.0, 228.0, 1178.0, 2148.0);
-        let (imagen, dx, dy) = lienzo_en_blanco(std::slice::from_ref(&e));
+        let (imagen, dx, dy) = lienzo_en_blanco(std::slice::from_ref(&e), BLANCO);
         e.mover(dx, dy);
         let (x1, y1, x2, y2) = e.caja();
         assert!(x1 >= 0.0 && y1 >= 0.0, "se sale por arriba: {x1} {y1}");
@@ -2486,11 +2873,27 @@ mod pruebas {
         );
     }
 
+    const BLANCO: pixpin_motor2d::ColorRgba = pixpin_motor2d::escena::FONDO_DE_FABRICA;
+
+    #[test]
+    fn la_hoja_del_pin_es_del_papel_del_lienzo() {
+        // Una hoja del movil sobre «Crema» (`#fdf6e3`) se pinea crema.
+        let json = r##"{"type":"excalidraw","elements":[],
+            "appState":{"viewBackgroundColor":"#fdf6e3"}}"##;
+        let lienzo = pixpin_motor2d::excalidraw::leer(json).unwrap();
+        let papel = pixpin_motor2d::excalidraw::fondo(&lienzo);
+        let (imagen, _, _) = lienzo_en_blanco(&[], papel);
+        assert!(imagen.pixeles.chunks_exact(4).all(|p| p == [253, 246, 227, 255]));
+        // Caso negativo: sin papel dicho, blanco como siempre.
+        let (imagen, _, _) = lienzo_en_blanco(&[], BLANCO);
+        assert!(imagen.pixeles.iter().all(|&v| v == 255));
+    }
+
     #[test]
     fn una_hoja_en_blanco_da_el_lienzo_minimo_sin_moverse() {
         // Caso negativo: sin nada dibujado no hay esquina de la que partir, y
         // un lienzo de cero no se veria.
-        let (imagen, dx, dy) = lienzo_en_blanco(&[]);
+        let (imagen, dx, dy) = lienzo_en_blanco(&[], BLANCO);
         assert_eq!(imagen.ancho, LIENZO_MINIMO);
         assert_eq!(imagen.alto, LIENZO_MINIMO);
         assert!((dx - LIENZO_MARGEN).abs() < 0.01 && (dy - LIENZO_MARGEN).abs() < 0.01);
@@ -2502,7 +2905,7 @@ mod pruebas {
         // igual a su izquierda. Midiendo desde el origen esto daba un lienzo
         // minimo con el dibujo entero fuera: invisible.
         let mut e = trazo(-900.0, -700.0, -400.0, -200.0);
-        let (imagen, dx, dy) = lienzo_en_blanco(std::slice::from_ref(&e));
+        let (imagen, dx, dy) = lienzo_en_blanco(std::slice::from_ref(&e), BLANCO);
         e.mover(dx, dy);
         let (x1, y1, x2, y2) = e.caja();
         assert!(x1 >= 0.0 && y1 >= 0.0, "quedo fuera: {x1} {y1}");

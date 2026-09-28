@@ -22,7 +22,7 @@ use pixpin_ui::universo::{
 use pixpin_universo::buscar::{Hallazgo, IndiceBusqueda, TOPE_RESULTADOS};
 use pixpin_universo::ficha::FichaLuna;
 use pixpin_universo::{
-    Arrastre, Clase, Encuadre, HerramientaUniverso, IdAstro, Nivel, RADIO_PLANETA_L,
+    Arrastre, Clase, Encuadre, FiguraUniverso, HerramientaUniverso, IdAstro, Nivel, RADIO_PLANETA_L,
     RADIO_PLANETA_M, RADIO_PLANETA_S, RejillaAstros, TipoConexion, Universo, Visto,
     ZOOM_MINIMO_UNIVERSO, nebulosa,
 };
@@ -59,6 +59,9 @@ const BORRAR_SIN_PREGUNTAR: usize = 5;
 const TOLERANCIA_LINEA: f32 = 8.0;
 /// El lado de un emoji recien puesto, en pixeles logicos de pantalla.
 const LADO_EMOJI: f32 = 64.0;
+/// La letra de un rotulo recien puesto, en pixeles logicos: los 24 sp del
+/// movil, que es letra de titulo sobre el cielo.
+const TAM_ROTULO: f32 = 24.0;
 /// Una galaxia por debajo de esto ya no ensena nada de dentro: su cuaderno
 /// se puede soltar.
 const RADIO_LEJANO: f32 = 6.0;
@@ -129,6 +132,12 @@ pub struct Sesion {
     pub emoji_elegido: Option<String>,
     /// La herramienta Emoji sin emoji: el selector esta abierto (Tarea 15).
     pub selector_abierto: bool,
+    /// H3: la figura que pone la herramienta Figura (se elige en su tira).
+    pub figura_elegida: FiguraUniverso,
+    /// H3: el rotulo que se esta escribiendo, con su esquina en el mundo.
+    /// Se escribe aqui y no con el texto del editor para que sea de una
+    /// pieza, grande y claro, como el del movil.
+    pub rotulo: Option<(Punto2, f32, String)>,
     arrastre: Option<(Arrastre, Punto2)>,
     conectando: Option<IdAstro>,
     /// Una ficha pulsada en la nebulosa: se coloca donde se suelte.
@@ -139,6 +148,10 @@ pub struct Sesion {
     destellos: Vec<(IdAstro, Instant)>,
     pulsos: Vec<(IdAstro, Instant)>,
     guardar_en: Option<Instant>,
+    /// El guardado diferido que esta escribiendo en otro hilo (ver
+    /// `guardar_detras`). Mientras viva no se lanza otro: los dos
+    /// escribirian el mismo temporal.
+    guardando: Option<std::thread::JoinHandle<()>>,
     visto: (u64, u64),
     estrellas: Option<Estrellas>,
     /// A3 fase 2: cuanto colchon lleva la capa de las estrellas por cada
@@ -258,6 +271,33 @@ fn union(cajas: impl Iterator<Item = (f32, f32, f32, f32)>) -> Option<(f32, f32,
     cajas.reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
 }
 
+/// Lo que va al fichero del universo, copiado para escribirlo en otro hilo
+/// (`guardar_detras`). Sin la historia de deshacer de ninguno de los dos: no
+/// se guarda, y copiarla era lo mas caro. Sin lo borrado de la escena: lo
+/// quitaria `compactar` de todos modos.
+fn copia_para_guardar(u: &Universo, escena: &Escena) -> (Universo, Escena) {
+    let mut copia = Universo::nuevo();
+    copia.version = u.version;
+    copia.siguiente_id = u.siguiente_id;
+    copia.astros = u.astros.clone();
+    copia.conexiones = u.conexiones.clone();
+    copia.encuadre = u.encuadre;
+    copia.quitados = u.quitados.clone();
+    copia.resto = u.resto.clone();
+    let mut anotaciones = Escena::nueva();
+    anotaciones.version = escena.version;
+    anotaciones.siguiente_id = escena.siguiente_id;
+    anotaciones.escala = escena.escala.clone();
+    anotaciones.fondo = escena.fondo;
+    anotaciones.elementos = escena
+        .elementos
+        .iter()
+        .filter(|e| !e.borrado)
+        .cloned()
+        .collect();
+    (copia, anotaciones)
+}
+
 /// La caja agrandada un `factor` alrededor de su centro.
 fn agrandar(c: (f32, f32, f32, f32), factor: f32) -> (f32, f32, f32, f32) {
     let (cx, cy) = ((c.0 + c.2) / 2.0, (c.1 + c.3) / 2.0);
@@ -316,6 +356,8 @@ impl Sesion {
             ultimo_tipo: TipoConexion::Relacion,
             emoji_elegido: None,
             selector_abierto: false,
+            figura_elegida: FiguraUniverso::default(),
+            rotulo: None,
             arrastre: None,
             conectando: None,
             colocando: None,
@@ -325,6 +367,7 @@ impl Sesion {
             destellos: Vec::new(),
             pulsos: Vec::new(),
             guardar_en: None,
+            guardando: None,
             visto: (0, 0),
             estrellas: None,
             margen_estrellas_px: 0.0,
@@ -472,7 +515,18 @@ impl Sesion {
             return Vec::new();
         };
         let colocadas: HashSet<&str> = self.u.astros.iter().filter_map(|a| a.codigo()).collect();
-        nebulosa::sin_colocar(todas, &colocadas)
+        // D200 desde H2: las notas se leen siempre (el armado del chat las
+        // pone en orbita), y el interruptor de la galaxia decide solo si las
+        // que no estan en el cielo salen aqui para colocarlas.
+        let notas = self
+            .galaxia_de(proyecto)
+            .and_then(|g| self.u.astro(g))
+            .is_some_and(|a| a.notas_del_chat);
+        let mut v = nebulosa::sin_colocar(todas, &colocadas);
+        if !notas {
+            v.retain(|f| f.clase != pixpin_universo::ficha::ClaseLuna::Nota);
+        }
+        v
     }
 
     /// Atiende el pedido pendiente (D211, D212). Se queda pendiente si hace
@@ -500,8 +554,7 @@ impl Sesion {
                 } else if let Some(g) = self.galaxia_de(proyecto) {
                     if self.cargador.cargado(proyecto).is_none() {
                         // Sin su cuaderno no se sabe en que pagina esta.
-                        let notas = self.u.astro(g).is_some_and(|a| a.notas_del_chat);
-                        self.cargador.pedir(proyecto, notas);
+                        self.cargador.pedir(proyecto);
                         self.enfocar(g, camara);
                         self.pedido = Some(p);
                         return true;
@@ -607,15 +660,61 @@ impl Sesion {
         }
     }
 
-    /// Guarda ya. Lo llama el guardado diferido y el cierre.
+    /// Guarda ya, en este hilo. Lo llaman el cierre y el pedir cierre, que
+    /// necesitan saber si se pudo. Antes espera al guardado diferido que
+    /// este en curso: si no, ese hilo podria acabar DESPUES y dejar en el
+    /// disco lo de hace dos segundos encima de lo de ahora.
     pub fn guardar(&mut self, escena: &Escena) -> Result<(), pixpin_universo::ErrorUniverso> {
         self.guardar_en = None;
+        self.esperar_guardado();
         let hecho = pixpin_universo::formato::guardar(&self.ruta, &self.u, escena);
         match &hecho {
             Ok(()) => tracing::debug!(ruta = %self.ruta.display(), "universo guardado"),
             Err(e) => tracing::warn!(?e, "no se pudo guardar el universo"),
         }
         hecho
+    }
+
+    /// **El guardado diferido, fuera del hilo de la interfaz.**
+    ///
+    /// Se lanzaba 2 s despues de cada cambio y escribia en este hilo:
+    /// convertir a JSON el universo y la escena entera y escribirlo al disco
+    /// crece con TODO lo dibujado (`medir_el_guardado_diferido`), y mientras
+    /// tanto el lapiz no se movia. Aqui solo se copia lo que va al fichero
+    /// (`copia_para_guardar`) y el resto lo hace otro hilo.
+    ///
+    /// Si el anterior aun escribe, se deja para un poco despues en vez de
+    /// lanzar otro: dos escribiendo el mismo temporal lo romperian.
+    fn guardar_detras(&mut self, escena: &Escena) {
+        if self.guardando.as_ref().is_some_and(|h| !h.is_finished()) {
+            self.guardar_en = Some(Instant::now() + Duration::from_millis(200));
+            return;
+        }
+        self.guardar_en = None;
+        self.esperar_guardado();
+        let (u, anotaciones) = copia_para_guardar(&self.u, escena);
+        let ruta = self.ruta.clone();
+        let hilo = std::thread::Builder::new()
+            .name("guardar-universo".into())
+            .spawn(move || match pixpin_universo::formato::guardar(&ruta, &u, &anotaciones) {
+                Ok(()) => tracing::debug!(ruta = %ruta.display(), "universo guardado"),
+                // Queda en el registro; se reintenta al siguiente cambio.
+                Err(e) => tracing::warn!(?e, "no se pudo guardar el universo"),
+            });
+        match hilo {
+            Ok(h) => self.guardando = Some(h),
+            // Sin hilo (no deberia pasar) se guarda aqui, como antes.
+            Err(_) => {
+                let _ = self.guardar(escena);
+            }
+        }
+    }
+
+    /// Espera a que acabe el guardado diferido en curso, si lo hay.
+    pub fn esperar_guardado(&mut self) {
+        if let Some(h) = self.guardando.take() {
+            let _ = h.join();
+        }
     }
 
     /// Ctrl+clic (D224).
@@ -852,11 +951,7 @@ impl Sesion {
             }
         }
         // Sus fichas, para que las lunas nuevas tengan nombre e icono.
-        let notas = self
-            .galaxia_de(&proyecto)
-            .and_then(|g| self.u.astro(g))
-            .is_some_and(|a| a.notas_del_chat);
-        self.cargador.pedir(&proyecto, notas);
+        self.cargador.pedir(&proyecto);
         !hechos.is_empty()
     }
 
@@ -935,6 +1030,33 @@ impl Sesion {
                 }
                 VK_ESCAPE => {
                     self.busqueda = None;
+                    return hecho;
+                }
+                _ if !ctrl => return Respuesta::Consumido { repintar: false },
+                _ => {}
+            }
+        }
+        if self.rotulo.is_some() {
+            match vk {
+                VK_RETROCESO => {
+                    if let Some((_, _, t)) = &mut self.rotulo {
+                        t.pop();
+                    }
+                    return hecho;
+                }
+                // Mayus+Intro parte la linea; Intro lo deja puesto.
+                VK_ENTRAR if shift => {
+                    if let Some((_, _, t)) = &mut self.rotulo {
+                        t.push('\n');
+                    }
+                    return hecho;
+                }
+                VK_ENTRAR => {
+                    self.cerrar_rotulo(escena);
+                    return hecho;
+                }
+                VK_ESCAPE => {
+                    self.rotulo = None;
                     return hecho;
                 }
                 _ if !ctrl => return Respuesta::Consumido { repintar: false },
@@ -1040,6 +1162,10 @@ impl Sesion {
             b.push(c);
             return Respuesta::Consumido { repintar: true };
         }
+        if let Some((_, _, t)) = &mut self.rotulo {
+            t.push(c);
+            return Respuesta::Consumido { repintar: true };
+        }
         // Con el selector abierto, lo que se teclea filtra los emojis.
         if self.selector_abierto {
             self.selector.filtro.push(c);
@@ -1073,6 +1199,22 @@ impl Sesion {
             'f' if self.encajar_seleccion(camara) => hecho,
             _ => Respuesta::Pasa,
         }
+    }
+
+    /// H3: deja puesto el rotulo que se estaba escribiendo, si tiene algo.
+    /// Uno vacio no deja nada: es como no haberlo empezado.
+    fn cerrar_rotulo(&mut self, escena: &mut Escena) {
+        let Some((q, tam, texto)) = self.rotulo.take() else {
+            return;
+        };
+        if texto.trim().is_empty() {
+            return;
+        }
+        escena.abrir_paso();
+        escena.anadir(pixpin_universo::herramienta::elemento_de_rotulo(
+            &texto, q.x, q.y, tam,
+        ));
+        escena.cerrar_paso();
     }
 
     /// `F`: encaja la seleccion. Va aparte de `caracter` porque mueve la
@@ -1155,6 +1297,29 @@ impl Sesion {
                         escena.cerrar_paso();
                     }
                 }
+                return Respuesta::Consumido { repintar: true };
+            }
+            Some(HerramientaUniverso::Figura) => {
+                // Del tamano de un emoji en pantalla, como el cuerpo de
+                // figura del movil (mismo radio que los demas cuerpos).
+                let efectiva = crate::navegacion::vista_efectiva(camara, ed.escala_por_cien);
+                let lado = LADO_EMOJI * self.escala() / efectiva.zoom;
+                escena.abrir_paso();
+                escena.anadir(pixpin_universo::herramienta::elemento_de_figura(
+                    self.figura_elegida,
+                    q.x,
+                    q.y,
+                    lado,
+                ));
+                escena.cerrar_paso();
+                return Respuesta::Consumido { repintar: true };
+            }
+            Some(HerramientaUniverso::Rotulo) => {
+                // Un clic con uno a medias lo deja puesto y empieza otro.
+                self.cerrar_rotulo(escena);
+                let efectiva = crate::navegacion::vista_efectiva(camara, ed.escala_por_cien);
+                let tam = TAM_ROTULO * self.escala() / efectiva.zoom;
+                self.rotulo = Some((q, tam, String::new()));
                 return Respuesta::Consumido { repintar: true };
             }
             Some(HerramientaUniverso::Conectar) => {
@@ -1316,8 +1481,7 @@ impl Sesion {
             self.guardar_en = Some(Instant::now() + GUARDAR_TRAS);
         }
         if self.guardar_en.is_some_and(|t| Instant::now() >= t) {
-            // Un error queda en el registro; se reintenta al siguiente cambio.
-            let _ = self.guardar(escena);
+            self.guardar_detras(escena);
         }
     }
 
@@ -1359,6 +1523,16 @@ impl Sesion {
                 let t = self.textos.t_args("universo-rotas", &args);
                 self.avisar(t, AVISO);
             }
+            // H2: cada vez que llega el chat (al abrir la galaxia y cada vez
+            // que su cuaderno cambia, D243) se pone lo que falte en orbita,
+            // como el `LaunchedEffect(mensajes)` del movil.
+            if c.error.is_none() {
+                let inf =
+                    pixpin_universo::desde_el_chat::armar(&mut self.u, &c.proyecto, &c.nodos);
+                if inf != Default::default() {
+                    tracing::info!(proyecto = %c.proyecto, ?inf, "galaxia armada con el chat");
+                }
+            }
         }
         if !llegados.is_empty() {
             self.rehacer_fichas();
@@ -1377,11 +1551,7 @@ impl Sesion {
         }
         self.revisado = Instant::now();
         for p in self.cargador.cambiados() {
-            let notas = self
-                .galaxia_de(&p)
-                .and_then(|g| self.u.astro(g))
-                .is_some_and(|a| a.notas_del_chat);
-            self.cargador.pedir(&p, notas);
+            self.cargador.pedir(&p);
         }
     }
 
@@ -1424,7 +1594,7 @@ impl Sesion {
                 if self.cargador.cargado(proyecto).is_some() {
                     self.cargador.tocar(proyecto, ahora);
                 } else {
-                    self.cargador.pedir(proyecto, a.notas_del_chat);
+                    self.cargador.pedir(proyecto);
                 }
             }
         }
@@ -1647,6 +1817,28 @@ impl Sesion {
         let pan = self.paneles();
         self.pintar_ruta(p, &pan);
         self.pintar_barra(p, &pan);
+        // H3: el rotulo a medio escribir, donde quedara, con su cursor.
+        if let Some((q, tam, texto)) = &self.rotulo {
+            let s = efectiva.a_pantalla(*q);
+            let t = tam * efectiva.zoom;
+            let c = pixpin_universo::herramienta::color_de_rotulo();
+            let color = pixpin_render::Color {
+                r: c.r,
+                g: c.g,
+                b: c.b,
+                a: 1.0,
+            };
+            let mut y = s.y;
+            let lineas: Vec<&str> = texto.split('\n').collect();
+            for (i, l) in lineas.iter().enumerate() {
+                p.texto(l, s.x, y, t, color);
+                if i + 1 == lineas.len() {
+                    let (w, _) = p.medir_texto(l, t);
+                    p.linea((s.x + w + 2.0 * e, y), (s.x + w + 2.0 * e, y + t * 1.2), 1.5 * e, color);
+                }
+                y += t * 1.25;
+            }
+        }
         if pan.minimapa.ancho > 0 {
             self.pintar_minimapa(p, &pan, efectiva, ancho, alto);
         }
@@ -1889,7 +2081,13 @@ impl Sesion {
                 return hecho;
             }
         }
+        if let Some(i) = self.tira_figuras(&pan).iter().position(|r| r.contiene(p)) {
+            self.figura_elegida = pixpin_universo::FIGURAS[i];
+            return hecho;
+        }
         if let Some(h) = self.barra(&pan).boton_en(p) {
+            // Cambiar de herramienta no pierde lo escrito en un rotulo.
+            self.cerrar_rotulo(escena);
             if self.herramienta == Some(h) {
                 self.herramienta = None;
                 self.selector_abierto = false;
@@ -2004,13 +2202,10 @@ impl Sesion {
             }
             AccionInspector::NotasDelChat => {
                 self.u.editar(id, |x| x.notas_del_chat = !x.notas_del_chat);
-                // Las notas cambian que fichas hay: se vuelve a leer.
-                if let Some(p) = proyecto {
-                    let notas = self.u.astro(id).is_some_and(|x| x.notas_del_chat);
-                    self.cargador.soltar(&p);
-                    self.rehacer_fichas();
-                    self.cargador.pedir(&p, notas);
-                }
+                // Desde H2 las notas ya estan leidas (el armado las usa): el
+                // interruptor solo cambia que se ve en la nebulosa, que se
+                // pide de nuevo en cada fotograma. Nada que releer.
+                let _ = proyecto;
             }
             AccionInspector::Ordenar => self.u.ordenar_galaxia(id),
             AccionInspector::LimpiarHuerfanas => {
@@ -2178,6 +2373,8 @@ impl Sesion {
             let icono = match h {
                 HerramientaUniverso::Planeta => &pintar::PLANETA,
                 HerramientaUniverso::Emoji => &pintar::CARITA,
+                HerramientaUniverso::Figura => &pintar::FIGURAS_ICONO,
+                HerramientaUniverso::Rotulo => &pintar::ROTULO,
                 HerramientaUniverso::Conectar => &pintar::LINEA,
             };
             let lado = 18.0 * e;
@@ -2192,6 +2389,51 @@ impl Sesion {
                 PALETA.texto,
             );
         }
+        // H3: con la figura elegida, su tira de cinco bajo la isla, como el
+        // dialogo «Figura» del movil pero sin tapar el cielo.
+        let tira = self.tira_figuras(pan);
+        if let (Some(a), Some(b)) = (tira.first(), tira.last()) {
+            let m = 4.0 * e;
+            p.rellenar_redondeado(
+                RectF {
+                    x: a.x as f32 - m,
+                    y: a.y as f32 - m,
+                    ancho: (b.x + b.ancho as i32 - a.x) as f32 + 2.0 * m,
+                    alto: a.alto as f32 + 2.0 * m,
+                },
+                8.0 * e,
+                PALETA.panel,
+            );
+        }
+        for (r, f) in tira.iter().zip(pixpin_universo::FIGURAS) {
+            let r = rectf(*r);
+            if f == self.figura_elegida {
+                p.rellenar_redondeado(r, 8.0 * e, PALETA.acento);
+            }
+            let lado = 22.0 * e;
+            let (x, y) = (r.x + (r.ancho - lado) / 2.0, r.y + (r.alto - lado) / 2.0);
+            pintar::figura_de_muestra(p, f, x, y, lado, 1.75 * e, PALETA.texto);
+        }
+    }
+
+    /// Los cinco botones de figura, bajo la isla, solo con la herramienta
+    /// Figura puesta. Vacio si no.
+    fn tira_figuras(&self, pan: &Paneles) -> Vec<Rect> {
+        if self.herramienta != Some(HerramientaUniverso::Figura) {
+            return Vec::new();
+        }
+        let barra = self.barra(pan);
+        let (b0, b1) = (barra.rect_de(0), barra.rect_de(1));
+        let paso = b1.x - b0.x;
+        let y = barra.marco.y + barra.marco.alto as i32 + (8.0 * self.escala()) as i32;
+        (0..pixpin_universo::FIGURAS.len())
+            .map(|i| Rect {
+                x: b0.x + i as i32 * paso,
+                y,
+                ancho: b0.ancho,
+                alto: b0.alto,
+            })
+            .collect()
     }
 
     fn pintar_minimapa(&self, p: &Pintor, pan: &Paneles, efectiva: &Camara, ancho: f32, alto: f32) {
@@ -2472,6 +2714,8 @@ impl Sesion {
 
 #[cfg(test)]
 mod medir;
+#[cfg(test)]
+mod muestra;
 
 #[cfg(test)]
 mod pruebas {
@@ -2704,5 +2948,104 @@ mod pruebas {
         s.tras_evento(&Escena::nueva());
         let t = s.tope_ms().expect("hay un guardado pendiente");
         assert!(t <= GUARDAR_TRAS.as_millis() as u32 + 1);
+    }
+
+    /// Una carpeta propia por prueba: las pruebas corren a la vez y el
+    /// fichero del universo es uno por carpeta.
+    fn carpeta_de(nombre: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("pixpin-guardado-{nombre}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        d
+    }
+
+    #[test]
+    fn el_guardado_diferido_escribe_lo_mismo_que_guardar_ya() {
+        let raiz = carpeta_de("igual");
+        let mut s = Sesion::nueva(
+            raiz.clone(),
+            Universo::nuevo(),
+            HashMap::new(),
+            pixpin_nivel::Nivel::Ligero,
+            Catalogo::nuevo(pixpin_store::Idioma::Espanol),
+            None,
+        );
+        let mut escena = crate::ventana_editor::medir::escena_sintetica(60);
+        // Uno borrado: al fichero no va, ni por un camino ni por el otro.
+        let borrado = escena.elementos[3].id;
+        escena.borrar(borrado);
+        let ruta = pixpin_universo::formato::ruta(&raiz);
+
+        s.guardar_detras(&escena);
+        s.esperar_guardado();
+        let detras = std::fs::read_to_string(&ruta).expect("el hilo lo escribio");
+        s.guardar(&escena).expect("guardar ya");
+        let ya = std::fs::read_to_string(&ruta).expect("guardado");
+        assert_eq!(detras, ya);
+        assert!(!detras.contains(&format!("\"id\":{borrado},")), "lo borrado no va");
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn guardar_ya_espera_al_guardado_diferido_y_gana_lo_ultimo() {
+        // Si el hilo acabara despues, dejaria en el disco lo de antes.
+        let raiz = carpeta_de("orden");
+        let mut s = Sesion::nueva(
+            raiz.clone(),
+            Universo::nuevo(),
+            HashMap::new(),
+            pixpin_nivel::Nivel::Ligero,
+            Catalogo::nuevo(pixpin_store::Idioma::Espanol),
+            None,
+        );
+        let vieja = crate::ventana_editor::medir::escena_sintetica(400);
+        let nueva = crate::ventana_editor::medir::escena_sintetica(8);
+        s.guardar_detras(&vieja);
+        s.guardar(&nueva).expect("guardar ya");
+        assert!(s.guardando.is_none());
+        let leido = pixpin_universo::formato::cargar(&pixpin_universo::formato::ruta(&raiz), 0)
+            .expect("se lee");
+        assert_eq!(leido.universo.anotaciones.elementos.len(), 8);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    /// Cuanto se queda parado el hilo de la interfaz por el guardado
+    /// diferido, antes (`guardar`, todo aqui) y ahora (`guardar_detras`,
+    /// solo la copia), con 5.000 lunas y una escena que crece.
+    ///
+    /// ```text
+    /// cargo test --release -p pixpin --bin pixpinmax medir_el_guardado_diferido -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "medicion; ejecutar en --release con --ignored --nocapture"]
+    fn medir_el_guardado_diferido() {
+        let mut s = super::medir::sintetico(pixpin_nivel::Nivel::Ligero);
+        let raiz = carpeta_de("medir");
+        s.ruta = pixpin_universo::formato::ruta(&raiz);
+        println!("elementos | guardar ms (hilo interfaz) | guardar_detras ms (hilo interfaz)");
+        for n in [250, 1000, 3000] {
+            let mut escena = crate::ventana_editor::medir::escena_sintetica(n);
+            // Con historial, como tras un rato dibujando.
+            for e in escena.elementos.iter().map(|e| e.id).collect::<Vec<_>>().iter().take(n / 2) {
+                escena.abrir_paso();
+                escena.apuntar_edicion(*e);
+                if let Some(x) = escena.buscar_mut(*e) {
+                    x.mover(1.0, 1.0);
+                }
+                escena.cerrar_paso();
+            }
+            let mut ya = f64::MAX;
+            let mut detras = f64::MAX;
+            for _ in 0..5 {
+                let t = Instant::now();
+                s.guardar(&escena).expect("guardar");
+                ya = ya.min(t.elapsed().as_secs_f64() * 1000.0);
+                let t = Instant::now();
+                s.guardar_detras(&escena);
+                detras = detras.min(t.elapsed().as_secs_f64() * 1000.0);
+                s.esperar_guardado();
+            }
+            println!("{n:>9} | {ya:>25.2} | {detras:>32.2}");
+        }
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 }

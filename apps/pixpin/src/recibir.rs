@@ -19,6 +19,9 @@ use pixpin_store::{Catalogo, Ubicacion};
 use crate::caja_dibujo::hex;
 use crate::overlay::Recursos;
 
+/// Un lienzo suelto por Wi-Fi, en los dos sentidos, como el movil.
+pub(crate) mod lienzo_suelto;
+
 /// Lo que mide la ventana en pixeles logicos. Pequena a proposito: es un
 /// cartel con un codigo, no una pantalla de trabajo.
 const ANCHO_LOGICO: u32 = 420;
@@ -471,12 +474,50 @@ pub(crate) fn guardar_lo_recibido(
             donde,
         });
     }
+    // **Un lienzo suelto, a su proyecto** (`Recepcion.guardarLienzo` del
+    // movil): llega como un `.pixpin` de una hoja. Antes caia en «Del movil»
+    // como `<nombre>.excalidraw` con el ZIP dentro, y no abria nada.
+    let mut resto = Vec::new();
+    for (e, r) in cosas.iter().filter(|(e, _)| e.tipo != "proyecto") {
+        if e.tipo != pixpin_sincro::envio::LIENZO {
+            resto.push((e.clone(), r.clone()));
+            continue;
+        }
+        let nuevo = como_nuevo.get(&e.identidad).copied().unwrap_or(false);
+        let motivo = format!("Antes de recibir «{}»", e.nombre);
+        let hecho = lienzo_suelto::guardar(
+            raiz,
+            e,
+            r,
+            &aparato,
+            nuevo,
+            pixpin_shell::entorno::ahora_utc_ms(),
+            &|ficha| copia_antes_de_tocar(raiz, ficha, &motivo),
+        );
+        match hecho {
+            Ok(llegada) => {
+                tracing::info!(?llegada, nombre = %e.nombre, "lienzo recibido");
+                guardados.push(Guardado {
+                    nombre: e.nombre.clone(),
+                    donde: match llegada {
+                        lienzo_suelto::Llegada::AlDia(_) => Donde::ProyectoAlDia,
+                        _ => Donde::Proyecto,
+                    },
+                });
+            }
+            // Si no se entiende como lienzo, al menos queda en el chat.
+            Err(x) => {
+                tracing::warn!(%x, ruta = %r.display(), "lienzo que no se pudo poner en su proyecto");
+                resto.push((e.clone(), r.clone()));
+            }
+        }
+    }
     // Y lo suelto, al cuaderno, para que se vea en el chat.
-    match al_cuaderno(raiz, &aparato, cosas, como_nuevo) {
+    match al_cuaderno(raiz, &aparato, &resto, como_nuevo) {
         Ok(sueltos) => guardados.extend(sueltos),
         Err(e) => {
             tracing::error!(?e, "no se pudo guardar lo recibido en el cuaderno");
-            for (e, _) in cosas.iter().filter(|(e, _)| e.tipo != "proyecto") {
+            for (e, _) in &resto {
                 guardados.push(Guardado {
                     nombre: e.nombre.clone(),
                     donde: Donde::Carpeta,
@@ -619,7 +660,8 @@ fn nombre_con_extension(elemento: &pixpin_sincro::envio::Elemento) -> String {
     let nombre = pixpin_sincro::envio::nombre_sano(&elemento.nombre);
     let ext = match elemento.tipo.as_str() {
         "proyecto" => ".pixpin",
-        "lienzo" => ".excalidraw",
+        // Un lienzo del movil es un `.pixpin` de una hoja (`deLienzo`).
+        "lienzo" => ".pixpin",
         _ => return nombre,
     };
     if nombre.to_ascii_lowercase().ends_with(ext) {

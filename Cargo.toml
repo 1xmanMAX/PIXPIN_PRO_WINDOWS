@@ -30,16 +30,29 @@ pixpin-audio = { path = "crates/pixpin-audio" }
 pixpin-voz = { path = "crates/pixpin-voz" }
 pixpin-capture = { path = "crates/pixpin-capture" }
 pixpin-pin = { path = "crates/pixpin-pin" }
+# La pila de capturas: el icono de la esquina que junta varias capturas
+# seguidas para pegarlas todas de un Ctrl+V. Capa L2 como el pin, y por eso
+# tampoco puede ver pixpin-store: los ajustes le llegan ya masticados.
+pixpin-pila = { path = "crates/pixpin-pila" }
 pixpin-pdf = { path = "crates/pixpin-pdf" }
 # Word, libros y paginas leidos dentro (visor de documentos, tanda 2.1).
 pixpin-docs = { path = "crates/pixpin-docs" }
 pixpin-ocr = { path = "crates/pixpin-ocr" }
 pixpin-record = { path = "crates/pixpin-record" }
 pixpin-store = { path = "crates/pixpin-store" }
+# El visor de HTML empotrado (WebView2): abrir dentro de PixPin un .html del
+# chat y dejar que su propio boton de guardar sobrescriba el fichero. Cimiento
+# como pixpin-audio: solo WebView2 y geometria, sin ver ningun otro crate.
+pixpin-web = { path = "crates/pixpin-web" }
 pixpin-ui = { path = "crates/pixpin-ui" }
 pixpin-flow = { path = "crates/pixpin-flow" }
 pixpin-plugin = { path = "crates/pixpin-plugin" }
 pixpin-universo = { path = "crates/pixpin-universo" }
+# El compresor de PDF del autor (github.com/1xmanMAX/Thesis), copiado: el
+# repositorio es privado y una dependencia git no compilaria sin credenciales.
+# Ver crates/pdfsqueeze-core/PROCEDENCIA.md.
+pdfsqueeze-core = { path = "crates/pdfsqueeze-core" }
+pixpin-aligerar = { path = "apps/pixpin-aligerar" }
 
 [profile.release]
 lto = "fat"
@@ -68,3 +81,25 @@ opt-level = 3
 # JSON decenas de veces (resumenes, copias, inventarios en los dos lados).
 [profile.dev.package.pixpin-sincro]
 opt-level = 2
+# Aligerar un PDF: sin optimizar, pdfsqueeze tarda minutos en lo que en
+# release son segundos (zopfli y las carreras de JPEG), y las pruebas que
+# comprimen de verdad se eternizarian.
+[profile.dev.package.pdfsqueeze-core]
+opt-level = 3
+# pdfsqueeze cuenta con la aritmetica del release, que da la vuelta sin
+# avisar (la imagen integral de mrc.rs resta u32 que se envuelven a
+# proposito, y sus pruebas multiplican u8 que desbordan). Con las
+# comprobaciones de depuracion encendidas cuatro de sus pruebas entran en
+# panico; asi se prueba el mismo codigo que se compila en el ejecutable.
+overflow-checks = false
+debug-assertions = false
+[profile.dev.package.zopfli]
+opt-level = 3
+[profile.dev.package.jpeg-encoder]
+opt-level = 3
+[profile.dev.package.jpeg-decoder]
+opt-level = 3
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+[profile.dev.package.lopdf]
+opt-level = 3

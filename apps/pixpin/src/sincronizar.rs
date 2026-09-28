@@ -45,6 +45,7 @@ use pixpin_store::{Catalogo, Ubicacion};
 use crate::caja_dibujo::hex;
 use crate::overlay::Recursos;
 
+mod al_dia;
 mod copias_ui;
 mod elegir;
 mod enviar_wifi;
@@ -103,6 +104,10 @@ pub enum Pedido {
     /// Entrar directo en «Enviar por Wi-Fi» con estos ficheros ya puestos,
     /// sin pasar por «¿Que mandar?».
     Enviar(Vec<PathBuf>),
+    /// Entrar directo en «Copias de seguridad», que arriba tiene «Proyectos
+    /// borrados»: la papelera que los recupera enteros.
+    // La pide `abrir_papelera` (menu del clic derecho de un proyecto).
+    Copias,
 }
 
 /// El pedido que espera a que la ventana lo recoja. Solo cabe uno: si se
@@ -133,6 +138,17 @@ pub fn enviar_por_wifi(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, rutas
         return;
     }
     con_pedido(idioma, ubicacion, Some(Pedido::Enviar(rutas)))
+}
+
+/// **La papelera de proyectos**: abre Sincronizar YA en «Copias de
+/// seguridad», con «Proyectos borrados» arriba (H6, v0.79 del movil). No
+/// hace falta tener ningun proyecto abierto: es para llamarla desde la lista
+/// de proyectos del chat o desde la bandeja.
+// Sin llamar todavia: el boton va en la lista de proyectos del chat
+// (`ventana_chat.rs`), que es de otro frente. Hasta entonces se llega por
+// Sincronizar → Copias de seguridad.
+pub fn abrir_papelera(idioma: pixpin_store::Idioma, ubicacion: Ubicacion) {
+    con_pedido(idioma, ubicacion, Some(Pedido::Copias))
 }
 
 fn con_pedido(idioma: pixpin_store::Idioma, ubicacion: Ubicacion, pedido: Option<Pedido>) {
@@ -203,8 +219,8 @@ enum Aviso {
     /// espera la respuesta por `responde`.
     Elegir {
         otro: String,
-        filas: Vec<pixpin_sincro::vuelta::Fila>,
-        responde: mpsc::Sender<Option<std::collections::BTreeSet<String>>>,
+        pregunta: pixpin_sincro::vuelta::Pregunta,
+        responde: mpsc::Sender<Option<pixpin_sincro::vuelta::Eleccion>>,
     },
 }
 
@@ -455,6 +471,15 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                         Sub::Enviar(Box::new(enviar_wifi::Enviar::con_archivos(t, rutas, &cx)))
                     });
                 }
+                Pedido::Copias => {
+                    pantalla.fase = Fase::Nada;
+                    pantalla.campo = None;
+                    pantalla.saliendo = false;
+                    // Si ya estaba en copias se vuelve a leer: puede que se
+                    // acabe de borrar algo desde el chat.
+                    let raiz = pantalla.raiz.clone();
+                    pantalla.entrar(|_| Sub::Copias(Box::new(copias_ui::Copias::nuevo(raiz))));
+                }
             }
             hay_que_pintar = true;
         }
@@ -624,7 +649,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                 }
                 Aviso::Elegir {
                     otro,
-                    filas,
+                    pregunta,
                     responde,
                 } => {
                     // Mientras se elige no hay dialogo encima: la lista es la
@@ -632,7 +657,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     pantalla.fase = Fase::Nada;
                     pantalla.campo = None;
                     pantalla.entrar(|_| {
-                        Sub::Elegir(Box::new(elegir::Eligiendo::nuevo(otro, filas, responde)))
+                        Sub::Elegir(Box::new(elegir::Eligiendo::nuevo(otro, pregunta, responde)))
                     });
                 }
             }
@@ -1095,6 +1120,62 @@ fn sondear_uno(host: &str, puerto: u16) -> bool {
     }
     let mut b = [0u8; 4];
     s.read_exact(&mut b).is_ok() && &b == pixpin_sincro::SONDA_RESPUESTA
+}
+
+/// K6: la direccion buena para llamar a `nombre`, sabiendo la que habia al
+/// pintar. Si no contesta, se busca por la red y lo encontrado se apunta
+/// (`AlDia.aparatos`, ver `al_dia`). Sin rastro de el, el mismo error que
+/// daria la conexion, pero sin esperar los 8 s de agotarla.
+fn llegar(raiz: &Path, host: &str, puerto: u16, nombre: &str) -> Result<(String, u16)> {
+    let identidad = leer_identidad(raiz).ok();
+    // El id sale de la direccion apuntada; si no, del nombre en el grupo.
+    let id = leer_direcciones(raiz)
+        .into_iter()
+        .find(|(_, h, p)| h == host && *p == puerto)
+        .map(|(i, _, _)| i)
+        .or_else(|| {
+            identidad.as_ref().and_then(|x| {
+                x.miembros
+                    .iter()
+                    .find(|m| m.nombre == nombre && m.id != x.yo.id)
+                    .map(|m| m.id.clone())
+            })
+        });
+    let buscar = || -> Vec<al_dia::Visto> {
+        let Some(x) = identidad.as_ref() else {
+            return Vec::new();
+        };
+        let Some(codigo) = x.codigo.as_deref() else {
+            return Vec::new();
+        };
+        let etiqueta = etiqueta_de(codigo);
+        pixpin_shell::mdns::buscar(TIPO_MDNS, Duration::from_secs(3))
+            .unwrap_or_default()
+            .iter()
+            .filter(|v| es_del_grupo(v, &etiqueta, &x.yo.id))
+            .map(|v| al_dia::Visto {
+                id: v.datos.get("id").cloned().unwrap_or_default(),
+                nombre: v.datos.get("n").cloned().unwrap_or_default(),
+                host: v.host.to_string(),
+                puerto: v.puerto,
+            })
+            .collect()
+    };
+    match al_dia::donde_esta(id.as_deref(), nombre, host, puerto, sondear_uno, buscar) {
+        al_dia::Donde::LaDeSiempre => Ok((host.to_string(), puerto)),
+        al_dia::Donde::Nueva { host, puerto } => {
+            tracing::info!(%nombre, %host, puerto, "sincro: el otro cambio de direccion");
+            if let Some(i) = &id {
+                apuntar_direccion(raiz, i, &host, puerto);
+            }
+            Ok((host, puerto))
+        }
+        // Lo mismo que diria agotar la conexion («No se pudo llegar a…»),
+        // sin los 8 s de esperarla.
+        al_dia::Donde::NoEsta => {
+            Err(std::io::Error::from(std::io::ErrorKind::HostUnreachable).into())
+        }
+    }
 }
 
 /// Los recordados, comprobados cada cuatro segundos mientras alguien mira la
@@ -1587,6 +1668,10 @@ fn una_vuelta(
     let _ = tx.send(Aviso::Fase(Fase::Trabajando(format!(
         "{rotulo}Conectando con {nombre}…"
     ))));
+    // K6: si la direccion de cuando se pinto ya no contesta, se busca por la
+    // red antes de estrellarse contra ella.
+    let (bueno, puerto) = llegar(raiz, host, puerto, nombre)?;
+    let host = bueno.as_str();
     let flujo = conectar(host, puerto)?;
     // La vuelta que se pide desde aqui tambien escribe lo del otro aparato,
     // asi que el chat abierto tiene que enterarse igual que en `responder`.
@@ -1614,6 +1699,25 @@ fn una_vuelta(
             anyhow::Error::from(e)
         }
     })?;
+    // «Lo mio manda» (v0.79 del movil): con el encendido, lo de este equipo
+    // se impone y del otro lado solo llega lo que aqui no existe. Se lee del
+    // TOML en cada vuelta y no se guarda en la sesion: asi cambiarlo tiene
+    // efecto en la siguiente sincronizacion sin reiniciar nada.
+    // Preguntando, es solo como empieza el interruptor «Juntar / Lo mio
+    // manda» de «¿Que sincronizar?», y lo que se elija ahi es lo que vale;
+    // sin preguntar («con todos») es lo que manda.
+    // `Instalado` o `Portable` da igual para esto: el fichero de ajustes es
+    // `raiz/pixpinmax.toml` en los dos casos (`Ubicacion::fichero_ajustes`).
+    let donde = Ubicacion::Instalado {
+        raiz: raiz.to_path_buf(),
+    };
+    if pixpin_store::ajustes::cargar(&donde)
+        .map(|a| a.sincro.lo_mio_manda)
+        .unwrap_or(false)
+    {
+        s.quien_manda(pixpin_sincro::mezcla::Mando::LoMioManda);
+        tracing::info!("sincronizando con «lo mio manda»: este equipo se impone");
+    }
     let suyo = if s.puerto_del_otro > 0 {
         s.puerto_del_otro as u16
     } else {
@@ -1621,11 +1725,11 @@ fn una_vuelta(
     };
     apuntar_direccion(raiz, &s.otro.id, host, suyo);
     let _ = tx.send(Aviso::Identidad);
-    let mut elegir = |otro: &m::Aparato, filas: &[vuelta::Fila]| {
+    let mut elegir = |otro: &m::Aparato, pregunta: vuelta::Pregunta| {
         let (responde, espera) = mpsc::channel();
         tx.send(Aviso::Elegir {
             otro: otro.nombre.clone(),
-            filas: filas.to_vec(),
+            pregunta,
             responde,
         })
         .ok()?;

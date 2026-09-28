@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant, SystemTime};
 
+use pixpin_universo::desde_el_chat::NodoDelChat;
 use pixpin_universo::ficha::FichaLuna;
 
 pub const SOLTAR_TRAS: Duration = Duration::from_secs(60);
@@ -30,6 +31,10 @@ pub fn sello_de(carpeta: &Path) -> Option<Sello> {
 pub struct Cargado {
     pub proyecto: String,
     pub fichas: Vec<FichaLuna>,
+    /// La forma del chat, para armar la galaxia con ella (H2). Solo los
+    /// mensajes: las hojas que no estan en el chat van a la nebulosa, y de
+    /// alli se colocan a mano (H3), como el «Anadir > Hoja» del movil.
+    pub nodos: Vec<NodoDelChat>,
     pub rotas: usize,
     pub sello: Option<Sello>,
     pub error: Option<String>,
@@ -73,6 +78,31 @@ pub fn politica_soltar(
         .collect()
 }
 
+/// **Las hojas del proyecto que no estan en el chat** (H3): las paginas de
+/// un PDF sin dibujo, los lienzos del movil. Son las mismas que el chat y la
+/// galeria ensenan sin escribirlas en el cuaderno
+/// (`almacen::hojas_para_ensenar`), y aqui entran como fichas: salen en la
+/// nebulosa y se colocan arrastrandolas, y al abrirlas van a su hoja por
+/// `referencia` (D224). No se arman solas: el movil tampoco las pone, las
+/// anade el usuario con «Anadir > Hoja».
+fn hojas_sueltas(raiz: &Path, proyecto: &str) -> Vec<FichaLuna> {
+    let aparato = pixpin_proyecto::almacen::Indice::leer(raiz)
+        .buscar(proyecto)
+        .and_then(|f| f.aparato.clone())
+        .unwrap_or_default();
+    pixpin_proyecto::almacen::hojas_para_ensenar(raiz, proyecto, &aparato)
+        .iter()
+        .map(|m| {
+            let mut f = super::fichas::de_mensaje(m, raiz, proyecto);
+            // Una hoja se abre en su lienzo aunque no tenga fichero propio
+            // (una pagina sin dibujo va por su codigo, `abrir`): no es un
+            // fantasma.
+            f.en_equipo = true;
+            f
+        })
+        .collect()
+}
+
 impl Cargador {
     /// `aviso`: el HWND de la ventana a despertar (`MSG_DESPIERTA`) cuando
     /// llega algo. `None` en las pruebas.
@@ -100,7 +130,12 @@ impl Cargador {
         !self.pedidos.is_empty()
     }
 
-    pub fn pedir(&mut self, proyecto: &str, incluir_notas: bool) {
+    /// Lee el cuaderno de `proyecto` en otro hilo: TODO el chat, notas
+    /// incluidas, porque desde H2 la galaxia se arma con la forma del chat
+    /// entero (un comentario es un cuerpo pequeno en orbita). Lo que el
+    /// interruptor «notas del chat» decide ahora es solo si las notas sin
+    /// colocar salen en la nebulosa (`Sesion::sueltas`).
+    pub fn pedir(&mut self, proyecto: &str) {
         if !self.pedidos.insert(proyecto.to_string()) {
             return;
         }
@@ -116,16 +151,23 @@ impl Cargador {
                 let carpeta = pixpin_proyecto::almacen::carpeta(&raiz, &p);
                 let sello = sello_de(&carpeta);
                 let c = match pixpin_proyecto::cuaderno::Cuaderno::leer_de(&carpeta) {
-                    Ok(c) => Cargado {
-                        fichas: super::fichas::de_cuaderno(&c, &raiz, &p, incluir_notas),
-                        rotas: c.lineas_rotas,
-                        sello,
-                        error: None,
-                        proyecto: p,
-                    },
-                    // Un proyecto sin cuaderno todavia es un proyecto vacio.
+                    Ok(c) => {
+                        let mut fichas = super::fichas::de_cuaderno(&c, &raiz, &p, true);
+                        fichas.extend(hojas_sueltas(&raiz, &p));
+                        Cargado {
+                            fichas,
+                            nodos: super::fichas::nodos_de(&c),
+                            rotas: c.lineas_rotas,
+                            sello,
+                            error: None,
+                            proyecto: p,
+                        }
+                    }
+                    // Un proyecto sin cuaderno todavia es un proyecto vacio
+                    // de chat, pero puede tener hojas.
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => Cargado {
-                        fichas: Vec::new(),
+                        fichas: hojas_sueltas(&raiz, &p),
+                        nodos: Vec::new(),
                         rotas: 0,
                         sello,
                         error: None,
@@ -133,6 +175,7 @@ impl Cargador {
                     },
                     Err(e) => Cargado {
                         fichas: Vec::new(),
+                        nodos: Vec::new(),
                         rotas: 0,
                         sello,
                         error: Some(e.to_string()),
@@ -242,7 +285,7 @@ mod pruebas {
         )
         .unwrap();
         let mut c = Cargador::nuevo(raiz.clone(), None);
-        c.pedir("p1", false);
+        c.pedir("p1");
         let mut llegados = Vec::new();
         for _ in 0..200 {
             llegados.extend(c.recibir());

@@ -10,6 +10,7 @@
 use pixpin_geom::Punto;
 use pixpin_motor2d::camara::Camara;
 use pixpin_motor2d::vector::Punto2;
+use pixpin_shell::gestos_tactiles::RuedaCruda;
 use pixpin_shell::overlay::EventoOverlay;
 
 /// La escala del monitor como factor. Un monitor que dijera 0 (no pasa, pero
@@ -176,6 +177,99 @@ pub enum Accion {
     /// fotograma (`universo::mapa::Suave`); `aplicar_con_minimo` lo aplica
     /// de golpe.
     ZoomSuave { foco: Punto2, delta: i32 },
+    /// El pellizco del panel tactil: multiplicar el zoom por `factor` con
+    /// `foco` quieto, de golpe (el pellizco ya llega continuo, paso a paso).
+    Escalar { foco: Punto2, factor: f32 },
+}
+
+/// De donde viene una rueda.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FuenteRueda {
+    /// Una rueda de muescas: acerca y aleja.
+    Raton,
+    /// Un panel tactil que no es de precision (o uno de precision sin
+    /// DirectManipulation): dos dedos, desplazar.
+    Panel,
+}
+
+/// Cuanto dura una racha del panel tactil: un giro de 120 justo que llegue
+/// menos de esto despues de un giro a trozos sigue siendo del panel. Los
+/// paneles viejos mandan a veces un 120 entre sus trozos, y la inercia de
+/// Synaptics sigue mandando giros un rato. Cambiar de la mano del panel a la
+/// rueda del raton en menos de un cuarto de segundo no se puede.
+pub const RACHA_PANEL_MS: u32 = 250;
+
+/// Raton o panel, para la rueda que SI llega como rueda (con
+/// DirectManipulation, el panel de precision ya no llega asi:
+/// `pixpin_shell::gestos_tactiles`).
+///
+/// La regla: una rueda de muescas manda SIEMPRE multiplos de `WHEEL_DELTA`
+/// (120), por rapido que gire. Un giro que no lo es solo puede venir de un
+/// panel (o de un raton de rueda libre de alta resolucion, que desplaza:
+/// fallar hacia desplazar no pierde nada, fallar hacia acercar marea). Y un
+/// 120 solo cuenta como panel si llega en plena racha de panel. Asi una
+/// rueda de muescas nunca es panel; el unico panel que se toma por raton
+/// es uno que solo mande 120 justos, que no se puede distinguir.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Clasificador {
+    ultimo_panel: Option<u32>,
+}
+
+impl Clasificador {
+    pub fn fuente(&mut self, r: &RuedaCruda) -> FuenteRueda {
+        let a_trozos = r.delta % MUESCA != 0;
+        // `wrapping_sub`: `GetMessageTime` da la vuelta cada 49 dias.
+        let en_racha = self
+            .ultimo_panel
+            .is_some_and(|t| r.ms.wrapping_sub(t) <= RACHA_PANEL_MS);
+        if a_trozos || en_racha {
+            self.ultimo_panel = Some(r.ms);
+            FuenteRueda::Panel
+        } else {
+            self.ultimo_panel = None;
+            FuenteRueda::Raton
+        }
+    }
+}
+
+/// Que hace una rueda, sabida su fuente. `foco`: donde esta el raton.
+///
+/// - Horizontal (inclinar la rueda, o dos dedos de lado): desplazar de lado,
+///   aunque lleve Ctrl.
+/// - Ctrl: zoom, venga de donde venga (asi llega tambien el pellizco de un
+///   panel sin DirectManipulation).
+/// - Shift: desplazar de lado.
+/// - Sin nada: el raton acerca hacia el cursor; el panel desplaza.
+pub fn decidir_rueda(r: &RuedaCruda, fuente: FuenteRueda, foco: Punto2) -> Accion {
+    if r.horizontal {
+        // Positivo es a la derecha: el signo del `deltaX` del navegador.
+        return Accion::Desplazar {
+            dx: delta_y_css(r.delta),
+            dy: 0.0,
+        };
+    }
+    if r.ctrl {
+        return Accion::ZoomSuave {
+            foco,
+            delta: r.delta,
+        };
+    }
+    if r.shift {
+        return Accion::Desplazar {
+            dx: -delta_y_css(r.delta),
+            dy: 0.0,
+        };
+    }
+    match fuente {
+        FuenteRueda::Raton => Accion::ZoomSuave {
+            foco,
+            delta: r.delta,
+        },
+        FuenteRueda::Panel => Accion::Desplazar {
+            dx: 0.0,
+            dy: -delta_y_css(r.delta),
+        },
+    }
 }
 
 /// Si el evento era del navegador y que hay que hacer.
@@ -216,7 +310,11 @@ pub struct Navegador {
     /// Con el universo detras: la rueda acerca y aleja (sin Ctrl), como en
     /// un mapa. En un lienzo normal es `false` y la rueda desplaza, como en
     /// Excalidraw.
+    ///
+    /// Solo cuenta para `Rueda`: la `RuedaFina` de las ventanas con gestos
+    /// tactiles acerca con el raton en cualquier lienzo (`decidir_rueda`).
     pub mapa: bool,
+    clasificador: Clasificador,
 }
 
 impl Default for Navegador {
@@ -232,6 +330,7 @@ impl Default for Navegador {
             // camara del motor admite 0,05 pero la rueda nunca bajaba de 0,1.
             zoom_minimo: ZOOM_MINIMO,
             mapa: false,
+            clasificador: Clasificador::default(),
         }
     }
 }
@@ -419,6 +518,37 @@ impl Navegador {
                     dy: 0.0,
                 }),
             },
+            // La rueda de una ventana con gestos tactiles: raton o panel.
+            EventoOverlay::RuedaFina(r) => {
+                let fuente = self.clasificador.fuente(&r);
+                Respuesta {
+                    consumido: true,
+                    accion: (r.delta != 0).then(|| decidir_rueda(&r, fuente, self.ultimo)),
+                }
+            }
+            // Dos dedos en el panel de precision: el lienzo sigue a los
+            // dedos, en cualquier direccion a la vez, inercia incluida.
+            EventoOverlay::DeslizTactil(d) => Respuesta {
+                consumido: true,
+                accion: Some(Accion::Desplazar {
+                    dx: d.dx() / escala,
+                    dy: d.dy() / escala,
+                }),
+            },
+            // Pellizco: el punto bajo el cursor se queda quieto.
+            EventoOverlay::PellizcoTactil(p) => {
+                self.ultimo = Punto2::nuevo(
+                    (p.en.x - origen.x) as f32 / escala,
+                    (p.en.y - origen.y) as f32 / escala,
+                );
+                Respuesta {
+                    consumido: true,
+                    accion: Some(Accion::Escalar {
+                        foco: self.ultimo,
+                        factor: p.factor(),
+                    }),
+                }
+            }
             _ => Respuesta::default(),
         }
     }
@@ -449,6 +579,12 @@ pub fn aplicar_con_minimo(camara: &mut Camara, accion: Accion, zoom_minimo: f32)
             zoom_minimo,
             pixpin_motor2d::camara::ZOOM_MAXIMO,
         ),
+        Accion::Escalar { foco, factor } => {
+            if !factor.is_finite() || factor <= 0.0 {
+                return false;
+            }
+            camara.acercar_en_entre(foco, factor, zoom_minimo, pixpin_motor2d::camara::ZOOM_MAXIMO)
+        }
         Accion::ZoomRueda { foco, delta } => {
             let nuevo = zoom_de_rueda_entre(camara.zoom, delta, zoom_minimo);
             camara.acercar_en_entre(
@@ -477,6 +613,7 @@ pub fn algun_boton_pulsado(botones: &[u32], pulsado: impl Fn(u32) -> bool) -> bo
 #[cfg(test)]
 mod pruebas {
     use super::*;
+    use pixpin_shell::gestos_tactiles::{Desliz, Pellizco};
 
     const ORIGEN: Punto = Punto { x: 0, y: 0 };
     const NADA: Modificadores = Modificadores {
@@ -1010,6 +1147,243 @@ mod pruebas {
         assert!(aplicar(&mut c, m.accion.unwrap()));
         let despues = vista_efectiva(&c, 150).a_pantalla(punto);
         assert!((despues.x - antes.x - 150.0).abs() < 1e-3);
+    }
+
+    // --- Raton o panel tactil (`RuedaFina`, `DeslizTactil`, `PellizcoTactil`).
+
+    fn rueda(delta: i32, ms: u32) -> EventoOverlay {
+        EventoOverlay::RuedaFina(RuedaCruda {
+            delta,
+            horizontal: false,
+            ms,
+            ctrl: false,
+            shift: false,
+        })
+    }
+
+    fn con_raton_en(n: &mut Navegador, x: i32, y: i32, escala: u32) {
+        let _ = n.evento(
+            &EventoOverlay::RatonMovido(Punto { x, y }),
+            ORIGEN,
+            escala,
+            NADA,
+            true,
+            SIEMPRE,
+        );
+    }
+
+    fn ev(n: &mut Navegador, e: EventoOverlay) -> Respuesta {
+        n.evento(&e, ORIGEN, 100, NADA, true, SIEMPRE)
+    }
+
+    #[test]
+    fn la_rueda_de_un_raton_acerca_hacia_el_cursor_sin_ctrl() {
+        let mut n = Navegador::nuevo();
+        con_raton_en(&mut n, 300, 150, 150);
+        let r = n.evento(&rueda(MUESCA, 1000), ORIGEN, 150, NADA, true, SIEMPRE);
+        assert!(r.consumido);
+        let Some(accion @ Accion::ZoomSuave { foco, delta }) = r.accion else {
+            panic!("la rueda del raton es zoom, dio {:?}", r.accion);
+        };
+        assert_eq!((foco, delta), (Punto2::nuevo(200.0, 100.0), MUESCA));
+        let mut c = Camara::nueva();
+        let antes = c.a_mundo(foco);
+        assert!(aplicar(&mut c, accion));
+        assert!(c.zoom > 1.0, "rueda arriba acerca");
+        let despues = c.a_mundo(foco);
+        assert!((antes.x - despues.x).abs() < 1e-3 && (antes.y - despues.y).abs() < 1e-3);
+        // Y hacia abajo aleja.
+        let r = ev(&mut n, rueda(-MUESCA, 1100));
+        assert!(matches!(r.accion, Some(Accion::ZoomSuave { delta, .. }) if delta < 0));
+    }
+
+    #[test]
+    fn una_rueda_de_muescas_nunca_se_toma_por_panel_aunque_gire_muy_rapido() {
+        // Una rueda libre (o una muesca doble, 240) manda multiplos de 120
+        // cada pocos milisegundos: sigue siendo zoom, nunca desplazar.
+        let mut n = Navegador::nuevo();
+        for (i, d) in [120, 120, 240, -120, 360, -240, 120].into_iter().enumerate() {
+            let r = ev(&mut n, rueda(d, 5000 + i as u32));
+            assert!(
+                matches!(r.accion, Some(Accion::ZoomSuave { .. })),
+                "muesca {d}: {:?}",
+                r.accion
+            );
+        }
+    }
+
+    #[test]
+    fn dos_dedos_en_un_panel_sin_precision_desplazan_y_nunca_acercan() {
+        // El panel viejo manda la rueda a trozos (no multiplos de 120) y a
+        // veces un 120 justo en medio: dentro de la racha sigue siendo panel.
+        let mut n = Navegador::nuevo();
+        for (d, ms) in [(-17, 100), (-33, 110), (-120, 120), (-8, 135), (-120, 300)] {
+            let r = ev(&mut n, rueda(d, ms));
+            let Some(Accion::Desplazar { dx, dy }) = r.accion else {
+                panic!("{d} a los {ms} ms: {:?}", r.accion);
+            };
+            assert_eq!(dx, 0.0);
+            // Convenio de `Camara::desplazar`: negativo = mirar mas abajo.
+            assert!(dy < 0.0, "giro abajo: mirar mas abajo, {dy}");
+        }
+    }
+
+    #[test]
+    fn tras_una_pausa_la_rueda_de_muescas_vuelve_a_ser_del_raton() {
+        let mut n = Navegador::nuevo();
+        let _ = ev(&mut n, rueda(-17, 1000));
+        let r = ev(&mut n, rueda(MUESCA, 1000 + RACHA_PANEL_MS + 1));
+        assert!(matches!(r.accion, Some(Accion::ZoomSuave { .. })), "{:?}", r.accion);
+    }
+
+    #[test]
+    fn la_racha_del_panel_sobrevive_a_la_vuelta_del_reloj_de_windows() {
+        let mut n = Navegador::nuevo();
+        let _ = ev(&mut n, rueda(-17, u32::MAX - 10));
+        let r = ev(&mut n, rueda(-MUESCA, 20));
+        assert!(matches!(r.accion, Some(Accion::Desplazar { .. })), "{:?}", r.accion);
+    }
+
+    #[test]
+    fn control_y_rueda_es_zoom_venga_del_raton_o_del_pellizco_de_un_panel_viejo() {
+        let mut n = Navegador::nuevo();
+        for d in [MUESCA, 13, -7] {
+            let r = ev(
+                &mut n,
+                EventoOverlay::RuedaFina(RuedaCruda {
+                    delta: d,
+                    horizontal: false,
+                    ms: 10,
+                    ctrl: true,
+                    shift: false,
+                }),
+            );
+            assert!(matches!(r.accion, Some(Accion::ZoomSuave { delta, .. }) if delta == d));
+        }
+    }
+
+    #[test]
+    fn shift_y_la_rueda_del_raton_desplaza_en_horizontal() {
+        let mut n = Navegador::nuevo();
+        let r = ev(
+            &mut n,
+            EventoOverlay::RuedaFina(RuedaCruda {
+                delta: -MUESCA,
+                horizontal: false,
+                ms: 10,
+                ctrl: false,
+                shift: true,
+            }),
+        );
+        assert_eq!(r.accion, Some(Accion::Desplazar { dx: -100.0, dy: 0.0 }));
+    }
+
+    #[test]
+    fn la_rueda_horizontal_desplaza_de_lado_aunque_lleve_control() {
+        let mut n = Navegador::nuevo();
+        for ctrl in [false, true] {
+            let r = ev(
+                &mut n,
+                EventoOverlay::RuedaFina(RuedaCruda {
+                    delta: MUESCA,
+                    horizontal: true,
+                    ms: 10,
+                    ctrl,
+                    shift: false,
+                }),
+            );
+            assert_eq!(r.accion, Some(Accion::Desplazar { dx: -100.0, dy: 0.0 }), "{ctrl}");
+        }
+    }
+
+    #[test]
+    fn una_rueda_fina_sin_giro_no_hace_nada_pero_no_se_escapa_al_gesto() {
+        let mut n = Navegador::nuevo();
+        let r = ev(&mut n, rueda(0, 10));
+        assert!(r.consumido);
+        assert_eq!(r.accion, None);
+    }
+
+    #[test]
+    fn el_desliz_tactil_mueve_el_lienzo_en_diagonal_pixel_a_pixel_a_escala_150() {
+        let mut n = Navegador::nuevo();
+        let r = n.evento(
+            &EventoOverlay::DeslizTactil(Desliz::nuevo(30.0, -15.0)),
+            ORIGEN,
+            150,
+            NADA,
+            true,
+            SIEMPRE,
+        );
+        assert!(r.consumido);
+        assert_eq!(r.accion, Some(Accion::Desplazar { dx: 20.0, dy: -10.0 }));
+        let mut c = Camara::nueva();
+        let p = Punto2::nuevo(5.0, 5.0);
+        let antes = vista_efectiva(&c, 150).a_pantalla(p);
+        assert!(aplicar(&mut c, r.accion.unwrap()));
+        let despues = vista_efectiva(&c, 150).a_pantalla(p);
+        assert!((despues.x - antes.x - 30.0).abs() < 1e-3);
+        assert!((despues.y - antes.y + 15.0).abs() < 1e-3);
+        // Nunca zoom al deslizar.
+        assert_eq!(c.zoom, 1.0);
+    }
+
+    #[test]
+    fn el_pellizco_acerca_con_el_punto_del_cursor_quieto() {
+        let mut n = Navegador::nuevo();
+        let r = n.evento(
+            &EventoOverlay::PellizcoTactil(Pellizco::nuevo(1.5, Punto { x: 450, y: 300 })),
+            Punto { x: 150, y: 0 },
+            150,
+            NADA,
+            true,
+            SIEMPRE,
+        );
+        let Some(accion @ Accion::Escalar { foco, factor }) = r.accion else {
+            panic!("el pellizco es zoom, dio {:?}", r.accion);
+        };
+        assert_eq!(foco, Punto2::nuevo(200.0, 200.0));
+        assert!((factor - 1.5).abs() < 1e-5);
+        let mut c = Camara::nueva();
+        let antes = c.a_mundo(foco);
+        assert!(aplicar(&mut c, accion));
+        assert!((c.zoom - 1.5).abs() < 1e-4);
+        let despues = c.a_mundo(foco);
+        assert!((antes.x - despues.x).abs() < 1e-3 && (antes.y - despues.y).abs() < 1e-3);
+    }
+
+    #[test]
+    fn el_pellizco_no_pasa_de_los_limites_de_zoom() {
+        let foco = Punto2::nuevo(0.0, 0.0);
+        let mut c = Camara::nueva();
+        c.zoom = ZOOM_MAXIMO;
+        assert!(!aplicar(&mut c, Accion::Escalar { foco, factor: 2.0 }));
+        assert_eq!(c.zoom, ZOOM_MAXIMO);
+        c.zoom = ZOOM_MINIMO;
+        assert!(!aplicar(&mut c, Accion::Escalar { foco, factor: 0.5 }));
+        assert_eq!(c.zoom, ZOOM_MINIMO);
+    }
+
+    #[test]
+    fn la_rueda_del_raton_no_pasa_de_los_limites_de_zoom() {
+        let foco = Punto2::nuevo(0.0, 0.0);
+        let mut c = Camara::nueva();
+        c.zoom = ZOOM_MAXIMO;
+        let _ = aplicar(&mut c, Accion::ZoomSuave { foco, delta: MUESCA });
+        assert!(c.zoom <= ZOOM_MAXIMO);
+        c.zoom = ZOOM_MINIMO;
+        let _ = aplicar(&mut c, Accion::ZoomSuave { foco, delta: -MUESCA });
+        assert!(c.zoom >= ZOOM_MINIMO);
+    }
+
+    #[test]
+    fn el_boton_central_sigue_arrastrando_con_los_gestos_tactiles_pedidos() {
+        // Caso negativo: los eventos nuevos no le quitan la mano al central.
+        let mut n = Navegador::nuevo();
+        let _ = ev(&mut n, rueda(-17, 1));
+        let _ = ev(&mut n, EventoOverlay::BotonCentralPulsado(Punto { x: 0, y: 0 }));
+        let m = ev(&mut n, EventoOverlay::RatonMovido(Punto { x: 7, y: -3 }));
+        assert_eq!(m.accion, Some(Accion::Desplazar { dx: 7.0, dy: -3.0 }));
     }
 
     #[test]

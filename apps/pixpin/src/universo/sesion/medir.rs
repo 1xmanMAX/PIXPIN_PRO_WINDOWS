@@ -73,6 +73,16 @@ impl Banco {
         (ms(t0, t1), ms(t1, t2), ms(t0, t3))
     }
 
+    /// Un fotograma con la camara quieta, leido de vuelta en RGBA: para las
+    /// muestras en PNG (`super::muestra`).
+    pub fn foto(&self, s: &mut Sesion, camara: &Camara) -> (u32, u32, Vec<u8>) {
+        s.movida = None;
+        self.fotograma(s, camara);
+        s.movida = None;
+        self.fotograma(s, camara);
+        self.destino.leer_rgba().expect("leer")
+    }
+
     /// `VUELTAS` fotogramas con las camaras que diga `camara(i)`.
     pub fn medir(&self, s: &mut Sesion, camara: impl Fn(usize) -> Camara) -> Medida {
         // Calentar: estrellas, pinceles, cuadernos.

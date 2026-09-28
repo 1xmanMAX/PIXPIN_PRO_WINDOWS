@@ -66,7 +66,12 @@ pub enum ModoConfirmacion {
 
 /// Lo que el overlay decidio. La imagen ya esta recortada y en CPU.
 pub enum AccionFinal {
-    Copiar(ImagenRgba),
+    /// La region viaja para que la pila de capturas sepa en que monitor
+    /// plantar su icono.
+    Copiar {
+        imagen: ImagenRgba,
+        region: Rect,
+    },
     /// El recorte del que hay que leer el texto (P4).
     Texto(ImagenRgba),
     Guardar(ImagenRgba),
@@ -465,7 +470,7 @@ pub fn ejecutar_overlay(
             let imagen =
                 a_imagen(dispositivo, &recorte).context("no se pudo bajar la seleccion a CPU")?;
             Ok(match que {
-                QueAccion::Copiar => AccionFinal::Copiar(imagen),
+                QueAccion::Copiar => AccionFinal::Copiar { imagen, region },
                 QueAccion::Texto => AccionFinal::Texto(imagen),
                 QueAccion::Guardar => AccionFinal::Guardar(imagen),
                 QueAccion::GuardarComo => AccionFinal::GuardarComo(imagen),
@@ -752,6 +757,10 @@ fn procesar_evento(
         // Muestra, pero si llegara no hay nada que hacer con ella aqui.
         EventoOverlay::Rueda(_)
         | EventoOverlay::RuedaHorizontal(_)
+        // Solo llegan a ventanas que pidieron gestos tactiles; esta no.
+        | EventoOverlay::RuedaFina(_)
+        | EventoOverlay::DeslizTactil(_)
+        | EventoOverlay::PellizcoTactil(_)
         | EventoOverlay::Caracter(_)
         | EventoOverlay::TeclaSoltada(_)
         | EventoOverlay::Atajo(_)

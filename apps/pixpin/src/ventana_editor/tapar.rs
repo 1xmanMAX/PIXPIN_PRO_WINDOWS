@@ -98,4 +98,96 @@ mod pruebas {
         );
         assert!(!vacio(&[mosaico_en(10.0)]), "uno a la vista si");
     }
+
+    /// **Pixelar y desenfocar, pintados de verdad** (F18): el mismo texto
+    /// tapado con los dos modos del panel. Pixelado: cada cuadro de 16 (el
+    /// grano del grosor medio) es de un solo color, asi que no queda el trazo
+    /// de ninguna letra. Desenfocado: no queda ningun canto vivo.
+    /// Se deja `mosaico-pixelar-desenfocar.png`.
+    #[test]
+    fn pixelar_y_desenfocar_tapan_el_texto_y_la_muestra_se_deja_en_png() {
+        use crate::dibujo::pintar::{a_color, dibujar_orden, por_cada_orden};
+        let texto = |y: f32| Elemento {
+            id: 0,
+            figura: Figura::Texto {
+                texto: "CUENTA 1234 5678".into(),
+                tam: 28.0,
+                familia: "Segoe UI".into(),
+            },
+            x: 20.0,
+            y,
+            ancho: 300.0,
+            alto: 36.0,
+            trazo: pixpin_motor2d::ColorRgba::opaco(0.0, 0.0, 0.0),
+            ..Default::default()
+        };
+        let tapa = |y: f32, desenfoque: bool| Elemento {
+            id: 0,
+            figura: Figura::Mosaico { desenfoque },
+            x: 20.0,
+            y,
+            ancho: 300.0,
+            alto: 40.0,
+            grosor: 2.0,
+            ..Default::default()
+        };
+        let mut escena = pixpin_motor2d::Escena::nueva();
+        escena.anadir(texto(20.0));
+        escena.anadir(texto(90.0));
+        escena.anadir(tapa(18.0, false));
+        escena.anadir(tapa(88.0, true));
+        let d = pixpin_capture::Dispositivo::nuevo().expect("GPU");
+        let mut motor = MotorRender::nuevo(d.d3d()).expect("motor");
+        let (w, h) = (360u32, 150u32);
+        let destino = pixpin_render::fuera_de_pantalla::FueraDePantalla::nuevo(&motor, d.d3d(), w, h)
+            .expect("textura");
+        let imagenes = crate::imagenes_lienzo::ImagenesLienzo::nuevo(4096);
+        let camara = Camara::nueva();
+        let vista = camara.ventana(w as f32, h as f32);
+        motor
+            .dibujar(&destino.destino, |p| {
+                p.limpiar(a_color(escena.fondo));
+                p.poner_vista((0.0, 0.0), 1.0, (0.0, 0.0));
+                let mut cache = pixpin_motor2d::cache::Cache::nueva();
+                for e in escena.visibles().filter(|e| !es_mosaico(e)) {
+                    por_cada_orden(&mut cache, e, 1.0, None, |o| {
+                        dibujar_orden(p, o, vista, None, &imagenes, 1.0, None);
+                    });
+                }
+            })
+            .expect("pinta");
+        assert_eq!(pasar(&mut motor, &destino.destino, &escena.elementos, &camara, w, h), 2);
+        let (ancho, alto, px) = destino.leer_rgba().expect("lee");
+        let g = |x: u32, y: u32| px[((y * ancho + x) * 4) as usize] as i32;
+        // Pixelado: en cada fila, cuantas veces cambia el color. Con cuadros
+        // de 16 no puede cambiar mas de una vez cada 16 pixeles; un texto
+        // cambia en cada canto de cada letra.
+        let cambios = |y: u32| (22..318u32).filter(|&x| g(x + 1, y) != g(x, y)).count();
+        let pix = (22..54u32).map(cambios).max().unwrap_or(0);
+        let crudo = cambios(8);
+        // El salto mas grande entre dos vecinos del desenfocado.
+        let mut borr = 0;
+        for y in 92..124u32 {
+            for x in 24..316u32 {
+                borr = borr.max((g(x + 1, y) - g(x, y)).abs());
+            }
+        }
+        let dir = std::env::var_os("PIXPIN_MUESTRAS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        std::fs::create_dir_all(&dir).expect("carpeta");
+        let png = pixpin_codec::codificar_png(&pixpin_codec::ImagenRgba {
+            ancho,
+            alto,
+            pixeles: px,
+        })
+        .expect("png");
+        std::fs::write(dir.join("mosaico-pixelar-desenfocar.png"), png).expect("escribe");
+        assert!(pix <= 300 / 16 + 2, "pixelado: una fila con detalle ({pix} cambios)");
+        assert!(borr < 60, "desenfocado: queda un canto vivo ({borr})");
+        // Caso negativo: encima del mosaico (papel liso) no cambia nada, y
+        // la cuenta no es trivial: el pixelado si tiene sus cuadros.
+        assert_eq!(crudo, 0);
+        assert!(pix > 0, "el pixelado salio liso: no tapo nada");
+    }
 }

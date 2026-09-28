@@ -12,6 +12,7 @@ use pixpin_motor2d::{Camara, Punto2};
 use pixpin_render::icono::{Icono, Pintura, TrazoIcono};
 use pixpin_render::{Color, Pintor, RectF};
 use pixpin_universo::ficha::{ClaseLuna, FichaLuna};
+use pixpin_universo::desde_el_chat::{ESCALA_GALAXIA, RADIO_DEL_SOL};
 use pixpin_universo::{Astro, Clase, IdAstro, Nivel, TipoConexion, Visto, nebulosa};
 
 use super::cielo::Cielo;
@@ -193,6 +194,60 @@ pub const LINEA: Icono = Icono {
     ],
 };
 
+/// H3: las figuras de componer (triangulo, circulo, cuadro y flecha). Dibujo
+/// propio, con los trazos de los de arriba.
+pub const FIGURAS_ICONO: Icono = Icono {
+    vista: (0.0, 0.0, 24.0, 24.0),
+    trazos: &[
+        trazo("M7 3l4 7h-8z"),
+        trazo("M13 7a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"),
+        trazo("M4 14h6v6h-6z"),
+        trazo("M14 17h7M18 14l3 3l-3 3"),
+    ],
+};
+
+/// H3: el rotulo, una T de titulo. Dibujo propio.
+pub const ROTULO: Icono = Icono {
+    vista: (0.0, 0.0, 24.0, 24.0),
+    trazos: &[trazo("M5 5h14"), trazo("M12 5v14"), trazo("M9 19h6")],
+};
+
+/// Una figura de componer pintada en su cuadrado de pantalla, con las
+/// mismas proporciones que la que se pone en el cielo
+/// (`herramienta::vertices`): lo que se elige es lo que sale.
+pub fn figura_de_muestra(
+    p: &Pintor,
+    f: pixpin_universo::FiguraUniverso,
+    x: f32,
+    y: f32,
+    lado: f32,
+    grosor: f32,
+    color: Color,
+) {
+    use pixpin_universo::FiguraUniverso as F;
+    let v: Vec<(f32, f32)> = pixpin_universo::herramienta::vertices(f, x, y, lado)
+        .iter()
+        .map(|q| (q.x, q.y))
+        .collect();
+    match f {
+        F::Circulo => p.anillo((x + lado / 2.0, y + lado / 2.0), lado * 0.44, grosor, color),
+        F::Flecha => {
+            let (a, b) = (v[0], v[1]);
+            p.linea(a, b, grosor, color);
+            p.polilinea(
+                &[
+                    (x + lado * 0.65, y + lado * 0.28),
+                    b,
+                    (x + lado * 0.65, y + lado * 0.72),
+                ],
+                grosor,
+                color,
+            );
+        }
+        _ => p.polilinea(&v, grosor, color),
+    }
+}
+
 /// El icono de cada clase de luna (D219). `None` para el archivo, que se
 /// ensena con la chapa de su extension y no con un dibujo.
 pub fn icono_de_clase(c: ClaseLuna) -> Option<&'static Icono> {
@@ -267,7 +322,15 @@ impl Contexto<'_> {
                 .get(proyecto)
                 .cloned()
                 .unwrap_or_else(|| proyecto.clone()),
-            Clase::Planeta => a.nombre.clone(),
+            // Un sistema del chat sin nombre propio se llama como su sol.
+            Clase::Planeta => match &a.sistema_de {
+                Some(codigo) if a.nombre.is_empty() => self
+                    .fichas
+                    .get(codigo)
+                    .map(|f| f.nombre.clone())
+                    .unwrap_or_default(),
+                _ => a.nombre.clone(),
+            },
             Clase::Luna { .. } => self
                 .ficha_de(a)
                 .map(|f| f.nombre.clone())
@@ -381,6 +444,16 @@ pub fn astros(p: &Pintor, c: &Contexto, camara: &Camara) {
                     // va arriba, fuera del disco.
                     Nivel::Vista => {
                         p.anillo(centro, r, 1.5 * e, con_alfa(color, 0.15 * foco));
+                        // H2: «el sol grande al centro» (`RADIO_DEL_SOL`,
+                        // v0.85). Es lo que dice que todo lo de la galaxia
+                        // gira alrededor del proyecto.
+                        let rs = RADIO_DEL_SOL * camara.zoom;
+                        if rs >= 2.0 * e {
+                            sol(p, centro, rs, color, foco, c.ligero, e);
+                            if !c.ligero && rs >= 14.0 * e {
+                                inicial_del_sol(p, &nombre, centro, rs, foco);
+                            }
+                        }
                         rotulo_de_sol(p, c, &nombre, lunas, centro, r, foco, color, false);
                     }
                     Nivel::Disco => {
@@ -394,7 +467,13 @@ pub fn astros(p: &Pintor, c: &Contexto, camara: &Camara) {
                 }
             }
             Clase::Planeta => {
-                let color = a.color.map(hex).unwrap_or(PALETA.acento);
+                // Un sistema del chat (H2) lleva el color de su proyecto,
+                // como los cuerpos del movil; uno hecho a mano, el acento.
+                let color = match (&a.color, &a.sistema_de) {
+                    (None, Some(_)) => color_de_astro(c, a),
+                    _ => a.color.map(hex).unwrap_or(PALETA.acento),
+                };
+                let nombre = c.nombre_de(a);
                 if v.nivel >= Nivel::Icono {
                     // Abierto: translucido, para que sus lunas se lean
                     // encima, y con el borde de su color.
@@ -419,7 +498,7 @@ pub fn astros(p: &Pintor, c: &Contexto, camara: &Camara) {
                     }
                     texto_centrado(
                         p,
-                        &a.nombre,
+                        &nombre,
                         centro.0,
                         centro.1 + r + 4.0 * e,
                         13.0 * e,
@@ -620,6 +699,21 @@ fn luna(p: &Pintor, c: &Contexto, a: &Astro, v: &Visto, centro: (f32, f32), foco
         return;
     };
     let alfa = foco * opacidad_de_luna(f.en_equipo);
+    // Un «👍» del chat se ve como el emoji suelto que es, sin caja de nota
+    // (v0.85, `Cuerpo.EMOJI`).
+    if f.solo_emoji && v.nivel >= Nivel::Icono {
+        let tam = r * 1.4;
+        let texto = f.extracto.trim();
+        let (w, h) = p.medir_texto(texto, tam);
+        p.texto_color(
+            texto,
+            centro.0 - w / 2.0,
+            centro.1 - h / 2.0,
+            tam,
+            con_alfa(Color::BLANCO, alfa),
+        );
+        return;
+    }
     match v.nivel {
         Nivel::Punto => p.circulo(centro, 2.0 * e, con_alfa(PALETA.texto_suave, alfa)),
         Nivel::Icono => icono_de_luna(p, f, caja_de(centro, r), alfa, e),
@@ -740,6 +834,7 @@ pub fn con_orbitas(radio_px: f32, hijos: usize, escala: f32) -> bool {
 pub fn orbitas(p: &Pintor, c: &Contexto, camara: &Camara) {
     let e = c.escala;
     let fino = (1.2 * e).max(1.0);
+    orbitas_del_sol(p, c, camara);
     for v in c.vistos {
         let Some(luna) = c.u.astro(v.id) else {
             continue;
@@ -771,6 +866,71 @@ pub fn orbitas(p: &Pintor, c: &Contexto, camara: &Camara) {
         };
         p.anillo(centro, radio, fino, con_alfa(color, 0.10 * foco));
         p.polilinea_discontinua(&[centro, suya], fino, con_alfa(color, 0.35 * foco));
+    }
+}
+
+/// Los radios de los aros de una galaxia (`Universo.kt:357`): uno por cada
+/// distancia al sol de lo atado a el, redondeada a 20 dp del movil, sin
+/// repetir. Pura, para probarla.
+pub fn aros_del_sol(distancias: impl Iterator<Item = f32>) -> Vec<f32> {
+    let paso = 20.0 * ESCALA_GALAXIA;
+    let mut aros: Vec<f32> = distancias
+        .filter(|d| *d > 1.0)
+        .map(|d| (d / paso).round() * paso)
+        .collect();
+    aros.sort_by(f32::total_cmp);
+    aros.dedup();
+    aros
+}
+
+/// **Las orbitas del sol de una galaxia abierta** (H2, `Universo.kt:353-372`):
+/// un aro blanco al 7 % por anillo de cuerpos, detras de todo, y la raya de
+/// cada cuerpo atado al sol (el vinculo `SOL`), blanca al 55 %. No es un
+/// adorno: es lo que dice que lo de fuera gira alrededor del proyecto.
+///
+/// Solo lo que puso el armado (`atado`): lo colocado a mano no cuelga del sol
+/// en el movil tampoco. Y solo lo que sigue dentro de su galaxia: si el
+/// usuario lo saca, la raya se va con el.
+fn orbitas_del_sol(p: &Pintor, c: &Contexto, camara: &Camara) {
+    let e = c.escala;
+    for v in c.vistos.iter().filter(|v| v.nivel == Nivel::Vista) {
+        let Some(g) = c.u.astro(v.id) else { continue };
+        if !matches!(g.clase, Clase::Galaxia { .. }) {
+            continue;
+        }
+        let atados: Vec<&Astro> = c.u.hijos(g.id).filter(|a| a.atado).collect();
+        if atados.is_empty() {
+            continue;
+        }
+        let centro = a_pantalla(camara, g.x, g.y);
+        let foco = if c.en_foco(g.id) { 1.0 } else { FUERA_DE_FOCO };
+        let fino = (1.0 * e).max(1.0);
+        for r in aros_del_sol(atados.iter().map(|a| (a.x - g.x).hypot(a.y - g.y))) {
+            p.anillo(
+                centro,
+                r * camara.zoom,
+                fino,
+                con_alfa(Color::BLANCO, 0.07 * foco),
+            );
+        }
+        // Del borde del sol al borde del cuerpo: en el movil los cuerpos son
+        // opacos y tapan la raya; aqui un planeta sistema es translucido y
+        // la raya se veria cruzandole todo lo de dentro.
+        let raya = 2.0 * e;
+        for a in atados {
+            let (dx, dy) = (a.x - g.x, a.y - g.y);
+            let d = dx.hypot(dy);
+            if d <= RADIO_DEL_SOL + a.radio {
+                continue;
+            }
+            let (ux, uy) = (dx / d, dy / d);
+            p.linea(
+                a_pantalla(camara, g.x + ux * RADIO_DEL_SOL, g.y + uy * RADIO_DEL_SOL),
+                a_pantalla(camara, a.x - ux * a.radio, a.y - uy * a.radio),
+                raya,
+                con_alfa(Color::BLANCO, 0.55 * foco),
+            );
+        }
     }
 }
 
@@ -1026,6 +1186,19 @@ mod pruebas {
         // Y el minimo va con la escala del monitor: lo que basta al 100 %
         // no basta al 150 %.
         assert!(!con_orbitas(40.0, 5, 1.5));
+    }
+
+    #[test]
+    fn los_aros_del_sol_son_uno_por_anillo_redondeados_a_veinte_dp_y_sin_el_centro() {
+        let paso = 20.0 * ESCALA_GALAXIA;
+        // Ocho cuerpos del mismo anillo con un pelo de diferencia: un aro.
+        let anillo = (0..8).map(|i| 304.0 + i as f32 * 0.5);
+        assert_eq!(aros_del_sol(anillo), vec![(304.0 / paso).round() * paso]);
+        // Dos anillos, desordenados: dos aros, de dentro afuera.
+        let dos = [471.2, 304.0, 470.0].into_iter();
+        assert_eq!(aros_del_sol(dos).len(), 2);
+        // Caso negativo: lo que esta en el centro no tiene aro.
+        assert!(aros_del_sol([0.0, 0.5].into_iter()).is_empty());
     }
 
     #[test]

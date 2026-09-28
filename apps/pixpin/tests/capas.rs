@@ -21,11 +21,23 @@ fn capa(nombre: &str) -> Option<u8> {
         // `pixpin-voz` es el tercero: pasar una nota de voz a texto (Media
         // Foundation para decodificar, Vosk cargado al vuelo) y la cuenta
         // del telepronter. Tampoco depende de ningun crate de PixPin.
+        // `pixpin-web` es el visor de HTML sobre WebView2: habla con Windows
+        // y con nadie de PixPin salvo la geometria, como los demas de aqui.
+        // `pdfsqueeze-core` es el compresor de PDF del autor, copiado de
+        // Thesis (ver su PROCEDENCIA.md): solo lopdf, image y compania, sin
+        // ningun crate de PixPin ni de Windows. Cimiento puro.
         "pixpin-shell" | "pixpin-render" | "pixpin-gpu" | "pixpin-codec" | "pixpin-motor2d"
-        | "pixpin-sincro" | "pixpin-tinta" | "pixpin-audio" | "pixpin-voz" => 1,
+        | "pixpin-sincro" | "pixpin-tinta" | "pixpin-audio" | "pixpin-voz" | "pixpin-web"
+        | "pdfsqueeze-core" => 1,
         "pixpin-capture" | "pixpin-pin" | "pixpin-pdf" | "pixpin-ocr" | "pixpin-record"
-        | "pixpin-store" | "pixpin-proyecto" | "pixpin-universo" | "pixpin-docs" => 2,
-        "pixpin-ui" | "pixpin-flow" | "pixpin-plugin" => 3,
+        | "pixpin-store" | "pixpin-proyecto" | "pixpin-universo" | "pixpin-docs"
+        | "pixpin-pila" => 2,
+        // El compresor de PDF en su propio ejecutable: solo pdfsqueeze y la
+        // prioridad de pixpin-shell. `pixpin` solo lo usa en sus pruebas.
+        "pixpin-aligerar" => 2,
+        // `pixpin-notas` es la ventana del editor de notas Markdown (H12): usa
+        // las cuentas de `pixpin-docs` (capa 2), asi que va encima.
+        "pixpin-ui" | "pixpin-flow" | "pixpin-plugin" | "pixpin-notas" => 3,
         "pixpin" => 4,
         _ => return None,
     })
@@ -58,12 +70,12 @@ fn manifiestos() -> Vec<(String, PathBuf)> {
 }
 
 #[test]
-fn estan_los_veinticinco_paquetes() {
+fn estan_los_treinta_paquetes() {
     let encontrados = manifiestos();
     assert_eq!(
         encontrados.len(),
-        25,
-        "se esperan 24 crates de libreria mas el ejecutable, encontrados: {:?}",
+        30,
+        "se esperan 28 crates de libreria y los dos ejecutables, encontrados: {:?}",
         encontrados.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
 }
@@ -143,4 +155,26 @@ fn ninguna_dependencia_sube_de_capa() {
             }
         }
     }
+}
+
+/// **pixpinmax.exe no enlaza el compresor de PDF.** pdfsqueeze y sus codecs
+/// son ~1,8 MB que viven en su propio ejecutable (`pixpin-aligerar`), al que
+/// pixpinmax lanza como proceso. Basta una linea en `[dependencies]` para
+/// volver a meterlos en el programa que se abre en cada arranque de Windows;
+/// en `[dev-dependencies]` si pueden estar, que eso no llega al ejecutable.
+#[test]
+fn pixpinmax_no_enlaza_el_compresor_de_pdf() {
+    let texto = fs::read_to_string(raiz().join("apps/pixpin/Cargo.toml")).unwrap();
+    let doc: toml::Value = texto.parse().unwrap();
+    let deps = doc["dependencies"].as_table().unwrap();
+    for prohibida in ["pdfsqueeze-core", "pixpin-aligerar", "lopdf"] {
+        assert!(
+            !deps.iter().any(|(k, v)| nombre_real(k, v) == prohibida),
+            "`{prohibida}` en [dependencies] de pixpin lo enlazaria en pixpinmax.exe"
+        );
+    }
+    // Caso negativo de la propia prueba: el compresor si lo enlaza.
+    let texto = fs::read_to_string(raiz().join("apps/pixpin-aligerar/Cargo.toml")).unwrap();
+    let doc: toml::Value = texto.parse().unwrap();
+    assert!(doc["dependencies"].as_table().unwrap().contains_key("pdfsqueeze-core"));
 }

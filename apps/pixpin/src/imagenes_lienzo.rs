@@ -142,6 +142,12 @@ impl ImagenesLienzo {
             .map(|i| (i.imagen.ancho, i.imagen.alto))
     }
 
+    /// Los pixeles de la imagen `id`, tal como se guardaron: para exportar
+    /// el lienzo a un fichero, que no pasa por la GPU de la ventana.
+    pub fn rgba(&self, id: u64) -> Option<&ImagenRgba> {
+        self.imagenes.get(&id).map(|i| &i.imagen)
+    }
+
     /// Cuantas hay guardadas. Solo lo miran las pruebas, para comprobar que
     /// lo que no se puede subir tampoco se guarda.
     #[cfg(test)]
@@ -171,21 +177,10 @@ impl ImagenesLienzo {
         }
     }
 
-    /// Pinta la imagen `id` en `destino`, con la vista del mundo ya puesta.
+    /// Pinta la imagen `id` en `destino`, con la vista del mundo ya puesta,
+    /// ensenando **solo un trozo** de ella si trae `recorte` (`crop`).
     /// Sin bitmap (todavia sin subir, o un documento reabierto sin pixeles)
     /// no pinta nada: mejor un hueco que un recuadro falso.
-    pub fn pintar(
-        &self,
-        p: &Pintor<'_>,
-        id: u64,
-        destino: RectF,
-        zoom_efectivo: f32,
-        opacidad: f32,
-    ) {
-        self.pintar_recortada(p, id, destino, zoom_efectivo, opacidad, None);
-    }
-
-    /// Lo mismo, ensenando **solo un trozo** de la imagen (`crop`).
     ///
     /// El recorte de Excalidraw no encoge la imagen: la caja del elemento
     /// sigue siendo la misma y lo que cambia es que parte del original se

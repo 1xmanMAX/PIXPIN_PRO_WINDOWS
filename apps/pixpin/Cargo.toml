@@ -16,6 +16,9 @@ pixpin-audio = { version = "0.1.0", path = "../../crates/pixpin-audio" }
 pixpin-capture = { version = "0.1.0", path = "../../crates/pixpin-capture" }
 pixpin-ocr = { version = "0.1.0", path = "../../crates/pixpin-ocr" }
 pixpin-docs = { version = "0.1.0", path = "../../crates/pixpin-docs" }
+# El editor de notas Markdown (H12): el RichEdit de Windows, en su crate
+# porque este ejecutable no admite `unsafe`.
+pixpin-notas = { version = "0.1.0", path = "../../crates/pixpin-notas" }
 pixpin-pdf = { version = "0.1.0", path = "../../crates/pixpin-pdf" }
 pixpin-proyecto = { version = "0.1.0", path = "../../crates/pixpin-proyecto" }
 pixpin-codec = { version = "0.1.0", path = "../../crates/pixpin-codec" }
@@ -23,6 +26,7 @@ pixpin-geom = { version = "0.1.0", path = "../../crates/pixpin-geom" }
 pixpin-motor2d = { version = "0.1.0", path = "../../crates/pixpin-motor2d" }
 pixpin-nivel = { version = "0.1.0", path = "../../crates/pixpin-nivel" }
 pixpin-pin = { version = "0.1.0", path = "../../crates/pixpin-pin" }
+pixpin-pila = { version = "0.1.0", path = "../../crates/pixpin-pila" }
 pixpin-record = { version = "0.1.0", path = "../../crates/pixpin-record" }
 pixpin-render = { version = "0.1.0", path = "../../crates/pixpin-render" }
 pixpin-shell = { version = "0.1.0", path = "../../crates/pixpin-shell" }
@@ -30,11 +34,15 @@ pixpin-sincro = { version = "0.1.0", path = "../../crates/pixpin-sincro" }
 pixpin-store = { version = "0.1.0", path = "../../crates/pixpin-store" }
 pixpin-tinta = { version = "0.1.0", path = "../../crates/pixpin-tinta" }
 pixpin-ui = { version = "0.1.0", path = "../../crates/pixpin-ui" }
+pixpin-web = { version = "0.1.0", path = "../../crates/pixpin-web" }
 pixpin-voz = { version = "0.1.0", path = "../../crates/pixpin-voz" }
 pixpin-universo = { workspace = true }
+# La huella de los PDF ya aligerados (ver src/aligerar.rs). Ya esta en el
+# arbol. pdfsqueeze NO va aqui: vive en su ejecutable, pixpin-aligerar.
+sha2 = "0.10"
 qrcodegen = "1.8.0"
 # El dialogo de sincronizar viaja en JSON: mismas versiones que pixpin-sincro.
-serde = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1.44"
 tracing-appender = "0.2.5"
@@ -43,6 +51,12 @@ windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_
 
 [dev-dependencies]
 toml = "0.8"
+# Las pruebas de aligerar fabrican un PDF cifrado; la misma que pdfsqueeze.
+lopdf = { version = "0.42", default-features = false }
+# El compresor en el propio hilo de las pruebas (no hay pixpin-aligerar.exe
+# al lado del ejecutable de pruebas) y los PDF sinteticos de pdfsqueeze.
+pixpin-aligerar = { workspace = true }
+pdfsqueeze-core = { workspace = true }
 windows = { version = "0.62.2", features = ["Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi_Common"] }
 
 [build-dependencies]

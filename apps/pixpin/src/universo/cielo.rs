@@ -146,6 +146,30 @@ impl Cielo {
         self.hecho = None;
     }
 
+    /// Pinta solo el trozo `zona` del cielo de una pantalla de `ancho` x
+    /// `alto`, en su sitio. Para quien tapa el resto con otra cosa (el chat
+    /// con el tema Cosmos, M1): no rellenar lo que se va a tapar ahorra la
+    /// mayor parte de la pasada en una grafica integrada.
+    pub fn pintar_zona(&self, p: &Pintor, ancho: f32, alto: f32, zona: RectF) -> bool {
+        let Some(((w, h), b)) = &self.hecho else {
+            return false;
+        };
+        let (bw, bh) = tamano(*w, *h);
+        let (sx, sy) = (bw as f32 / ancho.max(1.0), bh as f32 / alto.max(1.0));
+        p.bitmap(
+            b,
+            zona,
+            Some(RectF {
+                x: zona.x * sx,
+                y: zona.y * sy,
+                ancho: zona.ancho * sx,
+                alto: zona.alto * sy,
+            }),
+            false,
+        );
+        true
+    }
+
     /// Pinta el cielo tapando la pantalla. Devuelve si lo hizo: si no, quien
     /// llama tiene que limpiar con un color liso.
     pub fn pintar(&self, p: &Pintor, ancho: f32, alto: f32) -> bool {

@@ -400,7 +400,19 @@ pub fn olvidar(carpeta: &std::path::Path, id: &str) -> std::io::Result<bool> {
 /// Los recordatorios que hay que volver a poner tras una sincronizacion o al
 /// arrancar, leyendo el cuaderno de `carpeta`.
 pub fn agenda_de(carpeta: &std::path::Path) -> std::io::Result<Agenda> {
-    Ok(Agenda::de_cuaderno(&Cuaderno::leer_de(carpeta)?))
+    let c = Cuaderno::leer_de(carpeta)?;
+    let mut agenda = Agenda::de_cuaderno(&c);
+    // Los temporizadores y alarmas de las mini-apps tambien avisan. Sin esto
+    // no se volverian a poner al arrancar, y releer tras una sincronizacion
+    // los borraria.
+    for r in crate::mini_panel::avisos_del_cuaderno(
+        &c,
+        pixpin_shell::entorno::ahora_utc_ms(),
+        pixpin_shell::entorno::desfase_local_ms(),
+    ) {
+        agenda.programar(r);
+    }
+    Ok(agenda)
 }
 
 // ─────────────── El enganche con el resto del programa ───────────────
@@ -582,6 +594,52 @@ pub fn atajos(ahora_local_ms: i64) -> Vec<(&'static str, i64)> {
         ("chat-recordar-esta-tarde", a_las(ahora_local_ms, 18, 0)),
         ("chat-recordar-manana", a_las(ahora_local_ms, 9, 1)),
     ]
+}
+
+/// «Elegir la hora…» (v0.72, el `TimePicker` del movil): la hora tecleada,
+/// en hora local, como la proxima vez que el reloj la marque. Si hoy ya
+/// paso, es la de manana, igual que alli.
+///
+/// Se aceptan las formas que salen solas al teclear una hora: `18:30`,
+/// `18.30`, `1830`, `930` (las 9:30), `9` y `18` (en punto). Sin separador,
+/// las dos ultimas cifras son los minutos solo si hay tres o cuatro: con dos,
+/// `18` es una hora y no «un minuto dieciocho». `None` si no es una hora de
+/// verdad (`25:00`, `9:75`, letras), para decirlo en vez de adivinar.
+pub fn hora_escrita(escrito: &str, ahora_local_ms: i64) -> Option<i64> {
+    let limpio = escrito.trim();
+    // Partir por bytes mas abajo solo es seguro con ASCII; una hora no
+    // lleva otra cosa.
+    if !limpio.is_ascii() {
+        return None;
+    }
+    let (h, m) = match limpio.split_once([':', '.', 'h', ' ']) {
+        Some((h, m)) => (h.trim(), m.trim()),
+        None if limpio.len() >= 3 => limpio.split_at(limpio.len() - 2),
+        None => (limpio, "00"),
+    };
+    let cifras = |t: &str, maximo: usize| {
+        (!t.is_empty() && t.len() <= maximo && t.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| t.parse::<i64>().ok())
+            .flatten()
+    };
+    let hora = cifras(h, 2)?;
+    // `18:` a medio escribir es las 18 en punto.
+    let minuto = if m.is_empty() { 0 } else { cifras(m, 2)? };
+    if hora > 23 || minuto > 59 {
+        return None;
+    }
+    Some(a_las_y_minuto(ahora_local_ms, hora, minuto))
+}
+
+/// Como [`a_las`] con minutos y siempre desde hoy: la proxima vez que el
+/// reloj marque `hora:minuto`.
+fn a_las_y_minuto(ahora_local_ms: i64, hora: i64, minuto: i64) -> i64 {
+    const DIA: i64 = 86_400_000;
+    let mut cuando = ahora_local_ms.div_euclid(DIA) * DIA + hora * 3_600_000 + minuto * 60_000;
+    if cuando <= ahora_local_ms {
+        cuando += DIA;
+    }
+    cuando
 }
 
 /// La proxima vez que el reloj de la pared marque `hora` en punto, `dias`
@@ -1045,5 +1103,41 @@ mod pruebas {
         a.programar(rec("m1", i64::MAX));
         let v = Vigia::con_reloj(a, Arc::new(|| 0), |_| {});
         drop(v);
+    }
+
+    /// Las 10:00 del 20 de septiembre de 2026, en hora local.
+    const DIEZ: i64 = 1_789_898_400_000;
+    const HORA: i64 = 3_600_000;
+    const DIA_MS: i64 = 86_400_000;
+
+    #[test]
+    fn una_hora_tecleada_que_aun_no_ha_llegado_es_de_hoy() {
+        assert_eq!(DIEZ.rem_euclid(DIA_MS), 10 * HORA, "la base son las diez");
+        assert_eq!(
+            hora_escrita("18:30", DIEZ),
+            Some(DIEZ + 8 * HORA + 30 * 60_000)
+        );
+        assert_eq!(hora_escrita("18.30", DIEZ), hora_escrita("18:30", DIEZ));
+        assert_eq!(hora_escrita("1830", DIEZ), hora_escrita("18:30", DIEZ));
+        assert_eq!(hora_escrita(" 18h30 ", DIEZ), hora_escrita("18:30", DIEZ));
+        assert_eq!(hora_escrita("18", DIEZ), Some(DIEZ + 8 * HORA), "en punto");
+        assert_eq!(hora_escrita("18:", DIEZ), Some(DIEZ + 8 * HORA));
+    }
+
+    #[test]
+    fn una_hora_que_ya_paso_es_la_de_manana() {
+        assert_eq!(hora_escrita("930", DIEZ), Some(DIEZ - 30 * 60_000 + DIA_MS));
+        assert_eq!(hora_escrita("9", DIEZ), Some(DIEZ - HORA + DIA_MS));
+        // La misma hora que ahora no salta en el acto: es manana.
+        assert_eq!(hora_escrita("10:00", DIEZ), Some(DIEZ + DIA_MS));
+    }
+
+    #[test]
+    fn lo_que_no_es_una_hora_no_se_adivina() {
+        for mal in [
+            "", "25:00", "9:75", "abc", "1:2:3", "12345", "9:5x", "ñ12", "-1",
+        ] {
+            assert_eq!(hora_escrita(mal, DIEZ), None, "«{mal}» no es una hora");
+        }
     }
 }

@@ -119,13 +119,16 @@ pub fn aplicar(mensaje: &mut Mensaje, lectura: &Lectura) {
 /// `destino` es la carpeta donde dejar el `.m4a` (ver
 /// `crate::voz::carpeta_de_audios`).
 pub fn lanzar(idioma: Idioma, texto: String, destino: PathBuf) -> Receiver<Lectura> {
+    // Se mira aqui, en el hilo que lo pide: la ventana activa es la suya.
+    let junto_a = pixpin_shell::pantalla_de::monitor_de_la_ventana_activa();
     let (enviar, recibir) = channel();
     let lanzado = std::thread::Builder::new()
         .name("telepronter".into())
         .spawn(move || {
             let _com = pixpin_shell::ComDelHilo::iniciar();
             let hecho =
-                Recursos::nuevos().and_then(|r| abrir(&r, idioma, &texto, &destino, &enviar));
+                Recursos::nuevos()
+                    .and_then(|r| abrir(&r, idioma, &texto, &destino, &enviar, junto_a));
             if let Err(e) = hecho {
                 tracing::warn!(?e, "no se pudo abrir el telepronter");
             }
@@ -161,6 +164,9 @@ enum Accion {
     MenosVelocidad,
     MasLetra,
     MenosLetra,
+    /// Parar el texto sin parar la grabacion, y seguir (el «Pausa» y
+    /// «Seguir» del movil mientras se graba).
+    Pausa,
 }
 
 struct Boton {
@@ -186,6 +192,10 @@ struct Estado {
     raton: (f32, f32),
     /// Un aviso corto abajo (la nota salio demasiado corta, no hay micro).
     aviso: Option<(String, u64)>,
+    /// Grabando con el texto parado (Espacio): el reloj sigue, el texto no.
+    pausado: bool,
+    /// El microfono abriendose en otro hilo (desde que empieza la cuenta).
+    abriendo: Option<std::sync::mpsc::Receiver<Result<Grabadora, pixpin_audio::ErrorAudio>>>,
 }
 
 fn abrir(
@@ -194,6 +204,7 @@ fn abrir(
     texto: &str,
     destino: &Path,
     enviar: &Sender<Lectura>,
+    junto_a: Option<Rect>,
 ) -> Result<()> {
     // El catalogo se carga **aqui dentro** y no se recibe hecho: `Catalogo`
     // no cruza hilos, y esta ventana vive en el suyo.
@@ -207,8 +218,11 @@ fn abrir(
     }
 
     let monitores = pixpin_capture::enumerar_monitores().context("sin monitores")?;
-    let monitor = monitores
-        .principal()
+    // **En el otro monitor, a pantalla completa** (B8): el del chat queda
+    // libre para trabajar y el texto va a la pantalla que se mira al leer. Con
+    // un solo monitor, en ese.
+    let monitor = monitor_para_leer(monitores.monitores(), junto_a)
+        .or_else(|| monitores.principal())
         .context("sin monitor principal")?
         .to_owned();
     let escala = monitor.escala_por_cien as f32 / 100.0;
@@ -242,6 +256,8 @@ fn abrir(
         botones: Vec::new(),
         raton: (0.0, 0.0),
         aviso: None,
+        pausado: false,
+        abriendo: None,
     };
 
     let mut ultimo = pixpin_shell::entorno::ahora_utc_ms() as u64;
@@ -264,16 +280,25 @@ fn abrir(
                     }
                 }
                 EventoOverlay::Rueda(muescas) => {
-                    // Empujar a mano cuenta igual que el desfile: los
-                    // minutos salen de donde esta el texto.
-                    e.desfile
-                        .empujar(-(muescas as f32) * e.tamano * 3.0 * escala);
+                    // **La rueda es la velocidad** (B8): es lo que se toca
+                    // sin mirar mientras se lee, como los dos botones
+                    // grandes de «mas lento» y «mas rapido» del movil. Para
+                    // empujar el texto a mano quedan las flechas y RePag.
+                    let que = if muescas > 0 {
+                        Accion::MasVelocidad
+                    } else {
+                        Accion::MenosVelocidad
+                    };
+                    for _ in 0..muescas.unsigned_abs().min(6) {
+                        hacer(&mut e, que, textos, enviar, &mut vivo);
+                    }
                 }
                 EventoOverlay::Tecla { vk, .. } => match vk {
                     VK_ESCAPE => hacer(&mut e, Accion::Cerrar, textos, enviar, &mut vivo),
-                    // Espacio: ensayar o parar de ensayar, que es el mismo
-                    // boton en el movil.
-                    VK_ESPACIO => hacer(&mut e, Accion::Ensayar, textos, enviar, &mut vivo),
+                    // Espacio: pausa y seguir. Sin grabar es ensayar o parar
+                    // de ensayar; grabando para el texto y deja correr la
+                    // grabacion, como el boton de Pausa del movil.
+                    VK_ESPACIO => hacer(&mut e, Accion::Pausa, textos, enviar, &mut vivo),
                     VK_INTRO => {
                         let que = if e.fase == Fase::Grabando {
                             Accion::Terminar
@@ -282,12 +307,15 @@ fn abrir(
                         };
                         hacer(&mut e, que, textos, enviar, &mut vivo);
                     }
-                    VK_ARRIBA | VK_DERECHA => {
-                        hacer(&mut e, Accion::MasVelocidad, textos, enviar, &mut vivo)
-                    }
-                    VK_ABAJO | VK_IZQUIERDA => {
+                    VK_DERECHA => hacer(&mut e, Accion::MasVelocidad, textos, enviar, &mut vivo),
+                    VK_IZQUIERDA => {
                         hacer(&mut e, Accion::MenosVelocidad, textos, enviar, &mut vivo)
                     }
+                    // Arriba y abajo empujan el texto un renglon: es el
+                    // dedo del movil. Cuenta igual que el desfile para los
+                    // minutos, que salen de donde esta el texto.
+                    VK_ABAJO => e.desfile.empujar(e.tamano * 1.45 * escala),
+                    VK_ARRIBA => e.desfile.empujar(-e.tamano * 1.45 * escala),
                     VK_MAS => hacer(&mut e, Accion::MasLetra, textos, enviar, &mut vivo),
                     VK_MENOS => hacer(&mut e, Accion::MenosLetra, textos, enviar, &mut vivo),
                     VK_NEXT => e.desfile.empujar(marco.alto as f32 * 0.5),
@@ -305,6 +333,12 @@ fn abrir(
         let segundos = (ahora.saturating_sub(ultimo)) as f32 / 1000.0;
         ultimo = ahora;
 
+        // Con la cuenta en marcha se abre ya el microfono, en otro hilo: tarda
+        // medio segundo y asi esta listo al llegar a cero.
+        if e.fase == Fase::Contando && e.abriendo.is_none() && e.grabadora.is_none() {
+            let fichero = destino.join(format!("lectura-{ahora}.m4a"));
+            e.abriendo = Some(crate::ventanita::abrir_microfono(fichero));
+        }
         // La cuenta atras baja sola y al llegar a cero arranca la grabacion.
         if e.fase == Fase::Contando && ahora >= e.cuenta_hasta {
             if e.cuenta > 1 {
@@ -312,11 +346,16 @@ fn abrir(
                 e.cuenta_hasta = ahora + MS_POR_NUMERO;
             } else {
                 e.cuenta = 0;
-                grabar_ya(&mut e, textos, destino, ahora);
+                grabar_ya(&mut e, textos, ahora);
             }
         }
 
-        if matches!(e.fase, Fase::Ensayando | Fase::Grabando) {
+        let baja = match e.fase {
+            Fase::Ensayando => true,
+            Fase::Grabando => !e.pausado,
+            _ => false,
+        };
+        if baja {
             // `avanzar` devuelve «ya no hay mas que bajar»: el movil para
             // ahi el desplazamiento, no la grabacion.
             if e.desfile.avanzar(segundos, e.velocidad * escala) && e.fase == Fase::Ensayando {
@@ -350,6 +389,24 @@ fn abrir(
         g.cancelar();
     }
     Ok(())
+}
+
+/// **En que monitor se lee**: uno que no sea el de `junto_a` (el monitor de
+/// la ventana que abrio el telepronter, sacado con `MonitorFromWindow`); si
+/// no hay otro, ese mismo. Prefiere el principal entre los otros: suele ser
+/// el que tiene la camara encima.
+fn monitor_para_leer(
+    monitores: &[pixpin_geom::Monitor],
+    junto_a: Option<Rect>,
+) -> Option<&pixpin_geom::Monitor> {
+    let junto_a = junto_a?;
+    let otros: Vec<_> = monitores.iter().filter(|m| m.area != junto_a).collect();
+    otros
+        .iter()
+        .find(|m| m.principal)
+        .or(otros.first())
+        .copied()
+        .or_else(|| monitores.iter().find(|m| m.area == junto_a))
 }
 
 /// El area donde desfila el texto.
@@ -506,12 +563,35 @@ fn pintar(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, textos: &Catalog
         boton(e, p, caja, que, rotulo, false, escala);
         x += (ancho_b + 6.0) * escala;
     }
+    // **La velocidad dicha con palabras**: un «45» no significa nada.
+    let velocidad = format!(
+        "{} · {}",
+        t(textos, Texto::Velocidad),
+        textos.t(telepronter::clave_de_la_velocidad(e.velocidad))
+    );
     p.texto(
-        &t(textos, Texto::Velocidad),
+        &velocidad,
         x + 8.0 * escala,
         y_boton + 10.0 * escala,
         14.0 * escala,
         APAGADO,
+    );
+    // **Cuanto texto queda**, en una raya fina encima de los mandos: sin
+    // esto se lee a ciegas (`LinearProgressIndicator`).
+    let tope = e.desfile.tope();
+    let cuanto = if tope > 0.0 {
+        (e.desfile.y / tope).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    p.rellenar(
+        RectF {
+            x: 0.0,
+            y: pie.y,
+            ancho: ancho * cuanto,
+            alto: 3.0 * escala,
+        },
+        DORADO,
     );
 
     // A la derecha, los dos grandes.
@@ -555,6 +635,31 @@ fn pintar(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, textos: &Catalog
         false,
         escala,
     );
+    // Grabando, un tercero: parar el texto y seguir (Espacio).
+    if e.fase == Fase::Grabando {
+        let rotulo3 = t(
+            textos,
+            if e.pausado {
+                Texto::Seguir
+            } else {
+                Texto::Pausa
+            },
+        );
+        boton(
+            e,
+            p,
+            RectF {
+                x: ancho - ancho_grande * 3.0 - 28.0 * escala,
+                y: y_boton,
+                ancho: ancho_grande,
+                alto: alto_boton,
+            },
+            Accion::Pausa,
+            &rotulo3,
+            false,
+            escala,
+        );
+    }
 
     if let Some((aviso, _)) = &e.aviso {
         p.texto(
@@ -666,7 +771,15 @@ fn hacer(
                 Fase::Parado => Fase::Ensayando,
             };
         }
+        Accion::Pausa => {
+            if e.fase == Fase::Grabando {
+                e.pausado = !e.pausado;
+            } else {
+                hacer(e, Accion::Ensayar, textos, enviar, vivo);
+            }
+        }
         Accion::Grabar => {
+            e.pausado = false;
             if e.fase != Fase::Grabando {
                 e.fase = Fase::Contando;
                 e.cuenta = CUENTA_ATRAS;
@@ -694,10 +807,22 @@ fn hacer(
     }
 }
 
-/// Arranca la grabacion de verdad, cuando la cuenta llega a cero.
-fn grabar_ya(e: &mut Estado, textos: &Catalogo, destino: &Path, ahora: u64) {
-    let fichero = destino.join(format!("lectura-{ahora}.m4a"));
-    match Grabadora::empezar(&fichero) {
+/// Arranca la grabacion de verdad, cuando la cuenta llega a cero y el
+/// microfono (abierto en otro hilo desde que empezo la cuenta) ya esta.
+/// Mientras no llegue, la cuenta se queda en cero y se vuelve a mirar.
+fn grabar_ya(e: &mut Estado, textos: &Catalogo, ahora: u64) {
+    let Some(r) = &e.abriendo else {
+        return;
+    };
+    let llegado = match r.try_recv() {
+        Ok(g) => g,
+        Err(std::sync::mpsc::TryRecvError::Empty) => return,
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+            Err(pixpin_audio::ErrorAudio::HiloCaido)
+        }
+    };
+    e.abriendo = None;
+    match llegado {
         Ok(g) => {
             e.grabadora = Some(g);
             e.inicio = ahora;
@@ -765,6 +890,8 @@ enum Texto {
     Preparate,
     MuyCorta,
     SinMicro,
+    Pausa,
+    Seguir,
 }
 
 fn t(textos: &Catalogo, que: Texto) -> String {
@@ -779,6 +906,8 @@ fn t(textos: &Catalogo, que: Texto) -> String {
         Texto::Preparate => "telepronter-preparate",
         Texto::MuyCorta => "telepronter-muy-corta",
         Texto::SinMicro => "telepronter-sin-micro",
+        Texto::Pausa => "telepronter-pausa",
+        Texto::Seguir => "telepronter-seguir",
     })
 }
 
@@ -842,6 +971,72 @@ mod pruebas {
         );
     }
 
+    fn monitor(id: u32, x: i32, principal: bool) -> pixpin_geom::Monitor {
+        let area = Rect {
+            x,
+            y: 0,
+            ancho: 1920,
+            alto: 1080,
+        };
+        pixpin_geom::Monitor {
+            id,
+            area,
+            area_trabajo: area,
+            escala_por_cien: 100,
+            principal,
+        }
+    }
+
+    #[test]
+    fn con_dos_monitores_se_lee_en_el_que_no_tiene_el_chat() {
+        let m = [monitor(0, 0, true), monitor(1, 1920, false)];
+        let chat_en_el_principal = Some(m[0].area);
+        assert_eq!(monitor_para_leer(&m, chat_en_el_principal).map(|m| m.id), Some(1));
+        let chat_en_el_segundo = Some(m[1].area);
+        assert_eq!(monitor_para_leer(&m, chat_en_el_segundo).map(|m| m.id), Some(0));
+    }
+
+    #[test]
+    fn con_un_monitor_se_lee_en_ese_y_sin_saber_donde_esta_el_chat_no_se_elige() {
+        let m = [monitor(0, 0, true)];
+        assert_eq!(monitor_para_leer(&m, Some(m[0].area)).map(|m| m.id), Some(0));
+        assert!(monitor_para_leer(&m, None).is_none(), "quien llama cae al principal");
+    }
+
+    /// `cargo test -p pixpin --bin pixpinmax muestra_del_telepronter --
+    /// --ignored --nocapture`: grabando, con la raya de lo leido.
+    #[test]
+    #[ignore = "necesita GPU; genera PNG para mirarlos"]
+    fn muestra_del_telepronter() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let marco = Rect { x: 0, y: 0, ancho: 1280, alto: 720 };
+        let parrafos = telepronter::parrafos_de(
+            "Buenos dias a todos.\n\nHoy vamos a hablar de la obra de la cocina y del presupuesto.\n\nDespues, las ventanas del salon.\n\nY para terminar, las fechas.",
+        );
+        let mut e = Estado {
+            desfile: Desfile::nuevo(parrafos.len()),
+            parrafos,
+            velocidad: 60.0,
+            tamano: TAMANO_POR_DEFECTO,
+            fase: Fase::Grabando,
+            inicio: 0,
+            cuenta: 0,
+            cuenta_hasta: 0,
+            grabadora: None,
+            medido_con: (0.0, 0),
+            botones: Vec::new(),
+            raton: (0.0, 0.0),
+            aviso: None,
+            pausado: true,
+            abriendo: None,
+        };
+        crate::ventanita::muestra("telepronter-grabando", 1280, 720, |p, _| {
+            medir(&mut e, p, marco, 1.0);
+            e.desfile.empujar(120.0);
+            pintar(&mut e, p, marco, 1.0, &textos, 65_000);
+        });
+    }
+
     #[test]
     fn los_rotulos_estan_en_los_dos_idiomas() {
         let es = Catalogo::nuevo(Idioma::Espanol);
@@ -867,6 +1062,8 @@ mod pruebas {
                 Texto::Preparate,
                 Texto::MuyCorta,
                 Texto::SinMicro,
+                Texto::Pausa,
+                Texto::Seguir,
             ] {
                 let rotulo = t(&c, que);
                 assert!(

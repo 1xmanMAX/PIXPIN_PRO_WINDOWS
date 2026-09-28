@@ -49,36 +49,60 @@
 // atributo es la unica guarda que lo habria detectado.
 #![forbid(unsafe_code)]
 
+mod aligerar;
 mod audio;
 mod biblioteca_audio;
+mod buscador;
 mod caja_dibujo;
 mod capa;
+mod compartir;
+mod conversacion;
 mod cuenta_atras;
+mod diapositivas;
+mod dibujo;
 mod editor;
 mod fondo_lienzo;
+mod fusionar_paginas;
 mod gif;
+mod grupos_ventanas;
 mod grabador;
 mod imagenes_lienzo;
+mod lector;
+mod lector_pdf;
+mod lector_tinta;
+mod llamada;
 mod medir_fotogramas;
 mod mini_panel;
 mod miniaturas;
 mod navegacion;
+mod notas_md;
 mod overlay;
 mod panel_dibujo;
+mod pdf_del_proyecto;
+mod pdf_en_chat;
+mod pila_capturas;
 mod pin_vivo;
 mod pines;
+mod pronunciar;
 mod recibir;
 mod recordatorios;
+mod renombrar_doc;
 mod reproductor;
 mod scroll;
 mod sincronizar;
 mod teleprompter;
+mod tema_cosmos;
+mod turno_pesado;
 mod universo;
 mod ventana_ajustes;
 mod ventana_chat;
 mod ventana_editor;
 mod visor;
+mod visor_html;
+mod ventanita;
 mod voz;
+mod voz_en_chat;
+mod zona_al_chat;
 
 use anyhow::{Context, Result};
 use overlay::{AccionFinal, ModoConfirmacion, Recursos, TextosBarra, ejecutar_overlay};
@@ -124,6 +148,9 @@ const _: () = assert!(
 const ID_VENTANA_UNIVERSO: u32 = 901;
 /// «Abrir documento…»: el visor de Word, libros y paginas (tanda 2).
 const ID_ABRIR_DOCUMENTO: u32 = 902;
+/// «Grupos de ventanas…» (H9): guardar y reabrir lienzos, lectores y notas
+/// con su sitio. Sin atajo: en el movil tambien es una entrada de menu.
+const ID_GRUPOS_VENTANAS: u32 = 903;
 
 const _: () = assert!(
     ID_VENTANA_UNIVERSO >= pixpin_shell::ventana::ID_MENU_GRUPO_TOPE,
@@ -157,6 +184,7 @@ fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
     // El editor avanzado (tarea 11): sin catalogo ni traduccion todavia, es
     // lo minimo para abrirlo desde la bandeja y probarlo a mano.
     v.push((ID_ABRIR_DOCUMENTO, t("bandeja-abrir-documento")));
+    v.push((ID_GRUPOS_VENTANAS, t("bandeja-grupos-ventanas")));
     v.push((ID_VENTANA_EDITOR, "Editor".to_string()));
     v
 }
@@ -172,6 +200,10 @@ fn main() -> Result<()> {
         // antes de que abort() se lleve el proceso por delante.
         std::thread::sleep(std::time::Duration::from_millis(300));
     }));
+
+    // La caja de los textos del dibujo, medida con DirectWrite y la misma
+    // letra con que se pintan (el motor es puro y sin esto mide a ojo).
+    pixpin_motor2d::texto::instalar_medidor(dibujo::pintar::medir_para_el_motor);
 
     // Vive aqui, no dentro de `arrancar`, precisamente para que sobreviva a
     // un `Err`: ver el comentario de modulo de mas arriba.
@@ -212,6 +244,14 @@ fn arrancar(
             let rutas = pixpin_shell::mensajero::rutas_de_los_argumentos();
             if !rutas.is_empty() {
                 pixpin_shell::mensajero::enviar_ficheros(&rutas);
+            } else {
+                // Sin ficheros, abrir PixPin otra vez es pedir SU ventana: el
+                // chat, que es la pantalla principal. Antes esta copia se iba
+                // en silencio y al usuario le parecia que el icono no hacia
+                // nada.
+                pixpin_shell::mensajero::pedir_ventana_principal(
+                    pixpin_store::comandos::Comando::AbrirChat.id(),
+                );
             }
             // Todavia no se han leido los ajustes, asi que no hay catalogo con
             // el que traducir un dialogo. Salir en silencio es lo correcto.
@@ -268,6 +308,15 @@ fn arrancar(
     // dibujo. Se fija una vez, antes de que exista el primer editor, y no
     // vuelve a cambiar mientras el programa viva.
     ventana_editor::fijar_ajustes_tinta(config.tinta);
+    // M1: el tema Cosmos lo mira el hilo del chat al abrirse.
+    tema_cosmos::fijar(config.tema_cosmos);
+    // Las herramientas de dibujo que el usuario apago en los ajustes: fuera
+    // de la barra y de sus teclas en el lienzo, el lector, los pines y el
+    // anotador de pantalla (`dibujo::permitidas`).
+    dibujo::permitidas::fijar(config.herramientas.clone());
+    // Aligerar los PDF que entran al chat: el nivel lo lee el trabajador de
+    // `aligerar` cada vez, asi que cambiarlo en Ajustes vale sin reiniciar.
+    aligerar::configurar(&config.pdf);
 
     // 5. Reflejar en el registro de Windows lo que digan los ajustes.
     //
@@ -334,10 +383,21 @@ fn arrancar(
         Nivel::Ligero => 33,
     };
     tracing::info!(?hechos, ?decision, "nivel de rendimiento decidido");
+    // Aligerar PDF en modo cuidadoso (un hilo, esperar a la memoria) en los
+    // equipos de 4 GB o en nivel Ligero: ver `aligerar::modo_cuidadoso`.
+    aligerar::fijar_equipo(hechos.ram_fisica_bytes, decision.nivel == Nivel::Ligero);
+    // Whisper, con la misma regla: sin arena y de uno en uno en modo cuidadoso.
+    turno_pesado::fijar_equipo(hechos.ram_fisica_bytes, decision.nivel == Nivel::Ligero);
 
     // 6. Idioma, antes de crear nada con texto.
     let lengua = idioma::resolver_idioma(&entorno::locale_del_sistema(), config.idioma);
     let textos = Catalogo::nuevo(lengua);
+    // El panel de propiedades del lienzo vive en el hilo del editor y no
+    // recibe el catalogo: se le dice aqui el idioma elegido, o usaria el de
+    // Windows aunque el usuario haya puesto otro en los ajustes.
+    panel_dibujo::fijar_idioma(lengua);
+    // Lo mismo para lo que pintan las herramientas pineadas (C3).
+    pines::fijar_idioma(lengua);
 
     // 7. Ventana invisible, icono de bandeja y atajos.
     let ventana = VentanaMensajes::nueva().context("no se pudo crear la ventana de mensajes")?;
@@ -444,6 +504,10 @@ fn arrancar(
     // sesion, no un ajuste que merezca ir al disco.
     let mut ultima_region: Option<pixpin_geom::Rect> = None;
     let hwnd = ventana.handle();
+    // La pila de capturas: toda captura que va al portapapeles pasa por
+    // ella. Nace sin ventana y sin temporizador; con `apilar_segundos = 0`
+    // se limita a copiar, como antes de existir.
+    let mut pila = pila_capturas::PilaCapturas::nueva(&config.capturas, hwnd);
 
     // 8b. Restauracion al arrancar (spec S2 5.2): el coste de crear los
     // recursos solo se paga si el almacen tiene pines abiertos, y la
@@ -620,6 +684,8 @@ fn arrancar(
         let seguir = match evento {
             _ if comando == Some(comandos::Comando::Salir) => {
                 tracing::info!("salida pedida por el usuario");
+                // El PDF que se estuviera aligerando se deja como estaba.
+                aligerar::cancelar_todo();
                 Continuar::No
             }
             // Los comandos de pines: los tres necesitan la disposicion de
@@ -680,8 +746,7 @@ fn arrancar(
                                 .context("sin monitor para la region")?
                                 .to_owned();
                             let imagen = scroll::capturar(r, &m, region)?;
-                            pixpin_codec::copiar_imagen(&imagen)
-                                .context("no se pudo copiar la captura")
+                            pila.entrar(imagen,region, r, &ubicacion, &textos)
                         });
                         match hecho {
                             Ok(()) => tracing::info!(?region, "ultima region repetida y copiada"),
@@ -716,7 +781,7 @@ fn arrancar(
                         .context("la region guardada no cae en ningun monitor")?
                         .to_owned();
                     let imagen = scroll::capturar(rec, &m, region)?;
-                    pixpin_codec::copiar_imagen(&imagen).context("no se pudo copiar")
+                    pila.entrar(imagen,region, rec, &ubicacion, &textos)
                 });
                 match hecho {
                     Ok(()) => {
@@ -775,6 +840,12 @@ fn arrancar(
                         // sin reiniciar (el idioma, el nivel de rendimiento)
                         // queda guardado y entra en el siguiente arranque.
                         config = nuevos;
+                        // M1: vale desde el siguiente chat que se abra.
+                        tema_cosmos::fijar(config.tema_cosmos);
+                        aligerar::configurar(&config.pdf);
+                        // Las herramientas apagadas valen desde el siguiente
+                        // lienzo, lector, pin o anotador que se abra.
+                        dibujo::permitidas::fijar(config.herramientas.clone());
                         let (enlaces, _) = comandos::Enlaces::de_ajustes(&config);
                         peticiones = enlaces.registrables();
                         let (de_regiones, _) =
@@ -796,6 +867,16 @@ fn arrancar(
                 Continuar::Si
             }
             Evento::AbrirFicheros(rutas) => {
+                // Un Word, un libro o un PDF abiertos desde el Explorador
+                // («Abrir con», doble clic) se LEEN, en su lector: es lo que
+                // se pidio al abrirlos. Como pin solo eran una ficha con su
+                // icono, que no se puede leer.
+                let (a_leer, rutas): (Vec<_>, Vec<_>) = rutas
+                    .into_iter()
+                    .partition(|r| lector::se_lee_al_tocar(&pixpin_docs::nombre(r)));
+                for ruta in &a_leer {
+                    lector::abrir_en_su_lector(lengua, &ubicacion, ruta, &pixpin_docs::nombre(ruta));
+                }
                 // Cada ruta cae en el pin que le toque por su extension:
                 // imagen, video o ficha de archivo. Eso ya lo decide el
                 // gestor, que es quien conoce los tipos.
@@ -876,12 +957,20 @@ fn arrancar(
                     windows::Win32::Foundation::HWND(std::ptr::null_mut()),
                 )
                 .iter()
-                .filter(|r| {
-                    r.file_name()
-                        .and_then(|n| n.to_str())
-                        .is_some_and(visor::se_abre)
-                }) {
-                    visor::lanzar(lengua, ubicacion.clone(), ruta);
+                {
+                    // Word, libro, pagina o PDF: cada uno a su lector.
+                    lector::abrir_en_su_lector(lengua, &ubicacion, ruta, &pixpin_docs::nombre(ruta));
+                }
+                Continuar::Si
+            }
+            Evento::Menu(id) if id == ID_GRUPOS_VENTANAS => {
+                let lanzador = grupos_ventanas::Lanzador {
+                    idioma: lengua,
+                    ubicacion: ubicacion.clone(),
+                    opciones: opciones_lienzo,
+                };
+                if let Some(aviso) = grupos_ventanas::menu(None, &lanzador, &textos) {
+                    let _ = bandeja.avisar(&textos.t("app-nombre"), &aviso);
                 }
                 Continuar::Si
             }
@@ -1183,6 +1272,17 @@ fn arrancar(
                         }
                         Ok(None)
                     }
+                    // Copiar pasa por la pila de capturas, que necesita los
+                    // recursos de dibujo para su icono: por eso se atiende
+                    // aqui y no en `ejecutar_accion`.
+                    AccionFinal::Copiar { imagen, region } => {
+                        ultima_region = Some(region);
+                        let r = recursos_overlay
+                            .as_ref()
+                            .context("sin recursos para la pila de capturas")?;
+                        pila.entrar(imagen,region, r, &ubicacion, &textos)?;
+                        Ok(None)
+                    }
                     otra => ejecutar_accion(otra, &ubicacion, hwnd),
                 });
                 match resultado {
@@ -1200,8 +1300,14 @@ fn arrancar(
                 }
                 Continuar::Si
             }
-            Evento::Atajo(id) if id == atajos::ID_ANOTAR || id == atajos::ID_ANOTAR_CONGELADA => {
-                let modo = if id == atajos::ID_ANOTAR {
+            // Desde la bandeja (lo normal: de fabrica no tienen atajo, D81) o
+            // desde el atajo que el usuario se ponga en el TOML.
+            _ if matches!(
+                comando,
+                Some(comandos::Comando::Anotar | comandos::Comando::AnotarCongelada)
+            ) =>
+            {
+                let modo = if comando == Some(comandos::Comando::Anotar) {
                     capa::ModoCapa::Viva
                 } else {
                     capa::ModoCapa::Congelada
@@ -1213,7 +1319,8 @@ fn arrancar(
                 if let Some(g) = &gancho {
                     g.suspender(true);
                 }
-                let capa_hecha = listo.and_then(|r| capa::ejecutar_capa(r, modo, decision.nivel));
+                let capa_hecha =
+                    listo.and_then(|r| capa::ejecutar_capa(r, modo, decision.nivel, config.enganche));
                 if let Some(g) = &gancho {
                     g.suspender(false);
                 }
@@ -1348,6 +1455,8 @@ fn arrancar(
                     escena,
                     fondo,
                 } = pedido;
+                // F5: las marcas de este lienzo viven junto a su dibujo.
+                let _marcas = ventana_editor::marcas::junto_a(&ruta);
                 let resultado = ventana_editor::abrir(
                     escena,
                     config.enganche,
@@ -1375,6 +1484,9 @@ fn arrancar(
                 }
             }
         }
+        // Lo que se haya pulsado en el panel de la pila de capturas. Como
+        // `purgar`: la ventanita solo apunta el pedido y da un toque.
+        pila.atender(&textos, &mut bandeja);
         // Lo que haya vencido mientras tanto. Va AQUI, tras el match y no
         // dentro de `Evento::Despertar`, por lo mismo que `purgar`: el toque
         // del vigia y otro evento cualquiera pueden llegar juntos, y entonces
@@ -1414,8 +1526,9 @@ fn atender_recordatorios(
     hwnd: windows::Win32::Foundation::HWND,
     ritmo_video: u32,
 ) {
+    let perdidas = llamada::tomar_perdidas();
     let vencidos = recordatorios::tomar_vencidos();
-    if vencidos.is_empty() {
+    if vencidos.is_empty() && perdidas.is_empty() {
         return;
     }
     // El monitor se busca UNA vez para todos: enumerar monitores es una
@@ -1428,10 +1541,31 @@ fn atender_recordatorios(
     });
     let mut aviso = pixpin_shell::aviso::Aviso::sobre_la_bandeja(hwnd);
     let mut hubo = false;
+    // Las llamadas secretas que nadie contesto (B11): su pin, como el
+    // `pinTexto("Llamada perdida · …")` del movil. El globo ya salio.
+    if let Some(monitor) = &monitor {
+        for texto in perdidas {
+            let pineado = preparar_pines(recursos, pines, ubicacion, textos, hwnd, ritmo_video)
+                .and_then(|p| p.pinear_nota(&texto, monitor));
+            if let Err(e) = pineado {
+                tracing::warn!(?e, "no se pudo sacar el pin de la llamada perdida");
+            }
+        }
+    }
     for v in vencidos {
         let r = v.recordatorio;
         tracing::info!(id = %r.id, "vencio un recordatorio");
-        if let Some(monitor) = &monitor {
+        // **Una nota de voz con hora es una llamada secreta** (B11,
+        // `RecordatorioReceiver`): suena como una llamada y el recado se
+        // oye por la salida de llamadas. Lo demas, un pin como siempre.
+        let secreta = v
+            .carpeta
+            .as_deref()
+            .and_then(|c| llamada::de_un_recordatorio(c, &r.id));
+        let es_secreta = secreta.is_some();
+        if let Some(l) = secreta {
+            llamada::lanzar(l, rotulos_de_la_llamada(textos), hwnd.0 as isize);
+        } else if let Some(monitor) = &monitor {
             let pineado = preparar_pines(recursos, pines, ubicacion, textos, hwnd, ritmo_video)
                 .and_then(|p| p.pinear_nota(&r.texto, monitor));
             if let Err(e) = pineado {
@@ -1440,7 +1574,10 @@ fn atender_recordatorios(
         } else {
             tracing::warn!("sin monitor donde sacar el pin del recordatorio");
         }
-        if let Err(e) = aviso.mostrar(&textos.t("chat-recordatorio-titulo"), &r.texto) {
+        // La secreta no dice su recado en un globo: eso es lo secreto.
+        if !es_secreta
+            && let Err(e) = aviso.mostrar(&textos.t("chat-recordatorio-titulo"), &r.texto)
+        {
             tracing::warn!(?e, "no se pudo avisar del recordatorio");
         }
         match &v.carpeta {
@@ -1460,6 +1597,19 @@ fn atender_recordatorios(
     // hasta que el usuario entrara y saliera del proyecto.
     if hubo {
         ventana_chat::refrescar();
+    }
+}
+
+/// Los rotulos de la llamada secreta, traducidos aqui: la ventanita vive en
+/// su hilo y el `Catalogo` no cruza hilos.
+fn rotulos_de_la_llamada(textos: &Catalogo) -> llamada::Rotulos {
+    llamada::Rotulos {
+        entrante: textos.t("llamada-entrante"),
+        contestar: textos.t("llamada-contestar"),
+        colgar: textos.t("llamada-colgar"),
+        altavoz: textos.t("llamada-altavoz"),
+        llamada: textos.t("llamada-titulo"),
+        perdida: textos.t("llamada-perdida"),
     }
 }
 
@@ -1528,7 +1678,7 @@ pub fn texto_de_lineas(lineas: Vec<pixpin_ocr::Linea>) -> String {
 }
 
 /// Las etiquetas del menu del pin, traducidas de una vez.
-fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
+pub(crate) fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
     pixpin_pin::TextosPin {
         copiar: textos.t("pin-copiar"),
         guardar_como: textos.t("pin-guardar-como"),
@@ -1553,6 +1703,8 @@ fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
         copiar_texto: textos.t("pin-copiar-texto"),
         abrir_en_lienzo: textos.t("pin-abrir-en-lienzo"),
         congelar: textos.t("pin-congelar"),
+        manejar: textos.t("pin-manejar"),
+        dejar_de_manejar: textos.t("pin-dejar-de-manejar"),
         pagina_siguiente: textos.t("pin-pagina-siguiente"),
         pagina_anterior: textos.t("pin-pagina-anterior"),
         extraer_pagina: textos.t("pin-extraer-pagina"),
@@ -1561,6 +1713,32 @@ fn textos_del_pin(textos: &Catalogo) -> pixpin_pin::TextosPin {
         cerrar: textos.t("pin-cerrar"),
         eliminar: textos.t("pin-eliminar"),
         no_encontrado: textos.t("pin-no-encontrado"),
+        convertir_en: textos.t("pin-convertir-en"),
+        herramientas: [
+            textos.t("pin-herramienta-temporizador"),
+            textos.t("pin-herramienta-cronometro"),
+            textos.t("pin-herramienta-tareas"),
+            textos.t("pin-herramienta-contador"),
+            textos.t("pin-herramienta-gastos"),
+            textos.t("pin-herramienta-pizarra"),
+            textos.t("pin-herramienta-ruleta"),
+            textos.t("pin-herramienta-lienzo"),
+            textos.t("pin-herramienta-hoja"),
+        ],
+        fondo_pizarra: textos.t("pin-fondo-pizarra"),
+        colores_pizarra: [
+            textos.t("pin-pizarra-blanca"),
+            textos.t("pin-pizarra-negra"),
+            textos.t("pin-pizarra-azul"),
+            textos.t("pin-pizarra-verde"),
+        ],
+        pautas_pizarra: [
+            textos.t("pin-pauta-lisa"),
+            textos.t("pin-pauta-cuadros"),
+            textos.t("pin-pauta-rayas"),
+            textos.t("pin-pauta-columnas"),
+            textos.t("pin-pauta-puntos"),
+        ],
     }
 }
 
@@ -1586,7 +1764,9 @@ fn pinear_portapapeles(
             Ok(1)
         }
         C::Texto(t) => {
-            pines.pinear_nota(&t, &monitor)?;
+            // Una palabra magica sola saca su herramienta y una tabla pegada
+            // sale como tabla (C3, L3); lo demas, nota.
+            pines.pinear_texto(&t, &monitor)?;
             Ok(1)
         }
         C::Rutas(rutas) => {
@@ -1651,16 +1831,13 @@ fn ejecutar_accion(
             tracing::info!(largo = texto.len(), "texto copiado");
             Ok(None)
         }
-        AccionFinal::Copiar(imagen) => {
-            pixpin_codec::copiar_imagen(&imagen).context("no se pudo copiar al portapapeles")?;
-            Ok(None)
-        }
         AccionFinal::Guardar(imagen) => {
             let ruta = ruta_captura_libre(ubicacion)?;
             pixpin_codec::guardar(&imagen, &ruta, pixpin_codec::FormatoImagen::Png)?;
             Ok(Some(ruta))
         }
-        AccionFinal::Pinear { .. }
+        AccionFinal::Copiar { .. }
+        | AccionFinal::Pinear { .. }
         | AccionFinal::Scroll { .. }
         | AccionFinal::Gif { .. }
         | AccionFinal::PinEnVivo { .. } => {

@@ -1,843 +1,114 @@
-//! La capa viva: dibujar sobre la pantalla mientras la pantalla sigue viva.
+//! **Anotar sobre la pantalla**: la entrada de los comandos `anotar` y
+//! `anotar-congelada` (bandeja, o el atajo si el usuario se pone uno en el
+//! TOML: de fabrica no tienen, D81).
 //!
-//! Es el segundo de los dos modos que pidio el usuario. El primero —congelar
-//! la pantalla y anotar sobre la foto— lo cubre el overlay de S1-B2. Este es
-//! el otro: una ventana transparente a pantalla completa, siempre encima,
-//! sobre la que se dibuja mientras debajo sigue reproduciendose el video,
-//! avanzando la presentacion o compilando el codigo.
+//! Hasta el 2026-09-24 aqui vivia una capa propia —`CapaViva`, sobre el
+//! `Anotador` viejo de `pixpin-ui`, un monitor, once herramientas, sin capa
+//! de tinta ni panel—. El usuario pidio que las herramientas de dibujo
+//! fueran las mismas en todas partes y un anotador de pantalla de verdad,
+//! asi que ahora **el anotador es el editor** con el anfitrion `Pantalla`
+//! (ver `ventana_editor/pantalla.rs`): todos los monitores, viva o
+//! congelada, las herramientas del lienzo (menos las apagadas en los
+//! ajustes), su capa de tinta de baja latencia y su panel.
 //!
-//! Lo que lo hace usable de verdad es **poder salirse de en medio** (D50): la
-//! capa alterna entre recoger el raton (dibujas) y dejarlo pasar (el dibujo
-//! se ve, pero los clics llegan a la aplicacion de abajo). Sin eso, una capa
-//! a pantalla completa secuestra el escritorio y solo sirve para un garabato
-//! rapido.
+//! Lo que queda aqui es lo que el editor no puede hacer solo: fotografiar la
+//! pantalla. Antes de abrir (la foto de fondo de la congelada, sin la
+//! ventana) y al salir (lo anotado sobre lo que habia debajo, que `main`
+//! ofrece guardar y pinea, D54). Las dos van por los duplicadores de
+//! `Recursos`, un monitor cada uno, y se unen en una del escritorio virtual.
+//!
+//! **Lo que se pierde respecto a la capa vieja**: alternar el pasante con el
+//! mismo atajo global que abrio la capa (el bucle del editor solo ve los
+//! eventos de su ventana). Espacio y Ctrl siguen haciendolo. La lupa en vivo
+//! ya no se pierde: se porto el 2026-09-26 (`pantalla::LupaViva`).
 
 use anyhow::{Context, Result};
-use pixpin_capture::{Dispositivo, Instantanea, SesionViva};
-use pixpin_geom::{Monitor, Punto, Rect};
-use pixpin_motor2d::{Escena, Orden, Punto2};
+use pixpin_geom::{Monitor, Rect};
 use pixpin_nivel::Nivel;
-use pixpin_render::{Color, MotorRender, RectF, Superficie};
-use pixpin_shell::overlay::{FormaCursorWin, MSG_DESPIERTA, VentanaOverlay};
-use pixpin_ui::{
-    Anotador, BOTONES, BotonCaja, CajaHerramientas, EfectoAnotador, EventoAnotador, Herramienta,
-    Lupa, TeclaAnotador,
-};
-use std::rc::Rc;
-use std::time::{Duration, Instant};
-use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
-use windows::Win32::Graphics::Direct3D11::ID3D11Device;
-
-/// Una captura envuelta como bitmap. La instantanea viaja con el bitmap
-/// porque el bitmap ES su textura: soltarla lo dejaria colgando.
-struct Fondo {
-    _instantanea: Instantanea,
-    bitmap: ID2D1Bitmap1,
-}
 
 /// Los dos modos que pidio el usuario (D49).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModoCapa {
     /// Transparente: la pantalla sigue viva debajo.
     Viva,
-    /// Con la captura del monitor como fondo (D56). Sin modo pasante: no
+    /// Con la captura del escritorio como fondo (D56). Sin modo pasante: no
     /// hay nada vivo debajo a lo que dejar pasar los clics.
     Congelada,
 }
 
-/// Una capa de anotacion cubriendo un monitor.
-pub struct CapaViva {
-    ventana: VentanaOverlay,
-    superficie: Superficie,
-    motor: Rc<MotorRender>,
-    area: Rect,
-    monitor: Monitor,
-    /// La captura de fondo del modo congelado; `None` en el modo vivo.
-    fondo: Option<Fondo>,
-    escala_por_cien: u32,
-    escena: Escena,
-    anotador: Anotador,
-    en_curso: Option<pixpin_motor2d::Elemento>,
-    caja: CajaHerramientas,
-    /// Ultima posicion conocida del cursor: la lupa la necesita para saber
-    /// que ampliar sin esperar a un clic.
-    cursor: Punto,
-    /// La pantalla viva para la lupa (D60): una sesion WGC con tope de fps
-    /// que solo existe mientras la lupa esta activa. Capturar el monitor
-    /// entero en cada movimiento del raton costaba un 28 % de CPU.
-    sesion: Option<SesionViva>,
-    /// El pasante elegido con Espacio o con el atajo (D50). Ctrl mantenido
-    /// lo activa solo mientras dura, y al soltarlo se vuelve a este.
-    pasante_fijo: bool,
-}
-
-impl CapaViva {
-    pub fn nueva(
-        d3d: &ID3D11Device,
-        motor: Rc<MotorRender>,
-        monitor: &Monitor,
-        semilla: u32,
-        fondo: Option<Instantanea>,
-    ) -> Result<CapaViva> {
-        let ventana =
-            VentanaOverlay::nueva(monitor.area).context("no se pudo crear la capa viva")?;
-        // Todos los puntos del trazo (E1): los que Windows fusiona y los del
-        // lapiz, con presion.
-        ventana.pedir_entrada_fina();
-        let fondo = match fondo {
-            Some(instantanea) => Some(Fondo {
-                bitmap: motor
-                    .bitmap_desde_textura(instantanea.textura())
-                    .context("no se pudo envolver la captura de fondo")?,
-                _instantanea: instantanea,
-            }),
-            None => None,
-        };
-        let superficie = Superficie::nueva(
-            &motor,
-            d3d,
-            ventana.handle(),
-            monitor.area.ancho,
-            monitor.area.alto,
-        )
-        .context("no se pudo preparar el dibujo de la capa")?;
-
-        // La caja se coloca respecto al area de trabajo entera, no respecto
-        // a un contenido: aqui el "contenido" es la pantalla.
-        let caja = CajaHerramientas::colocar(
-            monitor.area_trabajo,
-            monitor.area_trabajo,
-            monitor.escala_por_cien,
-            &BOTONES,
-        );
-
-        Ok(CapaViva {
-            ventana,
-            superficie,
-            motor,
-            area: monitor.area,
-            monitor: *monitor,
-            fondo,
-            escala_por_cien: monitor.escala_por_cien,
-            escena: Escena::nueva(),
-            anotador: Anotador::nuevo(semilla | 1),
-            en_curso: None,
-            caja,
-            cursor: Punto { x: 0, y: 0 },
-            sesion: None,
-            pasante_fijo: false,
-        })
-    }
-
-    pub fn mostrar(&self) {
-        self.ventana
-            .poner_cursor(cursor_de(self.anotador.herramienta()));
-        self.ventana.mostrar();
-        self.ventana.enfocar();
-        self.pintar();
-    }
-
-    /// Alterna entre dibujar y dejar pasar los clics (D50). En el modo
-    /// congelado no hace nada: debajo solo hay una foto (D56).
-    pub fn alternar_pasante(&mut self) -> bool {
-        if self.fondo.is_some() {
-            return false;
-        }
-        self.pasante_fijo = !self.pasante_fijo;
-        self.ventana.poner_pasante(self.pasante_fijo);
-        // Al volver a dibujar se recupera el foco: mientras la capa era
-        // pasante el usuario estuvo pulsando en la aplicacion de abajo, y
-        // sin esto Escape y las letras seguirian yendo alli.
-        if !self.pasante_fijo {
-            self.ventana.enfocar();
-        }
-        // Repintar para que la caja de herramientas desaparezca: si no, el
-        // usuario no sabria en cual de los dos estados esta.
-        self.pintar();
-        self.pasante_fijo
-    }
-
-    /// Ctrl mantenido deja pasar los clics solo mientras dura (D50): para
-    /// un clic rapido en la aplicacion de abajo sin cambiar de modo. Al
-    /// soltarlo se vuelve al modo elegido con Espacio o el atajo.
-    pub fn ctrl(&self, pulsado: bool) {
-        if self.fondo.is_some() {
-            return;
-        }
-        self.ventana.poner_pasante(pulsado || self.pasante_fijo);
-    }
-
-    pub fn tiene_dibujo(&self) -> bool {
-        self.escena.cuantos_visibles() > 0
-    }
-
-    /// Si la lupa necesita ver la pantalla viva (D60): solo en modo vivo
-    /// (en congelado amplia la foto), con la lupa activa y recogiendo el
-    /// raton.
-    pub fn quiere_sesion(&self) -> bool {
-        self.fondo.is_none()
-            && self.anotador.herramienta() == Herramienta::Lupa
-            && !self.ventana.es_pasante()
-    }
-
-    pub fn tiene_sesion(&self) -> bool {
-        self.sesion.is_some()
-    }
-
-    /// Abre la sesion en vivo para la lupa. Cada fotograma nuevo despierta
-    /// la ventana (MSG_DESPIERTA) y la capa se repinta con el: la lupa se
-    /// mueve aunque el raton este quieto. El tope de fps es el del nivel,
-    /// como en el modo vivo del overlay (D14).
-    pub fn abrir_sesion(&mut self, dispositivo: &Dispositivo, nivel: Nivel) {
-        let tope = match nivel {
-            Nivel::Completo => Duration::ZERO,
-            Nivel::Ligero => Duration::from_millis(33),
-        };
-        let aviso = Some((self.ventana.handle().0 as isize, MSG_DESPIERTA));
-        match SesionViva::nueva(dispositivo, self.monitor.id, tope, aviso) {
-            Ok(s) => self.sesion = Some(s),
-            Err(e) => tracing::warn!(?e, "sin sesion en vivo; la lupa no vera la pantalla"),
-        }
-    }
-
-    pub fn cerrar_sesion(&mut self) {
-        if let Some(s) = self.sesion.take() {
-            tracing::info!(aceptados = s.aceptados(), "sesion de la lupa cerrada");
-            s.cerrar();
-        }
-    }
-
-    /// Un evento del raton en coordenadas del escritorio virtual. Devuelve
-    /// `false` si la capa pide cerrarse.
-    pub fn raton(&mut self, evento: EventoRaton) -> bool {
-        // Local al monitor: el documento de la capa vive en coordenadas de
-        // esta pantalla, no del escritorio entero.
-        let local = |p: Punto| Punto {
-            x: p.x - self.area.x,
-            y: p.y - self.area.y,
-        };
-
-        match evento {
-            EventoRaton::Pulsar(p) => {
-                let l = local(p);
-                self.cursor = l;
-                // Un clic en la caja ELIGE, no dibuja: sin esta comprobacion,
-                // pulsar el lapiz dejaria un punto de tinta bajo el boton.
-                if let Some(boton) = self.caja.boton_en(l) {
-                    return self.pulsar_boton(boton);
-                }
-                if self.caja.contiene(l) {
-                    return true;
-                }
-                self.anotar(EventoAnotador::Pulsar(a_punto2(l)));
-            }
-            EventoRaton::Mover(p) => {
-                let l = local(p);
-                self.cursor = l;
-                self.anotar(EventoAnotador::Mover(a_punto2(l)));
-            }
-            EventoRaton::Soltar(p) => {
-                let l = local(p);
-                self.cursor = l;
-                if !self.caja.contiene(l) {
-                    self.anotar(EventoAnotador::Soltar(a_punto2(l)));
-                }
-            }
-            EventoRaton::Rueda(delta) => self.anotar(EventoAnotador::Rueda(delta)),
-        }
-        true
-    }
-
-    /// Un punto de la entrada fina, en coordenadas del escritorio virtual.
-    pub fn muestra(&mut self, m: pixpin_shell::puntero::Muestra) {
-        let (x, y) = (m.x() - self.area.x as f32, m.y() - self.area.y as f32);
-        if self.caja.contiene(Punto {
-            x: x as i32,
-            y: y as i32,
-        }) {
-            return;
-        }
-        self.anotar(EventoAnotador::Muestra {
-            p: Punto2::nuevo(x, y),
-            presion: m.presion(),
-        });
-    }
-
-    /// Una tecla. Devuelve `false` si la capa pide cerrarse.
-    pub fn tecla(&mut self, tecla: TeclaAnotador) -> bool {
-        let efecto = self.anotador.procesar(EventoAnotador::Tecla(tecla));
-        self.aplicar(efecto)
-    }
-
-    /// Un caracter escrito (D57).
-    pub fn caracter(&mut self, c: char) -> bool {
-        let efecto = self.anotador.procesar(EventoAnotador::Caracter(c));
-        self.aplicar(efecto)
-    }
-
-    fn pulsar_boton(&mut self, boton: BotonCaja) -> bool {
-        match boton {
-            BotonCaja::Elegir(h) => {
-                self.anotar(EventoAnotador::CambiarHerramienta(h));
-                true
-            }
-            BotonCaja::Deshacer => {
-                self.escena.deshacer();
-                self.pintar();
-                true
-            }
-            BotonCaja::Rehacer => {
-                self.escena.rehacer();
-                self.pintar();
-                true
-            }
-            BotonCaja::Color => true,
-            BotonCaja::Salir => false,
-        }
-    }
-
-    fn anotar(&mut self, evento: EventoAnotador) {
-        let pintado = pintado_de(&evento);
-        // El anotador es puro y no lee el teclado: se le dicen los
-        // modificadores justo antes de cada gesto del puntero.
-        if matches!(
-            evento,
-            EventoAnotador::Pulsar(_)
-                | EventoAnotador::Mover(_)
-                | EventoAnotador::Soltar(_)
-                | EventoAnotador::Muestra { .. }
-        ) {
-            let (shift, alt) = pixpin_shell::modificadores();
-            self.anotador.poner_modificadores(shift, alt);
-        }
-        let efecto = self.anotador.procesar(evento);
-        self.aplicar_con(efecto, pintado);
-        // El cursor sigue a la herramienta (lo pidio el usuario): cruz para
-        // dibujar, barra para el texto, flecha para la mano.
-        self.ventana
-            .poner_cursor(cursor_de(self.anotador.herramienta()));
-    }
-
-    /// Aplica un efecto de la maquina. Devuelve `false` si pide salir.
-    fn aplicar(&mut self, efecto: EfectoAnotador) -> bool {
-        self.aplicar_con(efecto, Pintado::Ahora)
-    }
-
-    /// Como `aplicar`, eligiendo cuando se pinta el resultado.
-    fn aplicar_con(&mut self, efecto: EfectoAnotador, pintado: Pintado) -> bool {
-        match efecto {
-            EfectoAnotador::Nada => return true,
-            EfectoAnotador::Repintar => self.en_curso = None,
-            EfectoAnotador::EnCurso(e) => self.en_curso = Some(*e),
-            EfectoAnotador::Terminado(e) => {
-                self.en_curso = None;
-                self.escena.anadir(*e);
-            }
-            EfectoAnotador::BorrarEn(p) => {
-                if let Some(v) = self.escena.elemento_en(p) {
-                    self.escena.borrar_apuntando(v);
-                }
-            }
-            EfectoAnotador::Deshacer => {
-                self.escena.deshacer();
-            }
-            EfectoAnotador::Rehacer => {
-                self.escena.rehacer();
-            }
-            // La mano: el anotador pregunta que hay debajo porque no ve la
-            // escena, y aqui se le contesta.
-            EfectoAnotador::SeleccionarEn(p) => {
-                let elegido = self.escena.elemento_en(p);
-                self.anotador.poner_seleccion(elegido);
-            }
-            EfectoAnotador::MoverSeleccion { dx, dy } => {
-                if let Some(id) = self.anotador.seleccion() {
-                    self.escena.mover(id, dx, dy);
-                }
-            }
-            EfectoAnotador::MovimientoTerminado { dx, dy } => {
-                if let Some(id) = self.anotador.seleccion() {
-                    self.escena.apuntar_movimiento(id, dx, dy);
-                }
-            }
-            EfectoAnotador::DuplicarSeleccion => {
-                if let Some(copia) = self
-                    .anotador
-                    .seleccion()
-                    .and_then(|id| self.escena.buscar(id).cloned())
-                {
-                    let nuevo = self.escena.anadir(copia);
-                    self.anotador.poner_seleccion(Some(nuevo));
-                }
-            }
-            EfectoAnotador::BorrarSeleccion => {
-                if let Some(id) = self.anotador.seleccion() {
-                    self.escena.borrar_apuntando(id);
-                    self.anotador.poner_seleccion(None);
-                }
-            }
-            EfectoAnotador::Salir => return false,
-        }
-        // Con un texto abierto, el IME compone al lado de donde se escribe.
-        if let Some(p) = self.anotador.editando_texto() {
-            self.ventana.poner_posicion_ime(Punto {
-                x: p.x as i32,
-                y: p.y as i32,
-            });
-        }
-        match pintado {
-            Pintado::Ahora => self.pintar(),
-            // Solo se marca: el WM_PAINT llega cuando la cola se vacia, es
-            // decir, una vez despues de toda la tanda. Si antes pinta otro
-            // (el RatonMovido que sigue a los puntos recuperados), `pintar`
-            // valida la ventana y ese WM_PAINT ya no llega.
-            Pintado::Diferido => self.ventana.invalidar(),
-        }
-        true
-    }
-
-    /// Repinta la capa entera: dibujo, trazo en curso y caja.
-    pub fn pintar(&self) {
-        self.pintar_con(true);
-    }
-
-    /// Repinta con o sin interfaz (caja y lupa). Sin ella es lo que se
-    /// captura al salir: el dibujo sobre lo que habia debajo, no los
-    /// botones (D59).
-    pub fn pintar_con(&self, cromo: bool) {
-        let Ok(destino) = self.superficie.empezar(&self.motor) else {
-            return;
-        };
-        let mut ordenes = pixpin_motor2d::ordenes_de_escena(&self.escena);
-        if let Some(e) = &self.en_curso {
-            ordenes.extend(pixpin_motor2d::ordenes(e));
-        }
-        // El marco de lo seleccionado va encima de todo. Con la capa
-        // pasante no se enseña: ahi no se puede tocar nada.
-        if cromo {
-            if let Some(marco) = self.anotador.seleccion().and_then(|id| {
-                pixpin_motor2d::marco_de_seleccion(
-                    &self.escena,
-                    id,
-                    self.escala_por_cien as f32 / 100.0,
-                )
-            }) {
-                ordenes.push(marco);
-            }
-        }
-        let pasante = self.ventana.es_pasante() || !cromo;
-
-        let _ = self.motor.dibujar(&destino, |p| {
-            // Transparente de verdad: lo que hay debajo se ve y se sigue
-            // moviendo. Esto es lo que separa la capa viva del modo
-            // congelado, donde el fondo es una foto.
-            p.limpiar_transparente();
-            let todo = RectF {
-                x: 0.0,
-                y: 0.0,
-                ancho: self.area.ancho as f32,
-                alto: self.area.alto as f32,
-            };
-            // En congelado, la foto va debajo de todo (D56).
-            if let Some(f) = &self.fondo {
-                p.bitmap(&f.bitmap, todo, None, false);
-            }
-            pintar_ordenes(p, &ordenes, todo);
-            // La caja y la lupa desaparecen en modo pasante: ahi la capa no
-            // recoge el raton, asi que unos botones que no responden solo
-            // estorban.
-            if !pasante {
-                self.pintar_lupa(p);
-                crate::caja_dibujo::pintar_caja(
-                    p,
-                    &self.caja,
-                    self.anotador.herramienta(),
-                    self.escala_por_cien,
-                    Punto { x: 0, y: 0 },
-                );
-            }
-        });
-        let _ = self.superficie.presentar();
-        // Lo que habia pendiente de pintar ya esta en pantalla.
-        self.ventana.validar();
-    }
-
-    /// La lupa (D52): amplia lo ultimo muestreado alrededor del cursor y se
-    /// coloca fuera de su propia fuente (D60). No es un elemento: no se
-    /// guarda ni se captura.
-    fn pintar_lupa(&self, p: &pixpin_render::Pintor) {
-        if self.anotador.herramienta() != Herramienta::Lupa {
-            return;
-        }
-        // Congelada: amplia la foto. Viva: el ultimo fotograma de la sesion,
-        // envuelto sin copiar (el bitmap ES la textura).
-        let vivo;
-        let fuente_bitmap = match &self.fondo {
-            Some(f) => &f.bitmap,
-            None => {
-                let Some(textura) = self.sesion.as_ref().and_then(|s| s.ultimo()) else {
-                    return;
-                };
-                let Ok(b) = self.motor.bitmap_desde_textura(&textura) else {
-                    return;
-                };
-                vivo = b;
-                &vivo
-            }
-        };
-        let lupa = Lupa::con_aumento(self.escala_por_cien, self.anotador.lupa());
-        let local = Rect {
-            x: 0,
-            y: 0,
-            ancho: self.area.ancho,
-            alto: self.area.alto,
-        };
-        let fuente = lupa.region_fuente(self.cursor, local);
-        let pos = lupa.colocar_fuera(self.cursor, local);
-        let d = lupa.diametro as f32;
-        let destino = RectF {
-            x: pos.x as f32,
-            y: pos.y as f32,
-            ancho: d,
-            alto: d,
-        };
-        p.bitmap(
-            fuente_bitmap,
-            destino,
-            Some(RectF {
-                x: fuente.x as f32,
-                y: fuente.y as f32,
-                ancho: fuente.ancho as f32,
-                alto: fuente.alto as f32,
-            }),
-            true,
-        );
-        // **Y se vuelve a tapar lo tapado.** El bitmap que se acaba de
-        // ampliar es el original SIN anotaciones, asi que el cristal era una
-        // ventana al dato que el usuario habia cubierto con un mosaico:
-        // bastaba pulsar la lupa y pasar el cursor por encima para leerlo.
-        // No se guardaba ni se capturaba, pero en pantalla basta —grabando,
-        // compartiendo pantalla o con alguien detras—.
-        //
-        // Se tapa en opaco y no remuestreando porque aqui no hay acceso a los
-        // pixeles ya compuestos; entre parecerse y tapar, tapa (la misma
-        // decision que `pintado.rs` para la banda del mosaico).
-        for (x0, y0, x1, y1) in pixpin_motor2d::mosaico::zonas_en_la_lupa(
-            &pixpin_motor2d::mosaico::cajas_tapadas(&self.escena.elementos),
-            (
-                fuente.x as f32,
-                fuente.y as f32,
-                fuente.ancho as f32,
-                fuente.alto as f32,
-            ),
-            (destino.x, destino.y, destino.ancho, destino.alto),
-        ) {
-            p.rellenar(
-                RectF {
-                    x: x0,
-                    y: y0,
-                    ancho: x1 - x0,
-                    alto: y1 - y0,
-                },
-                Color {
-                    r: pixpin_motor2d::mosaico::TAPA_MACIZA.r,
-                    g: pixpin_motor2d::mosaico::TAPA_MACIZA.g,
-                    b: pixpin_motor2d::mosaico::TAPA_MACIZA.b,
-                    a: 1.0,
-                },
-            );
-        }
-        p.trazar(
-            destino,
-            2.0 * self.escala_por_cien as f32 / 100.0,
-            Color::ACENTO,
-        );
-    }
-}
-
-/// Pinta las ordenes del motor con el pintor. Igual que en el pin, pero sin
-/// desplazamiento: aqui el origen del documento es el del monitor. `marco`
-/// es el lienzo entero, que el velo del foco necesita conocer.
-fn pintar_ordenes(p: &pixpin_render::Pintor, ordenes: &[Orden], marco: RectF) {
-    let color = |c: pixpin_motor2d::ColorRgba| Color {
-        r: c.r,
-        g: c.g,
-        b: c.b,
-        a: c.a,
-    };
-    for orden in ordenes {
-        match orden {
-            Orden::Poligono { puntos, color: c } | Orden::Relleno { puntos, color: c } => {
-                let v: Vec<(f32, f32)> = puntos.iter().map(|q| (q.x, q.y)).collect();
-                p.poligono(&v, color(*c));
-            }
-            Orden::Tinta { contorno, color: c } => {
-                let v: Vec<(f32, f32)> = contorno.iter().map(|q| (q.x, q.y)).collect();
-                p.tinta(&v, color(*c));
-            }
-            Orden::Polilinea {
-                puntos,
-                color: c,
-                grosor,
-                ..
-            } => {
-                let v: Vec<(f32, f32)> = puntos.iter().map(|q| (q.x, q.y)).collect();
-                p.polilinea(&v, *grosor, color(*c));
-            }
-            Orden::Texto {
-                texto,
-                x,
-                y,
-                tam,
-                color: c,
-                ancho_max,
-                ..
-            } => p.texto_ajustado(texto, *x, *y, *tam, *ancho_max, color(*c)),
-            Orden::Velo { hueco, color: c } => {
-                let v: Vec<(f32, f32)> = hueco.iter().map(|q| (q.x, q.y)).collect();
-                p.velo(marco, &v, color(*c));
-            }
-            // Las imagenes incrustadas quedan para S6 (D61).
-            Orden::Imagen { .. } => {}
+impl ModoCapa {
+    fn a_modo(self) -> crate::ventana_editor::pantalla::Modo {
+        match self {
+            ModoCapa::Viva => crate::ventana_editor::pantalla::Modo::Viva,
+            ModoCapa::Congelada => crate::ventana_editor::pantalla::Modo::Congelada,
         }
     }
 }
 
-/// Lo que le pasa al raton sobre la capa.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EventoRaton {
-    Pulsar(Punto),
-    Mover(Punto),
-    Soltar(Punto),
-    Rueda(i32),
-}
-
-/// Cuando se pinta lo que deja un evento de anotacion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Pintado {
-    /// En cuanto se aplica: un gesto suelto (pulsar, mover, soltar, tecla).
-    Ahora,
-    /// Una vez por tanda (I1): un solo WM_MOUSEMOVE trae hasta 63 puntos
-    /// recuperados, y el lapiz su historial entero. Pintar la escena con
-    /// cada uno volvia lento el repintado, lo que fusionaba mas puntos y
-    /// pedia mas repintados.
-    Diferido,
-}
-
-fn pintado_de(evento: &EventoAnotador) -> Pintado {
-    match evento {
-        EventoAnotador::Muestra { .. } => Pintado::Diferido,
-        _ => Pintado::Ahora,
-    }
-}
-
-fn a_punto2(p: Punto) -> Punto2 {
-    Punto2::nuevo(p.x as f32, p.y as f32)
-}
-
-/// Códigos de tecla que la capa entiende.
-const VK_ESCAPE: u32 = 0x1B;
-const VK_Z: u32 = 0x5A;
-const VK_Y: u32 = 0x59;
-const VK_RETURN: u32 = 0x0D;
-const VK_BACK: u32 = 0x08;
-const VK_CONTROL: u32 = 0x11;
-/// Espacio alterna entre dibujar y dejar pasar los clics: es la tecla mas
-/// grande del teclado y la unica que se acierta sin mirar mientras dibujas.
-const VK_SPACE: u32 = 0x20;
-
-/// El cursor de cada herramienta: cruz para dibujar, barra para escribir,
-/// flecha para la mano (seleccionar y mover).
-fn cursor_de(h: Herramienta) -> FormaCursorWin {
-    match h {
-        Herramienta::Mano => FormaCursorWin::Flecha,
-        Herramienta::Texto => FormaCursorWin::Texto,
-        _ => FormaCursorWin::Cruz,
-    }
-}
-
-/// Abre la capa sobre el monitor principal, viva o congelada, y bombea sus
-/// eventos hasta que el usuario la cierra. Devuelve la imagen del dibujo si
-/// dibujó algo.
+/// Abre el anotador de pantalla y no vuelve hasta que se sale. Devuelve la
+/// foto de lo anotado si se dibujo algo.
 ///
-/// La captura final se hace **de la pantalla con la capa incluida**: es lo
+/// La foto final se hace **de la pantalla con lo anotado encima**: es lo
 /// que el usuario ve, y es lo que espera que se quede como pin.
 pub fn ejecutar_capa(
     recursos: &mut crate::overlay::Recursos,
     modo: ModoCapa,
     nivel: Nivel,
+    enganche: pixpin_motor2d::enganche::Ajustes,
 ) -> Result<Option<pixpin_codec::ImagenRgba>> {
-    use pixpin_shell::overlay::{EventoOverlay, bucle_modal};
-    use pixpin_shell::ventana::Continuar;
-
-    let t0 = Instant::now();
+    let t0 = std::time::Instant::now();
     let disposicion =
         pixpin_capture::enumerar_monitores().context("no se pudieron enumerar los monitores")?;
-    let monitor = *disposicion.principal().context("sin monitor principal")?;
+    let principal = *disposicion.principal().context("sin monitor principal")?;
+    let monitores: Vec<Monitor> = disposicion.monitores().to_vec();
+    let escritorio = disposicion.escritorio_virtual();
 
-    // Congelar ANTES de crear la ventana: asi la foto no lleva la capa.
-    let fondo = match modo {
+    // Congelar ANTES de crear la ventana: asi la foto no lleva el anotador.
+    let foto = match modo {
         ModoCapa::Viva => None,
         ModoCapa::Congelada => Some(
-            recursos
-                .congelar_monitor(&monitor)
+            foto_del_escritorio(recursos, &monitores, escritorio)
                 .context("no se pudo congelar la pantalla")?,
         ),
     };
-
-    let semilla = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as u32)
-        .unwrap_or(1);
-    let mut capa = CapaViva::nueva(&recursos.d3d(), recursos.motor(), &monitor, semilla, fondo)?;
-    capa.mostrar();
+    let mut capturar = || match foto_del_escritorio(recursos, &monitores, escritorio) {
+        Ok(img) => Some(img),
+        Err(e) => {
+            tracing::warn!(?e, "no se pudo fotografiar la pantalla anotada");
+            None
+        }
+    };
+    let mut pantalla = crate::ventana_editor::pantalla::Pantalla {
+        modo: modo.a_modo(),
+        escritorio,
+        principal,
+        foto,
+        capturar: &mut capturar,
+        resultado: None,
+    };
     tracing::info!(
         ?modo,
+        monitores = monitores.len(),
         ms = t0.elapsed().as_millis() as u64,
-        "capa de anotacion abierta"
+        "anotador de pantalla abierto"
     );
-
-    let ventanas = [];
-    // Ctrl mantenido, para distinguir Ctrl+Z de la letra Z.
-    let mut ctrl = false;
-    let dispositivo = recursos.dispositivo();
-    bucle_modal(&ventanas, |_, evento| {
-        let seguir = match evento {
-            EventoOverlay::BotonPulsado(p) => capa.raton(EventoRaton::Pulsar(p)),
-            EventoOverlay::RatonMovido(p) => capa.raton(EventoRaton::Mover(p)),
-            // Un punto de la entrada fina: llega ANTES del RatonMovido al
-            // que precede (Tarea 7). Se anota directamente, sin pasar por
-            // EventoRaton, porque ya trae presion y sus coordenadas son del
-            // escritorio virtual, no de la caja de herramientas de un clic.
-            EventoOverlay::Muestra(m) => {
-                capa.muestra(m);
-                true
-            }
-            // Un fotograma nuevo de la sesion de la lupa: repintar con el.
-            EventoOverlay::Despierta => {
-                capa.pintar();
-                true
-            }
-            EventoOverlay::BotonSoltado(p) => capa.raton(EventoRaton::Soltar(p)),
-            EventoOverlay::Tecla { vk, shift, .. } => match vk {
-                VK_SPACE => {
-                    let pasante = capa.alternar_pasante();
-                    tracing::info!(pasante, "la capa cambia de modo");
-                    true
-                }
-                VK_ESCAPE => capa.tecla(TeclaAnotador::Escape),
-                // Solo con Ctrl: una Z suelta es una letra del texto in
-                // situ, no un deshacer.
-                VK_Z if ctrl => capa.tecla(if shift {
-                    TeclaAnotador::Rehacer
-                } else {
-                    TeclaAnotador::Deshacer
-                }),
-                VK_Y if ctrl => capa.tecla(TeclaAnotador::Rehacer),
-                VK_RETURN => capa.tecla(TeclaAnotador::Enter),
-                VK_BACK => capa.tecla(TeclaAnotador::Retroceso),
-                VK_CONTROL => {
-                    ctrl = true;
-                    capa.ctrl(true);
-                    true
-                }
-                _ => true,
-            },
-            EventoOverlay::TeclaSoltada(VK_CONTROL) => {
-                ctrl = false;
-                capa.ctrl(false);
-                true
-            }
-            EventoOverlay::TeclaSoltada(_) => true,
-            // El mismo atajo que abrio la capa alterna el modo (D50). Es la
-            // unica via que sigue funcionando cuando la aplicacion de abajo
-            // ya tiene el foco: el atajo es global, Espacio no.
-            EventoOverlay::Atajo(id)
-                if id == pixpin_shell::ID_ANOTAR || id == pixpin_shell::ID_ANOTAR_CONGELADA =>
-            {
-                let pasante = capa.alternar_pasante();
-                tracing::info!(pasante, "la capa cambia de modo por el atajo");
-                true
-            }
-            EventoOverlay::Atajo(_) => true,
-            EventoOverlay::Caracter(c) => capa.caracter(c),
-            EventoOverlay::Rueda(delta) => capa.raton(EventoRaton::Rueda(delta)),
-            EventoOverlay::Pintar => {
-                capa.pintar();
-                true
-            }
-            EventoOverlay::Cerrar => false,
-            _ => true,
-        };
-        // La sesion en vivo de la lupa existe exactamente mientras hace
-        // falta: se abre al elegir la lupa y se cierra al cambiar de
-        // herramienta o al pasar a pasante.
-        if seguir {
-            if capa.quiere_sesion() {
-                if !capa.tiene_sesion() {
-                    capa.abrir_sesion(dispositivo, nivel);
-                }
-            } else if capa.tiene_sesion() {
-                capa.cerrar_sesion();
-            }
-        }
-        if seguir { Continuar::Si } else { Continuar::No }
-    });
-
-    // La sesion se cierra pase lo que pase: sin esto, salir con la lupa
-    // activa dejaria un hilo de captura vivo para siempre.
-    capa.cerrar_sesion();
-    if !capa.tiene_dibujo() {
-        return Ok(None);
-    }
-
-    // Sin caja ni lupa, y esperando a que el compositor lo haya puesto en
-    // pantalla: lo que se pinea es el dibujo sobre lo que habia debajo, no
-    // la interfaz (D59). La capa sigue viva hasta el `drop`, asi que la
-    // captura la recoge tal cual se ve.
-    capa.pintar_con(false);
-    pixpin_shell::esperar_composicion();
-    let imagen = capturar_con_dibujo(recursos, &monitor)?;
-    drop(capa);
-    Ok(Some(imagen))
+    crate::ventana_editor::abrir_pantalla(enganche, nivel, &mut pantalla)
 }
 
-/// La pantalla del monitor tal como esta ahora, bajada a memoria.
-fn capturar_con_dibujo(
+/// El escritorio virtual entero AHORA: un monitor por duplicador, unidos.
+fn foto_del_escritorio(
     recursos: &mut crate::overlay::Recursos,
-    monitor: &Monitor,
+    monitores: &[Monitor],
+    escritorio: Rect,
 ) -> Result<pixpin_codec::ImagenRgba> {
-    let instantanea = recursos
-        .congelar_monitor(monitor)
-        .context("no se pudo capturar la pantalla anotada")?;
-    pixpin_capture::a_imagen(recursos.dispositivo(), &instantanea)
-        .context("no se pudo bajar la captura a memoria")
-}
-
-#[cfg(test)]
-mod pruebas {
-    use super::*;
-
-    #[test]
-    fn solo_las_muestras_esperan_a_pintarse_una_vez_por_tanda() {
-        // Un punto de la entrada fina no pinta por si solo: lo pinta el
-        // WM_PAINT de la tanda o el RatonMovido que la cierra. Los gestos
-        // sueltos se siguen pintando al momento.
-        let p = Punto2::nuevo(1.0, 2.0);
-        assert_eq!(
-            pintado_de(&EventoAnotador::Muestra {
-                p,
-                presion: Some(0.5)
-            }),
-            Pintado::Diferido
-        );
-        for ev in [
-            EventoAnotador::Pulsar(p),
-            EventoAnotador::Mover(p),
-            EventoAnotador::Soltar(p),
-            EventoAnotador::Rueda(120),
-        ] {
-            assert_eq!(pintado_de(&ev), Pintado::Ahora, "{ev:?}");
-        }
+    let mut fotos = Vec::with_capacity(monitores.len());
+    for m in monitores {
+        let instantanea = recursos
+            .congelar_monitor(m)
+            .with_context(|| format!("no se pudo capturar el monitor {}", m.id))?;
+        let img = pixpin_capture::a_imagen(recursos.dispositivo(), &instantanea)
+            .context("no se pudo bajar la captura a memoria")?;
+        fotos.push((m.area, img));
     }
+    Ok(crate::ventana_editor::pantalla::unir_fotos(escritorio, &fotos))
 }

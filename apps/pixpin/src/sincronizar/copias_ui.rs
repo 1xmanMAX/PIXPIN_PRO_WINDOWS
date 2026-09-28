@@ -14,9 +14,17 @@
 //! Lo que NO se copia del movil es la lista de «lienzos sin proyecto»: en el
 //! PC un lienzo vive dentro de la carpeta de su proyecto y no en un cajon
 //! comun, asi que no hay lienzos sueltos que recoger.
+//!
+//! Arriba del todo, **«Proyectos borrados»** (H6, v0.79 del movil): lo que
+//! esta en la papelera se recupera entero —nombre, hojas en su orden, PDF y
+//! chat— y deja de estar borrado para sincronizar. El movil lo saca de sus
+//! copias; el PC tiene algo mejor, la carpeta entera en la papelera
+//! (`pixpin_proyecto::almacen::en_papelera`), y es lo que devuelve. Se llega
+//! sin tener ningun proyecto abierto: Sincronizar cuelga de la bandeja.
 
 use std::path::PathBuf;
 
+use pixpin_proyecto::almacen::EnPapelera;
 use pixpin_sincro::copias::Copia;
 use pixpin_store::Catalogo;
 
@@ -29,18 +37,28 @@ pub(super) enum Toque {
     Volver(usize),
     Confirmar,
     Cancelar,
+    /// «Recuperar» de un proyecto borrado, por su sitio en la papelera. Sin
+    /// dialogo, como en el movil: recuperar no pisa ni borra nada.
+    Recuperar(usize),
+    RecuperarTodos,
 }
 
-/// Como acabo una vuelta atras, para decirlo donde estaba la lista.
+/// Como acabo una vuelta atras o una recuperacion, para decirlo donde
+/// estaba la lista.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Hecho {
     Bien(String),
     Mal(String),
+    Recuperado(String),
+    NoRecuperado { nombre: String, motivo: String },
+    Recuperados { n: usize, total: usize },
 }
 
 pub(super) struct Copias {
     raiz: PathBuf,
     lista: Vec<Copia>,
+    /// Lo que hay en la papelera, el borrado mas reciente primero.
+    borrados: Vec<EnPapelera>,
     /// La que se va a restaurar, mientras se pregunta.
     preguntando: Option<usize>,
     hecho: Option<Hecho>,
@@ -49,12 +67,37 @@ pub(super) struct Copias {
 impl Copias {
     pub(super) fn nuevo(raiz: PathBuf) -> Copias {
         let lista = leer(&raiz);
+        let borrados = pixpin_proyecto::almacen::en_papelera(&raiz);
         Copias {
             raiz,
             lista,
+            borrados,
             preguntando: None,
             hecho: None,
         }
+    }
+
+    /// Recupera uno de la papelera y dice como fue.
+    fn recuperar(&self, en: &EnPapelera) -> Hecho {
+        let ahora = pixpin_shell::entorno::ahora_utc_ms();
+        match pixpin_proyecto::almacen::recuperar(&self.raiz, en, ahora) {
+            Ok(f) => Hecho::Recuperado(f.nombre),
+            Err(e) => {
+                tracing::warn!(?e, carpeta = %en.carpeta.display(), "no se pudo recuperar el proyecto");
+                Hecho::NoRecuperado {
+                    nombre: en.ficha.nombre.clone(),
+                    motivo: e.to_string(),
+                }
+            }
+        }
+    }
+
+    /// Tras recuperar: la papelera y las copias se releen, y el chat se
+    /// entera de que su lista cambio por fuera.
+    fn releer(&mut self) {
+        self.borrados = pixpin_proyecto::almacen::en_papelera(&self.raiz);
+        self.lista = leer(&self.raiz);
+        crate::ventana_chat::refrescar();
     }
 
     /// La copia por la que se pregunta ahora mismo.
@@ -95,6 +138,29 @@ pub(super) fn tocar(c: &mut Copias, t: Toque) -> bool {
             );
             // La lista cambia: la vuelta atras dejo antes otra copia.
             c.lista = leer(&c.raiz);
+        }
+        Toque::Recuperar(i) => {
+            c.preguntando = None;
+            // Un toque que llegue tarde (la lista se releyo) no recupera
+            // uno cualquiera: sin fila en ese sitio, nada.
+            let Some(en) = c.borrados.get(i).cloned() else {
+                return false;
+            };
+            c.hecho = Some(c.recuperar(&en));
+            c.releer();
+        }
+        Toque::RecuperarTodos => {
+            c.preguntando = None;
+            let todos = c.borrados.clone();
+            let bien = todos
+                .iter()
+                .filter(|en| matches!(c.recuperar(en), Hecho::Recuperado(_)))
+                .count();
+            c.hecho = Some(Hecho::Recuperados {
+                n: bien,
+                total: todos.len(),
+            });
+            c.releer();
         }
     }
     false
@@ -156,14 +222,9 @@ pub(super) fn pintar(
 ) -> f32 {
     let (p, e) = (l.p, l.e);
     y += 8.0 * e;
-    l.titulo(&textos.t("cop-versiones"), x, &mut y);
-    let cabecera = if c.lista.is_empty() {
-        "cop-todavia-nada"
-    } else {
-        "cop-como-estaba"
-    };
-    y += l.parrafo(&textos.t(cabecera), x, y, w, 12.0 * e, SUAVE) + 12.0 * e;
 
+    // Lo que ha pasado va arriba del todo: tras recuperar, la fila se va de
+    // la lista y el aviso tiene que verse donde se pulso.
     if let Some(h) = &c.hecho {
         let (texto, color) = match h {
             Hecho::Bien(nombre) => (
@@ -174,9 +235,41 @@ pub(super) fn pintar(
                 con(textos, "cop-no-se-pudo", &[("motivo", motivo.clone())]),
                 ERROR,
             ),
+            Hecho::Recuperado(nombre) => (
+                con(textos, "papelera-ha-vuelto", &[("nombre", nombre.clone())]),
+                VERDE,
+            ),
+            Hecho::NoRecuperado { nombre, motivo } => (
+                con(
+                    textos,
+                    "papelera-no-se-pudo",
+                    &[("nombre", nombre.clone()), ("motivo", motivo.clone())],
+                ),
+                ERROR,
+            ),
+            Hecho::Recuperados { n, total } => (
+                con(
+                    textos,
+                    "papelera-recuperados",
+                    &[("n", n.to_string()), ("total", total.to_string())],
+                ),
+                if n == total { VERDE } else { ERROR },
+            ),
         };
         y += l.parrafo(&texto, x, y, w, 13.0 * e, color) + 12.0 * e;
     }
+
+    if !c.borrados.is_empty() {
+        y = pintar_borrados(l, textos, c, x, w, y);
+    }
+
+    l.titulo(&textos.t("cop-versiones"), x, &mut y);
+    let cabecera = if c.lista.is_empty() {
+        "cop-todavia-nada"
+    } else {
+        "cop-como-estaba"
+    };
+    y += l.parrafo(&textos.t(cabecera), x, y, w, 12.0 * e, SUAVE) + 12.0 * e;
 
     for (i, copia) in c.lista.iter().enumerate() {
         let texto = detalle(textos, copia);
@@ -215,6 +308,73 @@ pub(super) fn pintar(
     y += 12.0 * e;
     y += l.parrafo(&textos.t("cop-como-se-hacen"), x, y, w, 12.0 * e, SUAVE);
     y + 10.0 * e
+}
+
+/// «Proyectos borrados»: una caja por proyecto con «Recuperar», y
+/// «Recuperar todos» si hay mas de uno (`CopiasActivity.kt`, v0.79).
+fn pintar_borrados(
+    l: &mut Lienzo<'_>,
+    textos: &Catalogo,
+    c: &Copias,
+    x: f32,
+    w: f32,
+    mut y: f32,
+) -> f32 {
+    let (p, e) = (l.p, l.e);
+    l.titulo(&textos.t("papelera-titulo"), x, &mut y);
+    y += l.parrafo(&textos.t("papelera-como"), x, y, w, 12.0 * e, SUAVE) + 12.0 * e;
+    for (i, en) in c.borrados.iter().enumerate() {
+        let detalle = con(
+            textos,
+            "papelera-detalle",
+            &[
+                ("hojas", en.ficha.hojas.to_string()),
+                ("mensajes", en.mensajes.to_string()),
+                ("cuando", cuando(en.borrado)),
+            ],
+        );
+        let wb = 112.0 * e;
+        let wt = w - 32.0 * e - wb - 10.0 * e;
+        let alto =
+            (16.0 * e + 22.0 * e + l.alto_de(&detalle, 12.0 * e, wt) + 14.0 * e).max(64.0 * e);
+        let r = rect(x, y, w, alto);
+        caja(p, r, e);
+        p.texto_linea(
+            &format!("«{}»", en.ficha.nombre),
+            x + 16.0 * e,
+            y + 14.0 * e,
+            15.0 * e,
+            wt,
+            TEXTO,
+        );
+        l.parrafo(&detalle, x + 16.0 * e, y + 38.0 * e, wt, 12.0 * e, SUAVE);
+        l.boton(
+            rect(
+                x + w - 16.0 * e - wb,
+                y + (alto - 40.0 * e) / 2.0,
+                wb,
+                40.0 * e,
+            ),
+            &textos.t("papelera-recuperar"),
+            None,
+            true,
+            Accion::Copias(Toque::Recuperar(i)),
+        );
+        y += alto + 10.0 * e;
+    }
+    if c.borrados.len() > 1 {
+        l.boton(
+            rect(x, y, w, 44.0 * e),
+            &textos.t("papelera-recuperar-todos"),
+            None,
+            false,
+            Accion::Copias(Toque::RecuperarTodos),
+        );
+        y += 44.0 * e + 10.0 * e;
+    }
+    y += 10.0 * e;
+    p.rellenar(rect(x, y, w, e.max(1.0)), BORDE);
+    y + 16.0 * e
 }
 
 /// El dialogo de «¿Volver a esta copia?», si hay una en pregunta. Devuelve si
@@ -318,6 +478,57 @@ mod pruebas {
         let mut c = Copias::nuevo(std::env::temp_dir().join("pixpin-copias-vacia"));
         assert!(!tocar(&mut c, Toque::Confirmar));
         assert!(c.hecho.is_none());
+    }
+
+    fn raiz_con_un_borrado(etiqueta: &str) -> PathBuf {
+        use pixpin_proyecto::almacen::{self, Ficha, Indice};
+        let raiz = std::env::temp_dir().join(format!(
+            "pixpin-papelera-ui-{etiqueta}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let mut i = Indice::default();
+        i.proyectos.push(Ficha {
+            id: "p1".into(),
+            nombre: "Tesis".into(),
+            tocado: 10,
+            ..Default::default()
+        });
+        i.guardar(&raiz).unwrap();
+        std::fs::create_dir_all(almacen::carpeta(&raiz, "p1")).unwrap();
+        std::fs::write(almacen::carpeta(&raiz, "p1").join("guardados.jsonl"), "").unwrap();
+        almacen::borrar_proyectos(&raiz, &["p1".to_string()], 99).unwrap();
+        raiz
+    }
+
+    #[test]
+    fn recuperar_de_la_papelera_lo_devuelve_a_la_lista_y_lo_quita_de_la_papelera() {
+        let raiz = raiz_con_un_borrado("recuperar");
+        let mut c = Copias::nuevo(raiz.clone());
+        assert_eq!(c.borrados.len(), 1, "la papelera se lee al entrar");
+        assert!(
+            !tocar(&mut c, Toque::Recuperar(0)),
+            "se queda en la pantalla"
+        );
+        assert_eq!(c.hecho, Some(Hecho::Recuperado("Tesis".into())));
+        assert!(c.borrados.is_empty(), "ya no esta en la papelera");
+        assert!(
+            pixpin_proyecto::almacen::Indice::leer(&raiz)
+                .buscar("p1")
+                .is_some()
+        );
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn un_toque_de_recuperar_fuera_de_la_lista_no_recupera_nada() {
+        // Caso negativo: la lista se releyo y el sitio ya no existe.
+        let raiz = raiz_con_un_borrado("fuera");
+        let mut c = Copias::nuevo(raiz.clone());
+        assert!(!tocar(&mut c, Toque::Recuperar(7)));
+        assert!(c.hecho.is_none());
+        assert_eq!(c.borrados.len(), 1, "sigue en la papelera");
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 
     #[test]

@@ -124,6 +124,14 @@ pub fn que_abre_ficha(f: &FichaLuna, raiz: &Path) -> Apertura {
             proyecto: f.proyecto.clone(),
             referencia: f.referencia.clone().unwrap_or_default(),
         },
+        // Una hoja-pagina del documento sin dibujo todavia: tambien al
+        // lienzo, con la pagina de fondo, como en el movil. Va por su codigo
+        // (no tiene otra sena); `abrir_hoja` la encuentra y el chat le
+        // estrena el dibujo.
+        ClaseLuna::Pagina if f.ruta.as_deref().is_none_or(str::is_empty) => Apertura::Hoja {
+            proyecto: f.proyecto.clone(),
+            referencia: f.codigo.clone(),
+        },
         _ => match fichero_de(raiz, f) {
             Some(r) => Apertura::Fichero(r),
             None => Apertura::Nada(Motivo::NoEstaEnEquipo),
@@ -200,6 +208,12 @@ fn indice_de_referencia(
     mensajes
         .iter()
         .position(|m| m.referencia.as_deref() == Some(referencia))
+        // Una pagina sin dibujo se pide por su codigo unico.
+        .or_else(|| {
+            mensajes.iter().position(|m| {
+                crate::pdf_en_chat::es_pagina_sin_dibujo(m) && m.codigo_unico() == referencia
+            })
+        })
 }
 
 #[cfg(test)]
@@ -333,6 +347,39 @@ mod pruebas {
         ];
         assert_eq!(indice_de_referencia(&v, "d1"), Some(1));
         assert_eq!(indice_de_referencia(&v, "otra"), None);
+    }
+
+    #[test]
+    fn una_pagina_sin_dibujo_se_abre_en_el_lienzo_por_su_codigo() {
+        use pixpin_proyecto::cuaderno::{Clase, Mensaje};
+        let raiz = std::env::temp_dir();
+        let mut pagina = FichaLuna {
+            codigo: "u-pag-3".into(),
+            proyecto: "p1".into(),
+            clase: ClaseLuna::Pagina,
+            ..Default::default()
+        };
+        assert_eq!(
+            que_abre_ficha(&pagina, &raiz),
+            Apertura::Hoja {
+                proyecto: "p1".into(),
+                referencia: "u-pag-3".into()
+            }
+        );
+        let v = vec![Mensaje {
+            id: "7".into(),
+            uid: Some("u-pag-3".into()),
+            clase: Some(Clase::Pagina),
+            pagina: Some(3),
+            ..Default::default()
+        }];
+        assert_eq!(indice_de_referencia(&v, "u-pag-3"), Some(0));
+        // Casos negativos: una pagina extraida como PNG (con fichero) sigue
+        // abriendose como fichero, y un codigo que no es de una pagina no
+        // encuentra nada.
+        pagina.ruta = Some("archivos/pagina-04.png".into());
+        assert!(!matches!(que_abre_ficha(&pagina, &raiz), Apertura::Hoja { .. }));
+        assert_eq!(indice_de_referencia(&v, "u-otra"), None);
     }
 
     #[test]

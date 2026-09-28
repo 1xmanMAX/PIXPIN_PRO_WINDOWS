@@ -37,3 +37,8 @@ desktop.ini
 
 # Material de referencia de terceros: no se distribuye con el proyecto.
 proyectos de referencia/
+
+# Restos de ediciones y de la consola
+*.tmp
+*.nuevo
+*.stackdump

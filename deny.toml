@@ -17,6 +17,15 @@ allow = [
     "MPL-2.0",
 ]
 confidence-threshold = 0.9
+# jpeg-encoder (lo trae pdfsqueeze-core para recodificar las fotos de los
+# PDF) es «(MIT OR Apache-2.0) AND IJG»: parte de su codigo viene de la
+# libjpeg del Independent JPEG Group. La licencia IJG es permisiva; solo pide
+# decir en la documentacion que el programa se basa en parte en su trabajo
+# (ver crates/pdfsqueeze-core/PROCEDENCIA.md). Se permite solo para este
+# crate, no en general.
+exceptions = [
+    { allow = ["IJG"], crate = "jpeg-encoder" },
+]
 
 [bans]
 # Cualquier copyleft fuerte es un fallo de build, no un aviso.
@@ -25,6 +34,14 @@ multiple-versions = "warn"
 
 [advisories]
 yanked = "deny"
+ignore = [
+    # ttf-parser lo trae lopdf 0.42 (pdfsqueeze-core). No es un fallo, es que
+    # su autor lo dejo. La alternativa era quedarse en lopdf 0.36, que tiene un
+    # fallo de verdad (RUSTSEC-2026-0187, un PDF que aborta el proceso). Y lopdf
+    # corre en el ejecutable aparte del compresor (`pixpin-aligerar.exe`),
+    # nunca en el de la aplicacion.
+    { id = "RUSTSEC-2026-0192", reason = "sin mantener, no vulnerable; lo trae lopdf 0.42, que arregla RUSTSEC-2026-0187" },
+]
 
 [sources]
 unknown-registry = "deny"
