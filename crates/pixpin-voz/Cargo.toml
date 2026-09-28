@@ -24,4 +24,14 @@ windows = { version = "0.62.2", features = [
     # `GetShortPathNameW`, para darle a Vosk una ruta que su `fopen` sepa
     # abrir cuando la carpeta del usuario lleva tildes.
     "Win32_Storage_FileSystem",
+    # SAPI 5: el reconocedor de voz que ya trae Windows (`sapi.rs`), y el
+    # flujo en memoria que se le da como audio.
+    "Win32_Media_Speech",
+    "Win32_Media_Audio",
+    "Win32_UI_Shell",
+    # Whisper: `GetSystemDirectoryW` para cargar el `onnxruntime.dll` de
+    # `System32` por su ruta entera, y WinHTTP para bajar el modelo una vez
+    # (ver `whisper::bajar`).
+    "Win32_System_SystemInformation",
+    "Win32_Networking_WinHttp",
 ] }

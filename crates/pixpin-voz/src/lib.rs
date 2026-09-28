@@ -15,9 +15,29 @@
 //!    (`MotorGoogle.kt:78, 170`).
 //! 2. **«Leer en voz alta» no es voz sintetica.** En todo PixPin Android no
 //!    hay ni un `TextToSpeech`. Significa que el usuario lee mientras el
-//!    telefono graba: telepronter y pronunciar. Aqui no se sintetiza nada.
+//!    telefono graba: telepronter y pronunciar. La unica voz sintetica es
+//!    un extra del PC en Pronunciar, «Oir el texto» (`sapi::Lector`), y la
+//!    pone Windows.
 //!
-//! ## Por que Vosk, y no lo que trae Windows ni Whisper
+//! ## Tres motores: Whisper, el de Windows y Vosk
+//!
+//! **Actualizado otra vez el 2026-09-22, por decision del usuario.** Con sus
+//! propias notas, SAPI escribio frases que nadie dijo. Pasar a texto va
+//! ahora con **Whisper *base*** (el mismo modelo que el movil) sobre el
+//! **ONNX Runtime que ya trae Windows** en `System32`, cargado al vuelo (ver
+//! [`ort`] y [`whisper`]). El modelo (unos 160 MB) se baja una vez, cuando
+//! el usuario lo pide. SAPI se queda para dictar en vivo por el microfono.
+//!
+//! **Actualizado el 2026-09-22.** El motor por omision es ahora el que ya
+//! trae Windows, SAPI 5 (ver `sapi`): el analisis de abajo descarto
+//! `Windows.Media.SpeechRecognition` —y con razon: no lee ficheros—, pero
+//! no miro SAPI, cuyo reconocedor «en proceso» **si** acepta un flujo de
+//! audio, corre sin red y da el momento de cada frase. No pide descargar
+//! nada, muele diez veces mas rapido que el tiempo real y sirve tambien
+//! para dictar en vivo. Vosk se queda para los idiomas que Windows no trae
+//! (ver [`motor_para`]).
+//!
+//! Lo que sigue es el analisis original, que sigue valiendo para Vosk.
 //!
 //! Se miraron los tres caminos:
 //!
@@ -75,22 +95,148 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod credibilidad;
+pub mod dos_idiomas;
 pub mod idiomas;
 pub mod telepronter;
 pub mod tiempos;
+pub mod turnos;
 
 #[cfg(windows)]
 pub mod motor;
 #[cfg(windows)]
+pub mod ort;
+#[cfg(windows)]
 pub mod pcm;
+#[cfg(windows)]
+pub mod sapi;
+#[cfg(windows)]
+pub mod whisper;
 
 pub use credibilidad::creible;
+pub use dos_idiomas::{Idiomas, ModoDeIdiomas};
 pub use idiomas::{Disponibilidad, IDIOMAS, carpeta_de_modelos, enlace_del_modelo, modelo_de};
 pub use telepronter::{Desfile, parrafos_de};
 pub use tiempos::{EstadoDelTexto, Segmento, con_tiempos, marca_de_tiempo, tiempo_de};
 
 #[cfg(windows)]
-pub use motor::{Transcripcion, transcribir};
+pub use motor::Transcripcion;
+#[cfg(windows)]
+pub use sapi::{AvisoDeDictado, Dictado};
+
+/// Con que se pasa a texto.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MotorDeVoz {
+    /// Whisper *base* sobre el ONNX Runtime que trae Windows; sin red una
+    /// vez bajado el modelo. Ver `whisper`.
+    Whisper,
+    /// El reconocedor que ya trae Windows (SAPI 5, sin red). Ver `sapi`.
+    Windows,
+    /// Vosk, con los mismos modelos que el movil. Ver `motor`.
+    Vosk,
+}
+
+/// **Que motor usar hoy**, o `None` si no hay ninguno para ese idioma.
+///
+/// **Actualizado el 2026-09-22**: primero Whisper, si hay ONNX Runtime y el
+/// modelo ya esta bajado. El usuario comparo con sus propias notas: el
+/// reconocedor de Windows entiende mal el habla natural y Whisper no. Luego
+/// el de Windows, que no pide nada. Vosk queda para los idiomas que ninguno
+/// de los dos trae; con `preferir_vosk` manda Vosk si esta listo (quien lo
+/// puso a proposito).
+#[cfg(windows)]
+pub fn motor_para(
+    raiz: &std::path::Path,
+    junto_al_exe: Option<&std::path::Path>,
+    idioma: &str,
+    preferir_vosk: bool,
+) -> Option<MotorDeVoz> {
+    let vosk = matches!(
+        idiomas::disponibilidad(raiz, junto_al_exe, idioma),
+        Disponibilidad::Listo(_)
+    );
+    if preferir_vosk && vosk {
+        return Some(MotorDeVoz::Vosk);
+    }
+    if whisper_posible(raiz, junto_al_exe, idioma) && whisper::modelo_listo(raiz) {
+        return Some(MotorDeVoz::Whisper);
+    }
+    if sapi::disponible(idioma) {
+        return Some(MotorDeVoz::Windows);
+    }
+    vosk.then_some(MotorDeVoz::Vosk)
+}
+
+/// Si Whisper puede correr aqui: hay ONNX Runtime y sabe el idioma. El
+/// modelo puede faltar todavia; eso se baja (ver [`ErrorVoz::SinModeloWhisper`]).
+#[cfg(windows)]
+pub fn whisper_posible(
+    raiz: &std::path::Path,
+    junto_al_exe: Option<&std::path::Path>,
+    idioma: &str,
+) -> bool {
+    whisper::sabe(idioma) && whisper::runtime_disponible(raiz, junto_al_exe)
+}
+
+/// **Pasa una nota de voz a texto con el mejor motor que haya.**
+///
+/// Ver [`motor_para`]. Con ONNX Runtime pero **sin el modelo de Whisper**
+/// no se cae al reconocedor de Windows: sale
+/// [`ErrorVoz::SinModeloWhisper`], para que la app ofrezca bajarlo (una vez)
+/// en vez de dar en silencio el texto malo. Si no hay ningun motor, el
+/// error es el de Vosk (dice que descargar y de donde).
+#[cfg(windows)]
+pub fn transcribir(
+    audio: &std::path::Path,
+    raiz: &std::path::Path,
+    junto_al_exe: Option<&std::path::Path>,
+    idioma: &str,
+    avance: &mut dyn FnMut(f32),
+    cancelado: &std::sync::atomic::AtomicBool,
+) -> Result<Transcripcion, ErrorVoz> {
+    let motor = motor_para(raiz, junto_al_exe, idioma, false);
+    if motor != Some(MotorDeVoz::Whisper) && whisper_posible(raiz, junto_al_exe, idioma) {
+        return Err(ErrorVoz::SinModeloWhisper {
+            donde: whisper::carpeta(raiz).display().to_string(),
+            megas: whisper::MEGAS,
+        });
+    }
+    match motor {
+        Some(MotorDeVoz::Whisper) => {
+            whisper::transcribir(audio, raiz, junto_al_exe, idioma, avance, cancelado)
+        }
+        Some(MotorDeVoz::Windows) => sapi::transcribir(audio, idioma, avance, cancelado),
+        _ => motor::transcribir(audio, raiz, junto_al_exe, idioma, avance, cancelado),
+    }
+}
+
+/// **Lo mismo con dos idiomas y con turnos** (B6, B10). Solo Whisper sabe
+/// de dos idiomas y de turnos con nombre: con otro motor se transcribe como
+/// siempre, en el primero y de corrido, que es lo que haria el movil con
+/// Vosk.
+#[cfg(windows)]
+pub fn transcribir_con(
+    audio: &std::path::Path,
+    raiz: &std::path::Path,
+    junto_al_exe: Option<&std::path::Path>,
+    idiomas: &Idiomas,
+    turnos: &[turnos::Turno],
+    avance: &mut dyn FnMut(f32),
+    cancelado: &std::sync::atomic::AtomicBool,
+) -> Result<Transcripcion, ErrorVoz> {
+    let idioma = idiomas.principal.as_str();
+    if motor_para(raiz, junto_al_exe, idioma, false) == Some(MotorDeVoz::Whisper) {
+        return whisper::transcribir_con(
+            audio,
+            raiz,
+            junto_al_exe,
+            idiomas,
+            turnos,
+            avance,
+            cancelado,
+        );
+    }
+    transcribir(audio, raiz, junto_al_exe, idioma, avance, cancelado)
+}
 
 /// A cuantas muestras por segundo oye el reconocedor.
 ///
@@ -142,8 +288,29 @@ pub enum ErrorVoz {
     /// movil tambien la distingue (`Transcriptor.NADA`).
     #[error("no se entendio nada de lo que se dice en el audio")]
     NoSeEntiendeNada,
+    /// Windows no trae reconocedor de ese idioma. Se instala desde
+    /// Configuracion > Hora e idioma > Voz, o se usa Vosk.
+    #[error("Windows no tiene reconocedor de voz para «{idioma}»")]
+    SinReconocedorDeWindows { idioma: String },
+    #[error("no hay microfono: Windows no tiene ninguno por defecto")]
+    SinMicrofono,
     #[error("se cancelo la transcripcion")]
     Cancelada,
+    /// Hay ONNX Runtime pero falta el modelo de Whisper: se baja una vez
+    /// (unos `megas` MB) a `donde`. La app lo ofrece al pulsar «Pasar a
+    /// texto».
+    #[error("falta el modelo de voz Whisper: hay que bajarlo (unos {megas} MB) a {donde}")]
+    SinModeloWhisper { donde: String, megas: u64 },
+    /// Ni `System32` ni `donde` tienen `onnxruntime.dll` (un Windows 10
+    /// viejo): se puede poner a mano ahi o junto al ejecutable.
+    #[error("este Windows no trae onnxruntime.dll; se puede copiar en {donde}")]
+    SinOnnxRuntime { donde: String },
+    /// No se pudo bajar un fichero del modelo.
+    #[error("no se pudo bajar {que}: {detalle}")]
+    Descarga { que: String, detalle: String },
+    /// ONNX Runtime fallo en un paso (modelo roto, runtime muy viejo…).
+    #[error("ONNX Runtime fallo al {paso}: {detalle}")]
+    Onnx { paso: &'static str, detalle: String },
     #[error("Windows fallo al {paso}: {fuente}")]
     Windows {
         paso: &'static str,

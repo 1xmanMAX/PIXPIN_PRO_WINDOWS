@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use windows::Win32::Media::MediaFoundation::{
     CLSID_MFMediaEngineClassFactory, IMFAttributes, IMFMediaEngine, IMFMediaEngineClassFactory,
     IMFMediaEngineNotify, IMFMediaEngineNotify_Impl, MF_MEDIA_ENGINE_AUDIOONLY,
-    MF_MEDIA_ENGINE_CALLBACK, MF_MEDIA_ENGINE_EVENT, MF_MEDIA_ENGINE_EVENT_ENDED,
+    MF_MEDIA_ENGINE_AUDIO_ENDPOINT_ROLE, MF_MEDIA_ENGINE_CALLBACK, MF_MEDIA_ENGINE_EVENT, MF_MEDIA_ENGINE_EVENT_ENDED,
     MF_MEDIA_ENGINE_EVENT_ERROR, MF_MEDIA_ENGINE_EVENT_LOADEDMETADATA, MF_VERSION,
     MFCreateAttributes, MFSTARTUP_LITE, MFStartup,
 };
@@ -29,6 +29,8 @@ use windows::Win32::System::Com::{
 };
 use windows::core::BSTR;
 use windows::core::implement;
+
+use windows::Win32::Media::Audio::eCommunications;
 
 use crate::{ErrorAudio, en};
 
@@ -80,6 +82,35 @@ impl IMFMediaEngineNotify_Impl for Aviso_Impl {
     }
 }
 
+/// Por que salida de Windows suena un audio.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rol {
+    /// La de siempre (`eConsole`): los altavoces o lo que el usuario tenga
+    /// puesto para todo.
+    Normal,
+    /// La de las llamadas (`eCommunications`): cascos con microfono o el
+    /// auricular. Si el usuario no eligio otra, Windows usa la normal.
+    Comunicaciones,
+}
+
+/// **Si hay una salida para llamadas** (`GetDefaultAudioEndpoint(eRender,
+/// eCommunications)`). Siempre la hay si hay alguna salida —Windows cae a
+/// la normal—; `false` es «no hay por donde sonar».
+pub fn hay_salida_de_llamadas() -> bool {
+    use windows::Win32::Media::Audio::{IMMDeviceEnumerator, MMDeviceEnumerator, eRender};
+    // SAFETY: COM ya esta (o se pone) en este hilo; el enumerador es propio
+    // y se suelta al salir del bloque. Solo se consulta.
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let Ok(e) =
+            CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_INPROC_SERVER)
+        else {
+            return false;
+        };
+        e.GetDefaultAudioEndpoint(eRender, eCommunications).is_ok()
+    }
+}
+
 /// Un audio cargado en la tarjeta. Uno solo a la vez: quien lo guarda
 /// (`apps/pixpin/src/audio.rs`) suelta el anterior antes de abrir otro, que
 /// es lo que hace `Reproductor.cargar` en el movil (`Reproductor.kt:64`).
@@ -111,6 +142,18 @@ impl Salida {
     /// [`tocar`]: Salida::tocar
     /// [`fallo`]: Salida::fallo
     pub fn abrir(ruta: &Path) -> Result<Salida, ErrorAudio> {
+        Salida::abrir_por(ruta, Rol::Normal, false)
+    }
+
+    /// Como [`abrir`](Salida::abrir), pero diciendo **por que salida** suena y si
+    /// vuelve a empezar al acabar.
+    ///
+    /// [`Rol::Comunicaciones`] es la llamada secreta (B11): el recado se oye
+    /// por el aparato que Windows tiene para llamadas (los cascos con
+    /// microfono, el auricular), como el `MODE_IN_COMMUNICATION` del movil,
+    /// y no por los altavoces que oye todo el cuarto. En bucle suena el tono
+    /// de la llamada hasta que se contesta.
+    pub fn abrir_por(ruta: &Path, rol: Rol, en_bucle: bool) -> Result<Salida, ErrorAudio> {
         if !ruta.is_file() {
             return Err(ErrorAudio::NoEsAudio {
                 ruta: ruta.display().to_string(),
@@ -126,7 +169,7 @@ impl Salida {
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
 
             let mut atributos: Option<IMFAttributes> = None;
-            MFCreateAttributes(&mut atributos, 1).map_err(en("crear los atributos del motor"))?;
+            MFCreateAttributes(&mut atributos, 2).map_err(en("crear los atributos del motor"))?;
             let atributos = atributos.ok_or_else(|| ErrorAudio::Windows {
                 paso: "crear los atributos del motor",
                 fuente: windows::core::Error::empty(),
@@ -140,6 +183,13 @@ impl Salida {
             atributos
                 .SetUnknown(&MF_MEDIA_ENGINE_CALLBACK, &aviso)
                 .map_err(en("enganchar el callback"))?;
+            if rol == Rol::Comunicaciones {
+                // El papel de la salida por defecto que se usa: `eCommunications`
+                // es el aparato de llamadas que el usuario eligio en Windows.
+                atributos
+                    .SetUINT32(&MF_MEDIA_ENGINE_AUDIO_ENDPOINT_ROLE, eCommunications.0 as u32)
+                    .map_err(en("pedir la salida de llamadas"))?;
+            }
 
             let fabrica: IMFMediaEngineClassFactory =
                 CoCreateInstance(&CLSID_MFMediaEngineClassFactory, None, CLSCTX_INPROC_SERVER)
@@ -152,7 +202,7 @@ impl Salida {
                 .map_err(en("crear el motor de sonido"))?;
 
             motor.SetAutoPlay(false).map_err(en("quitar el autoplay"))?;
-            motor.SetLoop(false).map_err(en("quitar el bucle"))?;
+            motor.SetLoop(en_bucle).map_err(en("poner o quitar el bucle"))?;
 
             // Media Foundation admite una ruta de Windows tal cual como
             // origen; se pasa sin convertir a `file:///` para no tener que
@@ -162,6 +212,25 @@ impl Salida {
 
             Ok(Salida { motor, avisos })
         }
+    }
+
+    /// **Otro fichero en el mismo motor**, sin crear otro. Crear el motor
+    /// cuesta decenas de milisegundos (medido: ~55 ms en caliente) y
+    /// Pronunciar abre una toma nueva cada vez que se suelta la tecla: en el
+    /// hilo de la ventana eso se nota. Cambiar la fuente es barato. Vuelve
+    /// parado y sin metadatos, como recien abierto.
+    pub fn cambiar_fuente(&self, ruta: &Path) -> Result<(), ErrorAudio> {
+        if !ruta.is_file() {
+            return Err(ErrorAudio::NoEsAudio {
+                ruta: ruta.display().to_string(),
+            });
+        }
+        self.avisos.metadatos.store(false, Ordering::Release);
+        self.avisos.error.store(false, Ordering::Release);
+        self.avisos.termino.store(false, Ordering::Release);
+        let origen = BSTR::from(ruta.to_string_lossy().as_ref());
+        // SAFETY: llamada sobre el motor vivo con una cadena propia.
+        unsafe { self.motor.SetSource(&origen) }.map_err(en("abrir el fichero"))
     }
 
     /// Si Media Foundation no pudo con el fichero: no era un audio, o era
@@ -301,6 +370,31 @@ mod pruebas {
     fn un_fichero_que_no_existe_no_llega_ni_a_abrir_el_motor() {
         let e = Salida::abrir(Path::new("C:/no/existe/nada.m4a")).unwrap_err();
         assert!(matches!(e, ErrorAudio::NoEsAudio { .. }), "salio {e:?}");
+    }
+
+    #[test]
+    fn por_la_salida_de_llamadas_un_fichero_que_no_existe_tampoco_abre() {
+        let e = Salida::abrir_por(Path::new("C:/no/existe.m4a"), Rol::Comunicaciones, true)
+            .unwrap_err();
+        assert!(matches!(e, ErrorAudio::NoEsAudio { .. }), "salio {e:?}");
+    }
+
+    /// El tono de llamada de Windows, por la salida de llamadas: carga y
+    /// sabe cuanto dura sin sonar. En un equipo sin tarjeta no hay nada que
+    /// comprobar.
+    #[test]
+    fn el_tono_de_windows_carga_por_la_salida_de_llamadas() {
+        let tono = Path::new("C:/Windows/Media/Ring01.wav");
+        if !tono.is_file() || !hay_salida_de_llamadas() {
+            return;
+        }
+        let s = Salida::abrir_por(tono, Rol::Comunicaciones, true).expect("abre");
+        let hasta = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !s.lista() && !s.fallo() && std::time::Instant::now() < hasta {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(s.lista(), "el tono no cargo");
+        assert!(s.duracion_ms() > 0);
     }
 
     #[test]

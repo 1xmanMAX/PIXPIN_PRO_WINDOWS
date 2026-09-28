@@ -72,7 +72,7 @@ pub use reloj::{
 #[cfg(windows)]
 pub use entrada::{Grabacion, Grabadora};
 #[cfg(windows)]
-pub use salida::Salida;
+pub use salida::{Rol, Salida};
 
 /// Lo que puede salir mal al oir o al grabar.
 ///
