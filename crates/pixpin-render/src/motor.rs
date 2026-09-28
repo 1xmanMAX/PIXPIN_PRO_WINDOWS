@@ -197,6 +197,9 @@ pub struct MotorRender {
         std::cell::RefCell<[Option<windows::Win32::Graphics::Direct2D::ID2D1StrokeStyle>; 4]>,
     /// Objetos creados en el fotograma en curso (ver `Contadores`).
     pub(crate) creados: std::cell::Cell<Contadores>,
+    /// El bitmap del trazo de grafito en curso (ver `grafito::Vivo`). Vive
+    /// en el motor y no suelto porque es de su dispositivo: muere con el.
+    pub(crate) grafito_vivo: std::cell::RefCell<Option<crate::grafito::Vivo>>,
 }
 
 impl MotorRender {
@@ -227,11 +230,44 @@ impl MotorRender {
             iconos: std::cell::RefCell::new(std::collections::HashMap::new()),
             estilos_icono: std::cell::RefCell::new([None, None, None, None]),
             creados: std::cell::Cell::new(Contadores::default()),
+            grafito_vivo: std::cell::RefCell::new(None),
         })
     }
 
     pub fn fabrica(&self) -> &ID2D1Factory1 {
         &self.fabrica
+    }
+
+    /// **Devuelve al sistema la reserva de memoria del dispositivo.**
+    ///
+    /// Direct2D guarda de reserva lo que ha ido necesitando (texturas de
+    /// teselar, de mezclar, de recortar) y el controlador guarda sus propios
+    /// buferes; ninguno de los dos lo suelta mientras viva el dispositivo.
+    /// En la HD 4000 del equipo minimo la memoria de video ES la del
+    /// sistema: lo que el editor retiene de reserva se lo quita a todo lo
+    /// demas mientras siga abierto, aunque no este dibujando.
+    ///
+    /// Es lo que Microsoft pide hacer al dejar de estar en primer plano:
+    /// `ID2D1Device::ClearResources`, luego `ClearState` del contexto de
+    /// D3D (condicion de `Trim`) y `IDXGIDevice3::Trim`. No toca nada que se
+    /// vea ni nada que el editor guarde (las realizaciones, los pinceles y
+    /// los bitmaps siguen vivos): lo que se suelta se vuelve a pedir solo si
+    /// hace falta. Hay que llamarlo entre fotogramas, nunca con un
+    /// `BeginDraw` abierto.
+    pub fn devolver_memoria(&self, d3d: &ID3D11Device) {
+        use windows::Win32::Graphics::Dxgi::IDXGIDevice3;
+        // SAFETY: fuera de cualquier `BeginDraw` (obligacion del llamante,
+        // dicha arriba); los dos dispositivos son del motor y siguen vivos.
+        unsafe {
+            self._dispositivo.ClearResources(0);
+            if let Ok(contexto) = d3d.GetImmediateContext() {
+                contexto.ClearState();
+                contexto.Flush();
+            }
+            if let Ok(dxgi) = d3d.cast::<IDXGIDevice3>() {
+                dxgi.Trim();
+            }
+        }
     }
 
     pub fn contexto(&self) -> &ID2D1DeviceContext {
@@ -361,6 +397,38 @@ impl MotorRender {
         self.crear_bitmap_rgba(ancho, alto, &pre, D2D1_ALPHA_MODE_PREMULTIPLIED)
     }
 
+    /// **Un mapa donde pintar y que luego se pinta** (destino y fuente a la
+    /// vez, BGRA premultiplicado, sin datos). Es lo que guarda lo de dentro
+    /// de una lupa ya pintado: se rehace cuando cambia lo que mira y, entre
+    /// tanto, cada fotograma solo lo copia.
+    pub fn mapa_de_dibujo(&self, ancho: u32, alto: u32) -> Result<ID2D1Bitmap1, ErrorRender> {
+        let propiedades = D2D1_BITMAP_PROPERTIES1 {
+            pixelFormat: D2D1_PIXEL_FORMAT {
+                format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                alphaMode: D2D1_ALPHA_MODE_PREMULTIPLIED,
+            },
+            dpiX: 96.0,
+            dpiY: 96.0,
+            bitmapOptions: D2D1_BITMAP_OPTIONS_TARGET,
+            colorContext: std::mem::ManuallyDrop::new(None),
+        };
+        // SAFETY: sin datos iniciales (D2D solo reserva) y con el tamano
+        // sujeto a uno como minimo; el contexto vive lo que `self`.
+        let bitmap = unsafe {
+            self.contexto.CreateBitmap(
+                D2D_SIZE_U {
+                    width: ancho.max(1),
+                    height: alto.max(1),
+                },
+                None,
+                0,
+                &propiedades,
+            )?
+        };
+        self.conto(|c| c.bitmaps += 1);
+        Ok(bitmap)
+    }
+
     /// El lado mayor que admite un bitmap en este dispositivo (D139). La
     /// HD 4000 no sube texturas enormes: lo que pase de aqui se reduce antes.
     pub fn lado_maximo_bitmap(&self) -> u32 {
@@ -401,6 +469,48 @@ impl MotorRender {
         };
         self.conto(|c| c.bitmaps += 1);
         Ok(bitmap)
+    }
+
+    /// **Una textura que este motor pinta y otro del mismo dispositivo lee.**
+    ///
+    /// Es la que alimenta a una ventana en vivo de una zona del lienzo: el
+    /// editor la pinta cuando cambia lo de dentro y el pin la envuelve una
+    /// vez como fuente (`bitmap_desde_textura`) y solo repinta. BGRA,
+    /// destino de dibujo y fuente de sombreado; devuelve la textura y su
+    /// bitmap de destino.
+    pub fn textura_de_destino(
+        &self,
+        d3d: &ID3D11Device,
+        ancho: u32,
+        alto: u32,
+    ) -> Result<(ID3D11Texture2D, ID2D1Bitmap1), ErrorRender> {
+        use windows::Win32::Graphics::Direct3D11::{
+            D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE, D3D11_TEXTURE2D_DESC,
+            D3D11_USAGE_DEFAULT,
+        };
+        use windows::Win32::Graphics::Dxgi::Common::DXGI_SAMPLE_DESC;
+        let desc = D3D11_TEXTURE2D_DESC {
+            Width: ancho.max(1),
+            Height: alto.max(1),
+            MipLevels: 1,
+            ArraySize: 1,
+            Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            Usage: D3D11_USAGE_DEFAULT,
+            BindFlags: (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
+            CPUAccessFlags: 0,
+            MiscFlags: 0,
+        };
+        let mut textura = None;
+        // SAFETY: descripcion completa de una textura sin datos iniciales; el
+        // dispositivo es el del llamante y esta vivo durante la llamada.
+        unsafe { d3d.CreateTexture2D(&desc, None, Some(&mut textura))? };
+        let textura = textura.ok_or(ErrorRender::SinDxgi)?;
+        let destino = self.envolver(&textura, D2D1_BITMAP_OPTIONS_TARGET)?;
+        Ok((textura, destino))
     }
 
     /// Envuelve el backbuffer de un swapchain como destino.

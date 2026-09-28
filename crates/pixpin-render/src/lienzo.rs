@@ -7,10 +7,10 @@
 
 use windows::Win32::Graphics::Direct2D::Common::{D2D_RECT_F, D2D1_GRADIENT_STOP};
 use windows::Win32::Graphics::Direct2D::{
-    D2D1_ANTIALIAS_MODE_ALIASED, D2D1_CAP_STYLE_FLAT, D2D1_DASH_STYLE_DASH,
+    D2D1_ANTIALIAS_MODE_ALIASED, D2D1_CAP_STYLE_FLAT, D2D1_CAP_STYLE_ROUND, D2D1_DASH_STYLE_DASH,
     D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT, D2D1_ELLIPSE, D2D1_EXTEND_MODE_CLAMP, D2D1_GAMMA_2_2,
     D2D1_INTERPOLATION_MODE, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC,
-    D2D1_INTERPOLATION_MODE_LINEAR, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_LINE_JOIN_MITER,
+    D2D1_INTERPOLATION_MODE_LINEAR, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_LINE_JOIN_ROUND,
     D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES, D2D1_ROUNDED_RECT, D2D1_STROKE_STYLE_PROPERTIES1,
     ID2D1Bitmap1, ID2D1PathGeometry1, ID2D1RenderTarget, ID2D1SolidColorBrush, ID2D1StrokeStyle,
 };
@@ -141,6 +141,21 @@ pub struct Tramo {
     pub estilo: EstiloTexto,
 }
 
+/// El texto de `texto_linea` puesto en UNA linea: cada salto (tambien
+/// `\r\n`, los de Unicode y los de pagina) y cada tabulador pasan a ser un
+/// espacio. Sin esto, «sin partir» de DirectWrite solo deja de partir por el
+/// ancho: los saltos del propio texto siguen abriendo lineas, y un resumen
+/// que viene de una tabla pegada se salia de su fila y se veia detras de las
+/// de abajo. Lo que ya es una linea sale tal cual, sin copiarlo.
+pub fn en_una_linea(texto: &str) -> std::borrow::Cow<'_, str> {
+    let corta = |c: char| matches!(c, '\n' | '\r' | '\t' | '\u{b}' | '\u{c}' | '\u{85}' | '\u{2028}' | '\u{2029}');
+    if !texto.contains(corta) {
+        return std::borrow::Cow::Borrowed(texto);
+    }
+    // `\r\n` es UN salto: un espacio, no dos.
+    std::borrow::Cow::Owned(texto.replace("\r\n", " ").replace(corta, " "))
+}
+
 /// Construye la disposicion DirectWrite de un texto: partido a `ancho_max`
 /// (o en una sola linea con puntos suspensivos si `una_linea`), con los
 /// tramos de estilo aplicados. Es la unica fabrica de disposiciones: la
@@ -153,6 +168,9 @@ pub(crate) fn disposicion_dwrite(
     tramos: &[Tramo],
     una_linea: bool,
 ) -> Option<(IDWriteTextLayout, f32, f32)> {
+    // En una linea es en UNA: los saltos del texto tambien abren lineas, y
+    // «sin partir» solo quita las que abre el ancho (ver `en_una_linea`).
+    let texto = if una_linea { en_una_linea(texto) } else { texto.into() };
     let contenido: Vec<u16> = texto.encode_utf16().collect();
     // SAFETY: cadenas constantes terminadas en cero; la disposicion copia
     // el texto y no retiene nada del llamante; los rangos se limitan al
@@ -211,16 +229,41 @@ pub(crate) fn disposicion_dwrite(
 
 /// Una disposicion de texto sin tramos, guardada para el siguiente
 /// fotograma: el mismo rotulo se pinta igual mientras no cambie su texto, su
-/// tamano o su ancho, y una disposicion no depende de donde ni de que color.
+/// tamano, su ancho o su letra, y una disposicion no depende de donde ni de
+/// que color.
 pub(crate) struct DisposicionCacheada {
     texto: String,
     tam: u32,
     ancho: u32,
     una_linea: bool,
+    /// La letra con que se hizo (`None`: la de la interfaz, Segoe UI). Va en
+    /// la clave: sin ella, dos textos iguales en dos familias saldrian los
+    /// dos con la letra del primero que se pinto.
+    letra: Option<ClaveLetra>,
     disposicion: IDWriteTextLayout,
     w: f32,
     h: f32,
     usado: u64,
+}
+
+/// La letra de una disposicion cacheada, comparable.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct ClaveLetra {
+    familia: String,
+    negrita: bool,
+    cursiva: bool,
+    interlineado: Option<u32>,
+}
+
+impl ClaveLetra {
+    fn de(l: &crate::letras::Letra) -> Self {
+        ClaveLetra {
+            familia: l.familia.to_string(),
+            negrita: l.negrita,
+            cursiva: l.cursiva,
+            interlineado: l.interlineado.map(f32::to_bits),
+        }
+    }
 }
 
 /// Cuantas disposiciones se guardan. Mas que las de un fotograma lleno del
@@ -228,20 +271,24 @@ pub(crate) struct DisposicionCacheada {
 /// fotograma no eche lo que va a pedir el siguiente.
 const MAX_TEXTOS: usize = 2048;
 
-/// `disposicion_dwrite` sin tramos, desde la cache del motor.
+/// `disposicion_dwrite` sin tramos (o `letras::disposicion` si se da una
+/// letra), desde la cache del motor.
 pub(crate) fn disposicion_cacheada(
     motor: &MotorRender,
     texto: &str,
     tam: f32,
     ancho_max: f32,
     una_linea: bool,
+    letra: Option<&crate::letras::Letra>,
 ) -> Option<(IDWriteTextLayout, f32, f32)> {
     use std::hash::{Hash, Hasher};
+    let clave_letra = letra.map(ClaveLetra::de);
     let mut h = std::collections::hash_map::DefaultHasher::new();
     texto.hash(&mut h);
     tam.to_bits().hash(&mut h);
     ancho_max.to_bits().hash(&mut h);
     una_linea.hash(&mut h);
+    clave_letra.hash(&mut h);
     let clave = h.finish();
     let ahora = motor.fotograma.get();
     let mut mapa = motor.textos.borrow_mut();
@@ -250,12 +297,15 @@ pub(crate) fn disposicion_cacheada(
         && e.tam == tam.to_bits()
         && e.ancho == ancho_max.to_bits()
         && e.una_linea == una_linea
+        && e.letra == clave_letra
     {
         e.usado = ahora;
         return Some((e.disposicion.clone(), e.w, e.h));
     }
-    let (disposicion, w, hh) =
-        disposicion_dwrite(motor.dwrite(), texto, tam, ancho_max, &[], una_linea)?;
+    let (disposicion, w, hh) = match letra {
+        Some(l) => crate::letras::disposicion(motor.dwrite(), texto, tam, ancho_max, l)?,
+        None => disposicion_dwrite(motor.dwrite(), texto, tam, ancho_max, &[], una_linea)?,
+    };
     motor.conto(|c| c.disposiciones += 1);
     if mapa.len() >= MAX_TEXTOS {
         // Primero lo que no se uso ni en este fotograma ni en el anterior;
@@ -273,6 +323,7 @@ pub(crate) fn disposicion_cacheada(
             tam: tam.to_bits(),
             ancho: ancho_max.to_bits(),
             una_linea,
+            letra: clave_letra,
             disposicion: disposicion.clone(),
             w,
             h: hh,
@@ -584,11 +635,14 @@ impl Pintor<'_> {
     /// `polilinea_discontinua`: son la misma raya, sobre un rectangulo o
     /// sobre una geometria cualquiera.
     fn estilo_discontinuo(&self) -> Option<ID2D1StrokeStyle> {
+        // Extremos y uniones redondos por lo mismo que `estilo_redondo`: sin
+        // ellos, las esquinas de un rectangulo a trazos quedan mordidas. Las
+        // rayas de en medio siguen planas, que es como se leen «a trazos».
         let propiedades = D2D1_STROKE_STYLE_PROPERTIES1 {
-            startCap: D2D1_CAP_STYLE_FLAT,
-            endCap: D2D1_CAP_STYLE_FLAT,
+            startCap: D2D1_CAP_STYLE_ROUND,
+            endCap: D2D1_CAP_STYLE_ROUND,
             dashCap: D2D1_CAP_STYLE_FLAT,
-            lineJoin: D2D1_LINE_JOIN_MITER,
+            lineJoin: D2D1_LINE_JOIN_ROUND,
             miterLimit: 10.0,
             dashStyle: D2D1_DASH_STYLE_DASH,
             dashOffset: 0.0,
@@ -703,7 +757,7 @@ impl Pintor<'_> {
         tam: f32,
         ancho_max: f32,
     ) -> Option<(IDWriteTextLayout, f32, f32)> {
-        disposicion_cacheada(self.motor, texto, tam, ancho_max, false)
+        disposicion_cacheada(self.motor, texto, tam, ancho_max, false, None)
     }
 
     /// Un parrafo con tramos de estilo (negrita, cursiva, monoespaciada):
@@ -742,11 +796,66 @@ impl Pintor<'_> {
             .unwrap_or((0.0, 0.0))
     }
 
+    /// **Donde cae un trozo de un parrafo**: las cajas (una por renglon que
+    /// toque) de las letras `inicio..inicio+largo`, en unidades UTF-16 y con
+    /// el origen en la esquina del parrafo. Es lo que marca lo encontrado al
+    /// buscar dentro de un documento (D9): se pregunta a la MISMA disposicion
+    /// que se pinta (`parrafo` con tramos, `texto_ajustado` sin ellos), asi
+    /// la marca no puede caer al lado de la palabra.
+    pub fn cajas_de_trozo(
+        &self,
+        texto: &str,
+        tam: f32,
+        ancho_max: f32,
+        tramos: &[Tramo],
+        inicio: u32,
+        largo: u32,
+    ) -> Vec<RectF> {
+        let disposicion = if tramos.is_empty() {
+            self.disposicion_ajustada(texto, tam, ancho_max)
+        } else {
+            disposicion_dwrite(self.motor.dwrite(), texto, tam, ancho_max, tramos, false)
+        };
+        let Some((disposicion, _, _)) = disposicion else {
+            return Vec::new();
+        };
+        let mut cuantas = 0u32;
+        // SAFETY: la disposicion esta viva; la primera llamada solo pide
+        // cuantas cajas hacen falta (falla con «buffer insuficiente», que es
+        // lo esperado) y la segunda escribe en un vector de ese tamano.
+        unsafe {
+            let _ = disposicion.HitTestTextRange(inicio, largo, 0.0, 0.0, None, &mut cuantas);
+            if cuantas == 0 {
+                return Vec::new();
+            }
+            let mut metricas = vec![
+                windows::Win32::Graphics::DirectWrite::DWRITE_HIT_TEST_METRICS::default();
+                cuantas as usize
+            ];
+            if disposicion
+                .HitTestTextRange(inicio, largo, 0.0, 0.0, Some(&mut metricas), &mut cuantas)
+                .is_err()
+            {
+                return Vec::new();
+            }
+            metricas
+                .iter()
+                .take(cuantas as usize)
+                .map(|m| RectF {
+                    x: m.left,
+                    y: m.top,
+                    ancho: m.width,
+                    alto: m.height,
+                })
+                .collect()
+        }
+    }
+
     /// Una sola linea que, si no cabe en `ancho_max`, termina en puntos
     /// suspensivos en vez de partirse o salirse: el nombre de una ficha.
     pub fn texto_linea(&self, texto: &str, x: f32, y: f32, tam: f32, ancho_max: f32, color: Color) {
         let Some((disposicion, _, _)) =
-            disposicion_cacheada(self.motor, texto, tam, ancho_max, true)
+            disposicion_cacheada(self.motor, texto, tam, ancho_max, true, None)
         else {
             return;
         };
@@ -854,10 +963,15 @@ impl Pintor<'_> {
         if contorno.len() < 3 {
             return;
         }
+        let forma = crate::tinta::huella_de_forma(contorno, 1);
+        if cache.reusar_trasladada(clave, forma.0, forma.1, self.motor.fotograma.get()) {
+            self.pintar_realizada(cache, clave, color);
+            return;
+        }
         let Some(geometria) = self.geometria_tinta(contorno) else {
             return;
         };
-        if !self.realizar(cache, clave, &geometria, None) {
+        if !self.realizar(cache, clave, &geometria, None, forma) {
             // Sin D2D 1.1 o sin poder teselar: se pinta la geometria tal
             // cual. Se ve igual, cuesta mas.
             if let Some(p) = self.pincel(color) {
@@ -882,10 +996,15 @@ impl Pintor<'_> {
         if vertices.len() < 3 {
             return;
         }
+        let forma = crate::tinta::huella_de_forma(vertices, 2);
+        if cache.reusar_trasladada(clave, forma.0, forma.1, self.motor.fotograma.get()) {
+            self.pintar_realizada(cache, clave, color);
+            return;
+        }
         let Some(geometria) = self.geometria(vertices, true) else {
             return;
         };
-        if !self.realizar(cache, clave, &geometria, None) {
+        if !self.realizar(cache, clave, &geometria, None, forma) {
             if let Some(p) = self.pincel(color) {
                 // SAFETY: dentro del fotograma; geometria y pincel vivos.
                 unsafe { self.motor.contexto().FillGeometry(&geometria, &p, None) };
@@ -911,15 +1030,24 @@ impl Pintor<'_> {
         if vertices.len() < 2 {
             return;
         }
+        // El grosor y las rayas cambian la realizacion de un trazo: van en
+        // la forma, o un cambio de grosor sin mover nada se tomaria por una
+        // traslacion de cero.
+        let extra = 3 ^ ((grosor.to_bits() as u64) << 8) ^ ((discontinua as u64) << 40);
+        let forma = crate::tinta::huella_de_forma(vertices, extra);
+        if cache.reusar_trasladada(clave, forma.0, forma.1, self.motor.fotograma.get()) {
+            self.pintar_realizada(cache, clave, color);
+            return;
+        }
         let Some(geometria) = self.geometria(vertices, false) else {
             return;
         };
         let estilo = if discontinua {
             self.estilo_discontinuo()
         } else {
-            None
+            self.estilo_redondo()
         };
-        if !self.realizar(cache, clave, &geometria, Some((grosor, estilo.as_ref()))) {
+        if !self.realizar(cache, clave, &geometria, Some((grosor, estilo.as_ref())), forma) {
             if let Some(p) = self.pincel(color) {
                 // SAFETY: dentro del fotograma; geometria, estilo y pincel
                 // vivos.
@@ -944,6 +1072,7 @@ impl Pintor<'_> {
         clave: (u64, u32, u32),
         geometria: &ID2D1PathGeometry1,
         trazo: Option<(f32, Option<&ID2D1StrokeStyle>)>,
+        forma: (u64, (f32, f32)),
     ) -> bool {
         use windows::Win32::Graphics::Direct2D::{
             D2D1_DEFAULT_FLATTENING_TOLERANCE, ID2D1DeviceContext1,
@@ -967,7 +1096,14 @@ impl Pintor<'_> {
             return false;
         };
         self.motor.conto(|c| c.realizaciones += 1);
-        cache.guardar(clave, self.motor.fotograma.get(), r);
+        // Lo que pesa, para el presupuesto de la cache: los segmentos de la
+        // geometria, que es de lo que crecen los triangulos realizados. Si
+        // Direct2D no lo sabe decir cuenta como uno, que es lo prudente
+        // para no echar nada por un numero inventado.
+        // SAFETY: consulta de solo lectura sobre la geometria cerrada que
+        // acaba de realizarse.
+        let peso = unsafe { geometria.GetSegmentCount() }.unwrap_or(1);
+        cache.guardar(clave, self.motor.fotograma.get(), r, peso, forma.0, forma.1);
         true
     }
 
@@ -987,12 +1123,29 @@ impl Pintor<'_> {
         let Ok(ctx1) = self.motor.contexto().cast::<ID2D1DeviceContext1>() else {
             return false;
         };
-        let Some(r) = cache.tomar(clave, self.motor.fotograma.get()) else {
+        let Some((r, corrida)) = cache.tomar(clave, self.motor.fotograma.get()) else {
             return false;
         };
         if let Some(pincel) = self.pincel(color) {
-            // SAFETY: dentro del fotograma; realizacion y pincel vivos.
-            unsafe { ctx1.DrawGeometryRealization(&r, &pincel) };
+            if corrida == (0.0, 0.0) {
+                // SAFETY: dentro del fotograma; realizacion y pincel vivos.
+                unsafe { ctx1.DrawGeometryRealization(&r, &pincel) };
+            } else {
+                // Lo que se movio desde que se realizo (`reusar_trasladada`):
+                // la misma realizacion, corrida en el mundo -antes de la
+                // vista- y la vista como estaba despues.
+                let mut vista = windows_numerics::Matrix3x2::default();
+                // SAFETY: GetTransform/SetTransform sobre el contexto vivo,
+                // dentro del fotograma; realizacion y pincel vivos.
+                unsafe {
+                    ctx1.GetTransform(&mut vista);
+                    let corrida =
+                        windows_numerics::Matrix3x2::translation(corrida.0, corrida.1) * vista;
+                    ctx1.SetTransform(&corrida);
+                    ctx1.DrawGeometryRealization(&r, &pincel);
+                    ctx1.SetTransform(&vista);
+                }
+            }
         }
         true
     }
@@ -1052,6 +1205,19 @@ impl Pintor<'_> {
         }
     }
 
+    /// El trazo de las polilineas: extremos y uniones redondos, como pide
+    /// Excalidraw a su canvas (`lineCap`/`lineJoin = "round"` en
+    /// `renderElement.ts`).
+    ///
+    /// **Es lo que tapa las esquinas.** Un rectangulo son cuatro lados
+    /// sueltos (y a mano, ocho pasadas); con el extremo plano por defecto de
+    /// Direct2D cada lado acaba justo en el vertice y en la esquina de fuera
+    /// quedaba un cuadradito sin pintar de medio grosor de lado: el usuario
+    /// lo veia como «lineas juntas y no un cuadrado».
+    fn estilo_redondo(&self) -> Option<ID2D1StrokeStyle> {
+        self.estilo_icono(true, true)
+    }
+
     /// Traza una polilinea abierta de grosor constante.
     pub fn polilinea(&self, vertices: &[(f32, f32)], grosor: f32, color: Color) {
         if vertices.len() < 2 {
@@ -1060,12 +1226,13 @@ impl Pintor<'_> {
         let Some(geometria) = self.geometria(vertices, false) else {
             return;
         };
+        let estilo = self.estilo_redondo();
         if let Some(p) = self.pincel(color) {
             // SAFETY: igual que arriba.
             unsafe {
                 self.motor
                     .contexto()
-                    .DrawGeometry(&geometria, &p, grosor, None)
+                    .DrawGeometry(&geometria, &p, grosor, estilo.as_ref())
             };
         }
     }
@@ -1176,7 +1343,7 @@ impl Pintor<'_> {
 
     /// Construye una geometria a partir de los vertices. `cerrada` decide si
     /// el ultimo punto se une con el primero.
-    fn geometria(&self, vertices: &[(f32, f32)], cerrada: bool) -> Option<ID2D1PathGeometry1> {
+    pub(crate) fn geometria(&self, vertices: &[(f32, f32)], cerrada: bool) -> Option<ID2D1PathGeometry1> {
         use windows::Win32::Graphics::Direct2D::Common::{
             D2D1_FIGURE_BEGIN_FILLED, D2D1_FIGURE_BEGIN_HOLLOW, D2D1_FIGURE_END_CLOSED,
             D2D1_FIGURE_END_OPEN,
@@ -1247,6 +1414,59 @@ impl Pintor<'_> {
                 )
             };
         }
+    }
+
+    /// **Un texto con su letra** (familia, negrita, cursiva, interlineado):
+    /// lo que pinta el lienzo de dibujo. `ancho_max` a partir de
+    /// `letras::SIN_PARTIR` no parte renglones, que es como van los textos
+    /// sueltos de Excalidraw.
+    #[allow(clippy::too_many_arguments)] // texto, posicion, tamano, ancho, letra y color
+    pub fn texto_con_letra(
+        &self,
+        texto: &str,
+        x: f32,
+        y: f32,
+        tam: f32,
+        ancho_max: f32,
+        letra: &crate::letras::Letra,
+        color: Color,
+    ) {
+        let Some((disposicion, _, _)) =
+            disposicion_cacheada(self.motor, texto, tam, ancho_max, false, Some(letra))
+        else {
+            return;
+        };
+        // La letra de emojis va en color (como `texto_color`); las demas, con
+        // el pincel, que es mas barato.
+        if letra.familia.contains("Emoji") {
+            if let Some(p) = self.pincel(color) {
+                // SAFETY: dentro del fotograma; objetos vivos.
+                unsafe {
+                    self.motor.contexto().DrawTextLayout(
+                        Vector2 { X: x, Y: y },
+                        &disposicion,
+                        &p,
+                        D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT,
+                    )
+                };
+            }
+            return;
+        }
+        self.dibujar_disposicion(&disposicion, x, y, color);
+    }
+
+    /// Lo que ocupa un texto con su letra, con la MISMA disposicion que
+    /// pinta `texto_con_letra`.
+    pub fn medir_con_letra(
+        &self,
+        texto: &str,
+        tam: f32,
+        ancho_max: f32,
+        letra: &crate::letras::Letra,
+    ) -> (f32, f32) {
+        disposicion_cacheada(self.motor, texto, tam, ancho_max, false, Some(letra))
+            .map(|(_, w, h)| (w, h))
+            .unwrap_or((0.0, 0.0))
     }
 
     /// Mide el texto sin dibujarlo: para colocar cajas.
@@ -1332,6 +1552,55 @@ mod pruebas {
         D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
     };
     use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
+
+    /// Las lineas que DirectWrite reparte en una disposicion. Solo hace
+    /// falta la fabrica de DirectWrite: ni GPU ni ventana.
+    fn lineas_de(texto: &str, una_linea: bool) -> u32 {
+        use windows::Win32::Graphics::DirectWrite::{
+            DWRITE_FACTORY_TYPE_SHARED, DWriteCreateFactory, IDWriteFactory,
+        };
+        // SAFETY: crear la fabrica compartida no toma nada del llamante.
+        let dwrite: IDWriteFactory =
+            unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED) }.expect("DirectWrite");
+        let (disposicion, _, _) =
+            disposicion_dwrite(&dwrite, texto, 13.0, 300.0, &[], una_linea).expect("disposicion");
+        // SAFETY: disposicion viva; solo se leen sus medidas.
+        let mut m = DWRITE_TEXT_METRICS::default();
+        unsafe { disposicion.GetMetrics(&mut m) }.expect("medidas");
+        m.lineCount
+    }
+
+    /// Una tabla pegada de una hoja de calculo, tal cual llega al resumen
+    /// de un proyecto en la lista (la queja: su texto se veia detras de las
+    /// filas de abajo).
+    const TABLA_PEGADA: &str = "DESCRIPCION \tMONTO\r\nALQUILER \t690\r\n\t687.5\r\nCELULAR\t39.95\r\n\t\r\n\t2517.34";
+
+    #[test]
+    fn un_texto_de_una_linea_con_saltos_y_tabuladores_sale_en_una_sola_linea() {
+        assert_eq!(lineas_de(TABLA_PEGADA, true), 1);
+        for salto in ["\n", "\r", "\r\n", "\u{2028}", "\u{2029}", "\u{85}", "\u{b}", "\u{c}"] {
+            assert_eq!(lineas_de(&format!("uno{salto}dos"), true), 1, "salto {salto:?}");
+        }
+    }
+
+    #[test]
+    fn un_parrafo_sigue_partiendose_en_sus_saltos() {
+        // Lo contrario no se toca: una burbuja o una nota SI tienen lineas.
+        assert!(lineas_de(TABLA_PEGADA, false) > 1);
+    }
+
+    #[test]
+    fn en_una_linea_cambia_cada_salto_y_tabulador_por_un_espacio() {
+        assert_eq!(en_una_linea("a\r\nb\tc\nd\re"), "a b c d e");
+        assert_eq!(en_una_linea("x\u{2028}y\u{2029}z"), "x y z");
+    }
+
+    #[test]
+    fn en_una_linea_deja_igual_y_sin_copiar_lo_que_ya_es_una_linea() {
+        let t = "Casa Lima · 3 hojas";
+        assert!(matches!(en_una_linea(t), std::borrow::Cow::Borrowed(s) if s == t));
+        assert_eq!(en_una_linea(""), "");
+    }
 
     #[test]
     fn cada_interpolacion_va_a_su_modo_de_direct2d() {

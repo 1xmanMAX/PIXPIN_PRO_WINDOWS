@@ -106,6 +106,45 @@ impl FueraDePantalla {
         Ok((w, h, v))
     }
 
+    /// Copia `zona` (o todo, con `None`) de `otro` a este destino, con la
+    /// misma llamada de la GPU que `Superficie::igualar_trasero`. Es lo que
+    /// deja al banco del editor medir lo que cuesta soltar el lapiz sin abrir
+    /// una ventana: la copia del mapa de delante al de atras mas el trazo.
+    pub fn copiar_desde(
+        &self,
+        otro: &FueraDePantalla,
+        zona: Option<(i32, i32, i32, i32)>,
+    ) -> Result<(), ErrorRender> {
+        use windows::Win32::Graphics::Direct3D11::D3D11_BOX;
+        // SAFETY: las dos texturas son del mismo dispositivo, del mismo
+        // formato, y viven mientras sus `FueraDePantalla`; la caja se
+        // recorta a lo que mide la textura por quien llama.
+        unsafe {
+            let ctx = self.d3d.GetImmediateContext()?;
+            match zona {
+                Some((l, t, r, b)) => ctx.CopySubresourceRegion(
+                    &self._textura,
+                    0,
+                    l.max(0) as u32,
+                    t.max(0) as u32,
+                    0,
+                    &otro._textura,
+                    0,
+                    Some(&D3D11_BOX {
+                        left: l.max(0) as u32,
+                        top: t.max(0) as u32,
+                        front: 0,
+                        right: r.max(l).max(0) as u32,
+                        bottom: b.max(t).max(0) as u32,
+                        back: 1,
+                    }),
+                ),
+                None => ctx.CopyResource(&self._textura, &otro._textura),
+            }
+        }
+        Ok(())
+    }
+
     /// Bloquea hasta que la GPU haya terminado todo lo encargado hasta
     /// ahora. Una consulta de evento y no leer un pixel: leer obliga a una
     /// copia que tambien se mediria.
@@ -141,4 +180,34 @@ impl FueraDePantalla {
             std::thread::yield_now();
         }
     }
+}
+
+/// La memoria de video que usa ESTE proceso, en bytes: la local (la de la
+/// grafica) y la no local (la compartida con el sistema, que es casi toda en
+/// una integrada como la HD 4000 del equipo minimo).
+///
+/// Para las mediciones de larga duracion: una fuga de recursos de Direct2D
+/// no se ve en la memoria del proceso sino aqui. `None` si el adaptador no
+/// da `IDXGIAdapter3` (Windows 8.1 o anterior).
+pub fn memoria_de_video(d3d: &ID3D11Device) -> Option<(u64, u64)> {
+    use windows::Win32::Graphics::Dxgi::{
+        DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL,
+        DXGI_QUERY_VIDEO_MEMORY_INFO, IDXGIAdapter3, IDXGIDevice,
+    };
+    use windows::core::Interface;
+    let dxgi: IDXGIDevice = d3d.cast().ok()?;
+    // SAFETY: el dispositivo DXGI es del D3D vivo que nos prestan.
+    let adaptador: IDXGIAdapter3 = unsafe { dxgi.GetAdapter() }.ok()?.cast().ok()?;
+    let mut local = DXGI_QUERY_VIDEO_MEMORY_INFO::default();
+    let mut no_local = DXGI_QUERY_VIDEO_MEMORY_INFO::default();
+    // SAFETY: nodo 0 (una sola GPU) y estructuras locales de salida.
+    unsafe {
+        adaptador
+            .QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &mut local)
+            .ok()?;
+        adaptador
+            .QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL, &mut no_local)
+            .ok()?;
+    }
+    Some((local.CurrentUsage, no_local.CurrentUsage))
 }

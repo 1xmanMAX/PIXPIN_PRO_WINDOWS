@@ -104,6 +104,15 @@ pub struct Superficie {
     desplazamiento_fondo: std::cell::Cell<(f32, f32)>,
 }
 
+/// Si `hwnd` es la ventana del primer plano. Vive aqui porque quien la
+/// necesita es el bucle de pintado del editor (para devolver la memoria de
+/// video al dejar de estar delante, `MotorRender::devolver_memoria`), y la
+/// aplicacion no escribe `unsafe`.
+pub fn en_primer_plano(hwnd: HWND) -> bool {
+    // SAFETY: consulta de solo lectura del estado global de ventanas.
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() == hwnd }
+}
+
 impl Drop for Superficie {
     fn drop(&mut self) {
         if let Some(s) = self.senal.take() {
@@ -534,6 +543,9 @@ impl Superficie {
         if !apagar {
             return;
         }
+        // Si se uso para arrastrar una seleccion, vuelve a su sitio: la
+        // proxima vez que se encienda tiene que pintar donde se le diga.
+        self.desplazar_tinta(0.0, 0.0);
         let _ = self.pintar_capa(&self.tinta, motor, None, |_, _| {});
         if let Some(capa) = self.tinta.borrow().as_ref() {
             capa.encendida.set(false);
@@ -697,6 +709,35 @@ impl Superficie {
         // SAFETY: la matriz vive durante la llamada; el visual y el
         // dispositivo son propios y siguen vivos. Un error solo significa
         // que el fotograma sale sin mover las estrellas.
+        unsafe {
+            let _ = capa.visual.SetTransform2(&t);
+            let _ = self.dcomp.Commit();
+        }
+    }
+
+    /// Corre la capa de la tinta `dx`/`dy` pixeles de ventana, sin repintarla.
+    ///
+    /// Es lo que hace fluido arrastrar una seleccion: lo elegido se pinta
+    /// UNA vez en esta capa al empezar, y cada aviso del raton despues es
+    /// esta matriz y un `Commit`. Excalidraw consigue lo mismo copiando el
+    /// bitmap que guarda de cada elemento; aqui ni se copia: lo mueve la
+    /// composicion. `apagar_tinta` la devuelve a su sitio.
+    pub fn desplazar_tinta(&self, dx: f32, dy: f32) {
+        let prestamo = self.tinta.borrow();
+        let Some(capa) = prestamo.as_ref() else {
+            return;
+        };
+        let t = windows_numerics::Matrix3x2 {
+            M11: 1.0,
+            M12: 0.0,
+            M21: 0.0,
+            M22: 1.0,
+            M31: dx,
+            M32: dy,
+        };
+        // SAFETY: la matriz vive durante la llamada; el visual y el
+        // dispositivo son propios y siguen vivos. Un error solo significa
+        // que este fotograma sale sin mover la capa.
         unsafe {
             let _ = capa.visual.SetTransform2(&t);
             let _ = self.dcomp.Commit();
@@ -877,6 +918,62 @@ impl Superficie {
         // SAFETY: el indice 0 es siempre el backbuffer escribible actual.
         let textura: ID3D11Texture2D = unsafe { self.swapchain.GetBuffer(0)? };
         motor.destino_backbuffer(&textura)
+    }
+
+    /// **Iguala el mapa de atras con el que se esta viendo**, en `zona`
+    /// (pixeles de la superficie; `None` = entero).
+    ///
+    /// La cadena de intercambio tiene dos mapas, y el que se pinta ahora
+    /// lleva dentro lo de hace DOS presentes (D148). Para pintar SOLO un
+    /// trozo encima de lo que ya se ve —el trazo que se acaba de soltar—
+    /// sin repintar la escena entera, el mapa de atras tiene que llevar
+    /// primero lo mismo que el de delante: si no, al presentar se veria lo
+    /// de hace dos fotogramas en todo lo demas.
+    ///
+    /// Es una copia de la GPU, del mapa 1 (el ultimo presentado: con dos
+    /// mapas es el unico otro que hay, y DXGI deja leerlo) al 0 (el que se
+    /// pinta). Cuesta lo que mide la zona y no lo que haya dibujado: a
+    /// pantalla entera son unos megas de copia, contra recorrer y pintar
+    /// cada elemento visible.
+    pub fn igualar_trasero(&self, zona: Option<(i32, i32, i32, i32)>) -> Result<(), ErrorRender> {
+        use windows::Win32::Graphics::Direct3D11::D3D11_BOX;
+        let (ancho, alto) = self.asignado.get();
+        let caja = zona.map(|(l, t, r, b)| D3D11_BOX {
+            left: l.clamp(0, ancho as i32) as u32,
+            top: t.clamp(0, alto as i32) as u32,
+            front: 0,
+            right: r.clamp(0, ancho as i32) as u32,
+            bottom: b.clamp(0, alto as i32) as u32,
+            back: 1,
+        });
+        // Una zona que se queda vacia al recortar es que no hay nada que
+        // igualar: no es «igualarlo todo».
+        if caja.is_some_and(|c| c.right <= c.left || c.bottom <= c.top) {
+            return Ok(());
+        }
+        // SAFETY: los dos mapas son de esta cadena y viven mientras ella;
+        // el 1 se lee (DXGI lo da de solo lectura en el modelo flip) y el 0
+        // se escribe. Se llama fuera de todo `BeginDraw`, en el hilo que
+        // pinta, que es el unico que usa el contexto inmediato.
+        unsafe {
+            let atras: ID3D11Texture2D = self.swapchain.GetBuffer(0)?;
+            let delante: ID3D11Texture2D = self.swapchain.GetBuffer(1)?;
+            let contexto = atras.GetDevice()?.GetImmediateContext()?;
+            match caja {
+                Some(c) => contexto.CopySubresourceRegion(
+                    &atras,
+                    0,
+                    c.left,
+                    c.top,
+                    0,
+                    &delante,
+                    0,
+                    Some(&c),
+                ),
+                None => contexto.CopyResource(&atras, &delante),
+            }
+        }
+        Ok(())
     }
 
     /// Cambia el tamano de los buffers sin recrear la composicion. Mucho
@@ -1149,6 +1246,18 @@ mod pruebas {
     #[test]
     #[ignore = "necesita GPU y sesion de escritorio; ejecutar con --ignored"]
     fn una_ventana_compuesta_ensena_la_interfaz_encima_de_la_escena() {
+        // **Consciente de DPI, como la aplicacion.** Sin esto, en una
+        // pantalla al 150 % Windows estira la ventana de 256 a 384 pixeles
+        // fisicos, pero las capas miden 256 FISICOS: solo cubren los dos
+        // tercios de arriba, y lo que se pinte mas abajo «no se ve». Por eso
+        // se dio la capa de la tinta por invisible y se apago B2 (medido el
+        // 2026-09-22: la misma banda verde, pintada en la capa de la
+        // INTERFAZ a y=200, tampoco se veia; con esto se ven las dos).
+        // SAFETY: cambia una propiedad del proceso de pruebas; no toca nada
+        // que la prueba no controle.
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::SetProcessDPIAware();
+        }
         use windows::Win32::UI::WindowsAndMessaging::{
             SW_SHOWNA, ShowWindow, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOPMOST,
         };
@@ -1224,10 +1333,7 @@ mod pruebas {
                 );
             })
             .expect("la interfaz se pinta");
-        // La capa de la tinta se pinta igual, pero NO se comprueba que se
-        // vea: hoy no se ve, y por eso B2 esta apagado (ver
-        // `ventana_editor::TINTA_EN_CAPA`). Se deja pintada aqui para que el
-        // dia que se arregle baste con anadir la comprobacion.
+        // La capa de la tinta, entre las dos: una banda verde abajo.
         superficie
             .encender_tinta(&motor)
             .expect("la capa de tinta se enciende");
@@ -1250,11 +1356,13 @@ mod pruebas {
             let i = ((y * LADO + x) * 4) as usize;
             (px[i + 2], px[i + 1], px[i])
         };
-        // Los dos sitios que se miran: el lienzo en medio y la barra arriba.
+        // Los tres sitios que se miran: el lienzo en medio, la barra arriba y
+        // la tinta abajo.
         let px = capturar_cuando_componga(hwnd, LADO, |px| {
             let escena = color_de(px, 128, 128);
             let barra = color_de(px, 128, 16);
-            escena.0 > 150 && barra.2 > 150
+            let tinta = color_de(px, 128, 216);
+            escena.0 > 150 && barra.2 > 150 && tinta.1 > 150
         });
         let color = |x: i32, y: i32| color_de(&px, x, y);
         let (r, g, b) = color(128, 128);
@@ -1269,6 +1377,23 @@ mod pruebas {
             "la interfaz tiene que verse ENCIMA de la escena, y ahi se ve {:?}",
             (r, g, b)
         );
+        let (r, g, b) = color(128, 216);
+        assert!(
+            g > 150 && r < 100,
+            "la tinta tiene que verse encima de la escena, y ahi se ve {:?}",
+            (r, g, b)
+        );
+
+        // Arrastrar una seleccion: la capa se corre SIN repintarla. La banda
+        // verde tiene que subir 100 pixeles y dejar ver la escena debajo.
+        superficie.desplazar_tinta(0.0, -100.0);
+        let px = capturar_cuando_componga(hwnd, LADO, |px| {
+            color_de(px, 128, 116).1 > 150 && color_de(px, 128, 216).0 > 150
+        });
+        let (r, g, _) = color_de(&px, 128, 116);
+        assert!(g > 150 && r < 100, "la tinta no subio: {:?}", (r, g));
+        let (r, g, _) = color_de(&px, 128, 216);
+        assert!(r > 150 && g < 100, "donde estaba la tinta queda {:?}", (r, g));
         drop(superficie);
         // SAFETY: la ventana la creo este test y nadie mas la usa.
         unsafe { DestroyWindow(hwnd).unwrap() };
@@ -1386,6 +1511,111 @@ mod pruebas {
         assert_eq!(superficie.desplazamiento(), (0.0, 0.0));
 
         drop(superficie);
+        // SAFETY: la ventana la creo este test y nadie mas la usa.
+        unsafe { DestroyWindow(hwnd).unwrap() };
+    }
+
+    /// El pixel (x, y) del mapa que se pinta ahora (el 0), en BGRA.
+    fn pixel_de_atras(s: &Superficie, d3d: &ID3D11Device, x: u32, y: u32) -> [u8; 4] {
+        use windows::Win32::Graphics::Direct3D11::{
+            D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE, D3D11_TEXTURE2D_DESC,
+            D3D11_USAGE_STAGING,
+        };
+        // SAFETY: los objetos son de este test y estan vivos; la textura de
+        // lectura se crea, se copia, se mapea y se desmapea aqui mismo.
+        unsafe {
+            let atras: ID3D11Texture2D = s.swapchain.GetBuffer(0).unwrap();
+            let mut desc = D3D11_TEXTURE2D_DESC::default();
+            atras.GetDesc(&mut desc);
+            let desc = D3D11_TEXTURE2D_DESC {
+                Usage: D3D11_USAGE_STAGING,
+                BindFlags: 0,
+                CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+                MiscFlags: 0,
+                ..desc
+            };
+            let mut copia = None;
+            d3d.CreateTexture2D(&desc, None, Some(&mut copia)).unwrap();
+            let copia = copia.unwrap();
+            let ctx = d3d.GetImmediateContext().unwrap();
+            ctx.CopyResource(&copia, &atras);
+            let mut mapa = D3D11_MAPPED_SUBRESOURCE::default();
+            ctx.Map(&copia, 0, D3D11_MAP_READ, 0, Some(&mut mapa)).unwrap();
+            let p = (mapa.pData as *const u8).add((y * mapa.RowPitch + x * 4) as usize);
+            let px = [*p, *p.add(1), *p.add(2), *p.add(3)];
+            ctx.Unmap(&copia, 0);
+            px
+        }
+    }
+
+    const ROJO: Color = Color {
+        r: 1.0,
+        g: 0.0,
+        b: 0.0,
+        a: 1.0,
+    };
+    const AZUL: Color = Color {
+        r: 0.0,
+        g: 0.0,
+        b: 1.0,
+        a: 1.0,
+    };
+
+    /// Pinta todo el mapa de atras de un color y lo presenta.
+    fn presentar_de_color(s: &Superficie, motor: &MotorRender, color: Color) {
+        let destino = s.empezar(motor).unwrap();
+        motor.dibujar(&destino, |p| p.limpiar(color)).unwrap();
+        s.presentar_sincronizado(None).unwrap();
+    }
+
+    #[test]
+    #[ignore = "necesita GPU y sesion de escritorio; ejecutar con --ignored"]
+    fn igualar_el_trasero_copia_lo_que_se_esta_viendo_y_solo_en_su_zona() {
+        // Lo que sostiene soltar el lapiz sin repintar la escena: antes de
+        // pintar el trazo nuevo encima, el mapa de atras (que lleva lo de
+        // hace DOS presentes) tiene que llevar lo que se ve ahora. La
+        // ventana no se ensena nunca: sin `WS_VISIBLE` no sale en pantalla.
+        // SAFETY: igual que en la prueba de arriba.
+        let hwnd = unsafe {
+            CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                w!("STATIC"),
+                w!("prueba"),
+                WS_POPUP,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                64,
+                64,
+                None,
+                None,
+                Some(GetModuleHandleW(None).unwrap().into()),
+                None,
+            )
+            .expect("ventana de prueba")
+        };
+        let d3d = d3d();
+        let motor = MotorRender::nuevo(&d3d).unwrap();
+        let s = Superficie::nueva(&motor, &d3d, hwnd, 64, 64).unwrap();
+        // Rojo y luego azul: se ve azul, y atras queda el rojo.
+        presentar_de_color(&s, &motor, ROJO);
+        presentar_de_color(&s, &motor, AZUL);
+        let rojo = pixel_de_atras(&s, &d3d, 5, 5);
+        assert!(rojo[2] > 200 && rojo[0] < 50, "atras deberia quedar el rojo: {rojo:?}");
+
+        // Caso negativo primero: igualar solo un trozo deja el resto como
+        // estaba. Es lo que hace barata la copia al soltar trazo tras trazo.
+        s.igualar_trasero(Some((0, 0, 10, 10))).unwrap();
+        let dentro = pixel_de_atras(&s, &d3d, 5, 5);
+        let fuera = pixel_de_atras(&s, &d3d, 40, 40);
+        assert!(dentro[0] > 200 && dentro[2] < 50, "la zona ya es azul: {dentro:?}");
+        assert!(fuera[2] > 200 && fuera[0] < 50, "fuera de la zona sigue el rojo: {fuera:?}");
+
+        // Y entero, todo.
+        s.igualar_trasero(None).unwrap();
+        let fuera = pixel_de_atras(&s, &d3d, 40, 40);
+        assert!(fuera[0] > 200 && fuera[2] < 50, "entero, todo azul: {fuera:?}");
+
+        drop(s);
         // SAFETY: la ventana la creo este test y nadie mas la usa.
         unsafe { DestroyWindow(hwnd).unwrap() };
     }

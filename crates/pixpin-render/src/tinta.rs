@@ -32,19 +32,48 @@ pub(crate) struct Realizada {
     pub(crate) version: u32,
     pub(crate) realizacion: ID2D1GeometryRealization,
     /// El fotograma en que se pinto por ultima vez: lo que decide a quien se
-    /// echa cuando la cache se pasa de `MAX_REALIZACIONES`.
+    /// echa cuando la cache se pasa de su presupuesto.
     pub(crate) usado: u64,
+    /// Lo que pesa, en segmentos de la geometria de la que salio (ver
+    /// `PESO_MAXIMO`).
+    pub(crate) peso: u32,
+    /// La forma de la geometria sin su sitio (`huella_de_forma`) y donde
+    /// estaba su primer vertice al realizarla. Con eso, lo que solo se
+    /// MOVIO se pinta con la misma realizacion corrida, sin crear otra
+    /// (ver `reusar_trasladada`).
+    pub(crate) forma: u64,
+    pub(crate) ancla: (f32, f32),
+    /// Cuanto hay que correrla para pintarla donde esta ahora.
+    pub(crate) corrida: (f32, f32),
 }
 
-/// Cuantas realizaciones se guardan a la vez.
+/// Cuantas realizaciones se guardan a la vez, como mucho.
 ///
 /// Generoso a proposito: una escena de 2.000 formas de rough.js con relleno
 /// de sombreado puede pedir decenas de miles de ordenes, y echar lo que el
-/// siguiente fotograma va a volver a pedir seria peor que no cachear. El
-/// tope existe solo para que un documento enorme no se coma la memoria de
-/// video de una HD 4000; al pasarse se echa primero lo que no se pinto ni en
-/// este fotograma ni en el anterior.
+/// siguiente fotograma va a volver a pedir seria peor que no cachear. Lo
+/// que de verdad acota la memoria es `PESO_MAXIMO`; esto es solo el techo
+/// del numero de entradas del mapa.
 const MAX_REALIZACIONES: usize = 60_000;
+
+/// **Cuanto puede pesar todo lo realizado junto**, en segmentos de geometria.
+///
+/// Medido (`envejecer_el_editor_varios_minutos`, 2026-09-22): un trazo a
+/// mano de 150 puntos -unos 240 segmentos de contorno- realizado ocupa
+/// ~80 KB de memoria del proceso mas ~30 KB de memoria de video; de media,
+/// entre medio kilo y un kilo por segmento. Y **no se soltaba nunca**: el
+/// unico tope era el de arriba, sesenta mil entradas, que a ese peso son
+/// varios gigas. Dibujando por un plano grande (cada minuto en otro sitio
+/// del papel) la cache crecia unos 5.000 segmentos por minuto sin echar
+/// nada de lo que ya no se veia. En la HD 4000 del equipo minimo la memoria
+/// de video es la del sistema: cada trazo dibujado le quitaba memoria a
+/// todo lo demas mientras el editor siguiera abierto.
+///
+/// Doscientos mil segmentos son unos 800 trazos como ese, del orden de 100 a
+/// 200 MB entre proceso y video: mas de lo que cabe en una pantalla de
+/// trabajo, asi que lo que se ve no se echa, y lo que no se ve deja de
+/// crecer sin fin.
+const PESO_MAXIMO: u64 = 200_000;
 
 /// La geometria ya teselada por Direct2D, por elemento y orden.
 ///
@@ -60,6 +89,20 @@ const MAX_REALIZACIONES: usize = 60_000;
 pub struct CacheTinta {
     pub(crate) mapa: HashMap<(u64, u32), Realizada>,
     pub(crate) escala: f32,
+    /// La suma de `Realizada::peso` de todo el mapa.
+    peso: u64,
+    /// El fotograma en que se busco que echar y no habia nada que se
+    /// pudiera: todo lo guardado se esta pintando. Mientras siga siendo ese
+    /// fotograma no se vuelve a buscar, o cada realizacion nueva de un
+    /// fotograma lleno recorreria el mapa entero.
+    sin_hueco_en: Option<u64>,
+    /// Cuantas realizaciones se han hecho desde que nacio. No baja nunca:
+    /// quien mide resta dos lecturas y sabe cuanto se teselo entre medias
+    /// (`[rendimiento] medir_fotogramas`), que es el coste que no se ve en
+    /// el reloj de un fotograma sino en el siguiente que tira de lo mismo.
+    realizadas: u64,
+    /// Ver `reusar_trasladada`: no baja nunca, como `realizadas`.
+    trasladadas: u64,
     /// **La tela con la que se tine la silueta**: las brochas de mosaico de
     /// `Pintor::grano`, una por material y color.
     ///
@@ -72,11 +115,53 @@ pub struct CacheTinta {
     pub grano: crate::grano::CacheGrano,
 }
 
+/// Que claves echar para volver a caber: las que no se pintaron ni en este
+/// fotograma ni en el anterior, **de la mas vieja a la mas nueva**, hasta
+/// bajar a tres cuartos del presupuesto (en peso y en numero).
+///
+/// Bajar a tres cuartos y no justo al tope es lo que hace que echar sea de
+/// vez en cuando y no en cada realizacion nueva. Lo que se esta pintando no
+/// se echa nunca: si todo lo guardado se ve, se queda aunque se pase, porque
+/// echarlo seria volver a teselarlo en el fotograma siguiente -y en el
+/// otro, y en el otro-.
+///
+/// Pura, sin GPU, para poder probar la politica sin una realizacion de
+/// verdad: `entradas` son `(clave, usado, peso)`.
+pub(crate) fn a_echar(
+    entradas: impl Iterator<Item = ((u64, u32), u64, u32)>,
+    fotograma: u64,
+    peso_total: u64,
+    cuantas: usize,
+    peso_maximo: u64,
+    max_entradas: usize,
+) -> Vec<(u64, u32)> {
+    let mut viejas: Vec<((u64, u32), u64, u32)> = entradas
+        .filter(|(_, usado, _)| usado.saturating_add(1) < fotograma)
+        .collect();
+    viejas.sort_unstable_by_key(|(_, usado, _)| *usado);
+    let (meta_peso, meta_cuantas) = (peso_maximo / 4 * 3, max_entradas / 4 * 3);
+    let (mut peso, mut n) = (peso_total, cuantas);
+    let mut fuera = Vec::new();
+    for (clave, _, p) in viejas {
+        if peso <= meta_peso && n <= meta_cuantas {
+            break;
+        }
+        peso = peso.saturating_sub(p as u64);
+        n -= 1;
+        fuera.push(clave);
+    }
+    fuera
+}
+
 impl CacheTinta {
     pub fn nueva() -> Self {
         Self {
             mapa: HashMap::new(),
             escala: 1.0,
+            peso: 0,
+            sin_hueco_en: None,
+            realizadas: 0,
+            trasladadas: 0,
             grano: crate::grano::CacheGrano::nueva(),
         }
     }
@@ -87,6 +172,8 @@ impl CacheTinta {
     /// fallo que se ve como un lienzo en blanco.
     pub fn vaciar(&mut self) {
         self.mapa.clear();
+        self.peso = 0;
+        self.sin_hueco_en = None;
         self.grano.vaciar();
     }
 
@@ -99,11 +186,19 @@ impl CacheTinta {
         if escala != self.escala {
             self.escala = escala;
             self.mapa.clear();
+            self.peso = 0;
+            self.sin_hueco_en = None;
         }
     }
 
     pub fn cuantas(&self) -> usize {
         self.mapa.len()
+    }
+
+    /// Lo que pesa todo lo realizado, en segmentos: para las mediciones y
+    /// para la puerta que comprueba que no crece sin fin.
+    pub fn peso(&self) -> u64 {
+        self.peso
     }
 
     /// Si ya hay una realizacion valida para `clave` (mismo elemento, mismo
@@ -119,28 +214,72 @@ impl CacheTinta {
     }
 
     /// Guarda una realizacion recien hecha, echando lo viejo si hace falta.
-    /// `fotograma` es el de `MotorRender`, que ya cuenta uno por `dibujar`.
+    /// `fotograma` es el de `MotorRender`, que ya cuenta uno por `dibujar`;
+    /// `peso`, los segmentos de la geometria de la que sale.
     pub(crate) fn guardar(
         &mut self,
         clave: (u64, u32, u32),
         fotograma: u64,
         realizacion: ID2D1GeometryRealization,
+        peso: u32,
+        forma: u64,
+        ancla: (f32, f32),
     ) {
         let (id, version, indice) = clave;
-        if self.mapa.len() >= MAX_REALIZACIONES {
-            self.mapa.retain(|_, r| r.usado + 1 >= fotograma);
-            if self.mapa.len() >= MAX_REALIZACIONES {
-                self.mapa.clear();
-            }
-        }
-        self.mapa.insert(
+        if let Some(vieja) = self.mapa.insert(
             (id, indice),
             Realizada {
                 version,
                 realizacion,
                 usado: fotograma,
+                peso,
+                forma,
+                ancla,
+                corrida: (0.0, 0.0),
             },
+        ) {
+            self.peso = self.peso.saturating_sub(vieja.peso as u64);
+        }
+        self.peso += peso as u64;
+        self.realizadas += 1;
+        self.desalojar(fotograma);
+    }
+
+    /// Cuantas realizaciones se han hecho desde que nacio (ver el campo).
+    pub fn realizadas(&self) -> u64 {
+        self.realizadas
+    }
+
+    /// Echa lo que no se ve si la cache se pasa de su presupuesto.
+    ///
+    /// Antes, al llegar a `MAX_REALIZACIONES` se tiraba de golpe todo lo que
+    /// no fuera de los dos ultimos fotogramas, y si no bastaba, el mapa
+    /// entero: un tiron de volver a teselar la pantalla completa. Ahora se
+    /// echa lo mas viejo primero y solo lo justo.
+    fn desalojar(&mut self, fotograma: u64) {
+        if self.peso <= PESO_MAXIMO && self.mapa.len() <= MAX_REALIZACIONES {
+            return;
+        }
+        if self.sin_hueco_en == Some(fotograma) {
+            return;
+        }
+        let fuera = a_echar(
+            self.mapa.iter().map(|(k, r)| (*k, r.usado, r.peso)),
+            fotograma,
+            self.peso,
+            self.mapa.len(),
+            PESO_MAXIMO,
+            MAX_REALIZACIONES,
         );
+        if fuera.is_empty() {
+            self.sin_hueco_en = Some(fotograma);
+            return;
+        }
+        for k in fuera {
+            if let Some(r) = self.mapa.remove(&k) {
+                self.peso = self.peso.saturating_sub(r.peso as u64);
+            }
+        }
     }
 
     /// Apunta que `clave` se pinto en `fotograma`, para que la limpieza no
@@ -149,15 +288,86 @@ impl CacheTinta {
         &mut self,
         clave: (u64, u32, u32),
         fotograma: u64,
-    ) -> Option<ID2D1GeometryRealization> {
+    ) -> Option<(ID2D1GeometryRealization, (f32, f32))> {
         let (id, version, indice) = clave;
         let r = self.mapa.get_mut(&(id, indice))?;
         if r.version != version {
             return None;
         }
         r.usado = fotograma;
-        Some(r.realizacion.clone())
+        Some((r.realizacion.clone(), r.corrida))
     }
+
+    /// **Lo que solo se movio no se vuelve a realizar.** Si `clave` tiene ya
+    /// una realizacion de la MISMA forma (`huella_de_forma`) en otro sitio,
+    /// se le pone la version nueva y lo que hay que correrla, y se devuelve
+    /// `true`: quien pinta la usa tal cual, trasladada.
+    ///
+    /// Es por la memoria, no por el teselado. Medido
+    /// (`tests/memoria_realizaciones.rs`, 2026-09-24): cada fotograma que
+    /// pinta cientos de realizaciones DESPUES de crear una nueva hace crecer
+    /// el proceso y la memoria de video unos megas -proporcional a cuantas
+    /// pinta- y ni vaciar la cache ni `Trim` lo devuelven. Arrastrar una
+    /// figura y soltarla rehacia su realizacion (version nueva), y cada
+    /// arrastre sumaba asi varios megas en la HD 4000, donde la memoria de
+    /// video es la del sistema: al cabo de un rato, el resto del equipo iba
+    /// sin memoria. Moviendo con la misma realizacion no se crea ninguna.
+    pub(crate) fn reusar_trasladada(
+        &mut self,
+        clave: (u64, u32, u32),
+        forma: u64,
+        ancla: (f32, f32),
+        fotograma: u64,
+    ) -> bool {
+        let (id, version, indice) = clave;
+        let Some(r) = self.mapa.get_mut(&(id, indice)) else {
+            return false;
+        };
+        if r.forma != forma {
+            return false;
+        }
+        r.version = version;
+        r.usado = fotograma;
+        r.corrida = (ancla.0 - r.ancla.0, ancla.1 - r.ancla.1);
+        self.trasladadas += 1;
+        true
+    }
+
+    /// Cuantas veces se ha pintado algo movido con su realizacion de antes
+    /// en vez de crear otra (ver `reusar_trasladada`). Para las mediciones.
+    pub fn trasladadas(&self) -> u64 {
+        self.trasladadas
+    }
+}
+
+/// **La forma de unos vertices sin su sitio**: un resumen de sus posiciones
+/// RELATIVAS al primero, a 1/64 de unidad, mas `extra` (lo que ademas de los
+/// puntos cambia la realizacion: si es relleno o trazo, su grosor, si va a
+/// rayas). Devuelve el resumen y el primer vertice, que es el ancla.
+///
+/// Dos geometrias con el mismo resumen son la misma trasladada: la
+/// realizacion de una sirve para la otra corriendola. Si el redondeo de una
+/// traslacion hace que un vertice caiga al otro lado de un 1/64 el resumen
+/// sale distinto y se realiza otra vez, que es lo de siempre: fallar asi
+/// solo cuesta lo de antes.
+pub fn huella_de_forma(vertices: &[(f32, f32)], extra: u64) -> (u64, (f32, f32)) {
+    let Some(&ancla) = vertices.first() else {
+        return (extra, (0.0, 0.0));
+    };
+    // FNV-1a sobre enteros: sin reservar y estable entre ejecuciones.
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325 ^ extra;
+    let mut mezclar = |v: i32| {
+        for b in v.to_le_bytes() {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    };
+    mezclar(vertices.len() as i32);
+    for &(x, y) in vertices {
+        mezclar(((x - ancla.0) * 64.0).round() as i32);
+        mezclar(((y - ancla.1) * 64.0).round() as i32);
+    }
+    (h, ancla)
 }
 
 impl Default for CacheTinta {
@@ -219,6 +429,102 @@ mod pruebas {
         c.fijar_escala(2.0);
         assert_eq!(c.escala(), 2.0);
         assert_eq!(c.cuantas(), 0);
+    }
+
+    /// Lo que hace `CacheTinta::guardar` con su mapa, sin GPU: meter y, si
+    /// se pasa, echar lo que diga `a_echar`.
+    struct Simulada {
+        mapa: HashMap<(u64, u32), (u64, u32)>,
+        peso: u64,
+    }
+
+    impl Simulada {
+        fn guardar(&mut self, clave: (u64, u32), fotograma: u64, peso: u32, maximo: u64) {
+            if let Some((_, viejo)) = self.mapa.insert(clave, (fotograma, peso)) {
+                self.peso -= viejo as u64;
+            }
+            self.peso += peso as u64;
+            if self.peso > maximo {
+                for k in a_echar(
+                    self.mapa.iter().map(|(k, (u, p))| (*k, *u, *p)),
+                    fotograma,
+                    self.peso,
+                    self.mapa.len(),
+                    maximo,
+                    usize::MAX,
+                ) {
+                    let (_, p) = self.mapa.remove(&k).expect("estaba");
+                    self.peso -= p as u64;
+                }
+            }
+        }
+        fn tomar(&mut self, clave: (u64, u32), fotograma: u64) {
+            if let Some(e) = self.mapa.get_mut(&clave) {
+                e.0 = fotograma;
+            }
+        }
+    }
+
+    #[test]
+    fn dibujar_sin_parar_no_hace_crecer_lo_realizado_sin_fin() {
+        // La puerta del «al rato va lento»: una sesion larga dibujando un
+        // trazo nuevo por fotograma y pintando solo los ultimos treinta
+        // (lo que se ve). Antes el peso crecia con cada trazo hasta sesenta
+        // mil entradas; ahora se queda en el presupuesto.
+        let maximo = 10_000;
+        let mut c = Simulada {
+            mapa: HashMap::new(),
+            peso: 0,
+        };
+        for fotograma in 1..=5_000u64 {
+            let desde = fotograma.saturating_sub(30);
+            for id in desde..fotograma {
+                c.tomar((id, 0), fotograma);
+            }
+            c.guardar((fotograma, 0), fotograma, 250, maximo);
+            assert!(c.peso <= maximo, "fotograma {fotograma}: pesa {}", c.peso);
+        }
+        // Y lo que se ve sigue ahi: echar lo visible seria volver a teselar
+        // la pantalla en cada fotograma.
+        for id in 4_971..=5_000u64 {
+            assert!(c.mapa.contains_key(&(id, 0)), "se echo {id}, que se ve");
+        }
+    }
+
+    #[test]
+    fn lo_que_se_pinta_en_este_fotograma_no_se_echa_aunque_se_pase() {
+        let entradas = (0..10u64).map(|id| ((id, 0), 7, 100));
+        let fuera = a_echar(entradas, 7, 1_000, 10, 500, usize::MAX);
+        assert!(fuera.is_empty(), "todo es de este fotograma: {fuera:?}");
+    }
+
+    #[test]
+    fn la_huella_de_una_forma_corrida_es_la_misma_y_la_de_otra_forma_no() {
+        let forma: Vec<(f32, f32)> = (0..50)
+            .map(|i| (i as f32 * 3.1, (i as f32 * 0.7).sin() * 20.0))
+            .collect();
+        let corrida: Vec<(f32, f32)> = forma.iter().map(|(x, y)| (x + 80.0, y - 12.5)).collect();
+        let (a, ancla_a) = super::huella_de_forma(&forma, 1);
+        let (b, ancla_b) = super::huella_de_forma(&corrida, 1);
+        assert_eq!(a, b, "la misma forma en otro sitio");
+        assert_eq!((ancla_b.0 - ancla_a.0, ancla_b.1 - ancla_a.1), (80.0, -12.5));
+        // Casos negativos: un vertice movido medio pixel, otra clase de
+        // orden (trazo en vez de relleno) y un punto de menos.
+        let mut tocada = forma.clone();
+        tocada[20].1 += 0.5;
+        assert_ne!(super::huella_de_forma(&tocada, 1).0, a);
+        assert_ne!(super::huella_de_forma(&forma, 2).0, a);
+        assert_ne!(super::huella_de_forma(&forma[..49], 1).0, a);
+    }
+
+    #[test]
+    fn se_echa_primero_lo_mas_viejo_y_solo_hasta_tres_cuartos() {
+        // Diez de peso 100 (1.000) con tope 800: hay que bajar a 600, o sea
+        // echar cuatro, y los cuatro mas viejos.
+        let entradas = (0..10u64).map(|id| ((id, 0), id, 100));
+        let mut fuera = a_echar(entradas, 20, 1_000, 10, 800, usize::MAX);
+        fuera.sort();
+        assert_eq!(fuera, vec![(0, 0), (1, 0), (2, 0), (3, 0)]);
     }
 
     #[test]

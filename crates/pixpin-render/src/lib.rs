@@ -12,9 +12,13 @@ pub use motor::{Color, ErrorRender, MotorRender, premultiplicar, validar_tamano_
 
 pub mod capa_estatica;
 pub mod fuera_de_pantalla;
+pub mod grafito;
 pub mod grano;
 pub mod icono;
 pub mod iconos_excalidraw;
+pub mod imprimir;
+pub mod imprimir_moderno;
+pub mod letras;
 pub mod lienzo;
 pub mod puntos;
 pub mod superficie;
@@ -24,6 +28,7 @@ pub mod trayecto_svg;
 pub use superficie::{RitmoComposicion, Superficie};
 
 pub use capa_estatica::{CapaEstatica, Estampa, sigue_valiendo};
+pub use grafito::{CacheGrafito, MapaGrafito};
 pub use grano::{CacheGrano, GRADOS_DEL_GRANO};
 pub use lienzo::{EstiloTexto, Interpolacion, Pintor, RectF, Tramo};
 pub use tinta::{CacheTinta, PasoTrayecto, pasos_de_tinta, retardo_nitido};

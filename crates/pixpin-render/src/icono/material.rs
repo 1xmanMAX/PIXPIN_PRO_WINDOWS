@@ -562,8 +562,69 @@ pub const WIFI: Icono = Icono {
     )],
 };
 
+
+// --- Los de la voz (B7, B9, B11): banderita, llamada, persona, altavoz y
+// repetir, los mismos `Icons.Filled.*` que `LetraActivity`,
+// `LlamadaSecretaActivity` y `PronunciarActivity`.
+
+/// `flag` (`src/content/flag/materialicons/24px.svg`).
+pub const FLAG: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z", false)],
+};
+
+/// `call` (`src/communication/call/materialicons/24px.svg`).
+pub const CALL: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z",
+        false,
+    )],
+};
+
+/// `call_end` (`src/communication/call_end/materialicons/24px.svg`).
+pub const CALL_END: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z",
+        false,
+    )],
+};
+
+/// `person` (`src/social/person/materialicons/24px.svg`).
+pub const PERSON: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z",
+        false,
+    )],
+};
+
+/// `volume_up` (`src/av/volume_up/materialicons/24px.svg`).
+pub const VOLUME_UP: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z",
+        false,
+    )],
+};
+
+/// `replay` (`src/av/replay/materialicons/24px.svg`).
+pub const REPLAY: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno(
+        "M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z",
+        false,
+    )],
+};
 /// Todos, para poder comprobarlos de una vez.
 pub const TODOS: &[Icono] = &[
+    FLAG,
+    CALL,
+    CALL_END,
+    PERSON,
+    VOLUME_UP,
+    REPLAY,
     ALARM,
     ARROW_BACK,
     ARROW_FORWARD,

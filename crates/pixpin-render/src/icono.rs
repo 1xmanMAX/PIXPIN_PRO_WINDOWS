@@ -88,11 +88,39 @@ pub fn encaje(vista: (f32, f32, f32, f32), caja: RectF) -> (f32, f32, f32) {
 impl Pintor<'_> {
     /// Pinta `icono` encajado en `caja` con `color` como `currentColor`.
     pub fn icono(&self, icono: &Icono, caja: RectF, color: Color) {
+        self.icono_con(icono, caja, color, false);
+    }
+
+    /// Como [`Pintor::icono`] pero reflejado de izquierda a derecha dentro
+    /// de su caja. Es como Excalidraw ensena las puntas del PRINCIPIO de una
+    /// flecha: el mismo dibujo que las del final, mirando al otro lado. Se
+    /// hace con la transformada y no con otro juego de iconos para que las
+    /// dos puntas no puedan dejar de ser la misma.
+    pub fn icono_volteado(&self, icono: &Icono, caja: RectF, color: Color) {
+        self.icono_con(icono, caja, color, true);
+    }
+
+    fn icono_con(&self, icono: &Icono, caja: RectF, color: Color, volteado: bool) {
         let c = self.motor.contexto();
         let mut previa = Matrix3x2::default();
         // SAFETY: dentro del fotograma; lectura de la transformada actual.
         unsafe { c.GetTransform(&mut previa) };
         let (escala, dx, dy) = encaje(icono.vista, caja);
+        // El espejo va entre el encaje y lo que ya hubiera: x -> 2c - x,
+        // con c el centro de la caja.
+        let espejo = Matrix3x2 {
+            M11: -1.0,
+            M12: 0.0,
+            M21: 0.0,
+            M22: 1.0,
+            M31: 2.0 * caja.x + caja.ancho,
+            M32: 0.0,
+        };
+        let base = if volteado {
+            componer(&espejo, &previa)
+        } else {
+            previa
+        };
         let a_caja = componer(
             &Matrix3x2 {
                 M11: escala,
@@ -102,7 +130,7 @@ impl Pintor<'_> {
                 M31: dx,
                 M32: dy,
             },
-            &previa,
+            &base,
         );
 
         for t in icono.trazos {
@@ -244,6 +272,44 @@ impl Pintor<'_> {
         true
     }
 
+    /// **Recorta lo que se pinte despues a un poligono** (en las coordenadas
+    /// de quien pinta), hasta [`Pintor::soltar_recorte_redondeado`], que
+    /// cierra la misma capa. Es el `clipPath(contorno)` del cristal de una
+    /// lupa del movil: el cristal puede ser un ovalo, un rombo o un garabato.
+    /// `false` si el poligono no vale o no se pudo crear, y entonces no se
+    /// recorta nada ni hay que cerrar.
+    pub fn empujar_recorte_poligono(&self, vertices: &[(f32, f32)]) -> bool {
+        if vertices.len() < 3 {
+            return false;
+        }
+        let Some(figura) = self.geometria(vertices, true) else {
+            return false;
+        };
+        let Ok(m) = figura.cast::<ID2D1Geometry>() else {
+            return false;
+        };
+        let c = self.motor.contexto();
+        let parametros = D2D1_LAYER_PARAMETERS1 {
+            contentBounds: D2D_RECT_F {
+                left: -1.0e7,
+                top: -1.0e7,
+                right: 1.0e7,
+                bottom: 1.0e7,
+            },
+            geometricMask: std::mem::ManuallyDrop::new(Some(m)),
+            maskAntialiasMode: D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
+            maskTransform: Matrix3x2::identity(),
+            opacity: 1.0,
+            opacityBrush: std::mem::ManuallyDrop::new(None),
+            layerOptions: D2D1_LAYER_OPTIONS1_NONE,
+        };
+        // SAFETY: capa emparejada con `soltar_recorte_redondeado`, que quien
+        // llama pone en el mismo fotograma.
+        unsafe { c.PushLayer(&parametros, None) };
+        drop(std::mem::ManuallyDrop::into_inner(parametros.geometricMask));
+        true
+    }
+
     /// Cierra el recorte de [`Pintor::empujar_recorte_redondeado`]. Solo se
     /// llama si aquel devolvio `true`.
     pub fn soltar_recorte_redondeado(&self) {
@@ -326,7 +392,13 @@ impl Pintor<'_> {
         }
     }
 
-    fn estilo_icono(&self, extremo_redondo: bool, union_redonda: bool) -> Option<ID2D1StrokeStyle> {
+    /// Tambien lo usan las polilineas del lienzo (`lienzo.rs`): el mismo
+    /// extremo y union redondos que pide Excalidraw a su canvas.
+    pub(crate) fn estilo_icono(
+        &self,
+        extremo_redondo: bool,
+        union_redonda: bool,
+    ) -> Option<ID2D1StrokeStyle> {
         let i = usize::from(extremo_redondo) * 2 + usize::from(union_redonda);
         if let Some(e) = &self.motor.estilos_icono.borrow()[i] {
             return Some(e.clone());

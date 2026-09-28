@@ -72,6 +72,10 @@ pub struct CacheGrano {
     /// geometria de verdad — y sin guardarla, cada fotograma la arma otra
     /// vez, que en un contorno de mil vertices son mil llamadas COM.
     siluetas: HashMap<(u64, u32), ID2D1PathGeometry1>,
+    /// **Los mapas del grafito** (`crate::grafito`): el otro material que no
+    /// es un color liso. Vive aqui por lo mismo que las telas: va a los mismos
+    /// sitios que la silueta y se pierde con el mismo dispositivo.
+    pub grafito: crate::grafito::CacheGrafito,
 }
 
 impl CacheGrano {
@@ -79,6 +83,7 @@ impl CacheGrano {
         Self {
             telas: HashMap::new(),
             siluetas: HashMap::new(),
+            grafito: crate::grafito::CacheGrafito::nueva(),
         }
     }
 
@@ -86,6 +91,7 @@ impl CacheGrano {
     pub fn vaciar(&mut self) {
         self.telas.clear();
         self.siluetas.clear();
+        self.grafito.vaciar();
     }
 
     /// Cuantas siluetas hay guardadas: para las pruebas.
