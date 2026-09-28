@@ -81,6 +81,51 @@ impl Par {
         hecho
     }
 
+    /// Lo mismo, devolviendo los avisos del final.
+    fn vuelta_desde_pc_con_avisos(&self) -> Vec<String> {
+        let mut hecho = Hecho::default();
+        conectado(&self.pc, &self.movil, false, None, &self.reloj, |s| {
+            pixpin_sincro::vuelta::una(s, None, &mut hecho, "", &|| self.reloj.ahora(), &mut |_| {})
+                .unwrap()
+                .avisos
+        })
+        .unwrap()
+    }
+
+    /// Una vuelta desde el PC contestando a «¿Que sincronizar?» con
+    /// `marcar` (que filas se dejan marcadas) y «Lo mio manda» o no.
+    fn vuelta_preguntando(
+        &self,
+        marcar: &dyn Fn(&pixpin_sincro::vuelta::Fila) -> bool,
+        lo_mio_manda: bool,
+    ) -> pixpin_sincro::vuelta::Vuelta {
+        let mut hecho = Hecho::default();
+        conectado(&self.pc, &self.movil, false, None, &self.reloj, |s| {
+            let mut elegir = |_: &pixpin_sincro::mensajes::Aparato,
+                              pr: pixpin_sincro::vuelta::Pregunta| {
+                Some(pixpin_sincro::vuelta::Eleccion {
+                    elegidos: pr
+                        .filas
+                        .iter()
+                        .filter(|f| marcar(f))
+                        .map(|f| f.id.clone())
+                        .collect(),
+                    lo_mio_manda,
+                })
+            };
+            pixpin_sincro::vuelta::una(
+                s,
+                Some(&mut elegir),
+                &mut hecho,
+                "",
+                &|| self.reloj.ahora(),
+                &mut |_| {},
+            )
+            .unwrap()
+        })
+        .unwrap()
+    }
+
     fn aparato_pc(&self) -> String {
         pixpin_proyecto::codigos::de_aparato("id-pc")
     }
@@ -491,23 +536,96 @@ fn un_proyecto_borrado_viaja_con_su_lapida_en_los_dos_sentidos() {
     p.reloj.saltar(1_000_000);
     // Borrado en el PC como lo borra su lista: a la papelera, con lapida.
     almacen::borrar_proyectos(&p.raiz(), std::slice::from_ref(&obra.id), p.reloj.ahora()).unwrap();
-    p.vuelta_desde_pc();
-    let ids: Vec<String> = p
-        .movil
-        .leer_proyectos()
-        .iter()
-        .map(|x| kotlin::cadena(x, "id").unwrap().to_string())
-        .collect();
-    assert_eq!(ids, ["pr-1"], "{chat_obra} borrado tambien en el movil");
+    let ids_movil = || -> Vec<String> {
+        p.movil
+            .leer_proyectos()
+            .iter()
+            .map(|x| kotlin::cadena(x, "id").unwrap().to_string())
+            .collect()
+    };
+    // Sin preguntar no se borra en el movil: se avisa.
+    let v = p.vuelta_desde_pc_con_avisos();
+    assert_eq!(ids_movil().len(), 2, "sin preguntar no se borra alli");
+    assert!(v.iter().any(|a| a.contains("Obra del PC")), "{v:?}");
+    p.vuelta_preguntando(&|_| true, false);
+    assert_eq!(
+        ids_movil(),
+        ["pr-1"],
+        "{chat_obra} borrado tambien en el movil"
+    );
 
-    // Y al reves: borrado en el movil, se va del PC a la papelera.
+    // Y al reves: borrado en el movil. Sin preguntar el PC NO lo borra.
     p.reloj.saltar(1_000_000);
     p.movil
         .borrar_chat("pr-1", "prueba", p.reloj.ahora(), "")
         .unwrap();
     p.vuelta_desde_pc();
+    assert!(
+        p.pc.ficha_de("pr-1").is_some(),
+        "sin preguntar, sigue en el PC"
+    );
+    // Preguntando y sin tocar la casilla (empieza sin marcar): tampoco.
+    p.vuelta_preguntando(&|f| f.marcado, false);
+    assert!(
+        p.pc.ficha_de("pr-1").is_some(),
+        "desmarcado, sigue en el PC"
+    );
+    // Solo marcado se va, a la papelera.
+    p.vuelta_preguntando(&|_| true, false);
     assert!(p.pc.ficha_de("pr-1").is_none());
     assert!(almacen::papelera(&p.raiz()).is_dir());
+}
+
+#[test]
+fn con_lo_mio_manda_el_pc_no_borra_y_se_lo_vuelve_a_mandar_al_movil() {
+    // El caso del usuario al reves: se vacio el movil y el PC lo rellena.
+    let p = montar("lapida-mio-manda");
+    proyecto_del_movil(&p);
+    p.vuelta_desde_pc();
+    p.reloj.saltar(1_000_000);
+    p.movil
+        .borrar_chat("pr-1", "prueba", p.reloj.ahora(), "")
+        .unwrap();
+    assert!(p.movil.leer_proyectos().is_empty());
+    p.vuelta_preguntando(&|_| true, true);
+    assert!(p.pc.ficha_de("pr-1").is_some(), "aqui no se borra nada");
+    assert_eq!(p.movil.leer_proyectos().len(), 1, "y vuelve al movil");
+    assert!(!p.textos_movil("pr-1").is_empty(), "con sus mensajes");
+}
+
+#[test]
+fn un_proyecto_recuperado_de_la_papelera_vuelve_entero_y_la_vuelta_no_lo_borra_otra_vez() {
+    // H6: borrado en el movil y aceptado aqui; luego se recupera de la
+    // papelera. La siguiente vuelta tiene que devolverlo al movil con sus
+    // mensajes, no volver a borrarlo ni quitarle los mensajes uno a uno.
+    let p = montar("papelera-vuelve");
+    proyecto_del_movil(&p);
+    p.vuelta_desde_pc();
+    let antes = p.textos_pc("pr-1");
+    assert!(!antes.is_empty());
+    p.reloj.saltar(1_000_000);
+    p.movil
+        .borrar_chat("pr-1", "prueba", p.reloj.ahora(), "")
+        .unwrap();
+    p.vuelta_preguntando(&|_| true, false);
+    assert!(p.pc.ficha_de("pr-1").is_none(), "aceptado: se borro aqui");
+
+    p.reloj.saltar(1_000_000);
+    let en = almacen::en_papelera(&p.raiz());
+    assert_eq!(en.len(), 1, "{en:?}");
+    assert_eq!(en[0].ficha.nombre, "Reforma");
+    almacen::recuperar(&p.raiz(), &en[0], p.reloj.ahora()).unwrap();
+    assert!(p.pc.ficha_de("pr-1").is_some());
+    assert_eq!(p.textos_pc("pr-1"), antes, "con todo lo que tenia");
+
+    p.vuelta_desde_pc();
+    assert!(
+        p.pc.ficha_de("pr-1").is_some(),
+        "la vuelta no lo vuelve a borrar"
+    );
+    assert_eq!(p.textos_pc("pr-1"), antes, "ni le quita mensajes");
+    assert_eq!(p.movil.leer_proyectos().len(), 1, "y vuelve al movil");
+    assert_eq!(p.textos_movil("pr-1"), antes, "entero");
 }
 
 #[test]

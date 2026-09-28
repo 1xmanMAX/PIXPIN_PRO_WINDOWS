@@ -1,4 +1,4 @@
-//! Los proyectos que hay en este equipo: la lista de la ventana de chat.
+﻿//! Los proyectos que hay en este equipo: la lista de la ventana de chat.
 //!
 //! Un indice pequeno (`proyectos/indice.json`) con lo justo para pintar la
 //! lista sin abrir nada: nombre, ultima linea, cuando se toco y los tres
@@ -34,6 +34,12 @@ pub struct Ficha {
     pub sin_leer: u32,
     /// El fichero del que salio, si vino de uno.
     pub paquete: Option<String>,
+    /// La carpeta que eligio el usuario para este proyecto, si eligio una
+    /// (`ubicacion`). La verdad es la union de `proyectos/<id>`; esto es para
+    /// ensenarla y para rehacer la union si falta. `None` es la zona
+    /// habitual, y no se escribe para que los indices de siempre no cambien.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ubicacion: Option<String>,
     #[serde(flatten)]
     pub resto: serde_json::Map<String, serde_json::Value>,
 }
@@ -59,6 +65,7 @@ impl Ficha {
             resumen: String::new(),
             sin_leer: 0,
             paquete: None,
+            ubicacion: None,
             resto: Default::default(),
         }
     }
@@ -77,6 +84,7 @@ impl Ficha {
             resumen: String::new(),
             sin_leer: 0,
             paquete: paquete.map(|r| r.display().to_string()),
+            ubicacion: None,
             resto: Default::default(),
         }
     }
@@ -272,11 +280,15 @@ impl Indice {
         if let Some(sitio) = self.proyectos.iter().position(|f| f.misma_que(&llega)) {
             let id = self.proyectos[sitio].id.clone();
             let sin_leer = self.proyectos[sitio].sin_leer;
+            // Donde lo guarda el usuario es cosa de este equipo: lo que llega
+            // del movil no lo sabe, y perderlo dejaria la union sin su ruta.
+            let ubicacion = self.proyectos[sitio].ubicacion.clone();
             // El id de aqui manda: lo de fuera puede venir con otro y hay
             // ficheros que ya lo usan.
             self.proyectos[sitio] = Ficha {
                 id: id.clone(),
                 sin_leer,
+                ubicacion,
                 ..llega
             };
             return (Recibido::Actualizado, id);
@@ -355,7 +367,10 @@ pub fn importar_paquete(
     // ya trae su cuaderno, ese manda: es el del movil, con sus fechas y sus
     // codigos, y rehacerlo aqui seria inventar otra verdad.
     if paquete.entrada("guardados.jsonl").is_none() {
-        for (n, hoja) in p.hojas.iter().enumerate() {
+        // Las paginas del PDF no: como en el movil, del PDF el chat solo
+        // lleva su mensaje (ver `paginas_fuera_del_chat`). Se ven en la
+        // tarjeta de Proyectos, que las pide con `hojas_para_ensenar`.
+        for (n, hoja) in p.hojas.iter().filter(|h| h.pagina.is_none()).enumerate() {
             let numero = n as i64 + 1;
             let sello = cuaderno::Sello {
                 cuando: ficha.creado + numero,
@@ -385,13 +400,7 @@ pub fn importar_paquete(
                     m
                 }
                 (None, Some(texto)) => cuaderno::Mensaje::nota(texto, &sello),
-                // Una pagina del PDF sin dibujo encima ES una hoja: se
-                // apunta como pagina para que se vea el plano. Antes salia
-                // como una nota vacia, o sea, una burbuja en blanco.
-                (None, None) if hoja.pagina.is_some() => {
-                    cuaderno::Mensaje::adjunto(cuaderno::Clase::Pagina, &hoja.nombre, "", 0, &sello)
-                }
-                // Y una sin dibujo, nota ni pagina (un croquis) se apunta por
+                // Una sin dibujo, nota ni pagina (un croquis) se apunta por
                 // su nombre: mejor una linea que decir que esta que perderla
                 // porque aqui no se sabe pintarla.
                 (None, None) => cuaderno::Mensaje::nota(&hoja.nombre, &sello),
@@ -708,6 +717,14 @@ pub fn empaquetar(raiz: &Path, id: &str, cuando: i64) -> std::io::Result<Vec<u8>
             paquete.poner_entrada(&nombre, std::fs::read(&ruta)?);
         }
     }
+    // El documento de un PDF unido aqui vive en `archivos/doc-<t>.pdf`, y el
+    // `.pixpin` lo lleva como `documento.pdf`: es donde lo busca el movil
+    // (sus hojas `pagina` son paginas de ESE fichero).
+    if paquete.entrada("documento.pdf").is_none()
+        && let Some(doc) = crate::vista::documento_del_proyecto(raiz, id)
+    {
+        paquete.poner_entrada("documento.pdf", std::fs::read(&doc)?);
+    }
     paquete.a_bytes().map_err(std::io::Error::other)
 }
 
@@ -747,14 +764,72 @@ pub fn completar_hojas(raiz: &Path, id: &str, aparato: &str) -> std::io::Result<
         .iter()
         .filter_map(|m| m.uid.clone())
         .collect();
-    let mut numero = previos.mensajes.iter().map(|m| m.numero).max().unwrap_or(0);
+    let numero = previos.mensajes.iter().map(|m| m.numero).max().unwrap_or(0);
     let cuando = previos
         .mensajes
         .iter()
         .map(|m| m.cuando)
         .max()
         .unwrap_or(p.tocado);
+    // Las hojas que salieron de un mensaje (`deMensaje`: las paginas de un
+    // PDF unido desde el chat) ya tienen su mensaje: escribirles otro llenaria
+    // la conversacion de paginas, que es justo lo que unir no debe hacer. Se
+    // ensenan en la galeria sin tocar el cuaderno (`hojas_para_ensenar`).
+    let de_un_mensaje: std::collections::BTreeSet<String> = p
+        .hojas
+        .iter()
+        .filter(|h| h.resto.get("deMensaje").is_some_and(|v| v.is_string()))
+        .filter_map(|h| h.uid.clone())
+        .collect();
+    // Y las paginas del PDF, vengan de donde vengan (anotadas o no): como
+    // en `RegistroDelChat.queFalta` del movil, «sus paginas no, que van
+    // dentro del PDF y no son lienzos sueltos». Un PDF de cuarenta hojas no
+    // son cuarenta mensajes; se ven en la tarjeta de Proyectos.
+    let paginas = paginas_fuera_del_chat(&p);
     let mut hechas = 0;
+    for m in hojas_que_faltan(&p, &carpeta, &ya, numero, cuando, aparato, id) {
+        if m
+            .uid
+            .as_ref()
+            .is_some_and(|u| de_un_mensaje.contains(u) || paginas.contains_key(u))
+        {
+            continue;
+        }
+        cuaderno::anadir(&carpeta, &m)?;
+        hechas += 1;
+    }
+    Ok(hechas)
+}
+
+/// Los mensajes que representan las hojas del `proyecto.json` que el
+/// cuaderno todavia no tiene. **No escribe nada.**
+///
+/// Va aparte de `completar_hojas` porque hay dos usos con reglas distintas:
+///
+/// - **Escribirlos** (`completar_hojas`) solo vale para un proyecto que NO se
+///   sincroniza. En uno que si, el movil no pone un mensaje por pagina de
+///   PDF, y los que se inventaran aqui le llegarian como mensajes nuevos.
+/// - **Ensenarlos** vale siempre: el usuario quiere ver el proyecto entero,
+///   con sus palabras, «si hay PDFs ahi tienen que aparecer todas sus hojas
+///   y asi como en Android». Para eso se piden aqui y se usan solo en
+///   pantalla, sin tocar el cuaderno.
+///
+/// `ya` son los codigos unicos que el cuaderno ya tiene; `desde_numero` y
+/// `desde_cuando` son el ultimo numero y la ultima hora usados, para que lo
+/// que salga vaya detras y en orden.
+#[allow(clippy::too_many_arguments)] // es el sello del cuaderno, que va junto
+pub fn hojas_que_faltan(
+    p: &crate::Proyecto,
+    carpeta: &Path,
+    ya: &std::collections::BTreeSet<String>,
+    desde_numero: i64,
+    desde_cuando: i64,
+    aparato: &str,
+    id: &str,
+) -> Vec<crate::cuaderno::Mensaje> {
+    use crate::cuaderno;
+    let mut numero = desde_numero;
+    let mut salida = Vec::new();
     for hoja in &p.hojas {
         let Some(uid) = hoja.uid.clone() else {
             continue;
@@ -764,7 +839,7 @@ pub fn completar_hojas(raiz: &Path, id: &str, aparato: &str) -> std::io::Result<
         }
         numero += 1;
         let sello = cuaderno::Sello {
-            cuando: cuando + numero,
+            cuando: desde_cuando + numero,
             numero,
             aparato: aparato.to_string(),
             proyecto: id.to_string(),
@@ -803,11 +878,91 @@ pub fn completar_hojas(raiz: &Path, id: &str, aparato: &str) -> std::io::Result<
             .get("padre")
             .and_then(|v| v.as_str())
             .map(str::to_string);
-        cuaderno::anadir(&carpeta, &m)?;
-        hechas += 1;
+        salida.push(m);
     }
-    Ok(hechas)
+    salida
 }
+
+/// **Las paginas del PDF de un proyecto, que no van al chat**: codigo unico
+/// de cada hoja con `pagina` (anotada o no) -> el mensaje del que salio
+/// (`deMensaje`), si salio de uno.
+///
+/// Es la regla del movil (`AvisosDelProyecto.novedades` y
+/// `RegistroDelChat.queFalta` se saltan `h.pagina != null`): del PDF, en el
+/// chat solo esta su mensaje; las paginas son hojas del proyecto y se ven en
+/// la tarjeta de Proyectos y al abrir el PDF. El usuario lo pidio igual
+/// (27-sep-2026): «esto podria llenar el chat absurdamente si hubiera un PDF
+/// largo». El mensaje de origen va aparte porque una pagina que el usuario
+/// SI mando al chat (y luego unio) tiene como codigo el de su mensaje: ese
+/// mensaje es suyo y se queda.
+pub fn paginas_fuera_del_chat(
+    p: &crate::Proyecto,
+) -> std::collections::BTreeMap<String, Option<String>> {
+    p.hojas
+        .iter()
+        .filter(|h| h.pagina.is_some())
+        .filter_map(|h| {
+            let de = h
+                .resto
+                .get("deMensaje")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            Some((h.uid.clone()?, de))
+        })
+        .collect()
+}
+
+/// Las hojas del proyecto `id` que su cuaderno no tiene, listas para
+/// ENSENAR. Nunca escribe; `Vec` vacio si el proyecto no tiene
+/// `proyecto.json` (los nacidos aqui) o si no se puede leer.
+///
+/// Es lo que hace que un proyecto sincronizado del movil se vea entero: las
+/// paginas de sus PDF son hojas, y el movil no las anota como mensajes.
+pub fn hojas_para_ensenar(raiz: &Path, id: &str, aparato: &str) -> Vec<crate::cuaderno::Mensaje> {
+    let carpeta = carpeta(raiz, id);
+    let Ok(texto) = std::fs::read_to_string(carpeta.join("proyecto.json")) else {
+        return Vec::new();
+    };
+    let Ok(p) = serde_json::from_str::<crate::Proyecto>(&texto) else {
+        return Vec::new();
+    };
+    let previos = crate::cuaderno::Cuaderno::leer_de(&carpeta).unwrap_or_default();
+    let ya: std::collections::BTreeSet<String> = previos
+        .mensajes
+        .iter()
+        .filter_map(|m| m.uid.clone())
+        .collect();
+    let numero = previos.mensajes.iter().map(|m| m.numero).max().unwrap_or(0);
+    let cuando = previos
+        .mensajes
+        .iter()
+        .map(|m| m.cuando)
+        .max()
+        .unwrap_or(p.tocado);
+    // SOLO las hojas. Los ficheros sueltos de la carpeta (un `.html`, una
+    // imagen) NO entran: la pantalla de proyectos de Android tampoco los
+    // ensena —recorre `proyecto.hojas` y no el disco (`ui/Proyectos.kt`)— y
+    // el usuario lo pidio igual: «en la galeria solo aparezca lo mismo que
+    // aparece en la seccion de proyectos de Android», y «los html no tienen
+    // que aparecer ya que estos no se pueden agregar ahi».
+    hojas_que_faltan(&p, &carpeta, &ya, numero, cuando, aparato, id)
+}
+
+/// Los codigos unicos de las hojas del proyecto.
+///
+/// Con ellos se sabe QUE mensajes son hojas, que es justo lo que la galeria
+/// ensena. Vacio si el proyecto no tiene `proyecto.json` (los nacidos aqui):
+/// entonces no hay hojas y la galeria sale vacia, como en el movil.
+pub fn uids_de_hojas(raiz: &Path, id: &str) -> std::collections::BTreeSet<String> {
+    let Ok(texto) = std::fs::read_to_string(carpeta(raiz, id).join("proyecto.json")) else {
+        return Default::default();
+    };
+    let Ok(p) = serde_json::from_str::<crate::Proyecto>(&texto) else {
+        return Default::default();
+    };
+    p.hojas.iter().filter_map(|h| h.uid.clone()).collect()
+}
+
 
 /// Como se llama el chat de lo suelto, igual que en el movil.
 pub const NOMBRE_GUARDADOS: &str = "Mensajes guardados";
@@ -892,12 +1047,15 @@ pub fn borrar_proyectos(
     // Los chats que se van, antes de que dejen de estar en el indice: cada
     // uno deja su lapida (`LapidaDeChat`). Sin ella, la siguiente vuelta de
     // sincronizar lo traeria entero otra vez del otro aparato.
-    let chats: Vec<String> = indice
+    // Y la ficha entera de cada uno: con ella la papelera lo devuelve con su
+    // nombre, sus codigos y su chat (`recuperar`), no como uno a medias.
+    let se_van: Vec<(Ficha, Option<String>)> = indice
         .proyectos
         .iter()
         .filter(|f| !f.es_guardados() && validos.contains(&&f.id))
-        .filter_map(|f| crate::vista::chat_de_ficha(raiz, &f.id))
+        .map(|f| (f.clone(), crate::vista::chat_de_ficha(raiz, &f.id)))
         .collect();
+    let chats: Vec<String> = se_van.iter().filter_map(|(_, c)| c.clone()).collect();
     // «Mensajes guardados» no se borra: es donde cae lo que llega, y sin el
     // lo siguiente que llegara no tendria adonde ir.
     indice
@@ -918,15 +1076,224 @@ pub fn borrar_proyectos(
     let mut sin_mover = Vec::new();
     for id in validos {
         let origen = carpeta(raiz, id);
-        if !origen.is_dir() {
+        // Un proyecto guardado en otra carpeta es una union: a la papelera va
+        // la union (renombrar mueve el enlace, no lo que hay detras), y la
+        // carpeta del usuario no se toca. Tambien si esta rota —el disco
+        // desenchufado—: `is_dir` la da por ausente y se quedaria colgando.
+        if !origen.is_dir() && !pixpin_shell::union::es_union(&origen) {
             continue;
         }
         std::fs::create_dir_all(&destino)?;
-        if std::fs::rename(&origen, destino.join(format!("{id}-{cuando}"))).is_err() {
+        let nombre = format!("{id}-{cuando}");
+        if std::fs::rename(&origen, destino.join(&nombre)).is_err() {
             sin_mover.push(origen);
+            continue;
+        }
+        // La etiqueta va AL LADO de la carpeta y no dentro: dentro se
+        // colaria en el proyecto al recuperarlo. Si no se puede escribir, la
+        // papelera rehace la ficha con `proyecto.json`: se pierde el orden de
+        // la lista, no el proyecto, y por eso no se corta el borrado.
+        if let Some((f, chat)) = se_van.iter().find(|(f, _)| &f.id == id) {
+            let etiqueta = Etiqueta {
+                ficha: f.clone(),
+                chat: chat.clone(),
+                borrado: cuando,
+            };
+            if let Ok(t) = serde_json::to_vec_pretty(&etiqueta) {
+                let _ = std::fs::write(destino.join(format!("{nombre}.json")), t);
+            }
         }
     }
     Ok((quitados, sin_mover))
+}
+
+/// Lo que se apunta al lado de cada carpeta de la papelera.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+struct Etiqueta {
+    ficha: Ficha,
+    chat: Option<String>,
+    borrado: i64,
+}
+
+/// Un proyecto en la papelera, listo para ensenar y recuperar
+/// (`Copias.proyectosBorrados` del movil, v0.79).
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnPapelera {
+    /// Su carpeta dentro de la papelera (`<id>-<ms>`).
+    pub carpeta: PathBuf,
+    /// Como estaba en la lista cuando se borro.
+    pub ficha: Ficha,
+    /// Su chat de sincronizar, el de su lapida, si se supo al borrarlo.
+    pub chat: Option<String>,
+    /// Cuando se borro, en milisegundos UTC.
+    pub borrado: i64,
+    /// Cuantos mensajes tiene su chat.
+    pub mensajes: usize,
+}
+
+/// `<id>-<ms>` → (id, ms). El id puede llevar guiones; la hora no.
+fn partir_nombre(nombre: &str) -> Option<(&str, i64)> {
+    let (id, ms) = nombre.rsplit_once('-')?;
+    let valido = !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    (valido && !ms.is_empty() && ms.chars().all(|c| c.is_ascii_digit()))
+        .then(|| ms.parse().ok().map(|ms| (id, ms)))
+        .flatten()
+}
+
+/// Los proyectos que se pueden recuperar enteros, el borrado mas reciente
+/// primero.
+///
+/// De cada proyecto solo sale su ultimo borrado: se importa, se borra, se
+/// vuelve a importar y se vuelve a borrar deja dos carpetas, y recuperar la
+/// vieja con la nueva tambien en la papelera seria devolver lo de antes. Y
+/// no sale lo que ya vuelve a estar en la lista (por su `id` o por su chat,
+/// que llego otra vez del movil): recuperarlo lo duplicaria.
+pub fn en_papelera(raiz: &Path) -> Vec<EnPapelera> {
+    let dir = papelera(raiz);
+    let Ok(lista) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let indice = Indice::leer(raiz);
+    let vivos = crate::vista::chats_vivos(raiz);
+    let mut salida: Vec<EnPapelera> = Vec::new();
+    for e in lista.flatten().filter(|e| e.path().is_dir()) {
+        let nombre = e.file_name().to_string_lossy().to_string();
+        let Some((id, ms)) = partir_nombre(&nombre) else {
+            continue;
+        };
+        let carpeta = e.path();
+        let etiqueta: Option<Etiqueta> = std::fs::read(dir.join(format!("{nombre}.json")))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok());
+        let (ficha, chat, borrado) = match etiqueta {
+            Some(et) if et.ficha.id == id => (et.ficha, et.chat, et.borrado.max(ms)),
+            // Borrado antes de que hubiera etiqueta: la ficha se rehace con
+            // lo que tenga dentro.
+            _ => (ficha_de_carpeta(&carpeta, id), None, ms),
+        };
+        if indice.buscar(id).is_some()
+            || chat.as_ref().is_some_and(|c| vivos.contains(c))
+            || carpeta_de_proyecto_ocupada(raiz, id)
+        {
+            continue;
+        }
+        let mensajes = crate::cuaderno::Cuaderno::leer_de(&carpeta)
+            .map(|c| c.mensajes.len())
+            .unwrap_or(0);
+        let nuevo = EnPapelera {
+            carpeta,
+            ficha,
+            chat,
+            borrado,
+            mensajes,
+        };
+        match salida.iter_mut().find(|x| x.ficha.id == id) {
+            Some(x) if x.borrado < nuevo.borrado => *x = nuevo,
+            Some(_) => {}
+            None => salida.push(nuevo),
+        }
+    }
+    salida.sort_by_key(|x| std::cmp::Reverse(x.borrado));
+    salida
+}
+
+fn carpeta_de_proyecto_ocupada(raiz: &Path, id: &str) -> bool {
+    // Sin seguir enlaces: una union rota (su disco desenchufado) no «existe»
+    // para `exists`, pero ocupa el nombre y no se puede renombrar encima.
+    std::fs::symlink_metadata(carpeta(raiz, id)).is_ok()
+}
+
+/// La ficha de una carpeta sin etiqueta: la de su `proyecto.json` si lo
+/// tiene (lo que vino del movil), o una con el id por nombre.
+fn ficha_de_carpeta(carpeta: &Path, id: &str) -> Ficha {
+    let de_proyecto = std::fs::read_to_string(carpeta.join("proyecto.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<crate::Proyecto>(&t).ok())
+        .map(|p| Ficha::de_proyecto(&p, None));
+    let mut f = de_proyecto.unwrap_or_else(|| Ficha {
+        nombre: id.to_string(),
+        ..Default::default()
+    });
+    // El id es el de la carpeta: es donde viven sus mensajes y lienzos.
+    f.id = id.to_string();
+    if f.nombre.trim().is_empty() {
+        f.nombre = id.to_string();
+    }
+    f
+}
+
+/// **Recupera un proyecto entero** de la papelera: su carpeta vuelve a
+/// `proyectos/` y su ficha a la lista, con su nombre, sus codigos, sus hojas,
+/// su PDF y su chat. Devuelve la ficha puesta.
+///
+/// Y deja de estar borrado para sincronizar (`Copias.restaurar` del movil,
+/// v0.79): se quita su lapida, porque con ella la vuelta siguiente lo
+/// volveria a borrar nada mas recuperarlo; y se olvida lo acordado de su
+/// chat, porque con eso las marcas que el otro puso al borrarlo pasarian por
+/// cambios suyos y le quitarian los mensajes uno a uno.
+///
+/// Su hora pasa a ser `ahora` por lo mismo: si volviera con la de antes de
+/// borrarlo, el otro aparato lo veria «sin tocar desde que se borro» y la
+/// lista lo propondria para borrar otra vez.
+///
+/// Falla sin tocar nada si su sitio esta ocupado (otro proyecto con ese id o
+/// con su chat): recuperar no puede pisar ni duplicar.
+pub fn recuperar(raiz: &Path, en: &EnPapelera, ahora: i64) -> std::io::Result<Ficha> {
+    use std::io::{Error, ErrorKind};
+    let id = en.ficha.id.clone();
+    let nombre = en
+        .carpeta
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    // Solo lo que esta en la papelera y con su nombre de papelera: una ruta
+    // que venga de fuera no puede mover nada mas.
+    if en.carpeta.parent() != Some(papelera(raiz).as_path())
+        || partir_nombre(&nombre).map(|(i, _)| i) != Some(id.as_str())
+        || !en.carpeta.is_dir()
+    {
+        return Err(Error::new(ErrorKind::NotFound, "no esta en la papelera"));
+    }
+    let mut indice = Indice::leer_si_esta(raiz)?;
+    if indice.buscar(&id).is_some() || carpeta_de_proyecto_ocupada(raiz, &id) {
+        return Err(Error::new(
+            ErrorKind::AlreadyExists,
+            "ya hay un proyecto en su sitio",
+        ));
+    }
+    if en
+        .chat
+        .as_ref()
+        .is_some_and(|c| crate::vista::chats_vivos(raiz).contains(c))
+    {
+        return Err(Error::new(
+            ErrorKind::AlreadyExists,
+            "ese proyecto ya esta en la lista",
+        ));
+    }
+    std::fs::create_dir_all(raiz.join("proyectos"))?;
+    std::fs::rename(&en.carpeta, carpeta(raiz, &id))?;
+    let mut ficha = en.ficha.clone();
+    ficha.tocado = ficha.tocado.max(ahora);
+    indice.proyectos.push(ficha.clone());
+    if let Err(e) = indice.guardar(raiz) {
+        // Sin la ficha en la lista, la carpeta vuelve a la papelera: mejor
+        // seguir borrado que perdido en `proyectos/` sin que nada lo ensene.
+        let _ = std::fs::rename(carpeta(raiz, &id), &en.carpeta);
+        return Err(e);
+    }
+    let sincro = raiz.join("sincro");
+    let chat = en
+        .chat
+        .clone()
+        .or_else(|| crate::vista::chat_de_ficha(raiz, &id));
+    if let Some(c) = &chat {
+        pixpin_sincro::disco::quitar_lapida_en(&sincro, c)?;
+        pixpin_sincro::disco::olvidar_bases_en(&sincro, c)?;
+    }
+    let _ = std::fs::remove_file(papelera(raiz).join(format!("{nombre}.json")));
+    Ok(ficha)
 }
 
 #[cfg(test)]
@@ -1053,6 +1420,72 @@ mod pruebas {
         ] {
             assert!(indice.misma(&otra).is_none(), "{otra:?} no es la misma");
         }
+    }
+
+    #[test]
+    fn un_proyecto_sincronizado_ensena_sus_hojas_aunque_no_las_escriba() {
+        // Lo que el usuario reporto: al sincronizar, las paginas de un PDF
+        // son hojas del proyecto y el movil no las anota como mensajes, asi
+        // que el chat de aqui ensenaba menos cosas que el telefono.
+        let raiz = carpeta_temporal("hojas-de-sincro");
+        let p = paquete("Examen", "VVT587BFCA", 1_757_939_357_123);
+        let ficha = importar_paquete(&raiz, &p, "ZZZZ").unwrap();
+        let dir = carpeta(&raiz, &ficha.id);
+        // Una pagina de PDF sin dibujo, como las que manda el movil.
+        let mut proyecto: crate::Proyecto =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("proyecto.json")).unwrap())
+                .unwrap();
+        proyecto.hojas.push(crate::Hoja {
+            id: "h-pag-7".into(),
+            nombre: "Página 7".into(),
+            pagina: Some(7),
+            uid: Some("PAGPAGPAG7".into()),
+            ..Default::default()
+        });
+        std::fs::write(
+            dir.join("proyecto.json"),
+            serde_json::to_vec(&proyecto).unwrap(),
+        )
+        .unwrap();
+
+        let antes = lineas(&raiz, &ficha.id).len();
+        let ensenar = hojas_para_ensenar(&raiz, &ficha.id, "ZZZZ");
+        // Las tres hojas del proyecto: sus dos lienzos, que el cuaderno del
+        // movil tampoco anota, y la pagina de PDF recien anadida.
+        assert_eq!(ensenar.len(), 3);
+        let pagina = ensenar
+            .iter()
+            .find(|m| m.uid.as_deref() == Some("PAGPAGPAG7"))
+            .expect("la pagina que falta");
+        assert_eq!(pagina.pagina, Some(7));
+        assert_eq!(pagina.clase, Some(crate::cuaderno::Clase::Pagina));
+        assert!(
+            ensenar
+                .iter()
+                .any(|m| m.clase == Some(crate::cuaderno::Clase::Dibujo)),
+            "y los lienzos tambien"
+        );
+        // Y lo importante: NO ha tocado el cuaderno. Escribirlas las mandaria
+        // de vuelta al movil como mensajes nuevos.
+        assert_eq!(lineas(&raiz, &ficha.id).len(), antes, "no escribe nada");
+
+        // Caso negativo: pedirlas dos veces no las duplica, y una hoja que
+        // el cuaderno YA tiene deja de salir.
+        assert_eq!(hojas_para_ensenar(&raiz, &ficha.id, "ZZZZ").len(), 3);
+        crate::cuaderno::anadir(&dir, pagina).unwrap();
+        let despues = hojas_para_ensenar(&raiz, &ficha.id, "ZZZZ");
+        assert_eq!(despues.len(), 2, "la pagina ya esta en el cuaderno");
+        assert!(despues.iter().all(|m| m.uid.as_deref() != Some("PAGPAGPAG7")));
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn un_proyecto_nacido_aqui_no_tiene_hojas_que_ensenar() {
+        // Caso negativo: sin `proyecto.json` no hay nada que completar, y
+        // leerlo no puede ser un error.
+        let raiz = carpeta_temporal("hojas-sin-proyecto-json");
+        assert!(hojas_para_ensenar(&raiz, "NOEXISTE00", "ZZZZ").is_empty());
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 
     #[test]
@@ -1353,6 +1786,143 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&raiz);
     }
 
+    // ------------------------------------------------------------ papelera
+
+    /// Dos proyectos, `a` con mensajes y una base acordada con un movil, y
+    /// `a` borrado desde la lista a las 99.
+    fn con_a_en_la_papelera(etiqueta: &str) -> PathBuf {
+        let raiz = carpeta_temporal(etiqueta);
+        let mut i = Indice::default();
+        let mut a = ficha("a", "Casa", 10);
+        a.hojas = 3;
+        i.proyectos.push(a);
+        i.proyectos.push(ficha("b", "Obra", 30));
+        i.guardar(&raiz).unwrap();
+        std::fs::create_dir_all(carpeta(&raiz, "a")).unwrap();
+        std::fs::write(carpeta(&raiz, "a").join("guardados.jsonl"), "").unwrap();
+        let base = raiz.join("sincro").join("base").join("id-movil");
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("a.json"), "{}").unwrap();
+        borrar_proyectos(&raiz, &["a".to_string()], 99).unwrap();
+        raiz
+    }
+
+    fn lapidas(raiz: &Path) -> String {
+        std::fs::read_to_string(raiz.join("sincro").join("chatsborrados.jsonl")).unwrap_or_default()
+    }
+
+    #[test]
+    fn la_papelera_ensena_lo_borrado_con_su_nombre_y_no_lo_que_sigue_en_la_lista() {
+        let raiz = con_a_en_la_papelera("papelera-lista");
+        let v = en_papelera(&raiz);
+        assert_eq!(v.len(), 1, "{v:?}");
+        assert_eq!(v[0].ficha.nombre, "Casa");
+        assert_eq!(v[0].ficha.hojas, 3, "la ficha entera, de su etiqueta");
+        assert_eq!(v[0].borrado, 99);
+        assert_eq!(v[0].chat.as_deref(), Some("a"));
+        // Caso negativo: una carpeta suelta que no es `<id>-<ms>` no sale.
+        std::fs::create_dir_all(papelera(&raiz).join("cosas")).unwrap();
+        assert_eq!(en_papelera(&raiz).len(), 1);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn recuperar_devuelve_el_proyecto_entero_y_deja_de_estar_borrado_para_sincronizar() {
+        let raiz = con_a_en_la_papelera("papelera-recuperar");
+        assert!(lapidas(&raiz).contains("\"a\""), "borrar dejo lapida");
+        let en = en_papelera(&raiz).remove(0);
+        let f = recuperar(&raiz, &en, 5_000).unwrap();
+        assert_eq!(f.nombre, "Casa");
+        let i = Indice::leer(&raiz);
+        let puesta = i.buscar("a").expect("vuelve a la lista");
+        assert_eq!(puesta.uid.as_deref(), Some("VVT587BFCA"), "con sus codigos");
+        assert_eq!(
+            puesta.tocado, 5_000,
+            "tocado ahora, o se propondria borrarlo otra vez"
+        );
+        assert!(carpeta(&raiz, "a").join("guardados.jsonl").is_file());
+        assert!(
+            !lapidas(&raiz).contains("\"a\""),
+            "sin lapida: no se vuelve a borrar"
+        );
+        assert!(
+            !raiz.join("sincro/base/id-movil/a.json").exists(),
+            "lo acordado se olvida: sus mensajes ganan a las marcas del otro"
+        );
+        assert!(en_papelera(&raiz).is_empty(), "ya no esta en la papelera");
+        assert!(
+            !papelera(&raiz).join("a-99.json").exists(),
+            "ni su etiqueta"
+        );
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn recuperar_no_pisa_un_proyecto_que_ya_ocupa_su_sitio() {
+        let raiz = con_a_en_la_papelera("papelera-ocupado");
+        let en = en_papelera(&raiz).remove(0);
+        // Mientras tanto volvio a entrar un «a» (se importo otra vez).
+        let mut i = Indice::leer(&raiz);
+        i.proyectos.push(ficha("a", "Casa nueva", 50));
+        i.guardar(&raiz).unwrap();
+        let e = recuperar(&raiz, &en, 5_000).unwrap_err();
+        assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists);
+        assert!(en.carpeta.is_dir(), "la de la papelera sigue donde estaba");
+        assert_eq!(Indice::leer(&raiz).proyectos.len(), 2, "no se duplica");
+        assert!(en_papelera(&raiz).is_empty(), "y no se ofrece");
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn recuperar_no_mueve_nada_que_no_este_en_la_papelera() {
+        let raiz = con_a_en_la_papelera("papelera-fuera");
+        let mut en = en_papelera(&raiz).remove(0);
+        en.carpeta = carpeta(&raiz, "b");
+        std::fs::create_dir_all(&en.carpeta).unwrap();
+        assert!(recuperar(&raiz, &en, 5_000).is_err());
+        assert!(carpeta(&raiz, "b").is_dir());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn de_un_proyecto_borrado_dos_veces_sale_el_ultimo_borrado() {
+        let raiz = con_a_en_la_papelera("papelera-dos-veces");
+        let mut i = Indice::leer(&raiz);
+        i.proyectos.push(ficha("a", "Casa otra vez", 200));
+        i.guardar(&raiz).unwrap();
+        std::fs::create_dir_all(carpeta(&raiz, "a")).unwrap();
+        borrar_proyectos(&raiz, &["a".to_string()], 300).unwrap();
+        let v = en_papelera(&raiz);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].borrado, 300);
+        assert_eq!(v[0].ficha.nombre, "Casa otra vez");
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn lo_borrado_antes_de_las_etiquetas_se_recupera_con_el_nombre_de_su_carpeta() {
+        let raiz = carpeta_temporal("papelera-sin-etiqueta");
+        let vieja = papelera(&raiz).join("c-7");
+        std::fs::create_dir_all(&vieja).unwrap();
+        std::fs::write(vieja.join("guardados.jsonl"), "").unwrap();
+        let en = en_papelera(&raiz).remove(0);
+        assert_eq!(en.ficha.id, "c");
+        assert_eq!(en.chat, None);
+        let f = recuperar(&raiz, &en, 9).unwrap();
+        assert_eq!(f.nombre, "c");
+        assert!(Indice::leer(&raiz).buscar("c").is_some());
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn el_nombre_de_la_papelera_se_parte_por_el_ultimo_guion() {
+        assert_eq!(partir_nombre("pr-1-99"), Some(("pr-1", 99)));
+        assert_eq!(partir_nombre("abc"), None);
+        assert_eq!(partir_nombre("abc-"), None);
+        assert_eq!(partir_nombre("-99"), None);
+        assert_eq!(partir_nombre("a.b-99"), None, "nada de puntos");
+    }
+
     #[test]
     fn mensajes_guardados_se_crea_una_vez_va_arriba_y_no_se_borra() {
         let raiz = carpeta_temporal("guardados");
@@ -1411,5 +1981,88 @@ mod pruebas {
         assert!(raiz.join("ajustes").is_dir());
         assert_eq!(Indice::leer(&raiz).proyectos.len(), 1);
         let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    /// Un proyecto nacido de un PDF en el movil: tres paginas (una anotada,
+    /// con su dibujo), un lienzo suelto y ningun cuaderno.
+    fn paquete_de_pdf() -> crate::Paquete {
+        let pagina = |n: u32, dibujo: Option<&str>| crate::Hoja {
+            id: format!("h-pag-{n}"),
+            nombre: format!("Pagina {}", n + 1),
+            pagina: Some(n),
+            dibujo: dibujo.map(str::to_string),
+            uid: Some(format!("PAGINA000{n}")),
+            ..Default::default()
+        };
+        let proyecto = crate::Proyecto {
+            id: "p-plano".into(),
+            nombre: "Plano".into(),
+            hojas: vec![
+                pagina(0, None),
+                pagina(1, Some("dpag1")),
+                pagina(2, None),
+                crate::Hoja {
+                    id: "h-lienzo".into(),
+                    nombre: "Croquis".into(),
+                    dibujo: Some("dlienzo".into()),
+                    uid: Some("LIENZO0001".into()),
+                    ..Default::default()
+                },
+            ],
+            pdf_origen: Some("/storage/emulated/0/Download/plano.pdf".into()),
+            tocado: 10,
+            creado: 1_757_939_357_123,
+            ..Default::default()
+        };
+        let mut p = crate::Paquete::nuevo(crate::Manifiesto::default(), proyecto);
+        p.poner_entrada("lienzos/dpag1.excalidraw", b"{}".to_vec());
+        p.poner_entrada("lienzos/dlienzo.excalidraw", b"{}".to_vec());
+        crate::Paquete::desde_bytes(&p.a_bytes().unwrap()).unwrap()
+    }
+
+    #[test]
+    fn importar_un_proyecto_de_pdf_no_escribe_sus_paginas_en_el_chat() {
+        // `RegistroDelChat.queFalta` del movil: «sus paginas no, que van
+        // dentro del PDF y no son lienzos sueltos».
+        let raiz = carpeta_temporal("importar-pdf");
+        let ficha = importar_paquete(&raiz, &paquete_de_pdf(), "ZZZZ").unwrap();
+        let escritos = lineas(&raiz, &ficha.id);
+        assert_eq!(escritos.len(), 1, "solo el lienzo suelto: {escritos:?}");
+        assert_eq!(escritos[0].uid.as_deref(), Some("LIENZO0001"));
+        assert!(escritos.iter().all(|m| m.pagina.is_none()));
+        // Las paginas siguen siendo hojas: la tarjeta de Proyectos las pide.
+        let ensenar = hojas_para_ensenar(&raiz, &ficha.id, "ZZZZ");
+        assert_eq!(ensenar.len(), 3, "las tres paginas, anotada incluida");
+        assert!(ensenar.iter().all(|m| m.pagina.is_some()));
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn completar_las_hojas_no_escribe_las_paginas_del_pdf_pero_si_los_lienzos() {
+        let raiz = carpeta_temporal("completar-pdf");
+        let ficha = importar_paquete(&raiz, &paquete_de_pdf(), "ZZZZ").unwrap();
+        // Un cuaderno que se quedo sin nada: completar es el `reparar` del movil.
+        std::fs::remove_file(carpeta(&raiz, &ficha.id).join("guardados.jsonl")).unwrap();
+        assert_eq!(completar_hojas(&raiz, &ficha.id, "ZZZZ").unwrap(), 1);
+        let escritos = lineas(&raiz, &ficha.id);
+        assert_eq!(escritos.len(), 1);
+        assert_eq!(escritos[0].uid.as_deref(), Some("LIENZO0001"), "el lienzo suelto si");
+        // Y otra vez no hace nada.
+        assert_eq!(completar_hojas(&raiz, &ficha.id, "ZZZZ").unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn las_paginas_fuera_del_chat_son_las_hojas_con_pagina_y_su_mensaje_de_origen() {
+        let mut p = paquete_de_pdf().proyecto;
+        p.hojas[2]
+            .resto
+            .insert("deMensaje".into(), serde_json::Value::String("m-pdf".into()));
+        let fuera = paginas_fuera_del_chat(&p);
+        assert_eq!(fuera.len(), 3);
+        assert_eq!(fuera.get("PAGINA0000"), Some(&None));
+        assert_eq!(fuera.get("PAGINA0002"), Some(&Some("m-pdf".to_string())));
+        // Caso negativo: un lienzo suelto no es una pagina.
+        assert!(!fuera.contains_key("LIENZO0001"));
     }
 }

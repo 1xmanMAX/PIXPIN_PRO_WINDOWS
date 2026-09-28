@@ -19,5 +19,6 @@ pub use imagen::{
     ErrorCodec, FormatoImagen, ImagenRgba, cargar, codificar_png, guardar, redimensionar,
 };
 pub use portapapeles::{
-    ContenidoPortapapeles, construir_hdrop, copiar_ficheros, copiar_imagen, copiar_texto, leer,
+    ContenidoPortapapeles, construir_hdrop, copiar_ficheros, copiar_imagen,
+    copiar_imagen_y_ficheros, copiar_texto, leer,
 };

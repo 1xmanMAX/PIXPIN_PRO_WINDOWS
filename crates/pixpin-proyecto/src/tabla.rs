@@ -1,14 +1,10 @@
 //! Las tablas de calculo del proyecto.
 //!
-//! **Esto no existe en PixPin Android.** Se comprobo en su codigo: lo que
-//! alli se llama «tabla» es `TablaDeCoordenadas` (`motor/Tablas.kt`), una
-//! lista de puntos X/Y con color que se mete DENTRO de un dibujo para
-//! replantear; no tiene celdas, ni referencias `B7`, ni formulas. Y sus
-//! siete mini-aplicaciones son tareas, gastos, cronometro, temporizador,
-//! contador, ruleta y alarma: ninguna es una hoja de calculo.
-//!
-//! Asi que la hoja es de PixPin Max, y viaja por el hueco que Android SI
-//! dejo: un mensaje de clase `MINIAPP` lleva el documento entero en `texto`
+//! El movil tiene su hoja desde el 10-sep-2026 (`motor/TablaDeCalculo.kt`,
+//! el mismo JSON: `nombre`, `celdas`, `anchos`, `estilos`, `tocado`,
+//! `protegida`); esta nota decia lo contrario porque se escribio mirando un
+//! clon viejo. Aqui viaja por el hueco de las mini-apps: un mensaje de clase
+//! `MINIAPP` lleva el documento entero en `texto`
 //! y la palabra de su tipo en `miniapp` —aqui, `"tabla"`—, y ante una
 //! palabra que no conoce el movil ensena ese texto tal cual en vez de
 //! romperse. No hay fichero aparte: la tabla ES el texto del mensaje.
@@ -44,8 +40,8 @@ pub struct Tabla {
     pub celdas: BTreeMap<String, String>,
     /// Ancho de una columna (`B`) en pixeles, si se cambio a mano.
     pub anchos: BTreeMap<String, u32>,
-    /// El estilo de una celda, en la palabra que use el movil.
-    pub estilos: BTreeMap<String, String>,
+    /// El estilo de una celda: el `EstiloDeCelda` del movil.
+    pub estilos: BTreeMap<String, EstiloDeCelda>,
     /// Milisegundos desde 1970 de la ultima vez que se toco.
     pub tocado: i64,
     /// Lo que no se entiende, tal cual: guardar no puede perder lo que anada
@@ -54,8 +50,37 @@ pub struct Tabla {
     pub resto: serde_json::Map<String, serde_json::Value>,
 }
 
+/// **El poco formato de una celda**, el `EstiloDeCelda` del movil
+/// (`motor/TablaDeCalculo.kt`): negrita, alineacion y fondo, con nombres de
+/// una letra porque se repiten en cada celda con estilo. Lo que no vale lo de
+/// por defecto no se escribe (`encodeDefaults = false` alli).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct EstiloDeCelda {
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub n: bool,
+    /// `i`, `c` o `d`; sin nada, la que toque por el valor.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub a: Option<String>,
+    /// El fondo, `#rrggbb`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub f: Option<String>,
+    /// Editable aunque la tabla este protegida (la pagina web lo mira).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub e: bool,
+    #[serde(flatten)]
+    pub resto: serde_json::Map<String, serde_json::Value>,
+}
+
+impl EstiloDeCelda {
+    /// Si no cambia nada: no vale la pena guardarlo.
+    pub fn vacio(&self) -> bool {
+        !self.n && self.a.is_none() && self.f.is_none() && !self.e && self.resto.is_empty()
+    }
+}
+
 /// Una celda por su sitio: columna y fila, las dos desde cero.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Ref {
     pub columna: u32,
     pub fila: u32,
@@ -224,20 +249,26 @@ mod pruebas {
 
     #[test]
     fn una_tabla_de_android_se_lee_y_se_devuelve_sin_perder_nada() {
-        let original = r#"{
+        let original = r##"{
             "nombre": "Gastos",
             "celdas": {"A1": "Concepto", "B1": "Importe", "B7": "=SUMA(B2:B6)"},
             "anchos": {"A": 180},
-            "estilos": {"B1": "negrita"},
+            "estilos": {"B1": {"n": true, "f": "#fff2cc"}, "C1": {"a": "d", "x": 7}},
             "tocado": 1789500000000,
             "congeladas": 1,
             "futuro": {"x": true}
-        }"#;
+        }"##;
         let t = Tabla::leer(original).unwrap();
         assert_eq!(t.nombre, "Gastos");
         assert_eq!(t.celda(ref_de("A1").unwrap()), "Concepto");
         assert_eq!(t.anchos.get("A"), Some(&180));
-        assert_eq!(t.estilos.get("B1").map(String::as_str), Some("negrita"));
+        // El estilo es el `EstiloDeCelda` del movil (`n`, `a`, `f`, `e`), no
+        // una palabra: con una cadena aqui, una tabla con negritas del movil
+        // no se podia ni abrir.
+        let b1 = &t.estilos["B1"];
+        assert!(b1.n);
+        assert_eq!(b1.f.as_deref(), Some("#fff2cc"));
+        assert_eq!(t.estilos["C1"].a.as_deref(), Some("d"));
         assert!(Tabla::es_formula(t.celda(ref_de("B7").unwrap())));
         assert!(!Tabla::es_formula(t.celda(ref_de("A1").unwrap())));
 
@@ -247,5 +278,9 @@ mod pruebas {
         assert_eq!(vuelta["congeladas"], 1);
         assert_eq!(vuelta["futuro"]["x"], true);
         assert_eq!(vuelta["celdas"]["B7"], "=SUMA(B2:B6)");
+        assert_eq!(vuelta["estilos"]["C1"]["x"], 7, "lo que no se entiende de un estilo tambien vuelve");
+        // Y sin los valores por defecto, como `encodeDefaults = false` del
+        // movil: mil celdas con estilo no repiten mil veces `"n":false`.
+        assert!(vuelta["estilos"]["C1"].get("n").is_none());
     }
 }

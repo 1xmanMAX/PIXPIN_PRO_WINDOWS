@@ -232,6 +232,20 @@ impl DiscoPc {
                 // proyecto entero.
                 Json::de_valor(&serde_json::json!({"tocado": f.creado.max(0)}))
             });
+        // El documento del proyecto se apunta aqui RELATIVO a su carpeta
+        // (`archivos/doc-<t>.pdf`), que sobrevive a mover la carpeta. Al
+        // movil le llega como ruta portatil, que es lo que su
+        // `pdfOrigen` sabe traducir; y asi `alcance` lo encuentra y el PDF
+        // viaja con el proyecto.
+        for campo in ["pdfOrigen", "pdfLimpio"] {
+            if let Some(r) = kotlin::cadena(&p, campo)
+                .filter(|r| es_relativa(r))
+                .map(str::to_string)
+            {
+                let v = format!("{PORTATIL}{}", virtual_de(chat, &r));
+                kotlin::poner(&mut p, campo, Json::cadena(v));
+            }
+        }
         kotlin::poner(&mut p, "id", Json::cadena(chat));
         kotlin::poner(&mut p, "nombre", Json::cadena(f.nombre.clone()));
         if let Some(u) = &f.uid {
@@ -309,6 +323,16 @@ fn mapa_de(raiz: &Path, indice: &Indice) -> Vec<(String, Ficha)> {
     salida
 }
 
+/// Los chats que hay ahora en la lista. La papelera lo mira para no
+/// recuperar un proyecto que ya volvio por otro lado (llego otra vez del
+/// movil): seria tenerlo dos veces.
+pub fn chats_vivos(raiz: &Path) -> HashSet<String> {
+    mapa_de(raiz, &Indice::leer(raiz))
+        .into_iter()
+        .map(|(c, _)| c)
+        .collect()
+}
+
 /// El id de chat de una ficha, para quien borra o marca desde fuera.
 pub fn chat_de_ficha(raiz: &Path, ficha_id: &str) -> Option<String> {
     mapa_de(raiz, &Indice::leer(raiz))
@@ -335,6 +359,24 @@ pub fn ruta_real(raiz: &Path, ficha_id: &str, ruta: &str) -> Option<PathBuf> {
         return None;
     }
     Some(almacen::carpeta(raiz, ficha_id).join(ruta))
+}
+
+/// **El PDF del proyecto en este equipo**: el que dice su `pdfOrigen`
+/// (`archivos/doc-<t>.pdf` si se unio aqui, `pixpin:files/…` si llego del
+/// movil) o, en un proyecto que entro por un `.pixpin`, su `documento.pdf`.
+/// `None` si no tiene documento o si su fichero no esta aqui.
+pub fn documento_del_proyecto(raiz: &Path, ficha_id: &str) -> Option<PathBuf> {
+    let carpeta = almacen::carpeta(raiz, ficha_id);
+    let origen = std::fs::read_to_string(carpeta.join("proyecto.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<crate::Proyecto>(&t).ok())
+        .and_then(|p| p.pdf_origen);
+    if let Some(r) = origen.and_then(|o| ruta_real(raiz, ficha_id, &o))
+        && r.is_file()
+    {
+        return Some(r);
+    }
+    Some(carpeta.join("documento.pdf")).filter(|r| r.is_file())
 }
 
 /// Deja marca de unos mensajes que se quitaron del chat de `ficha_id`: sin
@@ -493,9 +535,16 @@ impl Disco for DiscoPc {
             .filter(|m| kotlin::chat_de(m) == chat)
             .collect();
         let ficha = self.asegurar_ficha(chat, chat)?;
-        let (buenas, crudas) = self.lineas(chat)?;
-        let (salida, quitados) = disco::aplicar_en_lista(buenas, chat, &llegan, &quitar);
-        self.escribir_lineas(chat, &salida, &crudas)?;
+        // El cerrojo solo mientras se lee y se reescribe: lo de despues avisa
+        // a otros, y uno que anadiera un mensaje en este hilo se quedaria
+        // esperando para siempre.
+        let (salida, quitados) = {
+            let _cerrojo = crate::cuaderno::cerrojo();
+            let (buenas, crudas) = self.lineas(chat)?;
+            let (salida, quitados) = disco::aplicar_en_lista(buenas, chat, &llegan, &quitar);
+            self.escribir_lineas(chat, &salida, &crudas)?;
+            (salida, quitados)
+        };
         self.marcas_tras_aplicar(chat, &llegan, borrar, &quitados, ahora)?;
         // La ficha, al dia: la lista del chat ensena lo ultimo.
         let mut indice = Indice::leer(&self.raiz);
@@ -524,6 +573,7 @@ impl Disco for DiscoPc {
     fn sellar(&self) -> io::Result<()> {
         let aparato = crate::codigos::de_aparato(&self.identidad()?.yo.id);
         for (chat, _) in self.mapa() {
+            let _cerrojo = crate::cuaderno::cerrojo();
             let (mut buenas, crudas) = self.lineas(&chat)?;
             if !disco::sellar_chat(&mut buenas, &aparato).is_empty() {
                 self.escribir_lineas(&chat, &buenas, &crudas)?;
@@ -667,6 +717,69 @@ impl Disco for DiscoPc {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn el_pdf_unido_aqui_viaja_al_movil_con_el_nombre_de_campo_y_la_ruta_que_entiende() {
+        let raiz = std::env::temp_dir().join(format!("pixpin-vista-doc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let ficha = Ficha::nueva("Obra", 5, "PC01");
+        let mut indice = Indice::default();
+        indice.proyectos.push(ficha.clone());
+        indice.guardar(&raiz).unwrap();
+        let carpeta = almacen::carpeta(&raiz, &ficha.id);
+        std::fs::create_dir_all(carpeta.join("archivos")).unwrap();
+        std::fs::write(carpeta.join("archivos/doc-7.pdf"), b"%PDF-1.4\n").unwrap();
+        std::fs::write(
+            carpeta.join("proyecto.json"),
+            r#"{"id":"x","nombre":"Obra","hojas":[{"id":"h-7-0","nombre":"","pagina":0,"deMensaje":"m1"}],"pdfOrigen":"archivos/doc-7.pdf"}"#,
+        )
+        .unwrap();
+        let d = DiscoPc::nuevo(&raiz);
+        let chat = chat_de_ficha(&raiz, &ficha.id).unwrap();
+        let p = d.proyecto_portatil(&chat).unwrap().unwrap();
+        let origen = kotlin::cadena(&p, "pdfOrigen").unwrap().to_string();
+        assert_eq!(
+            origen,
+            format!("{PORTATIL}guardados/pc/{}/archivos/doc-7.pdf", limpio(&chat))
+        );
+        // Y el fichero entra en lo que se manda con el chat.
+        let alcance = d.alcance(&chat).unwrap();
+        assert!(alcance.iter().any(|(r, _)| r.ends_with("archivos/doc-7.pdf")));
+        // La hoja conserva su pagina y su mensaje, con los nombres del movil.
+        let texto = p.a_texto();
+        assert!(texto.contains("\"pagina\":0") && texto.contains("\"deMensaje\":\"m1\""));
+        // Aqui se encuentra por la ruta relativa, y tambien por la portatil.
+        assert_eq!(
+            documento_del_proyecto(&raiz, &ficha.id),
+            Some(carpeta.join("archivos/doc-7.pdf"))
+        );
+        assert!(ruta_real(&raiz, &ficha.id, &origen).is_some_and(|r| r.is_file()));
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn un_proyecto_sin_documento_no_se_inventa_uno() {
+        // Caso negativo: sin `pdfOrigen` ni `documento.pdf` no hay documento,
+        // y una ruta absoluta de otro aparato tampoco cuenta.
+        let raiz = std::env::temp_dir().join(format!("pixpin-vista-sin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let carpeta = almacen::carpeta(&raiz, "p1");
+        std::fs::create_dir_all(&carpeta).unwrap();
+        assert_eq!(documento_del_proyecto(&raiz, "p1"), None);
+        std::fs::write(
+            carpeta.join("proyecto.json"),
+            r#"{"id":"p1","nombre":"","pdfOrigen":"/data/user/0/com.forge.pixpin/files/proyectos/doc-1.pdf"}"#,
+        )
+        .unwrap();
+        assert_eq!(documento_del_proyecto(&raiz, "p1"), None);
+        // El de un `.pixpin` viejo si vale.
+        std::fs::write(carpeta.join("documento.pdf"), b"%PDF-1.4\n").unwrap();
+        assert_eq!(
+            documento_del_proyecto(&raiz, "p1"),
+            Some(carpeta.join("documento.pdf"))
+        );
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
 
     #[test]
     fn las_rutas_nacidas_aqui_llevan_su_chat_y_los_lienzos_su_sitio_del_movil() {

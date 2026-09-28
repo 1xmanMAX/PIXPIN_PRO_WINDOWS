@@ -359,6 +359,12 @@ pub fn canonico(centimos: i64, decimales: u8) -> String {
 /// configuracion regional del telefono, asi que este renglon puede salir con
 /// otra puntuacion en cada aparato; da igual, porque **al leer se ignora**:
 /// el total se recalcula siempre de las filas.
+///
+/// Lo que si se copia es el **espacio duro** (U+00A0) entre la cifra y el
+/// simbolo: es el que pone CLDR para `es-ES` (`#,##0.00 ¤`), que es lo que usa
+/// `NumberFormat` en el movil del usuario. Con un espacio normal el renglon
+/// del total salia distinto en los dos aparatos, y el documento, que se
+/// compara entero al sincronizar, cambiaba de texto sin que cambiara nada.
 pub fn texto_de_importe(centimos: i64, moneda: &Moneda) -> String {
     let canon = canonico(centimos, moneda.decimales());
     let (enteras, fraccion) = match canon.split_once('.') {
@@ -383,7 +389,7 @@ pub fn texto_de_importe(centimos: i64, moneda: &Moneda) -> String {
         salida.push(',');
         salida.push_str(f);
     }
-    salida.push(' ');
+    salida.push('\u{00A0}');
     salida.push_str(moneda.simbolo());
     salida
 }
@@ -574,7 +580,7 @@ mod pruebas {
              | Cena | 42.50 |\n\
              | Tren | 18.00 |\n\
              | Devolución | -5.00 |\n\
-             \n**Total: 55,50 €**"
+             \n**Total: 55,50\u{a0}€**"
         );
         let vuelta = leer(&d, &Moneda::euro());
         assert_eq!(
@@ -593,7 +599,7 @@ mod pruebas {
         });
         assert_eq!(
             d,
-            "# Obra\n\n| Concepto | Importe (EUR) |\n| --- | ---: |\n\n**Total: 0,00 €**"
+            "# Obra\n\n| Concepto | Importe (EUR) |\n| --- | ---: |\n\n**Total: 0,00\u{a0}€**"
         );
         assert!(resumen(&d, &Moneda::euro()).vacia);
     }
@@ -611,7 +617,7 @@ mod pruebas {
         let d = escribir(&yenes);
         assert!(d.contains("| Importe (JPY) |"), "{d}");
         assert!(d.contains("| Ramen | 1200 |"), "el yen no tiene centimos");
-        assert!(d.ends_with("**Total: 1.200 ¥**"), "{d}");
+        assert!(d.ends_with("**Total: 1.200\u{a0}¥**"), "{d}");
         // Y al releerlo con un PC en euros, sigue siendo en yenes.
         let vuelta = leer(&d, &Moneda::euro());
         assert_eq!(vuelta.moneda.codigo(), "JPY");
@@ -777,15 +783,22 @@ mod pruebas {
         let l = leer(d, &Moneda::euro());
         assert_eq!(l.gastos.len(), 1, "la linea del total no es una fila");
         assert_eq!(l.total(), 1000);
-        assert!(escribir(&l).ends_with("**Total: 10,00 €**"));
+        assert!(escribir(&l).ends_with("**Total: 10,00\u{a0}€**"));
     }
 
     #[test]
     fn el_total_se_lee_con_sus_millares() {
-        assert_eq!(texto_de_importe(123_456, &Moneda::euro()), "1.234,56 €");
-        assert_eq!(texto_de_importe(-500, &Moneda::euro()), "-5,00 €");
-        assert_eq!(texto_de_importe(0, &Moneda::euro()), "0,00 €");
+        assert_eq!(
+            texto_de_importe(123_456, &Moneda::euro()),
+            "1.234,56\u{a0}€"
+        );
+        assert_eq!(texto_de_importe(-500, &Moneda::euro()), "-5,00\u{a0}€");
+        assert_eq!(texto_de_importe(0, &Moneda::euro()), "0,00\u{a0}€");
         let kwd = Moneda::de_codigo("KWD").expect("KWD existe");
-        assert_eq!(texto_de_importe(1234, &kwd), "1,234 KWD", "tres decimales");
+        assert_eq!(
+            texto_de_importe(1234, &kwd),
+            "1,234\u{a0}KWD",
+            "tres decimales"
+        );
     }
 }

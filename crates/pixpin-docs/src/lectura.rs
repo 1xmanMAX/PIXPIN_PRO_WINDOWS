@@ -61,14 +61,46 @@ pub fn punto_del_tamano(actual: u32) -> usize {
         .unwrap_or(TAMANOS.len() - 1)
 }
 
+/// Los tipos de letra que se ofrecen. Son los que el pintor de la
+/// aplicacion sabe poner sin traer nada: la de la interfaz (Segoe UI) y la
+/// de ancho fijo (Consolas). El movil ofrece cuatro (`Lectura.LETRAS`):
+/// serif y cursiva piden una familia que el pintor todavia no deja elegir.
+pub const TIPOS: usize = 2;
+
+/// Los grosores que se ofrecen: normal y gruesa. Mismo motivo que [`TIPOS`]:
+/// el pintor sabe negrita, no los cuatro pesos de CSS del movil.
+pub const GROSORES: usize = 2;
+
 /// Todo lo que se recuerda de un documento entre una lectura y la
 /// siguiente.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Ajustes {
     pub tamano: u32,
-    /// Por donde se iba, de 0 a 1.
+    /// Por donde se iba, de 0 a 1 (Word, libro, pagina).
     pub sitio: f32,
     pub marcadores: Vec<Marcador>,
+    /// Que letra, de `0..TIPOS` (0 = la de siempre, 1 = ancho fijo).
+    pub tipo: u8,
+    /// Que grosor, de `0..GROSORES` (0 = normal, 1 = gruesa).
+    pub grosor: u8,
+    /// **La columna de texto con la que se anoto por primera vez**, en
+    /// pixeles logicos; 0 si nunca se anoto. Es `columnaDeAnotar` del
+    /// movil: desde que hay tinta, el texto no puede volver a partirse en
+    /// otras lineas o lo anotado quedaria encima de otra palabra. Con la
+    /// columna se fijan tambien el tamano, el tipo y el grosor de la letra.
+    pub columna: u32,
+    /// El aumento propio del documento (1 = la columna a su tamano).
+    pub zoom: f32,
+    /// **Los espacios para anotar del PDF**, en bits como el movil
+    /// (`ESPACIO_IZQUIERDA = 1`, `ESPACIO_DERECHA = 2`).
+    pub espacios: u8,
+    /// Por donde se iba en un PDF: **la pagina mas la fraccion** de su alto
+    /// (2,5 = la mitad de la tercera), la misma cuenta que las marcas.
+    pub pagina: f64,
+    /// Las marcas del PDF, en la linea del movil (`id:x:y:emoji|…`). Se
+    /// guardan tal cual: quien las entiende es `pixpin_motor2d::marcas`, y
+    /// este crate no depende del motor.
+    pub marcas: String,
 }
 
 impl Default for Ajustes {
@@ -77,7 +109,21 @@ impl Default for Ajustes {
             tamano: 100,
             sitio: 0.0,
             marcadores: Vec::new(),
+            tipo: 0,
+            grosor: 0,
+            columna: 0,
+            zoom: 1.0,
+            espacios: 0,
+            pagina: 0.0,
+            marcas: String::new(),
         }
+    }
+}
+
+impl Ajustes {
+    /// Si el documento ya tiene tinta encima: entonces la letra no se toca.
+    pub fn letra_fijada(&self) -> bool {
+        self.columna > 0
     }
 }
 
@@ -144,9 +190,21 @@ pub fn a_texto(a: &Ajustes) -> String {
         .map(|m| format!("{}:{}:{}", m.id, m.fraccion, m.emoji))
         .collect::<Vec<_>>()
         .join("|");
+    // Las lineas nuevas van detras: un PixPin anterior las salta (lee por
+    // clave e ignora lo que no conoce) y el fichero le sigue sirviendo.
     format!(
-        "pixpin-lectura 1\ntamano {}\nsitio {}\nmarcadores {marcadores}\n",
-        a.tamano, a.sitio
+        "pixpin-lectura 1\ntamano {}\nsitio {}\nmarcadores {marcadores}\ntipo {}\ngrosor {}\ncolumna {}\nzoom {}\nespacios {}\npagina {}\nmarcas {}\n",
+        a.tamano,
+        a.sitio,
+        a.tipo,
+        a.grosor,
+        a.columna,
+        a.zoom,
+        a.espacios,
+        a.pagina,
+        // Una linea por clave: un salto de linea colado en las marcas
+        // partiria el fichero y lo de detras se leeria como otra clave.
+        a.marcas.replace(['\n', '\r'], "")
     )
 }
 
@@ -158,6 +216,36 @@ pub fn de_texto(texto: &str) -> Ajustes {
             "tamano" => a.tamano = tamano_valido(valor.trim().parse().unwrap_or(100)),
             "sitio" => a.sitio = valor.trim().parse::<f32>().unwrap_or(0.0).clamp(0.0, 1.0),
             "marcadores" => a.marcadores = marcadores_de_texto(valor),
+            "tipo" => a.tipo = valor.trim().parse::<u8>().unwrap_or(0).min(TIPOS as u8 - 1),
+            "grosor" => {
+                a.grosor = valor
+                    .trim()
+                    .parse::<u8>()
+                    .unwrap_or(0)
+                    .min(GROSORES as u8 - 1)
+            }
+            // Una columna absurda solo puede venir de un fichero roto: se
+            // acota para que el texto no quede en una linea kilometrica.
+            "columna" => a.columna = valor.trim().parse::<u32>().unwrap_or(0).min(20_000),
+            "zoom" => {
+                a.zoom = valor
+                    .trim()
+                    .parse::<f32>()
+                    .ok()
+                    .filter(|z| z.is_finite() && *z > 0.0)
+                    .unwrap_or(1.0)
+                    .clamp(crate::vista::ZOOM_MINIMO, crate::vista::ZOOM_MAXIMO)
+            }
+            "espacios" => a.espacios = valor.trim().parse::<u8>().unwrap_or(0) & 3,
+            "pagina" => {
+                a.pagina = valor
+                    .trim()
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|p| p.is_finite() && *p >= 0.0)
+                    .unwrap_or(0.0)
+            }
+            "marcas" => a.marcas = valor.trim().to_string(),
             _ => {}
         }
     }
@@ -238,9 +326,58 @@ mod pruebas {
             tamano: 130,
             sitio: 0.25,
             marcadores: vec![m(1, 0.1), m(2, 0.9)],
+            tipo: 1,
+            grosor: 1,
+            columna: 720,
+            zoom: 0.6,
+            espacios: 3,
+            pagina: 4.5,
+            marcas: "1:0.5:2.25:⭐|2:0.5:7:🔖".into(),
         };
         let vuelta = de_texto(&a_texto(&a));
         assert_eq!(vuelta, a);
+    }
+
+    #[test]
+    fn un_fichero_de_antes_se_sigue_leyendo_y_sale_sin_tinta() {
+        // Lo que escribia el visor antes de poder anotar: sin las claves
+        // nuevas, todo lo nuevo sale de fabrica.
+        let a = de_texto("pixpin-lectura 1\ntamano 115\nsitio 0.5\nmarcadores 1:0.2:🔖\n");
+        assert_eq!(a.tamano, 115);
+        assert_eq!(a.marcadores.len(), 1);
+        assert_eq!(a.columna, 0);
+        assert!(!a.letra_fijada());
+        assert_eq!(a.zoom, 1.0);
+        assert_eq!(a.espacios, 0);
+    }
+
+    #[test]
+    fn valores_imposibles_de_lo_nuevo_no_rompen_nada() {
+        let a = de_texto("tipo 9\ngrosor 7\ncolumna 999999\nzoom NaN\nespacios 255\npagina -3\n");
+        assert_eq!(a.tipo, (TIPOS - 1) as u8);
+        assert_eq!(a.grosor, (GROSORES - 1) as u8);
+        assert_eq!(a.columna, 20_000);
+        assert_eq!(a.zoom, 1.0, "un aumento que no es numero vuelve al de siempre");
+        assert_eq!(a.espacios, 3, "solo hay dos lados");
+        assert_eq!(a.pagina, 0.0);
+        assert_eq!(
+            de_texto("zoom 0\n").zoom,
+            1.0,
+            "aumento cero dejaria el documento invisible"
+        );
+    }
+
+    #[test]
+    fn un_salto_de_linea_en_las_marcas_no_parte_el_fichero() {
+        let a = Ajustes {
+            marcas: "1:0:0:🔖\ntamano 250".into(),
+            ..Ajustes::default()
+        };
+        assert_eq!(
+            de_texto(&a_texto(&a)).tamano,
+            100,
+            "lo de detras del salto no puede colarse como otra clave"
+        );
     }
 
     #[test]

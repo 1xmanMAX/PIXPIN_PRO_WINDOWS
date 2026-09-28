@@ -17,6 +17,12 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod aligerar;
+pub mod escribir;
+pub mod letra;
+pub mod plano;
+pub mod plano_web;
+pub mod texto;
+pub mod union;
 
 use pixpin_codec::imagen::ImagenRgba;
 use std::path::{Path, PathBuf};
@@ -180,6 +186,34 @@ impl Documento {
         &self.ruta
     }
 
+    /// **Lo que mide el papel de cada pagina**, ancho y alto, sin dibujar
+    /// ninguna.
+    ///
+    /// Lo pide el lector continuo: para colocar las hojas una debajo de otra
+    /// tiene que saber cuanto mide cada una ANTES de pintarla, o el
+    /// desplazamiento pega saltos segun van llegando. Pedir la medida es
+    /// barato (`GetPage` + `Size`, sin rasterizar nada); una pagina cuya
+    /// medida no se pueda leer sale como `(0, 0)` y quien coloca le pone una
+    /// proporcion corriente.
+    ///
+    /// **Las paginas giradas** (`/Rotate 90`): `Size` ya da la medida GIRADA,
+    /// la misma proporcion que saca [`Documento::renderizar`] (medido; no hay
+    /// que mirar `Rotation` y girarla otra vez, que era darle dos vueltas).
+    /// Por si un PDF raro no casara, el lector corrige la proporcion de una
+    /// hoja en cuanto llega su dibujo.
+    pub fn medidas(&self) -> Vec<(f32, f32)> {
+        (0..self.paginas)
+            .map(|i| {
+                let Ok(pagina) = self.documento.GetPage(i) else {
+                    return (0.0, 0.0);
+                };
+                let medida = pagina.Size().map(|s| (s.Width, s.Height));
+                let _ = pagina.Close();
+                medida.unwrap_or((0.0, 0.0))
+            })
+            .collect()
+    }
+
     /// Dibuja la pagina `indice` (desde 0) con este ancho en pixeles.
     /// El alto sale de la proporcion de la pagina.
     ///
@@ -282,6 +316,102 @@ impl Documento {
         Ok(ImagenRgba {
             ancho: natural_ancho,
             alto: natural_alto,
+            pixeles,
+        })
+    }
+
+    /// **Un trozo de la pagina a la resolucion que se pida**: lo que usa el
+    /// lienzo para verse nitido al acercarse (la «lamina» de `PdfDoc` del
+    /// movil).
+    ///
+    /// `trozo` va en fracciones de la pagina, de 0 a 1 (x, y, ancho, alto):
+    /// asi quien pide no tiene que saber en que unidades mide el papel de
+    /// este PDF. Sale una imagen de mas o menos `ancho` x `alto` pixeles; no
+    /// se afina al pixel como en [`Documento::renderizar`] porque quien la
+    /// pinta la estira a su caja del mundo, y un pixel de mas no se ve.
+    ///
+    /// Por que no pintar la pagina entera mas grande: a dieciseis pixeles por
+    /// unidad una hoja A4 son veinte mil de ancho, que no caben ni en la
+    /// memoria ni en la GPU. Un trozo del tamano de la pantalla, si.
+    pub fn renderizar_trozo(
+        &self,
+        indice: u32,
+        trozo: (f32, f32, f32, f32),
+        ancho: u32,
+        alto: u32,
+    ) -> Result<ImagenRgba, ErrorPdf> {
+        if ancho == 0 || ancho > ANCHO_MAXIMO || alto == 0 || alto > ANCHO_MAXIMO {
+            return Err(ErrorPdf::AnchoInvalido { ancho });
+        }
+        if indice >= self.paginas {
+            return Err(ErrorPdf::PaginaFueraDeRango {
+                indice,
+                paginas: self.paginas,
+            });
+        }
+        let (fx, fy, fw, fh) = trozo;
+        if !(fw > 0.0 && fh > 0.0) {
+            return Err(ErrorPdf::RenderVacio { indice });
+        }
+        let pagina = self.documento.GetPage(indice)?;
+        let medida = pagina.Size()?;
+        let opciones = PdfPageRenderOptions::new()?;
+        // `SourceRect` va en las unidades de `Size` (la pagina ya girada,
+        // como sale en `medidas`), no en fracciones.
+        opciones.SetSourceRect(windows::Foundation::Rect {
+            X: fx * medida.Width,
+            Y: fy * medida.Height,
+            Width: fw * medida.Width,
+            Height: fh * medida.Height,
+        })?;
+        opciones.SetBitmapEncoderId(BitmapEncoder::BmpEncoderId()?)?;
+        // Los dos lados, porque la proporcion la pone el trozo y no la
+        // pagina; y en unidades de WinRT, no en pixeles (`unidades_para`).
+        let dibujar_trozo = |unidades_w: u32, unidades_h: u32| -> Result<_, ErrorPdf> {
+            opciones.SetDestinationWidth(unidades_w)?;
+            opciones.SetDestinationHeight(unidades_h)?;
+            let flujo = InMemoryRandomAccessStream::new()?;
+            esperar_accion(&pagina.RenderWithOptionsToStreamAsync(&flujo, &opciones)?)?;
+            flujo.Seek(0)?;
+            let d = esperar_operacion(&BitmapDecoder::CreateAsync(&flujo)?)?;
+            Ok((flujo, d))
+        };
+        let unidades = unidades_para(ancho);
+        let (mut _flujo, mut descodificador) = dibujar_trozo(unidades, unidades_para(alto))?;
+        let natural = descodificador.PixelWidth()?;
+        // La escala de la pantalla sin medir todavia en este proceso: se
+        // aprende aqui, como en `renderizar`, y se pinta una segunda vez.
+        // Sin esto el primer trozo salia un 40 % mas grande en un portatil
+        // al 140 %, y gastaba memoria que nadie pidio.
+        if natural > 0 && natural.abs_diff(ancho) * 50 > ancho {
+            ESCALA_MEDIDA.store(
+                (natural as f64 / unidades as f64).to_bits(),
+                Ordering::Relaxed,
+            );
+            let (f2, d2) = dibujar_trozo(unidades_para(ancho), unidades_para(alto))?;
+            _flujo = f2;
+            descodificador = d2;
+        }
+        let (w, h) = (descodificador.PixelWidth()?, descodificador.PixelHeight()?);
+        if w == 0 || h == 0 {
+            let _ = pagina.Close();
+            return Err(ErrorPdf::RenderVacio { indice });
+        }
+        let datos = esperar_operacion(&descodificador.GetPixelDataTransformedAsync(
+            BitmapPixelFormat::Rgba8,
+            BitmapAlphaMode::Straight,
+            &BitmapTransform::new()?,
+            ExifOrientationMode::IgnoreExifOrientation,
+            ColorManagementMode::DoNotColorManage,
+        )?)?;
+        let pixeles = datos.DetachPixelData()?.to_vec();
+        let _ = pagina.Close();
+        if pixeles.len() < (w as usize) * (h as usize) * 4 {
+            return Err(ErrorPdf::RenderVacio { indice });
+        }
+        Ok(ImagenRgba {
+            ancho: w,
+            alto: h,
             pixeles,
         })
     }
@@ -944,5 +1074,117 @@ mod pruebas {
             windows::core::Error::from(windows::Win32::Foundation::E_FAIL),
         );
         assert!(matches!(roto, ErrorPdf::Corrupto { .. }), "salio {roto:?}");
+    }
+
+    /// La proporcion alto/ancho de una medida.
+    fn proporcion((w, h): (f32, f32)) -> f32 {
+        h / w
+    }
+
+    #[test]
+    fn las_medidas_de_las_paginas_tienen_la_proporcion_de_lo_que_se_dibuja() {
+        // El lector continuo coloca las hojas con estas medidas ANTES de
+        // dibujarlas: si no casan con lo que luego sale, el desplazamiento
+        // salta al llegar cada hoja.
+        let (dir, ruta) = pdf_en_disco("medidas");
+        let documento = Documento::abrir(&ruta).unwrap();
+        let medidas = documento.medidas();
+        assert_eq!(medidas.len(), 3);
+        for (i, m) in medidas.iter().enumerate() {
+            let imagen = documento.renderizar(i as u32, 200).unwrap();
+            let dibujada = imagen.alto as f32 / imagen.ancho as f32;
+            assert!(
+                (proporcion(*m) - dibujada).abs() < 0.03,
+                "pagina {i}: medida {m:?} y dibujo {}x{}",
+                imagen.ancho,
+                imagen.alto
+            );
+        }
+        assert!(medidas[0].0 > medidas[0].1, "la primera es apaisada");
+        assert!(medidas[2].1 > medidas[2].0, "la tercera es vertical");
+        drop(documento);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn una_pagina_girada_mide_lo_que_se_ve_y_no_lo_que_dice_su_papel() {
+        // Papel apaisado (200x100) girado un cuarto de vuelta: en pantalla
+        // es vertical, y eso es lo que el lector tiene que reservarle.
+        let objetos = vec![
+            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Rotate 90 \
+             /Contents 4 0 R /Resources << >> >>"
+                .to_string(),
+            flujo("0 0 0 rg 10 10 80 80 re f"),
+        ];
+        let mut bytes: Vec<u8> = b"%PDF-1.4\n".to_vec();
+        let mut desplazamientos = Vec::new();
+        for (i, cuerpo) in objetos.iter().enumerate() {
+            desplazamientos.push(bytes.len());
+            bytes.extend_from_slice(format!("{} 0 obj\n{cuerpo}\nendobj\n", i + 1).as_bytes());
+        }
+        let inicio = bytes.len();
+        let total = objetos.len() + 1;
+        bytes.extend_from_slice(format!("xref\n0 {total}\n0000000000 65535 f \n").as_bytes());
+        for d in &desplazamientos {
+            bytes.extend_from_slice(format!("{d:010} 00000 n \n").as_bytes());
+        }
+        bytes.extend_from_slice(
+            format!("trailer\n<< /Size {total} /Root 1 0 R >>\nstartxref\n{inicio}\n%%EOF\n")
+                .as_bytes(),
+        );
+        let dir = temporal("girada");
+        let ruta = dir.join("girada.pdf");
+        fs::write(&ruta, bytes).unwrap();
+        let documento = Documento::abrir(&ruta).unwrap();
+        let m = documento.medidas()[0];
+        let imagen = documento.renderizar(0, 100).unwrap();
+        let dibujada = imagen.alto as f32 / imagen.ancho as f32;
+        assert!((proporcion(m) - dibujada).abs() < 0.05, "medida {m:?}");
+        assert!(
+            dibujada > 1.0,
+            "el dibujo sale girado: {}x{}",
+            imagen.ancho,
+            imagen.alto
+        );
+        drop(documento);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    /// Cuantos pixeles oscuros tiene una imagen.
+    fn oscuros(imagen: &ImagenRgba) -> usize {
+        imagen
+            .pixeles
+            .chunks_exact(4)
+            .filter(|p| (p[0] as u32 + p[1] as u32 + p[2] as u32) < 150)
+            .count()
+    }
+
+    #[test]
+    fn un_trozo_de_la_pagina_sale_a_la_resolucion_pedida_y_de_su_sitio() {
+        // La pagina 0 (200x100) tiene el cuadrado negro a la IZQUIERDA: la
+        // mitad izquierda pedida a 400x400 es casi toda negra y la derecha,
+        // blanca. Si `SourceRect` se ignorase, las dos saldrian iguales.
+        let (dir, ruta) = pdf_en_disco("trozo");
+        let documento = Documento::abrir(&ruta).unwrap();
+        let izquierda = documento
+            .renderizar_trozo(0, (0.0, 0.0, 0.5, 1.0), 400, 400)
+            .unwrap();
+        let derecha = documento
+            .renderizar_trozo(0, (0.5, 0.0, 0.5, 1.0), 400, 400)
+            .unwrap();
+        // Cuatro veces mas fino que la pagina entera a 200: es la razon de ser.
+        assert!(izquierda.ancho >= 380 && izquierda.ancho <= 420, "{}", izquierda.ancho);
+        assert!(izquierda.alto >= 380 && izquierda.alto <= 420, "{}", izquierda.alto);
+        let total = (izquierda.ancho * izquierda.alto) as usize;
+        assert!(oscuros(&izquierda) > total / 2, "la izquierda tiene el cuadrado");
+        assert_eq!(oscuros(&derecha), 0, "la derecha esta en blanco");
+        // Casos negativos: un trozo vacio o una pagina que no hay.
+        assert!(documento.renderizar_trozo(0, (0.0, 0.0, 0.0, 1.0), 10, 10).is_err());
+        assert!(documento.renderizar_trozo(9, (0.0, 0.0, 1.0, 1.0), 10, 10).is_err());
+        assert!(documento.renderizar_trozo(0, (0.0, 0.0, 1.0, 1.0), 0, 10).is_err());
+        drop(documento);
+        let _ = fs::remove_dir_all(dir);
     }
 }

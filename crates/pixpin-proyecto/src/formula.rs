@@ -82,19 +82,38 @@ impl fmt::Display for ErrorFormula {
 impl fmt::Display for Valor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            // Un numero redondo se ensena sin coma: «3», no «3.0», que es lo
-            // que el usuario escribio.
-            Valor::Numero(n) => write!(f, "{n}"),
+            // Como la vista General: «3» y no «3.0», «0.3» y no la cifra
+            // diecisiete de 0.1+0.2. Ver `general`.
+            Valor::Numero(n) => f.write_str(&general(*n)),
             Valor::Texto(t) => f.write_str(t),
             Valor::Error(e) => write!(f, "{e}"),
         }
     }
 }
 
+impl Valor {
+    /// **Lo que se ensena en la celda**, con el separador decimal del
+    /// usuario (`pixpin_shell::entorno::separador_decimal`): en `es-ES` el
+    /// total de `12,5` y `7` es `19,5`, no `19.5`. `Display` sigue con punto,
+    /// que es lo que se guarda y se vuelve a leer sin dudas.
+    pub fn mostrar(&self, decimal: char) -> String {
+        match self {
+            Valor::Numero(n) => general_con(*n, decimal),
+            otro => otro.to_string(),
+        }
+    }
+}
+
+/// [`general`] con otro separador decimal.
+pub fn general_con(d: f64, decimal: char) -> String {
+    let s = general(d);
+    if decimal == '.' { s } else { s.replace('.', &decimal.to_string()) }
+}
+
 /// Lo que vale una celda: su contenido, o el resultado de su formula.
 pub fn evaluar(tabla: &Tabla, celda: Ref) -> Valor {
-    let mut camino = Vec::new();
-    evaluar_camino(tabla, celda, &mut camino)
+    let mut m = Memoria::default();
+    evaluar_camino(tabla, celda, &mut m)
 }
 
 /// Lo mismo para todas las celdas escritas, de una vez.
@@ -102,24 +121,50 @@ pub fn evaluar(tabla: &Tabla, celda: Ref) -> Valor {
 /// Solo las escritas: una tabla con una celda en la `A1` y otra en la `Z900`
 /// devuelve dos entradas, no ochocientas mil. Las demas estan vacias y lo que
 /// valen ya se sabe sin preguntar.
+///
+/// **Con memoria y por columnas**: cada formula se calcula una vez y se
+/// guarda, y se recorren de arriba abajo y de izquierda a derecha. Una
+/// columna de saldos (`=D1+C2`, `=D2+C3`...) de diez mil filas se calcula
+/// entera: cada celda encuentra ya hecha la de encima, en vez de bajar diez
+/// mil escalones (y pasar el tope de [`PROFUNDIDAD_MAXIMA`]) y repetir la
+/// cuenta para cada fila, que era cuadratico. Importar un libro de Excel lo
+/// necesita (ver `importar_hojas`).
 pub fn evaluar_todo(tabla: &Tabla) -> BTreeMap<String, Valor> {
-    let mut salida = BTreeMap::new();
-    for clave in tabla.celdas.keys() {
+    let mut m = Memoria::default();
+    let mut refs: Vec<(Ref, &String)> = tabla
+        .celdas
+        .keys()
         // Una clave que no es una celda es basura de otra version; ensenarla
         // no se puede, pero tampoco vale la pena tirar el resto por ella.
-        if let Some(r) = ref_de(clave) {
-            salida.insert(clave.clone(), evaluar(tabla, r));
-        }
+        .filter_map(|clave| Some((ref_de(clave)?, clave)))
+        .collect();
+    refs.sort_by_key(|(r, _)| (r.columna, r.fila));
+    let mut salida = BTreeMap::new();
+    for (r, clave) in refs {
+        salida.insert(clave.clone(), evaluar_camino(tabla, r, &mut m));
     }
     salida
 }
 
+/// Lo que se va sabiendo mientras se calcula: por donde se va (para cazar
+/// los ciclos), lo ya calculado y las celdas escritas ordenadas por columna
+/// (para recorrer un rango sin mirar la tabla entera).
+#[derive(Default)]
+struct Memoria {
+    camino: Vec<Ref>,
+    hechas: std::collections::HashMap<Ref, Valor>,
+    indice: Option<Vec<Ref>>,
+}
+
 /// El valor de una celda sabiendo por donde se ha venido.
-fn evaluar_camino(tabla: &Tabla, celda: Ref, camino: &mut Vec<Ref>) -> Valor {
-    if camino.contains(&celda) {
+fn evaluar_camino(tabla: &Tabla, celda: Ref, m: &mut Memoria) -> Valor {
+    if m.camino.contains(&celda) {
         return Valor::Error(ErrorFormula::Ciclo);
     }
-    if camino.len() >= PROFUNDIDAD_MAXIMA {
+    if let Some(v) = m.hechas.get(&celda) {
+        return v.clone();
+    }
+    if m.camino.len() >= PROFUNDIDAD_MAXIMA {
         // No es un ciclo de verdad, pero se le parece en lo unico que le
         // importa al usuario: esa celda no se puede calcular y seguir
         // intentandolo tumbaria el programa.
@@ -128,31 +173,200 @@ fn evaluar_camino(tabla: &Tabla, celda: Ref, camino: &mut Vec<Ref>) -> Valor {
 
     let contenido = tabla.celda(celda);
     if !Tabla::es_formula(contenido) {
-        return valor_escrito(contenido);
+        // Tambien se guarda: un rango de mil celdas sumado en mil filas lee
+        // cada numero mil veces, y leer `1.234,50` no es gratis.
+        let v = valor_escrito(contenido);
+        m.hechas.insert(celda, v.clone());
+        return v;
     }
 
-    camino.push(celda);
-    let valor = evaluar_formula(tabla, &contenido[1..], camino);
-    camino.pop();
+    m.camino.push(celda);
+    let valor = evaluar_formula(tabla, &contenido[1..], m);
+    m.camino.pop();
+    // Un «ciclo» depende de por donde se entro (el tope de profundidad
+    // tambien lo da): no se guarda, que desde otra celda puede salir bien.
+    if valor != Valor::Error(ErrorFormula::Ciclo) {
+        m.hechas.insert(celda, valor.clone());
+    }
     valor
+}
+
+/// Lo que vale lo escrito en una celda que no es una formula
+/// (`Calculadora.literal` del movil): lo usa quien importa un libro para
+/// comparar lo calculado aqui con lo que dijo Excel.
+pub fn literal(contenido: &str) -> Valor {
+    valor_escrito(contenido)
 }
 
 /// Lo que vale una celda que no es una formula.
 fn valor_escrito(contenido: &str) -> Valor {
+    // El apostrofo de delante es la marca de «texto tal cual» del movil y de
+    // Excel (`ImportarHojas.textoComoLiteral`): un 007 que no es un 7, o un
+    // «=hola» que no es formula. Se ensena sin el.
+    if let Some(literal) = contenido.strip_prefix('\'') {
+        return Valor::Texto(literal.to_string());
+    }
     let limpio = contenido.trim();
     if limpio.is_empty() {
         return Valor::Texto(String::new());
     }
-    match limpio.parse::<f64>() {
-        // `parse` acepta «inf» y «NaN», que escritos a mano son texto, no
-        // numeros: un infinito colado aqui contagiaria toda la columna.
-        Ok(n) if n.is_finite() => Valor::Numero(n),
-        _ => Valor::Texto(limpio.to_string()),
+    match numero_escrito(limpio) {
+        Some(n) => Valor::Numero(n),
+        None => Valor::Texto(limpio.to_string()),
     }
 }
 
+/// **Un numero escrito a mano**, como lo escribio quien lo tecleo o lo pego
+/// de una hoja en espanol o en ingles: `1.234,50`, `1,234.50`, `S/ 120`,
+/// `15%`, `(300)`. `None` si no lo es. Es `CalculoFormato.numero` del movil,
+/// regla a regla: con los dos separadores el ultimo es el decimal; con uno
+/// solo repetido, de miles; una sola coma seguida de tres cifras tambien es
+/// de miles (`1,500` son mil quinientos, como en Peru), y si no, decimal.
+///
+/// Solo cifras: «inf» y «NaN» (que `parse` si acepta) son texto, que un
+/// infinito colado aqui contagiaria toda la columna.
+pub fn numero_escrito(texto: &str) -> Option<f64> {
+    let mut t = texto.trim();
+    if t.is_empty() {
+        return None;
+    }
+    let mut negativo = false;
+    if t.len() > 2 && t.starts_with('(') && t.ends_with(')') {
+        negativo = true;
+        t = t[1..t.len() - 1].trim();
+    }
+    if let Some(r) = t.strip_prefix('-') {
+        negativo = !negativo;
+        t = r.trim();
+    } else if let Some(r) = t.strip_prefix('+') {
+        t = r.trim();
+    }
+    for moneda in ["S/.", "S/", "US$", "$", "€", "£"] {
+        if let Some(r) = t.strip_prefix(moneda) {
+            t = r.trim_start();
+            break;
+        }
+    }
+    let mut por_ciento = false;
+    if let Some(r) = t.strip_suffix('%') {
+        por_ciento = true;
+        t = r.trim();
+    }
+    let mut s: String = t.chars().filter(|c| !matches!(c, ' ' | '\u{a0}' | '\u{202f}')).collect();
+    if let Some(r) = s.strip_prefix('-') {
+        negativo = !negativo;
+        s = r.to_string();
+    }
+    // `^[0-9][0-9.,]*([eE][+-]?[0-9]+)?$|^[.,][0-9]+([eE][+-]?[0-9]+)?$`
+    let (cuerpo, exponente) = match s.find(['e', 'E']) {
+        Some(i) => (s[..i].to_string(), s[i..].to_string()),
+        None => (s.clone(), String::new()),
+    };
+    let exp_bien = exponente.is_empty() || {
+        let r = exponente[1..].trim_start_matches(['+', '-']);
+        !r.is_empty() && r.chars().all(|c| c.is_ascii_digit()) && exponente[1..].len() - r.len() <= 1
+    };
+    let mut cs = cuerpo.chars();
+    let cifras_bien = match cs.next() {
+        Some(c) if c.is_ascii_digit() => cuerpo.chars().all(|c| c.is_ascii_digit() || c == '.' || c == ','),
+        Some('.' | ',') => {
+            let resto: String = cs.collect();
+            !resto.is_empty() && resto.chars().all(|c| c.is_ascii_digit())
+        }
+        _ => false,
+    };
+    if !cifras_bien || !exp_bien {
+        return None;
+    }
+    let puntos = cuerpo.matches('.').count();
+    let comas = cuerpo.matches(',').count();
+    let mut cuerpo = if puntos > 0 && comas > 0 {
+        if cuerpo.rfind('.') > cuerpo.rfind(',') {
+            if puntos > 1 {
+                return None;
+            }
+            cuerpo.replace(',', "")
+        } else {
+            if comas > 1 {
+                return None;
+            }
+            cuerpo.replace('.', "").replace(',', ".")
+        }
+    } else if comas > 0 {
+        if comas > 1 {
+            cuerpo.replace(',', "")
+        } else {
+            let antes = cuerpo.find(',').unwrap_or(0);
+            let despues = cuerpo.len() - antes - 1;
+            if despues == 3 && (1..=3).contains(&antes) && !cuerpo.starts_with('0') {
+                cuerpo.replace(',', "")
+            } else {
+                cuerpo.replace(',', ".")
+            }
+        }
+    } else if puntos > 1 {
+        cuerpo.replace('.', "")
+    } else {
+        cuerpo
+    };
+    if cuerpo.starts_with('.') {
+        cuerpo.insert(0, '0');
+    }
+    if cuerpo.ends_with('.') {
+        cuerpo.pop();
+    }
+    if cuerpo.is_empty() {
+        return None;
+    }
+    let v: f64 = format!("{cuerpo}{exponente}").parse().ok()?;
+    let mut r = if por_ciento { v / 100.0 } else { v };
+    if negativo {
+        r = -r;
+    }
+    r.is_finite().then_some(r)
+}
+
+/// **Un numero como lo ensena la vista «General» de Excel** (y el movil,
+/// `CalculoFormato.general`): diez cifras significativas sin ceros de cola,
+/// los enteros enteros hasta 10^15 y en notacion cientifica lo que no cabe.
+/// Asi `0.1+0.2` ensena `0.3`, y la tabla de la pantalla, la de la pagina
+/// web y el CSV dicen lo mismo al digito.
+pub fn general(d: f64) -> String {
+    if !d.is_finite() {
+        return "#¡NUM!".into();
+    }
+    if d == 0.0 {
+        return "0".into();
+    }
+    let a = d.abs();
+    let signo = if d < 0.0 { "-" } else { "" };
+    if a < 1e15 && a == a.floor() {
+        return format!("{signo}{}", a as i64);
+    }
+    if !(1e-9..1e15).contains(&a) {
+        // Seis cifras y el exponente con dos digitos: `1.5E-12`.
+        let s = format!("{a:.5e}");
+        let (mantisa, exp) = s.split_once('e').unwrap_or((&s, "0"));
+        let mantisa = if mantisa.contains('.') {
+            mantisa.trim_end_matches('0').trim_end_matches('.')
+        } else {
+            mantisa
+        };
+        let e: i32 = exp.parse().unwrap_or(0);
+        return format!("{signo}{mantisa}E{}{:02}", if e < 0 { '-' } else { '+' }, e.abs());
+    }
+    let s = format!("{a:.9e}");
+    let e: i32 = s.split_once('e').and_then(|(_, e)| e.parse().ok()).unwrap_or(0);
+    let decimales = (9 - e).max(0) as usize;
+    let mut plano = format!("{a:.decimales$}");
+    if plano.contains('.') {
+        plano = plano.trim_end_matches('0').trim_end_matches('.').to_string();
+    }
+    format!("{signo}{plano}")
+}
+
 /// Calcula una formula ya sin el `=` de delante.
-fn evaluar_formula(tabla: &Tabla, texto: &str, camino: &mut Vec<Ref>) -> Valor {
+fn evaluar_formula(tabla: &Tabla, texto: &str, m: &mut Memoria) -> Valor {
     let piezas = match trocear(texto) {
         Ok(p) => p,
         Err(e) => return Valor::Error(e),
@@ -161,7 +375,7 @@ fn evaluar_formula(tabla: &Tabla, texto: &str, camino: &mut Vec<Ref>) -> Valor {
         piezas,
         i: 0,
         tabla,
-        camino,
+        m,
     };
     let valor = analizador.expresion();
     // Lo que sobra tras la expresion es una formula a medias («=1 2»), y
@@ -234,12 +448,32 @@ fn trocear(texto: &str) -> Result<Vec<Pieza>, ErrorFormula> {
             continue;
         }
 
-        if c.is_alphabetic() {
+        // El `$` de `$A$1` solo fija la celda al copiar la formula; al
+        // calcular no cambia nada, y un libro de Excel lo trae a cada paso.
+        if c.is_alphabetic() || (c == '$' && letras.get(i + 1).is_some_and(|s| s.is_ascii_alphabetic())) {
             let empieza = i;
-            while i < letras.len() && letras[i].is_alphanumeric() {
+            while i < letras.len()
+                && (letras[i].is_alphanumeric()
+                    || (letras[i] == '$' && letras.get(i + 1).is_some_and(|s| s.is_ascii_alphanumeric())))
+            {
                 i += 1;
             }
-            let palabra: String = letras[empieza..i].iter().collect();
+            let crudo: String = letras[empieza..i].iter().collect();
+            let palabra = if crudo.contains('$') {
+                // Con dolar solo puede ser una celda: sin forma de celda, mala.
+                match ref_de(&crudo.replace('$', "")) {
+                    Some(r) => {
+                        piezas.push(Pieza::Celda(r));
+                        continue;
+                    }
+                    None => {
+                        piezas.push(Pieza::CeldaMala);
+                        continue;
+                    }
+                }
+            } else {
+                crudo
+            };
             piezas.push(match ref_de(&palabra) {
                 Some(r) => Pieza::Celda(r),
                 // Con numeros dentro solo puede querer ser una celda; sin
@@ -265,7 +499,7 @@ struct Analizador<'a> {
     piezas: Vec<Pieza>,
     i: usize,
     tabla: &'a Tabla,
-    camino: &'a mut Vec<Ref>,
+    m: &'a mut Memoria,
 }
 
 impl Analizador<'_> {
@@ -355,7 +589,7 @@ impl Analizador<'_> {
                 if self.mira() == Some(&Pieza::DosPuntos) {
                     return Valor::Error(ErrorFormula::Sintaxis);
                 }
-                evaluar_camino(self.tabla, r, self.camino)
+                evaluar_camino(self.tabla, r, self.m)
             }
             Pieza::Abre => {
                 let dentro = self.expresion();
@@ -429,8 +663,8 @@ impl Analizador<'_> {
                     Valor::Error(e) => return Err(*e),
                 },
                 Argumento::Rango(a, b) => {
-                    for r in celdas_del_rango(self.tabla, *a, *b) {
-                        match evaluar_camino(self.tabla, r, self.camino) {
+                    for r in celdas_del_rango(self.tabla, *a, *b, &mut self.m.indice) {
+                        match evaluar_camino(self.tabla, r, self.m) {
                             Valor::Numero(n) => numeros.push(n),
                             Valor::Texto(_) => {}
                             // Un error dentro del rango sube: una suma que se
@@ -451,17 +685,42 @@ impl Analizador<'_> {
 /// Se recorren las celdas que hay, no el rectangulo: `A1:ZZ9999` son
 /// diecisiete millones de huecos y dos numeros, y recorrer los huecos colgaria
 /// el programa por una formula que el usuario escribio con toda la razon.
-fn celdas_del_rango(tabla: &Tabla, a: Ref, b: Ref) -> Vec<Ref> {
+fn celdas_del_rango(tabla: &Tabla, a: Ref, b: Ref, indice: &mut Option<Vec<Ref>>) -> Vec<Ref> {
     // Al reves (`B6:B1`) es el mismo rango: se arrastra el raton hacia arriba
     // tan a menudo como hacia abajo.
     let (c1, c2) = (a.columna.min(b.columna), a.columna.max(b.columna));
     let (f1, f2) = (a.fila.min(b.fila), a.fila.max(b.fila));
-    tabla
-        .celdas
-        .keys()
-        .filter_map(|clave| ref_de(clave))
-        .filter(|r| (c1..=c2).contains(&r.columna) && (f1..=f2).contains(&r.fila))
-        .collect()
+    // Las escritas, ordenadas por columna y fila una sola vez por calculo:
+    // un rango se busca con dos saltos por columna en vez de mirar la
+    // tabla entera por cada `SUMA` de cada fila.
+    let indice = indice.get_or_insert_with(|| {
+        let mut v: Vec<Ref> = tabla.celdas.keys().filter_map(|clave| ref_de(clave)).collect();
+        v.sort_by_key(|r| (r.columna, r.fila));
+        v
+    });
+    let mut salida = Vec::new();
+    let mut i = indice.partition_point(|r| (r.columna, r.fila) < (c1, f1));
+    while let Some(r) = indice.get(i) {
+        if r.columna > c2 {
+            break;
+        }
+        if r.fila < f1 {
+            i = indice.partition_point(|x| (x.columna, x.fila) < (r.columna, f1));
+            continue;
+        }
+        if r.fila > f2 {
+            // Lo que queda de esta columna cae fuera: a la siguiente.
+            let siguiente = r.columna.saturating_add(1);
+            if siguiente == r.columna {
+                break;
+            }
+            i = indice.partition_point(|x| (x.columna, x.fila) < (siguiente, f1));
+            continue;
+        }
+        salida.push(*r);
+        i += 1;
+    }
+    salida
 }
 
 fn aplicar(nombre: &str, numeros: &[f64]) -> Valor {
@@ -561,6 +820,128 @@ mod pruebas {
         let t = tabla(&[("A1", "inf"), ("A2", "NaN")]);
         assert_eq!(valor(&t, "A1"), Valor::Texto("inf".into()));
         assert_eq!(valor(&t, "A2"), Valor::Texto("NaN".into()));
+    }
+
+    #[test]
+    fn los_numeros_se_leen_como_los_escribe_una_hoja_en_espanol_o_en_ingles() {
+        // `CalculoFormato.numero` del movil: con los dos separadores el
+        // ultimo es el decimal; una coma seguida de tres cifras es de miles.
+        for (texto, esperado) in [
+            ("1.234,50", 1234.5),
+            ("1,234.50", 1234.5),
+            ("3,20", 3.2),
+            ("1,500", 1500.0),
+            ("0,500", 0.5),
+            ("12,5", 12.5),
+            ("15%", 0.15),
+            ("(300)", -300.0),
+            ("S/ 120", 120.0),
+            ("-€ 4", -4.0),
+            (".5", 0.5),
+            ("1e3", 1000.0),
+            ("2.000.000", 2_000_000.0),
+        ] {
+            assert_eq!(numero_escrito(texto), Some(esperado), "{texto}");
+        }
+        // Casos negativos: nada de esto es un numero.
+        for malo in ["", "abc", "12a", "e5", "1e", "inf", "NaN", "--", "1.234,5,6"] {
+            assert_eq!(numero_escrito(malo), None, "{malo}");
+        }
+        let t = tabla(&[("B2", "1.234,50"), ("B3", "3,20"), ("B4", "=SUMA(B2:B3)")]);
+        assert_eq!(valor(&t, "B4").to_string(), "1237.7");
+    }
+
+    #[test]
+    fn los_numeros_se_ensenan_como_la_vista_general_de_excel() {
+        // Diez cifras significativas y sin ceros de cola: 0.1+0.2 no ensena
+        // la cifra diecisiete que el usuario nunca escribio.
+        assert_eq!(general(0.1 + 0.2), "0.3");
+        assert_eq!(general(1.0 / 3.0), "0.3333333333");
+        assert_eq!(general(-2.5), "-2.5");
+        assert_eq!(general(12.0), "12");
+        assert_eq!(general(0.0), "0");
+        assert_eq!(general(1e20), "1E+20");
+        assert_eq!(general(1.5e-12), "1.5E-12");
+        assert_eq!(general(f64::NAN), "#¡NUM!");
+    }
+
+    #[test]
+    fn una_columna_de_saldos_de_mil_filas_se_calcula_entera_y_deprisa() {
+        // Cada fila suma la de encima: mil escalones, mas que el tope de
+        // profundidad. Con memoria, cada celda encuentra hecha la anterior.
+        let mut t = Tabla::default();
+        for f in 0..1000u32 {
+            t.poner(Ref { columna: 0, fila: f }, "1");
+            let saldo = if f == 0 { "=A1".to_string() } else { format!("=B{}+A{}", f, f + 1) };
+            t.poner(Ref { columna: 1, fila: f }, &saldo);
+            // Y un total que suma todo lo de encima, fila a fila.
+            t.poner(Ref { columna: 2, fila: f }, &format!("=SUMA($A$1:A{})", f + 1));
+        }
+        let t0 = std::time::Instant::now();
+        let v = evaluar_todo(&t);
+        assert_eq!(v["B1000"], Valor::Numero(1000.0));
+        assert_eq!(v["C1000"], Valor::Numero(1000.0));
+        assert!(t0.elapsed().as_secs() < 5, "tardo {:?}", t0.elapsed());
+        // Caso negativo: un ciclo sigue siendo un ciclo aunque haya memoria.
+        t.poner(ref_de("A1").unwrap(), "=B1000");
+        assert_eq!(evaluar_todo(&t)["A1"], Valor::Error(ErrorFormula::Ciclo));
+    }
+
+    #[test]
+    fn un_rango_encuentra_sus_celdas_por_columnas_sin_colarse_otras() {
+        let t = tabla(&[
+            ("A1", "1"),
+            ("A5", "100"),
+            ("B2", "10"),
+            ("B3", "20"),
+            ("C2", "1000"),
+            ("D1", "=SUMA(A2:B4)"),
+            ("D2", "=SUMA(B3:A2)"),
+        ]);
+        assert_eq!(numero(&t, "D1"), 30.0);
+        assert_eq!(numero(&t, "D2"), 30.0, "al reves es el mismo rango");
+    }
+
+    #[test]
+    fn el_resultado_se_ensena_con_la_coma_del_usuario_y_se_guarda_con_punto() {
+        let t = tabla(&[("B2", "12,5"), ("B3", "7"), ("B4", "=SUMA(B2:B3)"), ("B5", "=1/0"), ("B6", "=B4*100000000000000000000")]);
+        let total = valor(&t, "B4");
+        assert_eq!(total.mostrar(','), "19,5", "es-ES");
+        assert_eq!(total.mostrar('.'), "19.5", "en-US");
+        assert_eq!(total.to_string(), "19.5", "lo que se guarda no cambia");
+        assert_eq!(valor(&t, "B6").mostrar(','), "1,95E+21");
+        // Casos negativos: los errores y los enteros no llevan separador.
+        assert_eq!(valor(&t, "B5").mostrar(','), "#¡DIV/0!");
+        assert_eq!(valor(&t, "B3").mostrar(','), "7");
+        // Y lo ensenado se vuelve a leer igual.
+        assert_eq!(numero_escrito(&total.mostrar(',')), Some(19.5));
+    }
+
+    #[test]
+    fn un_apostrofo_delante_hace_texto_lo_que_pareceria_numero_o_formula() {
+        // Es la marca del movil (y de Excel) para «esto es texto tal cual»:
+        // el codigo postal 007 no es un 7, ni «=hola» una formula. Se ensena
+        // sin el apostrofo.
+        let t = tabla(&[("A1", "'007"), ("A2", "'=hola"), ("A3", "=SUMA(A1:A2)"), ("A4", "'")]);
+        assert_eq!(valor(&t, "A1"), Valor::Texto("007".into()));
+        assert_eq!(valor(&t, "A2"), Valor::Texto("=hola".into()));
+        // Y como texto no suma.
+        assert_eq!(numero(&t, "A3"), 0.0);
+        // Caso negativo: un apostrofo solo es una celda vacia de verdad.
+        assert_eq!(valor(&t, "A4"), Valor::Texto(String::new()));
+    }
+
+    #[test]
+    fn las_referencias_con_dolar_de_excel_valen_igual() {
+        // `$A$1` fija la celda al copiar la formula; al calcular es la A1. Un
+        // libro de Excel las trae a cada paso, y sin esto cada una daba error.
+        let t = tabla(&[("A1", "2"), ("A2", "3"), ("B1", "=$A$1*A$2+$A2"), ("B2", "=SUMA($A$1:$A2)")]);
+        assert_eq!(numero(&t, "B1"), 9.0);
+        assert_eq!(numero(&t, "B2"), 5.0);
+        // Caso negativo: un dolar suelto no es nada.
+        let t = tabla(&[("A1", "=$+1"), ("A2", "=A$")]);
+        assert!(matches!(valor(&t, "A1"), Valor::Error(_)));
+        assert!(matches!(valor(&t, "A2"), Valor::Error(_)));
     }
 
     #[test]

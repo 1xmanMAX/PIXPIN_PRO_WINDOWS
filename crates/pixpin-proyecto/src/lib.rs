@@ -32,8 +32,12 @@ pub mod codigos;
 pub mod cuaderno;
 pub mod formula;
 pub mod identidad;
+pub mod importar_hojas;
 pub mod mini;
 pub mod tabla;
+pub mod tabla_web;
+pub mod portapapeles_tabla;
+pub mod ubicacion;
 pub mod vista;
 
 use std::collections::BTreeMap;

@@ -58,6 +58,20 @@ pub enum Clase {
 /// que orden se ensenan y con que aspecto.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Seccion {
+    /// La galeria del proyecto: **sus hojas**, en cuadricula y con su vista
+    /// previa. Es la pantalla de proyectos de Android (`ui/Proyectos.kt`),
+    /// que recorre `proyecto.hojas` y no la carpeta del disco.
+    ///
+    /// Un PDF importado deja UNA HOJA POR PAGINA (`motor/Proyectos.kt`,
+    /// `dePdf`), asi que aqui salen todas sus paginas aunque no se haya
+    /// dibujado en ellas. Lo que no es hoja —un `.html` suelto, una nota de
+    /// voz, un archivo del chat— NO sale: el usuario lo pidio asi, «en la
+    /// galeria solo aparezca lo mismo que aparece en la seccion de proyectos
+    /// de Android».
+    ///
+    /// Es la primera porque es la que se abre al pulsar el titulo: lo que se
+    /// quiere al entrar es VER lo que hay, no leer una lista.
+    Galeria,
     Todo,
     Fotos,
     Archivos,
@@ -68,7 +82,8 @@ pub enum Seccion {
 }
 
 impl Seccion {
-    pub const TODAS: [Seccion; 7] = [
+    pub const TODAS: [Seccion; 8] = [
+        Seccion::Galeria,
         Seccion::Todo,
         Seccion::Fotos,
         Seccion::Archivos,
@@ -81,6 +96,7 @@ impl Seccion {
     /// La clave de su nombre traducido.
     pub fn clave(self) -> &'static str {
         match self {
+            Seccion::Galeria => "info-galeria",
             Seccion::Todo => "info-todo",
             Seccion::Fotos => "info-fotos",
             Seccion::Archivos => "info-archivos",
@@ -94,8 +110,20 @@ impl Seccion {
     /// Si se ensena como cuadricula. Lo que se mira va en cuadricula; lo que
     /// se lee, en filas.
     pub fn es_cuadricula(self) -> bool {
-        matches!(self, Seccion::Fotos | Seccion::Dibujos)
+        matches!(self, Seccion::Galeria | Seccion::Fotos | Seccion::Dibujos)
     }
+}
+
+/// Si un mensaje es un PDF anadido al proyecto.
+///
+/// Por la extension del nombre y no por la clase: un PDF llega como
+/// `Clase::Archivo`, igual que un .docx o un .zip, y lo unico que lo
+/// distingue es como se llama.
+pub fn es_pdf(m: &Mensaje) -> bool {
+    m.clase == Some(Clase::Archivo)
+        && std::path::Path::new(&m.nombre)
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
 }
 
 /// Un mensaje del cuaderno.
@@ -284,11 +312,27 @@ pub fn clase_de_nombre(nombre: &str) -> Clase {
     }
 }
 
+/// El cerrojo de los cuadernos: todo lo que escribe en un `guardados.jsonl`
+/// lo toma mientras escribe.
+///
+/// Hace falta porque reescribir (leer entero, cambiar, renombrar encima)
+/// y anadir al final se hacen desde hilos distintos —el chat, el editor de
+/// notas, los recordatorios, lo que llega del movil—: una linea anadida
+/// entre la lectura y el renombrado de otro hilo desaparecia sin aviso. Uno
+/// solo para todos los cuadernos, porque escribir es raro y corto y asi no
+/// hay que llevar la cuenta de carpetas. Un hilo que murio con el cerrojo
+/// tomado no deja a los demas sin poder guardar: se sigue con el.
+pub fn cerrojo() -> std::sync::MutexGuard<'static, ()> {
+    static CERROJO: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    CERROJO.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Anade un mensaje al cuaderno de una carpeta: **una linea al final**, sin
 /// releer ni reescribir nada. Guardar cuesta lo mismo con diez mensajes que
 /// con diez mil, y un corte a mitad se lleva ese mensaje y no el cuaderno.
 pub fn anadir(carpeta: &std::path::Path, m: &Mensaje) -> std::io::Result<()> {
     use std::io::Write;
+    let _cerrojo = cerrojo();
     std::fs::create_dir_all(carpeta)?;
     let linea = serde_json::to_string(m).map_err(std::io::Error::other)?;
     let mut f = std::fs::OpenOptions::new()
@@ -298,6 +342,30 @@ pub fn anadir(carpeta: &std::path::Path, m: &Mensaje) -> std::io::Result<()> {
     // El salto va DESPUES de la linea: si el fichero se corta, lo roto es lo
     // ultimo y lo anterior sigue entero.
     writeln!(f, "{linea}")
+}
+
+/// La linea que [`anadir`] escribiria para `m`, sin escribirla: quien tiene
+/// mensajes enormes (una tabla de un Excel) la prepara en otro hilo y luego
+/// solo la pega con [`anadir_lineas`].
+pub fn linea_de(m: &Mensaje) -> std::io::Result<String> {
+    serde_json::to_string(m).map_err(std::io::Error::other)
+}
+
+/// Anade varias lineas ya hechas con [`linea_de`], de una sola escritura.
+pub fn anadir_lineas(carpeta: &std::path::Path, lineas: &[String]) -> std::io::Result<()> {
+    use std::io::Write;
+    let _cerrojo = cerrojo();
+    std::fs::create_dir_all(carpeta)?;
+    let mut todo = String::with_capacity(lineas.iter().map(|l| l.len() + 1).sum());
+    for l in lineas {
+        todo.push_str(l);
+        todo.push('\n');
+    }
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(carpeta.join("guardados.jsonl"))?;
+    f.write_all(todo.as_bytes())
 }
 
 /// Cambia un mensaje que ya estaba escrito, dejando el resto del fichero como
@@ -314,6 +382,7 @@ pub fn anadir(carpeta: &std::path::Path, m: &Mensaje) -> std::io::Result<()> {
 /// reescribir el fichero no puede ser la forma de perderlas. Se escribe a un
 /// temporal y se renombra: un corte a mitad deja el cuaderno anterior entero.
 pub fn reemplazar(carpeta: &std::path::Path, m: &Mensaje) -> std::io::Result<bool> {
+    let _cerrojo = cerrojo();
     let fichero = carpeta.join("guardados.jsonl");
     let texto = std::fs::read_to_string(&fichero)?;
     let nueva = serde_json::to_string(m).map_err(std::io::Error::other)?;
@@ -434,6 +503,13 @@ pub fn indices_de_seccion(mensajes: &[Mensaje], seccion: Seccion) -> Vec<usize> 
                 return seccion == Seccion::Buzon;
             }
             match seccion {
+                // La galeria son las HOJAS del proyecto, como la pantalla de
+                // proyectos de Android. Quien tiene el `proyecto.json` a mano
+                // filtra ademas por el codigo unico de cada hoja, que es
+                // exacto; aqui se hace lo que se puede sin el: las clases que
+                // una hoja produce. Un archivo suelto o una nota de voz no
+                // son hojas y no salen.
+                Seccion::Galeria => matches!(m.clase, Some(Clase::Dibujo | Clase::Pagina)),
                 Seccion::Todo => true,
                 Seccion::Buzon => false,
                 Seccion::Fijados => m.fijado,
@@ -465,6 +541,37 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn anadir_mientras_otro_hilo_reemplaza_no_pierde_ningun_mensaje() {
+        let d = carpeta_temporal("a-la-vez");
+        let mut fijo = Mensaje::nota("se edita", &sello(1, 1));
+        fijo.id = "fijo".into();
+        anadir(&d, &fijo).unwrap();
+        let hecho = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let editor = {
+            let (d, hecho, mut fijo) = (d.clone(), hecho.clone(), fijo.clone());
+            std::thread::spawn(move || {
+                let mut n = 0;
+                while !hecho.load(std::sync::atomic::Ordering::Relaxed) {
+                    n += 1;
+                    fijo.texto = format!("vuelta {n}");
+                    reemplazar(&d, &fijo).unwrap();
+                }
+            })
+        };
+        for n in 0..60 {
+            let mut m = Mensaje::nota("nuevo", &sello(2, 2));
+            m.id = format!("n{n}");
+            anadir(&d, &m).unwrap();
+        }
+        hecho.store(true, std::sync::atomic::Ordering::Relaxed);
+        editor.join().unwrap();
+        let leido = Cuaderno::leer(&std::fs::read_to_string(d.join("guardados.jsonl")).unwrap());
+        assert_eq!(leido.mensajes.len(), 61, "se perdieron mensajes");
+        assert_eq!(leido.lineas_rotas, 0);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
@@ -796,6 +903,76 @@ mod pruebas {
     }
 
     #[test]
+    fn la_galeria_ensena_el_proyecto_entero() {
+        // El usuario lo corrigio: «quiero que se vea TODO lo que esta en el
+        // proyecto en el celular Android». Nada se filtra; lo que cambia
+        // respecto a `Todo` es que se mira en cuadricula.
+        let c = Cuaderno::leer(concat!(
+            r#"{"id":"d1","clase":"DIBUJO","nombre":"Tesis base"}"#,
+            "\n",
+            r#"{"id":"d2","clase":"DIBUJO","nombre":"↳ Zona de la página 1"}"#,
+            "\n",
+            r#"{"id":"p1","clase":"PAGINA","nombre":"GE_Sem16 · 5","pagina":5}"#,
+            "\n",
+            r#"{"id":"a1","clase":"ARCHIVO","nombre":"GE_Sem16.pdf"}"#,
+            "\n",
+            r#"{"id":"a2","clase":"ARCHIVO","nombre":"notas.docx"}"#,
+            "\n",
+            r#"{"id":"i1","clase":"IMAGEN","nombre":"foto.jpg"}"#,
+            "\n",
+            r#"{"id":"n1","clase":"NOTA","texto":"hola"}"#,
+            "\n"
+        ));
+        let ids: Vec<&str> = c
+            .de_seccion(Seccion::Galeria)
+            .iter()
+            .map(|m| m.id.as_str())
+            .collect();
+        // Lo que una hoja produce: lienzos, sub-lienzos y paginas de PDF.
+        assert_eq!(ids, ["d1", "d2", "p1"]);
+        // Caso negativo, y es lo que el usuario corrigio: un PDF suelto, un
+        // .docx, una foto o una nota NO son hojas del proyecto, y la pantalla
+        // de proyectos de Android tampoco los ensena.
+        for fuera in ["a1", "a2", "i1", "n1"] {
+            assert!(!ids.contains(&fuera), "no deberia estar {fuera}");
+        }
+        // Y va en cuadricula, que es lo que la hace una galeria.
+        assert!(Seccion::Galeria.es_cuadricula());
+        assert!(!Seccion::Todo.es_cuadricula());
+    }
+
+    #[test]
+    fn la_galeria_es_la_primera_pestana_y_lo_del_buzon_no_se_cuela() {
+        // Es la que se abre al pulsar el titulo del proyecto.
+        assert_eq!(Seccion::TODAS[0], Seccion::Galeria);
+        // Caso negativo: un lienzo en el buzon esta ahi para decidir si se
+        // queda, y ensenarlo ya en la galeria seria darlo por aceptado.
+        let c = Cuaderno::leer(r#"{"id":"d","clase":"DIBUJO","enBuzon":true}"#);
+        assert!(c.de_seccion(Seccion::Galeria).is_empty());
+        assert_eq!(c.de_seccion(Seccion::Buzon).len(), 1);
+    }
+
+    #[test]
+    fn un_pdf_se_reconoce_por_su_nombre_con_mayusculas_o_sin_ellas() {
+        let pdf = |nombre: &str| Mensaje {
+            clase: Some(Clase::Archivo),
+            nombre: nombre.into(),
+            ..Default::default()
+        };
+        assert!(es_pdf(&pdf("informe.pdf")));
+        assert!(es_pdf(&pdf("INFORME.PDF")));
+        // Casos negativos: sin extension, con el punto dentro del nombre y
+        // una clase que no es un archivo.
+        assert!(!es_pdf(&pdf("pdf")));
+        assert!(!es_pdf(&pdf("mi.pdf.zip")));
+        assert!(!es_pdf(&Mensaje {
+            clase: Some(Clase::Dibujo),
+            nombre: "croquis.pdf".into(),
+            ..Default::default()
+        }));
+    }
+
+    #[test]
     fn los_indices_de_una_seccion_apuntan_a_sus_mismos_mensajes() {
         let c = Cuaderno::leer(concat!(
             r#"{"id":"n","clase":"NOTA","texto":"hola"}"#,
@@ -838,5 +1015,27 @@ mod pruebas {
         ] {
             assert!(c.de_seccion(s).is_empty(), "{s:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod pruebas_lineas {
+    use super::*;
+
+    #[test]
+    fn las_lineas_hechas_fuera_quedan_igual_que_anadir_una_a_una() {
+        let d = std::env::temp_dir().join(format!("pixpin-lineas-{}", std::process::id()));
+        let (a, b) = (d.join("a"), d.join("b"));
+        let m1 = Mensaje::nota("uno", &Sello { cuando: 1, numero: 1, aparato: "K".into(), proyecto: "p".into() });
+        let m2 = Mensaje::nota("dos", &Sello { cuando: 2, numero: 2, aparato: "K".into(), proyecto: "p".into() });
+        anadir(&a, &m1).unwrap();
+        anadir(&a, &m2).unwrap();
+        anadir_lineas(&b, &[linea_de(&m1).unwrap(), linea_de(&m2).unwrap()]).unwrap();
+        let leer = |c: &std::path::Path| std::fs::read_to_string(c.join("guardados.jsonl")).unwrap();
+        assert_eq!(leer(&a), leer(&b));
+        // Caso negativo: ninguna linea no escribe nada raro.
+        anadir_lineas(&b, &[]).unwrap();
+        assert_eq!(leer(&a), leer(&b));
+        let _ = std::fs::remove_dir_all(d);
     }
 }

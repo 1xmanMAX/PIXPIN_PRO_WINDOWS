@@ -1,0 +1,17 @@
+[package]
+name = "pixpin-notas"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# El editor de notas Markdown (H12): la ventana con el RichEdit de Windows y
+# el formato en vivo. Las cuentas del Markdown son de `pixpin-docs`
+# (`md_vivo`, puro); de donde sale y adonde vuelve la nota lo decide la
+# aplicacion. Aqui solo lo que necesita `unsafe`, que el ejecutable no admite.
+[dependencies]
+pixpin-codec = { version = "0.1.0", path = "../pixpin-codec" }
+pixpin-docs = { version = "0.1.0", path = "../pixpin-docs" }
+pixpin-shell = { version = "0.1.0", path = "../pixpin-shell" }
+tracing = "0.1.44"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_System_Ole", "Win32_System_Variant", "Win32_UI_Controls", "Win32_UI_Controls_RichEdit", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }

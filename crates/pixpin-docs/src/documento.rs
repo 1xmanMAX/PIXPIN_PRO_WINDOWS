@@ -409,6 +409,107 @@ const ESTILO: &str = concat!(
     "img,table{break-inside:avoid;page-break-inside:avoid}}",
 );
 
+/// El atributo con el que se marca cada bloque en [`cuerpo_para_anotar`].
+pub const MARCA_DE_BLOQUE: &str = "data-b";
+
+/// **El cuerpo del documento para la pagina web anotada**: los mismos
+/// bloques que pinta el lector, uno por elemento y **cada uno marcado con
+/// `data-b`**, en el mismo orden que el lector los coloca: primero la
+/// cabecera (el titulo si lo hay, el autor si lo hay) y luego un elemento
+/// por bloque, tambien los vacios. Asi la altura de cada bloque medida en el
+/// PC y la medida por el navegador casan una a una, y lo anotado se corre
+/// con su parrafo (ver `pixpin_motor2d::exportar_html::documento`).
+///
+/// Es HTML de verdad —texto que se selecciona, se busca y se copia—, pero
+/// escrito **como lo pinta el lector** y no como [`a_html`]: una fila de
+/// tabla es una linea con sus celdas separadas, como en la pantalla, y no
+/// una tabla con otras medidas; asi lo rayado encima de una celda sigue
+/// encima de ella. `imagen` da la direccion `data:` de cada imagen (quien
+/// llama la encoge si pesa); `None` la deja anunciada.
+///
+/// Lo que el lector pinta en gris (una nota, el autor) va con la clase
+/// `aparte` y no `nota`: el guion de la pagina web toma el primer `.nota`
+/// de la hoja por el documento entero, y mediria un parrafo suelto.
+pub fn cuerpo_para_anotar(d: &Documento, imagen: &dyn Fn(&Imagen) -> Option<String>) -> String {
+    let mut s = String::with_capacity(4096 + d.letras() * 2);
+    if !d.titulo.trim().is_empty() {
+        s.push_str("<h1 data-b>");
+        escapar_en(d.titulo.trim(), &mut s);
+        s.push_str("</h1>\n");
+    }
+    if !d.autor.trim().is_empty() {
+        s.push_str("<p class=\"aparte autor\" data-b>");
+        escapar_en(d.autor.trim(), &mut s);
+        s.push_str("</p>\n");
+    }
+    let mut n_imagen = 0usize;
+    for b in &d.bloques {
+        match b.clase {
+            Clase::Regla => s.push_str("<hr data-b>\n"),
+            Clase::Capitulo => s.push_str("<hr class=\"capitulo\" data-b>\n"),
+            Clase::Nota if b.texto() == MARCA_IMAGEN => {
+                let src = d.imagenes.get(n_imagen).and_then(imagen);
+                n_imagen += 1;
+                match src {
+                    Some(src) => {
+                        s.push_str("<p class=\"imagen\" data-b><img alt=\"\" src=\"");
+                        s.push_str(&src);
+                        s.push_str("\"></p>\n");
+                    }
+                    None => s.push_str("<p class=\"aparte\" data-b>[imagen]</p>\n"),
+                }
+            }
+            // Una lista vacia sigue siendo su punto, como en el lector.
+            Clase::Lista => {
+                s.push_str("<p class=\"lista\" data-b>• ");
+                tramos_html(b, &mut s);
+                s.push_str("</p>\n");
+            }
+            // Lo vacio no pinta nada pero ocupa su hueco: el lector lo salta
+            // dejando aire, y aqui ese aire lo pone su clase.
+            _ if b.vacio() => s.push_str("<p class=\"vacio\" data-b></p>\n"),
+            Clase::Nota => {
+                s.push_str("<p class=\"aparte\" data-b>");
+                tramos_html(b, &mut s);
+                s.push_str("</p>\n");
+            }
+            Clase::Titulo(n) => {
+                let n = n.clamp(1, 6);
+                s.push_str(&format!("<h{n} data-b>"));
+                tramos_html(b, &mut s);
+                s.push_str(&format!("</h{n}>\n"));
+            }
+            Clase::Cita => {
+                s.push_str("<blockquote data-b>");
+                tramos_html(b, &mut s);
+                s.push_str("</blockquote>\n");
+            }
+            Clase::Codigo => {
+                s.push_str("<pre data-b>");
+                escapar_en(&b.texto(), &mut s);
+                s.push_str("</pre>\n");
+            }
+            Clase::Fila => {
+                s.push_str("<p class=\"fila\" data-b>");
+                tramos_html(b, &mut s);
+                s.push_str("</p>\n");
+            }
+            Clase::Parrafo => {
+                s.push_str("<p data-b>");
+                tramos_html(b, &mut s);
+                s.push_str("</p>\n");
+            }
+        }
+    }
+    s
+}
+
+/// Cuantos elementos marca [`cuerpo_para_anotar`]: la cabecera y un bloque
+/// cada uno. Quien mide tiene que dar exactamente estas alturas.
+pub fn bloques_para_anotar(d: &Documento) -> usize {
+    usize::from(!d.titulo.trim().is_empty()) + usize::from(!d.autor.trim().is_empty()) + d.bloques.len()
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -542,5 +643,55 @@ mod pruebas {
         };
         let h = a_html(&d);
         assert!(h.contains("src=\"data:image/png;base64,Zm9v\""), "{h}");
+    }
+}
+
+#[cfg(test)]
+mod pruebas_para_anotar {
+    use super::*;
+
+    fn doc() -> Documento {
+        Documento {
+            titulo: "Libro".into(),
+            autor: String::new(),
+            bloques: vec![
+                Bloque::nuevo(Clase::Titulo(2), vec![Trozo::llano("Uno")]),
+                Bloque::nuevo(Clase::Parrafo, vec![Trozo::llano("  ")]),
+                Bloque::nota(MARCA_IMAGEN),
+                Bloque::nuevo(Clase::Fila, vec![Trozo::llano("a  │  b")]),
+                Bloque::nuevo(Clase::Regla, vec![]),
+                Bloque::nuevo(Clase::Parrafo, vec![Trozo::llano("<fin>")]),
+            ],
+            imagenes: vec![Imagen {
+                mime: "image/png".into(),
+                datos: vec![1, 2, 3],
+            }],
+        }
+    }
+
+    #[test]
+    fn cada_bloque_sale_marcado_y_en_el_orden_del_lector() {
+        let d = doc();
+        let html = cuerpo_para_anotar(&d, &|im| Some(format!("data:{};base64,{}", im.mime, base64(&im.datos))));
+        assert_eq!(html.matches("data-b").count(), bloques_para_anotar(&d));
+        assert_eq!(bloques_para_anotar(&d), 7, "titulo y seis bloques");
+        let orden: Vec<usize> = ["<h1 data-b>Libro", "<h2 data-b>Uno", "class=\"vacio\"", "<img", "class=\"fila\"", "<hr data-b>", "&lt;fin&gt;"]
+            .iter()
+            .map(|a| html.find(a).unwrap_or_else(|| panic!("falta {a}")))
+            .collect();
+        assert!(orden.windows(2).all(|w| w[0] < w[1]), "{orden:?}");
+        assert!(html.contains("src=\"data:image/png;base64,AQID\""));
+        // Caso negativo: una fila no se vuelve tabla, que mediria distinto.
+        assert!(!html.contains("<table"));
+        // Ni nada con la clase que el guion toma por el documento entero.
+        assert!(!html.contains("class=\"nota"));
+    }
+
+    #[test]
+    fn una_imagen_sin_direccion_se_queda_anunciada_y_sigue_contando() {
+        let d = doc();
+        let html = cuerpo_para_anotar(&d, &|_| None);
+        assert!(html.contains("<p class=\"aparte\" data-b>[imagen]</p>"));
+        assert_eq!(html.matches("data-b").count(), 7);
     }
 }

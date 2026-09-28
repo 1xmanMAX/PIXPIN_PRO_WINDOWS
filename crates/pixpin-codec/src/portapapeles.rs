@@ -19,6 +19,9 @@ use windows::Win32::UI::Shell::{DROPFILES, DragQueryFileW, HDROP};
 
 use crate::imagen::{ErrorCodec, ImagenRgba};
 
+/// Las celdas de una tabla: `HTML Format` y texto con tabuladores (J2).
+pub mod tabla;
+
 /// Formato de portapapeles para un mapa de bits independiente del dispositivo.
 const CF_DIB: u32 = 8;
 /// Texto Unicode.
@@ -28,6 +31,46 @@ const CF_HDROP: u32 = 15;
 
 /// Copia la imagen al portapapeles como `CF_DIB`.
 pub fn copiar_imagen(imagen: &ImagenRgba) -> Result<(), ErrorCodec> {
+    let dib = construir_dib(imagen)?;
+    publicar(&[(CF_DIB, &dib)])
+}
+
+/// Copia **las N rutas como ficheros y ademas la imagen suelta**, en un solo
+/// portapapeles.
+///
+/// Es lo que hace que un unico Ctrl+V pegue varias capturas «como si jalara
+/// archivos de una carpeta» (palabras del usuario) alli donde el destino
+/// acepta ficheros —el Explorador, WhatsApp, Telegram, Word, un correo— y
+/// siga pegando una imagen alli donde solo se admite un mapa de bits (la caja
+/// de «pegar imagen» de muchas paginas).
+///
+/// El orden importa: `CF_HDROP` se cede PRIMERO. Las aplicaciones que
+/// recorren los formatos disponibles y se quedan con el primero que entienden
+/// los ven en el orden en que se cedieron, asi que cederlo al reves haria que
+/// justo los programas que saben pegar N ficheros pegaran una sola imagen.
+///
+/// Para **una sola** captura no se usa esto sino `copiar_imagen`: publicar
+/// ademas su ruta cambiaria el pegado de siempre (WhatsApp y Word prefieren
+/// el fichero cuando lo hay, y donde antes salia la imagen incrustada
+/// apareceria un adjunto). Quien lo decide es `pixpin_pila::Pila::que_copiar`.
+pub fn copiar_imagen_y_ficheros(
+    imagen: &ImagenRgba,
+    rutas: &[std::path::PathBuf],
+) -> Result<(), ErrorCodec> {
+    // Las dos cargas se montan ANTES de tocar Win32: si una esta mal, el
+    // portapapeles del usuario ni se entera.
+    let hdrop = construir_hdrop(rutas)?;
+    let dib = construir_dib(imagen)?;
+    publicar(&[(CF_HDROP, &hdrop), (CF_DIB, &dib)])
+}
+
+/// Monta la carga util de `CF_DIB`: cabecera `BITMAPINFOHEADER` y detras los
+/// pixeles en BGRA y con las filas de abajo arriba.
+///
+/// Va aparte del trasiego de Win32 por lo mismo que `construir_hdrop`: asi
+/// los bytes se pueden comprobar en una prueba normal, sin abrir el
+/// portapapeles, que es un recurso global de la sesion.
+fn construir_dib(imagen: &ImagenRgba) -> Result<Vec<u8>, ErrorCodec> {
     if imagen.ancho == 0 || imagen.alto == 0 {
         return Err(ErrorCodec::Vacia {
             ancho: imagen.ancho,
@@ -55,60 +98,119 @@ pub fn copiar_imagen(imagen: &ImagenRgba) -> Result<(), ErrorCodec> {
         ..Default::default()
     };
 
-    let total = size_of::<BITMAPINFOHEADER>() + espera;
+    let mut carga = Vec::with_capacity(size_of::<BITMAPINFOHEADER>() + espera);
+    // SAFETY: `BITMAPINFOHEADER` es un POD con todos sus campos
+    // inicializados, asi que sus `size_of` bytes son legibles y no hay relleno
+    // sin inicializar. Solo se copian, no se guarda el puntero.
+    carga.extend_from_slice(unsafe {
+        std::slice::from_raw_parts(
+            &cabecera as *const BITMAPINFOHEADER as *const u8,
+            size_of::<BITMAPINFOHEADER>(),
+        )
+    });
 
-    // SAFETY: se pide memoria movible del tamano exacto que se va a escribir.
-    // El bloque se cede al portapapeles mas abajo con `SetClipboardData`, que
-    // pasa a ser su dueno; por eso no se libera aqui en el camino de exito.
-    let bloque = unsafe { GlobalAlloc(GHND, total).map_err(|_| ErrorCodec::Portapapeles)? };
+    let paso = imagen.ancho as usize * 4;
+    // Filas invertidas: un DIB clasico las guarda de abajo a arriba.
+    for fila in (0..imagen.alto as usize).rev() {
+        for pixel in imagen.pixeles[fila * paso..(fila + 1) * paso].chunks_exact(4) {
+            // Y de RGBA a BGRA, que es lo que espera un DIB.
+            carga.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
+        }
+    }
+    Ok(carga)
+}
 
-    // SAFETY: `bloque` acaba de reservarse y no esta bloqueado por nadie mas.
-    let destino = unsafe { GlobalLock(bloque) };
-    if destino.is_null() {
+/// Abre el portapapeles una sola vez, lo vacia y cede cada carga con su
+/// formato, en el orden dado.
+///
+/// Es una sola sesion a proposito: abrir, vaciar y volver a abrir para el
+/// segundo formato borraria el primero, que es exactamente el fallo que se
+/// comete al anadir un formato nuevo a una funcion que ya publicaba uno.
+fn publicar(cargas: &[(u32, &[u8])]) -> Result<(), ErrorCodec> {
+    if cargas.is_empty() {
         return Err(ErrorCodec::Portapapeles);
     }
-
-    // SAFETY: `destino` apunta a `total` bytes escribibles, y se escriben
-    // exactamente esos: la cabecera y despues `espera` bytes de pixeles.
-    unsafe {
-        std::ptr::copy_nonoverlapping(
-            &cabecera as *const BITMAPINFOHEADER as *const u8,
-            destino as *mut u8,
-            size_of::<BITMAPINFOHEADER>(),
-        );
-
-        let pixeles_destino = (destino as *mut u8).add(size_of::<BITMAPINFOHEADER>());
-        let paso = imagen.ancho as usize * 4;
-        // Filas invertidas: un DIB clasico las guarda de abajo a arriba.
-        for fila in 0..imagen.alto as usize {
-            let origen = &imagen.pixeles[fila * paso..(fila + 1) * paso];
-            let destino_fila = pixeles_destino.add((imagen.alto as usize - 1 - fila) * paso);
-            // Y de RGBA a BGRA, que es lo que espera un DIB.
-            for (i, pixel) in origen.chunks_exact(4).enumerate() {
-                let p = destino_fila.add(i * 4);
-                *p = pixel[2];
-                *p.add(1) = pixel[1];
-                *p.add(2) = pixel[0];
-                *p.add(3) = pixel[3];
+    // Primero se reserva TODO. Si la segunda reserva fallara con la primera
+    // ya cedida, el portapapeles quedaria a medias: con la imagen pero sin
+    // los ficheros, y el usuario pegaria una sola captura creyendo que pego
+    // las cinco.
+    let mut bloques = Vec::with_capacity(cargas.len());
+    for (formato, carga) in cargas {
+        match reservar(carga) {
+            Ok(b) => bloques.push((*formato, b)),
+            Err(e) => {
+                liberar(&bloques);
+                return Err(e);
             }
         }
+    }
 
+    // SAFETY: se abre el portapapeles, se vacia, se ceden los bloques y se
+    // cierra sin retornos intermedios que lo dejarian abierto para toda la
+    // sesion. `SetClipboardData` toma la propiedad del bloque en caso de
+    // exito; los que no llegaron a cederse siguen siendo nuestros y se
+    // liberan a mano.
+    unsafe {
+        if OpenClipboard(None).is_err() {
+            liberar(&bloques);
+            return Err(ErrorCodec::Portapapeles);
+        }
+        let vaciado = EmptyClipboard();
+        let mut fallo = false;
+        let mut sin_ceder = Vec::new();
+        for (formato, bloque) in &bloques {
+            if fallo {
+                sin_ceder.push((*formato, *bloque));
+                continue;
+            }
+            if SetClipboardData(*formato, Some(HANDLE(bloque.0))).is_err() {
+                fallo = true;
+                sin_ceder.push((*formato, *bloque));
+            }
+        }
+        let _ = CloseClipboard();
+        liberar(&sin_ceder);
+        if fallo {
+            return Err(ErrorCodec::Portapapeles);
+        }
+        vaciado.map_err(|_| ErrorCodec::Portapapeles)?;
+    }
+    Ok(())
+}
+
+/// Memoria global movible con una copia de `carga`. El dueno sigue siendo el
+/// llamante hasta que `SetClipboardData` tenga exito.
+fn reservar(carga: &[u8]) -> Result<HGLOBAL, ErrorCodec> {
+    // SAFETY: memoria movible del tamano exacto que se va a escribir.
+    let bloque = unsafe { GlobalAlloc(GHND, carga.len()).map_err(|_| ErrorCodec::Portapapeles)? };
+    // SAFETY: recien reservado, nadie mas lo tiene bloqueado.
+    let destino = unsafe { GlobalLock(bloque) };
+    if destino.is_null() {
+        // SAFETY: el bloque es nuestro y el bloqueo fallo, asi que no hay
+        // nadie dentro; sin este `GlobalFree` se filtraria memoria global,
+        // que es un recurso de todo el proceso.
+        unsafe {
+            let _ = GlobalFree(Some(bloque));
+        }
+        return Err(ErrorCodec::Portapapeles);
+    }
+    // SAFETY: `destino` apunta a `carga.len()` bytes escribibles y se escriben
+    // exactamente esos.
+    unsafe {
+        std::ptr::copy_nonoverlapping(carga.as_ptr(), destino as *mut u8, carga.len());
         let _ = GlobalUnlock(bloque);
     }
+    Ok(bloque)
+}
 
-    // SAFETY: se abre el portapapeles, se vacia, se cede el bloque y se
-    // cierra. `SetClipboardData` toma la propiedad del bloque en caso de
-    // exito, asi que no se libera despues.
-    unsafe {
-        OpenClipboard(None).map_err(|_| ErrorCodec::Portapapeles)?;
-        let vaciado = EmptyClipboard();
-        let puesto = SetClipboardData(CF_DIB, Some(HANDLE(bloque.0)));
-        let _ = CloseClipboard();
-        vaciado.map_err(|_| ErrorCodec::Portapapeles)?;
-        puesto.map_err(|_| ErrorCodec::Portapapeles)?;
+fn liberar(bloques: &[(u32, HGLOBAL)]) {
+    for (_, b) in bloques {
+        // SAFETY: bloques que siguen siendo nuestros porque nunca llegaron a
+        // cederse al portapapeles; liberar uno cedido seria doble liberacion.
+        unsafe {
+            let _ = GlobalFree(Some(*b));
+        }
     }
-
-    Ok(())
 }
 
 /// Lo que habia en el portapapeles cuando se preguntó.
@@ -155,35 +257,14 @@ pub fn leer() -> Option<ContenidoPortapapeles> {
 /// Copia texto plano como `CF_UNICODETEXT`. La pareja de `copiar_imagen`
 /// para las notas.
 pub fn copiar_texto(texto: &str) -> Result<(), ErrorCodec> {
-    let utf16: Vec<u16> = texto.encode_utf16().chain(std::iter::once(0)).collect();
-    let total = utf16.len() * 2;
-
-    // SAFETY: memoria movible del tamano exacto que se va a escribir; el
-    // bloque se cede al portapapeles con SetClipboardData, que pasa a ser su
-    // dueno, asi que no se libera en el camino de exito.
-    let bloque = unsafe { GlobalAlloc(GHND, total).map_err(|_| ErrorCodec::Portapapeles)? };
-    // SAFETY: recien reservado, nadie mas lo tiene bloqueado.
-    let destino = unsafe { GlobalLock(bloque) };
-    if destino.is_null() {
-        return Err(ErrorCodec::Portapapeles);
-    }
-    // SAFETY: `destino` apunta a `total` bytes escribibles y se escriben
-    // exactamente esos.
-    unsafe {
-        std::ptr::copy_nonoverlapping(utf16.as_ptr() as *const u8, destino as *mut u8, total);
-        let _ = GlobalUnlock(bloque);
-    }
-
-    // SAFETY: abrir, vaciar, ceder y cerrar, sin retornos intermedios.
-    unsafe {
-        OpenClipboard(None).map_err(|_| ErrorCodec::Portapapeles)?;
-        let vaciado = EmptyClipboard();
-        let puesto = SetClipboardData(CF_UNICODETEXT, Some(HANDLE(bloque.0)));
-        let _ = CloseClipboard();
-        vaciado.map_err(|_| ErrorCodec::Portapapeles)?;
-        puesto.map_err(|_| ErrorCodec::Portapapeles)?;
-    }
-    Ok(())
+    // Win32 espera UTF-16 en el orden nativo, que en toda maquina Windows
+    // soportada es little endian.
+    let bytes: Vec<u8> = texto
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    publicar(&[(CF_UNICODETEXT, &bytes)])
 }
 
 /// Copia una lista de ficheros como `CF_HDROP`, el mismo formato que deja el
@@ -198,53 +279,7 @@ pub fn copiar_ficheros(rutas: &[std::path::PathBuf]) -> Result<(), ErrorCodec> {
     // Primero se monta la carga entera y solo despues se toca Win32: si algo
     // esta mal, el portapapeles del usuario ni se entera.
     let carga = construir_hdrop(rutas)?;
-
-    // SAFETY: memoria movible del tamano exacto que se va a escribir. En el
-    // camino de exito el bloque se cede al portapapeles y no se libera; en
-    // cada camino de fallo de aqui abajo seguimos siendo duenos y se libera a
-    // mano, porque el bloque no cambia de dueno hasta que `SetClipboardData`
-    // devuelve exito.
-    let bloque = unsafe { GlobalAlloc(GHND, carga.len()).map_err(|_| ErrorCodec::Portapapeles)? };
-
-    // SAFETY: recien reservado, nadie mas lo tiene bloqueado.
-    let destino = unsafe { GlobalLock(bloque) };
-    if destino.is_null() {
-        // SAFETY: el bloque es nuestro y el bloqueo fallo, asi que no hay
-        // nadie dentro; sin este `GlobalFree` se filtraria memoria global,
-        // que es un recurso de todo el proceso.
-        unsafe {
-            let _ = GlobalFree(Some(bloque));
-        }
-        return Err(ErrorCodec::Portapapeles);
-    }
-
-    // SAFETY: `destino` apunta a `carga.len()` bytes escribibles y se escriben
-    // exactamente esos.
-    unsafe {
-        std::ptr::copy_nonoverlapping(carga.as_ptr(), destino as *mut u8, carga.len());
-        let _ = GlobalUnlock(bloque);
-    }
-
-    // SAFETY: abrir, vaciar, ceder y cerrar sin retornos intermedios que
-    // dejarian el portapapeles abierto para toda la sesion.
-    unsafe {
-        if OpenClipboard(None).is_err() {
-            let _ = GlobalFree(Some(bloque));
-            return Err(ErrorCodec::Portapapeles);
-        }
-        let vaciado = EmptyClipboard();
-        let puesto = SetClipboardData(CF_HDROP, Some(HANDLE(bloque.0)));
-        let _ = CloseClipboard();
-        // El unico caso en que el bloque sigue siendo nuestro es que la cesion
-        // fallara; si tuvo exito, liberarlo aqui seria una doble liberacion.
-        if puesto.is_err() {
-            let _ = GlobalFree(Some(bloque));
-            return Err(ErrorCodec::Portapapeles);
-        }
-        vaciado.map_err(|_| ErrorCodec::Portapapeles)?;
-    }
-
-    Ok(())
+    publicar(&[(CF_HDROP, &carga)])
 }
 
 /// Monta la carga util de `CF_HDROP`: una cabecera `DROPFILES` seguida de las
@@ -651,6 +686,94 @@ mod pruebas {
         let relativa = std::path::PathBuf::from("capturas/a.png");
         assert!(construir_hdrop(std::slice::from_ref(&relativa)).is_err());
         assert!(copiar_ficheros(std::slice::from_ref(&relativa)).is_err());
+    }
+
+    #[test]
+    fn el_dib_lleva_su_cabecera_y_las_filas_de_abajo_arriba() {
+        // Dos filas de un pixel: la de arriba roja, la de abajo verde. En un
+        // DIB clasico la primera fila de los bytes es la de ABAJO, y el pixel
+        // va en BGRA. Si alguien «arregla» el orden, las capturas pegadas
+        // saldrian del reves y ninguna prueba con escritorio lo cazaria.
+        let img = ImagenRgba {
+            ancho: 1,
+            alto: 2,
+            pixeles: vec![255, 0, 0, 255, 0, 255, 0, 255],
+        };
+        let dib = construir_dib(&img).expect("deberia montarse");
+        let cab = size_of::<BITMAPINFOHEADER>();
+        assert_eq!(dib.len(), cab + 8);
+        assert_eq!(
+            i32::from_le_bytes(dib[4..8].try_into().unwrap()),
+            1,
+            "biWidth"
+        );
+        assert_eq!(
+            i32::from_le_bytes(dib[8..12].try_into().unwrap()),
+            2,
+            "biHeight positivo: filas de abajo arriba"
+        );
+        assert_eq!(&dib[cab..cab + 4], &[0, 255, 0, 255], "primero la de abajo");
+        assert_eq!(&dib[cab + 4..], &[0, 0, 255, 255], "y luego la de arriba");
+    }
+
+    #[test]
+    fn copiar_imagen_y_ficheros_falla_antes_de_tocar_el_portapapeles() {
+        // Caso negativo doble: ni una lista vacia ni una imagen incoherente
+        // pueden llegar a vaciar el portapapeles del usuario. Falla antes de
+        // Win32, asi que no necesita escritorio.
+        let buena = ImagenRgba {
+            ancho: 1,
+            alto: 1,
+            pixeles: vec![1, 2, 3, 255],
+        };
+        assert!(copiar_imagen_y_ficheros(&buena, &[]).is_err());
+        let mala = ImagenRgba {
+            ancho: 4,
+            alto: 4,
+            pixeles: vec![0; 3],
+        };
+        assert!(
+            copiar_imagen_y_ficheros(&mala, &[std::path::PathBuf::from(r"C:\tmp\a.png")]).is_err()
+        );
+    }
+
+    #[test]
+    #[ignore = "toca el portapapeles real; ejecutar con --ignored"]
+    fn varias_capturas_se_pegan_como_ficheros_y_tambien_como_imagen() {
+        // La promesa entera de la pila: UN Ctrl+V lleva las N rutas para
+        // quien sabe pegar ficheros, y ademas el mapa de bits de la ultima
+        // para quien solo acepta una imagen. Y en un solo portapapeles: si
+        // uno de los dos formatos borrara al otro, esto lo caza.
+        use windows::Win32::System::DataExchange::IsClipboardFormatAvailable;
+
+        let img = ImagenRgba {
+            ancho: 2,
+            alto: 1,
+            pixeles: vec![10, 20, 30, 255, 40, 50, 60, 255],
+        };
+        let rutas = vec![
+            std::env::temp_dir().join("pixpin-pila-1.png"),
+            std::env::temp_dir().join("pixpin-pila-2.png"),
+        ];
+        copiar_imagen_y_ficheros(&img, &rutas).expect("deberia copiar las dos cosas");
+
+        // SAFETY: se abre y se cierra en la misma funcion, sin retornos
+        // intermedios entre ambas llamadas.
+        unsafe {
+            OpenClipboard(None).expect("deberia poder abrirse");
+            let hay_ficheros = IsClipboardFormatAvailable(CF_HDROP).is_ok();
+            let hay_imagen = IsClipboardFormatAvailable(CF_DIB).is_ok();
+            let _ = CloseClipboard();
+            assert!(hay_ficheros, "sin CF_HDROP no se pegan las N capturas");
+            assert!(hay_imagen, "sin CF_DIB no se pega donde solo cabe una");
+        }
+
+        // Y las rutas vuelven enteras y en orden: `leer` da prioridad a los
+        // ficheros, que es justo lo que se quiere aqui.
+        match leer() {
+            Some(ContenidoPortapapeles::Rutas(vuelta)) => assert_eq!(vuelta, rutas),
+            otro => panic!("se esperaban rutas, llego {otro:?}"),
+        }
     }
 
     #[test]

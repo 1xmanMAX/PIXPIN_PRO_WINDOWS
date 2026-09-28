@@ -160,6 +160,48 @@ pub fn codificar_png(imagen: &ImagenRgba) -> Result<Vec<u8>, ErrorCodec> {
     Ok(salida.into_inner())
 }
 
+/// **JPEG en memoria**, sobre blanco: lo que pesa poco para meter una foto o
+/// una pagina escaneada dentro de una pagina web o un SVG. Un PNG de una
+/// pagina de PDF a 1400 de ancho pasa del mega; en JPEG, un par de cientos
+/// de kB con la misma lectura. `calidad` de 1 a 100.
+///
+/// Lo transparente sale blanco y no negro: JPEG no tiene alfa, y una pagina
+/// con los bordes en negro no es lo que se ve en pantalla.
+pub fn codificar_jpg(imagen: &ImagenRgba, calidad: u8) -> Result<Vec<u8>, ErrorCodec> {
+    if imagen.ancho == 0 || imagen.alto == 0 {
+        return Err(ErrorCodec::Vacia {
+            ancho: imagen.ancho,
+            alto: imagen.alto,
+        });
+    }
+    let espera = imagen.bytes_esperados();
+    if imagen.pixeles.len() != espera {
+        return Err(ErrorCodec::TamanoIncoherente {
+            ancho: imagen.ancho,
+            alto: imagen.alto,
+            tiene: imagen.pixeles.len(),
+            espera,
+        });
+    }
+    let rgb: Vec<u8> = imagen
+        .pixeles
+        .chunks_exact(4)
+        .flat_map(|p| {
+            let a = p[3] as u32;
+            let sobre_blanco = |c: u8| ((c as u32 * a + 255 * (255 - a)) / 255) as u8;
+            [sobre_blanco(p[0]), sobre_blanco(p[1]), sobre_blanco(p[2])]
+        })
+        .collect();
+    let mut salida = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut salida, calidad.clamp(1, 100))
+        .encode(&rgb, imagen.ancho, imagen.alto, image::ExtendedColorType::Rgb8)
+        .map_err(|fuente| ErrorCodec::Escritura {
+            ruta: std::path::PathBuf::from("<memoria>"),
+            fuente,
+        })?;
+    Ok(salida)
+}
+
 /// Escribe la imagen a disco en el formato indicado.
 pub fn guardar(imagen: &ImagenRgba, ruta: &Path, formato: FormatoImagen) -> Result<(), ErrorCodec> {
     // Las dos comprobaciones existen para no escribir un fichero corrupto que
@@ -477,6 +519,33 @@ mod pruebas {
             &[10, 20, 30, 255],
             "un color liso sigue liso"
         );
+    }
+
+    #[test]
+    fn el_jpg_en_memoria_se_lee_y_lo_transparente_sale_blanco() {
+        // Mitad roja opaca, mitad transparente.
+        let mut pixeles = Vec::new();
+        for _ in 0..16 {
+            for x in 0..16 {
+                pixeles.extend_from_slice(if x < 8 { &[220, 20, 20, 255] } else { &[0, 0, 0, 0] });
+            }
+        }
+        let img = ImagenRgba {
+            ancho: 16,
+            alto: 16,
+            pixeles,
+        };
+        let jpg = codificar_jpg(&img, 90).expect("se codifica");
+        assert!(jpg.starts_with(&[0xFF, 0xD8, 0xFF]));
+        let leida = image::load_from_memory(&jpg).expect("se lee").to_rgb8();
+        assert_eq!((leida.width(), leida.height()), (16, 16));
+        let derecha = leida.get_pixel(13, 8);
+        assert!(derecha.0.iter().all(|c| *c > 230), "blanco, no negro: {derecha:?}");
+        let izquierda = leida.get_pixel(2, 8);
+        assert!(izquierda.0[0] > 180 && izquierda.0[1] < 80, "rojo: {izquierda:?}");
+        // Casos negativos: vacia o con bytes de menos no da fichero.
+        assert!(codificar_jpg(&ImagenRgba { ancho: 0, alto: 0, pixeles: vec![] }, 90).is_err());
+        assert!(codificar_jpg(&ImagenRgba { ancho: 2, alto: 2, pixeles: vec![0; 3] }, 90).is_err());
     }
 
     #[test]

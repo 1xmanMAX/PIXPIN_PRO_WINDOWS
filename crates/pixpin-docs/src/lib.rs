@@ -19,12 +19,16 @@
 
 #![forbid(unsafe_code)]
 
+pub mod buscar;
 pub mod documento;
 pub mod docx;
 pub mod epub;
 pub mod html;
+pub mod indice;
 pub mod lectura;
+pub mod md_vivo;
 pub mod pdf;
+pub mod vista;
 pub mod xml;
 
 pub use documento::{Bloque, Clase, Documento, Estilo, Trozo};
