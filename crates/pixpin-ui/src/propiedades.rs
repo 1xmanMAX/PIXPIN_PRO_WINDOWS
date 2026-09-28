@@ -50,18 +50,26 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
             Opacidad,
         ],
         Figura::Texto { .. } => &[ColorTrazo, Opacidad, Fuente, TamanoTexto],
-        // El foco oscurece lo de alrededor: su color es el del velo.
-        Figura::Foco { .. } => &[Opacidad],
+        // El foco, como el del movil (`propiedadesDeTipo(SPOTLIGHT)`): solo
+        // cuanto oscurece y cuanto ilumina, que van en sus propias filas
+        // (`Mandos::foco_oscurecer`, `foco_zona`). Su opacidad no pinta nada.
+        Figura::Foco { .. } => &[],
+        // La lupa: la tinta y el grueso de su montura, como el movil
+        // (`propiedadesDeTipo(LUPA)`).
+        Figura::Lupa { .. } => &[ColorTrazo, Grosor, Opacidad],
         Figura::Imagen { .. } => &[Opacidad],
-        // Un mosaico tapa: lo unico que se puede elegir es de que color
-        // queda la mancha. Ni opacidad —un mosaico a medias no tapa— ni
-        // nada que cambie su forma.
-        Figura::Mosaico { .. } => &[Relleno],
-        // Una cota es una raya de medir: ni relleno ni rugosidad.
-        Figura::Cota { .. } => &[ColorTrazo, Grosor, Estilo, Opacidad],
+        // Un mosaico tapa: se elige de que color queda la mancha y, como en
+        // el movil (`propiedadesDeTipo(MOSAIC)`), el grano con el grosor
+        // (`mosaico::grano`: 8, 16 o 32). Pixelar o desenfocar va en su
+        // propia fila (`Mandos::mosaico`). Ni opacidad —un mosaico a medias
+        // no tapa— ni nada que cambie su forma.
+        Figura::Mosaico { .. } => &[Relleno, Grosor],
+        // Una cota es una raya de medir: ni relleno ni rugosidad. Su cifra
+        // lleva letra (`propiedadesDeTipo(MEASURE)`: FUENTE).
+        Figura::Cota { .. } => &[ColorTrazo, Grosor, Estilo, Opacidad, Fuente],
         // Cuantos cuadros y cuanto mide cada uno lo decide la escala, no el
         // usuario: ofrecerlo seria ofrecer mentir.
-        Figura::EscalaGrafica => &[ColorTrazo, Opacidad],
+        Figura::EscalaGrafica => &[ColorTrazo, Opacidad, Fuente],
         // El marco es andamiaje, no dibujo: se pinta siempre igual y no
         // ofrece nada que cambiar. Ofrecer color seria invitar a usarlo como
         // una figura mas.
@@ -71,16 +79,19 @@ pub fn de_figura(f: &Figura) -> &'static [Propiedad] {
         // El arco es una raya curva: lo mismo que la linea. Su relleno no se
         // ofrece porque un trozo de ovalo no encierra nada.
         Figura::Arco { .. } => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
-        // El numero de serie es un circulo con un numero dentro: se le
-        // cambia el color, el fondo y el tamano —que sale de su caja—, pero
-        // no la fuente: la serie tiene que leerse igual en los diez
-        // circulos, y dejar cambiarla de uno en uno es invitar a que no.
-        Figura::Serie { .. } => &[ColorTrazo, Relleno, Grosor, Opacidad],
+        // El numero de serie, como el del movil (`propiedadesDeTipo(SERIAL)`:
+        // TRAZO, FUENTE, OPACIDAD): el color del disco, la letra del numero
+        // (pedida por el usuario) y su tamano, que es el del circulo.
+        Figura::Serie { .. } => &[ColorTrazo, Opacidad, Fuente, TamanoTexto],
         // Lo que pinto el bote: es un relleno, y es lo que se ajusta.
         Figura::Region { .. } => &[ColorTrazo, Relleno, EstiloRelleno, Grosor, Opacidad],
         // Un punto es un sitio: color y poco mas. Ni rugosidad —un punto
         // tembloroso no es un punto— ni relleno.
-        Figura::Punto { .. } => &[ColorTrazo, Grosor, Opacidad],
+        Figura::Punto { .. } => &[ColorTrazo, Grosor, Opacidad, Fuente],
+        // El cronograma: la tinta de su rejilla y sus nombres, el fondo de
+        // sus barras y el grueso. Filas, columnas y nombres van en su
+        // cajetin (Intro con el elegido).
+        Figura::Cronograma { .. } => &[ColorTrazo, Relleno, Grosor, Opacidad, Fuente],
     }
 }
 
@@ -96,7 +107,10 @@ pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad] {
         | Herramienta::Escalar
         | Herramienta::Marco
         | Herramienta::Emoji => &[],
-        Herramienta::Lapiz | Herramienta::Resaltador => &[ColorTrazo, Grosor, Opacidad],
+        // El grafito es un lapiz mas: lo mismo que ajustar.
+        Herramienta::Lapiz | Herramienta::Resaltador | Herramienta::Grafito => {
+            &[ColorTrazo, Grosor, Opacidad]
+        }
         Herramienta::Linea => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad],
         Herramienta::Flecha => &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad, PuntaFlecha],
         Herramienta::Rectangulo | Herramienta::Elipse => &[
@@ -109,10 +123,11 @@ pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad] {
             Opacidad,
         ],
         Herramienta::Texto => &[ColorTrazo, Opacidad, Fuente, TamanoTexto],
-        Herramienta::Foco => &[Opacidad],
+        // Es una varita: lo que se ajusta es el foco ya hecho.
+        Herramienta::Foco => &[],
         // Mismas propiedades que su Figura correspondiente, arriba.
-        Herramienta::Cota => &[ColorTrazo, Grosor, Estilo, Opacidad],
-        Herramienta::EscalaGrafica => &[ColorTrazo, Opacidad],
+        Herramienta::Cota => &[ColorTrazo, Grosor, Estilo, Opacidad, Fuente],
+        Herramienta::EscalaGrafica => &[ColorTrazo, Opacidad, Fuente],
         // Las que abre la tanda cero. Cada una con lo mismo que su figura,
         // arriba: son dos caras de la misma tabla y separarlas es como se
         // desincronizan.
@@ -129,10 +144,13 @@ pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad] {
         Herramienta::FlechaCodos | Herramienta::FlechaLibre => {
             &[ColorTrazo, Grosor, Estilo, Rugosidad, Opacidad, PuntaFlecha]
         }
-        Herramienta::Mosaico => &[Relleno],
-        Herramienta::Serie => &[ColorTrazo, Relleno, Grosor, Opacidad],
-        Herramienta::Relleno => &[Relleno, EstiloRelleno, Opacidad],
-        Herramienta::Punto => &[ColorTrazo, Grosor, Opacidad],
+        Herramienta::Mosaico => &[Relleno, Grosor],
+        Herramienta::Serie => &[ColorTrazo, Opacidad, Fuente, TamanoTexto],
+        // **El bote pinta con el color que hay puesto** (v0.76 del movil:
+        // `propiedadesDeTipo(REGION) - FONDO + TRAZO`): sin el mando del color,
+        // con el bote en la mano no habia manera de elegir de que color rellenar.
+        Herramienta::Relleno => &[ColorTrazo, EstiloRelleno, Opacidad],
+        Herramienta::Punto => &[ColorTrazo, Grosor, Opacidad, Fuente],
         // Trabajan sobre lo que ya hay y no traen estilo propio: el lazo
         // selecciona, recortar y extender cambian puntos, y copiar estilo
         // toma el suyo de la figura que se pique. Ofrecer mandos aqui seria
@@ -140,7 +158,17 @@ pub fn de_herramienta(h: Herramienta) -> &'static [Propiedad] {
         Herramienta::Lazo
         | Herramienta::Recortar
         | Herramienta::Extender
-        | Herramienta::CopiarEstilo => &[],
+        | Herramienta::CopiarEstilo
+        // La zona saca una foto y el laser no deja nada: sin estilo.
+        | Herramienta::Zona
+        | Herramienta::Laser
+        // Soldar clava lo que ya hay: el clavo no tiene estilo.
+        | Herramienta::Nudo
+        // La bolita elige, como el lazo.
+        | Herramienta::Bolita => &[],
+        // El cronograma: la tinta de su rejilla, el fondo de sus barras y el
+        // grueso, como el tipo que crea (`estilo::propiedades_de`).
+        Herramienta::Cronograma => &[ColorTrazo, Relleno, Grosor, Opacidad, Fuente],
     }
 }
 

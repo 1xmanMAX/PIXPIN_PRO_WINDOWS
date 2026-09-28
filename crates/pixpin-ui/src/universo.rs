@@ -102,10 +102,13 @@ impl Paneles {
     }
 }
 
-/// Las tres herramientas del universo, en su orden.
-pub const HERRAMIENTAS_UNIVERSO: [pixpin_universo::HerramientaUniverso; 3] = [
+/// Las herramientas del universo, en su orden. La figura y el rotulo (H3)
+/// van junto al emoji, que es con quien van en el «Anadir» del movil.
+pub const HERRAMIENTAS_UNIVERSO: [pixpin_universo::HerramientaUniverso; 5] = [
     pixpin_universo::HerramientaUniverso::Planeta,
     pixpin_universo::HerramientaUniverso::Emoji,
+    pixpin_universo::HerramientaUniverso::Figura,
+    pixpin_universo::HerramientaUniverso::Rotulo,
     pixpin_universo::HerramientaUniverso::Conectar,
 ];
 
@@ -858,7 +861,7 @@ mod pruebas {
     }
 
     #[test]
-    fn la_barra_del_universo_tiene_sus_tres_herramientas_en_orden() {
+    fn la_barra_del_universo_tiene_sus_cinco_herramientas_en_orden() {
         use pixpin_universo::HerramientaUniverso as H;
         let p = Paneles::calcular(area(), 100, false, true);
         let b = BarraUniverso::colocar(p.lienzo, 100);
@@ -871,7 +874,9 @@ mod pruebas {
         };
         assert_eq!(b.boton_en(centro(0)), Some(H::Planeta));
         assert_eq!(b.boton_en(centro(1)), Some(H::Emoji));
-        assert_eq!(b.boton_en(centro(2)), Some(H::Conectar));
+        assert_eq!(b.boton_en(centro(2)), Some(H::Figura));
+        assert_eq!(b.boton_en(centro(3)), Some(H::Rotulo));
+        assert_eq!(b.boton_en(centro(4)), Some(H::Conectar));
         // Caso negativo: fuera de la isla, nada; y la isla no pisa la ruta.
         assert_eq!(b.boton_en(Punto { x: 900, y: 900 }), None);
         assert!(b.marco.y >= p.ruta.y + p.ruta.alto as i32);

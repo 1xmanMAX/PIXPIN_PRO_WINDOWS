@@ -8,12 +8,14 @@
 #![forbid(unsafe_code)]
 
 pub mod ajustes;
-pub mod anotador;
 pub mod barra;
 pub mod caja_herramientas;
 pub mod chat;
 pub mod confirmar;
+pub mod evento_anotador;
 pub mod historial;
+pub mod hoja_compartir;
+pub mod hojita;
 pub mod info;
 pub mod lupa;
 pub mod menu;
@@ -22,18 +24,20 @@ pub mod overlay;
 pub mod panel;
 pub mod panel_lateral;
 pub mod propiedades;
+/// La pantalla de Proyectos del chat (`ui/Proyectos.kt` del movil).
+pub mod proyectos;
 pub mod reproductor;
 pub mod resaltado;
+pub mod riel_marcas;
 pub mod tabla;
 pub mod universo;
 
-pub use anotador::{
-    Anotador, EfectoAnotador, EventoAnotador, Herramienta, TeclaAnotador, UMBRAL_ARRASTRE,
-};
 pub use barra::{AccionBarra, Barra};
 pub use caja_herramientas::{
-    BOTONES, BOTONES_EDITOR, BotonCaja, CajaHerramientas, DestinoClic, grupo as grupo_boton,
+    BARRA_AGRUPADA, BOTONES, BOTONES_EDITOR, BotonCaja, CajaHerramientas, DestinoClic, GrupoBarra,
+    MenuGrupo, agrupar, cara_del_grupo, grupo as grupo_boton, grupo_de_boton,
 };
+pub use evento_anotador::{EventoAnotador, Herramienta, TeclaAnotador};
 pub use lupa::{FormatoColorLupa, Lupa, texto_color};
 pub use overlay::{Efecto, EstadoOverlay, EventoEntrada, Fase, FormaCursor, TeclaOverlay};
 pub use panel::PanelTodo;

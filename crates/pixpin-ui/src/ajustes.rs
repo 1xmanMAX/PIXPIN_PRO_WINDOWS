@@ -49,6 +49,10 @@ pub enum Control {
         maximo: u32,
         paso: u32,
     },
+    /// **Un titulo de seccion**, sin nada que tocar: agrupa las filas que
+    /// siguen (las herramientas, por los grupos de la barra). Pulsarlo no
+    /// hace nada.
+    Seccion,
 }
 
 /// Una linea de la ventana: su etiqueta ya traducida y lo que se toca.
@@ -291,6 +295,7 @@ pub fn golpe_en(
                 .into_iter()
                 .position(|r| r.contiene(x, y))
                 .map(|cual| Golpe::Elegir { fila: indice, cual }),
+            Control::Seccion => None,
         };
     }
     None
@@ -552,5 +557,30 @@ mod pruebas {
         // Caso negativo: pedirle un numero a un interruptor no puede
         // devolver un cero que luego se guarde como si fuera un ajuste.
         assert_eq!(numero_tras(&Control::Interruptor(true), true), None);
+    }
+
+    #[test]
+    fn un_titulo_de_seccion_no_se_pulsa_y_la_fila_de_debajo_si() {
+        let filas = vec![
+            Fila {
+                etiqueta: "Formas".into(),
+                control: Control::Seccion,
+            },
+            Fila {
+                etiqueta: "Rombo".into(),
+                control: Control::Interruptor(true),
+            },
+        ];
+        let titulo = rect_de_fila(0, 0, ANCHO);
+        let zona = zona_de_control(titulo);
+        let en = |r: Recta| punto((r.x + r.ancho / 2.0) as i32, (r.y + r.alto / 2.0) as i32);
+        assert_eq!(golpe_en(en(zona), ANCHO, ALTO, 5, &filas, 0), None);
+        assert_eq!(golpe_en(en(titulo), ANCHO, ALTO, 5, &filas, 0), None);
+        // Caso negativo: el interruptor de debajo si responde.
+        let fila = rect_de_fila(1, 0, ANCHO);
+        assert_eq!(
+            golpe_en(en(zona_de_control(fila)), ANCHO, ALTO, 5, &filas, 0),
+            Some(Golpe::Alternar(1))
+        );
     }
 }

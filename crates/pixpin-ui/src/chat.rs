@@ -139,6 +139,115 @@ pub enum Vista {
     SoloChat,
 }
 
+/// La extension de `nombre` como etiqueta para la ficha de un fichero sin
+/// vista previa: en mayusculas y recortada.
+///
+/// Es lo que hace Telegram cuando no puede ensenar una miniatura: en vez de
+/// un cuadro vacio, un rectangulo de color con «PDF», «HTML» o «DOCX». El
+/// usuario lo pidio asi: «si no se puede mostrar miniatura se muestre algo
+/// como en Telegram, una imagen que dice la extension del archivo».
+///
+/// Cadena vacia si no hay extension reconocible; entonces quien pinta pone
+/// un icono en su lugar, que es mas honrado que inventarse un rotulo.
+pub fn extension_corta(nombre: &str) -> String {
+    let Some(punto) = nombre.rfind('.') else {
+        return String::new();
+    };
+    let ext = &nombre[punto + 1..];
+    // Solo letras y numeros: lo que sigue a un punto en «pegado-1789.png»
+    // vale, pero «version 1.2 final» no tiene extension ninguna.
+    if ext.is_empty() || !ext.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return String::new();
+    }
+    // Cuatro es lo que cabe sin encoger la letra hasta lo ilegible: EXCEL
+    // no, XLSX si. Lo mas largo se corta, como en Telegram.
+    ext.to_uppercase().chars().take(4).collect()
+}
+
+/// Un color estable para la chapa de una extension.
+///
+/// Del propio texto y no de una tabla: una tabla obligaria a mantenerla al
+/// dia y dejaria en gris lo que no estuviera en ella. Asi cada extension
+/// tiene SIEMPRE el mismo color, y dos distintas casi nunca coinciden.
+///
+/// Devuelve (r, g, b) de 0 a 1. Saturacion y brillo fijos: asi ninguno sale
+/// ni chillon ni tan oscuro que no se lea el rotulo blanco encima.
+pub fn color_de_extension(ext: &str) -> (f32, f32, f32) {
+    if ext.is_empty() {
+        return (0.35, 0.38, 0.44);
+    }
+    // Suma simple: no hace falta un buen hash para repartir una docena de
+    // extensiones por la rueda de color.
+    let tono = ext
+        .bytes()
+        .fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32))
+        % 360;
+    hsv_a_rgb(tono as f32, 0.55, 0.62)
+}
+
+fn hsv_a_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {
+    let c = v * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = v - c;
+    let (r, g, b) = match h as u32 / 60 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    (r + m, g + m, b + m)
+}
+
+/// La escala por defecto: la que manda el monitor, sin tocar.
+pub const ESCALA_POR_DEFECTO: u32 = 100;
+
+/// Los escalones de la escala de la interfaz, en por ciento.
+///
+/// Es lo que Telegram llama «escala de la interfaz»: el 100 no es el 100 %
+/// de la pantalla sino lo que el monitor diga por su DPI, y esto lo agranda
+/// o lo encoge desde ahi. El usuario lo pidio con estas palabras: «anade la
+/// funcion de escalar como en Telegram, en la que escala la app a una medida
+/// en la que se pueda ver claramente».
+///
+/// Escalones y no un numero libre: con un deslizador continuo se acaba en
+/// 137 % y las medidas del chat, que son enteros de pixel, redondean de
+/// formas distintas en cada trozo. Se baja del 100 porque en una pantalla
+/// pequena lo que hace falta es que quepa mas.
+pub const ESCALAS: [u32; 9] = [75, 90, 100, 110, 125, 150, 175, 200, 250];
+
+/// La escala de la lista mas cercana a `cuanto`. Lo que venga de un fichero
+/// escrito a mano o de una version anterior acaba en un escalon conocido.
+pub fn escala_valida(cuanto: u32) -> u32 {
+    *ESCALAS
+        .iter()
+        .min_by_key(|v| v.abs_diff(cuanto))
+        .expect("la lista no esta vacia")
+}
+
+/// El escalon siguiente, o el mismo si ya es el mayor. No da la vuelta: al
+/// llegar al tope, seguir pulsando no puede devolver la letra mas pequena.
+pub fn escala_siguiente(actual: u32) -> u32 {
+    let actual = escala_valida(actual);
+    ESCALAS
+        .iter()
+        .copied()
+        .find(|v| *v > actual)
+        .unwrap_or(actual)
+}
+
+/// El escalon anterior, o el mismo si ya es el menor.
+pub fn escala_anterior(actual: u32) -> u32 {
+    let actual = escala_valida(actual);
+    ESCALAS
+        .iter()
+        .copied()
+        .rev()
+        .find(|v| *v < actual)
+        .unwrap_or(actual)
+}
+
 /// Como queda repartida la ventana.
 /// Los botones de la barra de titulo.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -896,6 +1005,104 @@ pub fn redimensionar(marco: Rect, borde: Borde, cursor: Punto, escala_por_cien: 
         y: y0,
         ancho: (x1 - x0) as u32,
         alto: (y1 - y0) as u32,
+    }
+}
+
+#[cfg(test)]
+mod pruebas_extension {
+    use super::*;
+
+    #[test]
+    fn saca_la_extension_en_mayusculas_y_recortada() {
+        assert_eq!(extension_corta("GE_Sem16.pdf"), "PDF");
+        assert_eq!(extension_corta("1_50107438.html"), "HTML");
+        assert_eq!(extension_corta("hoja.xlsx"), "XLSX");
+        // Varios puntos: manda el ultimo, como en cualquier explorador.
+        assert_eq!(extension_corta("copia.de.seguridad.zip"), "ZIP");
+        // Y lo larguisimo se corta en vez de salirse de la chapa.
+        assert_eq!(extension_corta("x.excalidraw"), "EXCA");
+    }
+
+    #[test]
+    fn lo_que_no_es_una_extension_no_pone_rotulo() {
+        // Caso negativo: sin esto, un nombre con un punto en medio pintaria
+        // una chapa que dice «2 FINAL».
+        assert_eq!(extension_corta("version 1.2 final"), "");
+        assert_eq!(extension_corta("sin punto"), "");
+        assert_eq!(extension_corta("acaba en punto."), "");
+        assert_eq!(extension_corta(""), "");
+    }
+
+    #[test]
+    fn cada_extension_tiene_siempre_el_mismo_color_y_distinto_del_vecino() {
+        assert_eq!(color_de_extension("PDF"), color_de_extension("PDF"));
+        assert_ne!(color_de_extension("PDF"), color_de_extension("HTML"));
+        // Y ninguno sale negro ni blanco: el rotulo va en blanco encima.
+        for ext in ["PDF", "HTML", "PNG", "DOCX", "ZIP", "TXT", ""] {
+            let (r, g, b) = color_de_extension(ext);
+            let brillo = (r + g + b) / 3.0;
+            assert!(
+                (0.15..0.75).contains(&brillo),
+                "{ext} sale con brillo {brillo}"
+            );
+            for c in [r, g, b] {
+                assert!((0.0..=1.0).contains(&c), "{ext} se sale de rango: {c}");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod pruebas_escala {
+    use super::*;
+
+    #[test]
+    fn subir_y_bajar_recorre_los_escalones_sin_saltarse_ninguno() {
+        let mut v = ESCALA_POR_DEFECTO;
+        let mut subiendo = vec![v];
+        while escala_siguiente(v) != v {
+            v = escala_siguiente(v);
+            subiendo.push(v);
+        }
+        assert_eq!(subiendo, [100, 110, 125, 150, 175, 200, 250]);
+        // Y de vuelta por el mismo camino: subir y bajar tiene que devolver
+        // exactamente donde se estaba, o la escala se iria corriendo.
+        let mut bajando = vec![v];
+        while escala_anterior(v) != v {
+            v = escala_anterior(v);
+            bajando.push(v);
+        }
+        bajando.reverse();
+        assert_eq!(bajando, ESCALAS);
+    }
+
+    #[test]
+    fn en_los_topes_se_queda_donde_esta_y_no_da_la_vuelta() {
+        // Caso negativo: dar la vuelta haria que al llegar al maximo, una
+        // pulsacion mas dejara la letra diminuta de golpe.
+        let mayor = *ESCALAS.last().unwrap();
+        let menor = *ESCALAS.first().unwrap();
+        assert_eq!(escala_siguiente(mayor), mayor);
+        assert_eq!(escala_anterior(menor), menor);
+    }
+
+    #[test]
+    fn una_escala_rara_cae_en_el_escalon_mas_cercano() {
+        // Lo que puede llegar de `estado.toml` escrito a mano.
+        assert_eq!(escala_valida(137), 125, "137 esta a 12 de 125 y a 13 de 150");
+        assert_eq!(escala_valida(0), 75);
+        assert_eq!(escala_valida(100_000), 250);
+        assert_eq!(escala_valida(100), 100, "un escalon de verdad no se mueve");
+        // Y desde uno raro se sigue subiendo y bajando con sentido.
+        assert_eq!(escala_siguiente(137), 150);
+        assert_eq!(escala_anterior(137), 110);
+    }
+
+    #[test]
+    fn la_escala_por_defecto_es_un_escalon_de_la_lista() {
+        // Si no lo fuera, Ctrl+0 dejaria una escala que el menu no sabria
+        // marcar como puesta.
+        assert!(ESCALAS.contains(&ESCALA_POR_DEFECTO));
     }
 }
 
@@ -2190,5 +2397,348 @@ mod pruebas_fila_de_chips {
         let fila = d.chips(2, true, 100);
         assert_eq!(fila.y, d.fijado(100).abajo());
         assert_eq!(d.historial(18, true, 2, 100).y, fila.abajo());
+    }
+}
+
+// --- La pantalla de la letra ------------------------------------------------
+//
+// «Letra o texto» del movil (`LetraActivity.kt`): el texto de una nota de voz
+// grande, un parrafo por trozo con su minuto encima, y abajo la barra del
+// reproductor. Ocupa el sitio del historial, como la biblioteca: es de esta
+// conversacion y se vuelve a ella por la cabecera o con Escape.
+//
+// Lo que se pinta y donde cae el clic salen de aqui los dos: `letra` da las
+// cajas fijas y `parrafos_de_la_letra` las de cada parrafo a partir de lo
+// que mide cada uno, que lo apunta quien pinta (es quien tiene la fuente).
+
+/// Lo alto de la cabecera de la letra.
+pub const LETRA_CABECERA: u32 = 40;
+/// Lado de cada boton de la cabecera (volver, letra menor, mayor, copiar).
+pub const LETRA_BOTON: u32 = 32;
+/// Aire a los lados del texto, como el `padding(horizontal = 20.dp)`.
+pub const LETRA_MARGEN_X: u32 = 20;
+/// Aire arriba y abajo de cada parrafo (`vertical = 8.dp`).
+pub const LETRA_AIRE_Y: u32 = 8;
+/// El tamano de la letra al abrir y sus topes (`tamano` 22, de 14 a 40).
+pub const LETRA_TAM: u32 = 22;
+pub const LETRA_TAM_MIN: u32 = 14;
+pub const LETRA_TAM_MAX: u32 = 40;
+
+/// Lo alto de la fila de banderitas (`LazyRow` de fichas de 13 sp).
+pub const LETRA_MARCAS: u32 = 30;
+/// Aire entre ficha y ficha (`padding(end = 6.dp)`).
+pub const LETRA_MARCA_AIRE: u32 = 6;
+
+/// Las cajas fijas de la pantalla de la letra.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Letra {
+    pub panel: Rect,
+    pub cabecera: Rect,
+    pub volver: Rect,
+    /// Donde va el titulo: entre volver y los botones de la derecha.
+    pub titulo: Rect,
+    pub menos: Rect,
+    pub mas: Rect,
+    /// La banderita: una marca donde va el audio (`letra_marcar`).
+    pub marcar: Rect,
+    /// El lapiz: escribir o corregir la letra a mano (`letra_editar`).
+    pub editar: Rect,
+    pub copiar: Rect,
+    /// La fila de banderitas, bajo la cabecera. Vacia si no hay ninguna.
+    pub marcas: Rect,
+    /// Lo que se desplaza: los parrafos.
+    pub texto: Rect,
+    /// La barra del reproductor, abajo. Vacia sin audio que tocar.
+    pub barra: Rect,
+}
+
+/// Coloca la pantalla de la letra en `hueco` (el sitio del historial).
+pub fn letra(hueco: Rect, con_barra: bool, escala_por_cien: u32) -> Letra {
+    letra_con(hueco, con_barra, false, escala_por_cien)
+}
+
+/// Como [`letra`], con la fila de banderitas si la nota tiene alguna.
+pub fn letra_con(hueco: Rect, con_barra: bool, con_marcas: bool, escala_por_cien: u32) -> Letra {
+    let e = |v: u32| v * escala_por_cien / 100;
+    let cabecera = Rect {
+        alto: e(LETRA_CABECERA).min(hueco.alto),
+        ..hueco
+    };
+    let lado = e(LETRA_BOTON).min(cabecera.alto);
+    let arriba = cabecera.y + (cabecera.alto as i32 - lado as i32) / 2;
+    let boton = |x: i32| Rect {
+        x,
+        y: arriba,
+        ancho: lado,
+        alto: lado,
+    };
+    let margen = e(6) as i32;
+    let volver = boton(cabecera.x + margen);
+    // De derecha a izquierda: copiar, editar, banderita, mayor, menor.
+    // Copiar en la punta porque es lo que se busca al acabar de leer; el
+    // resto en el orden del movil (A-, A+, bandera, lapiz).
+    let copiar = boton(cabecera.derecha() - margen - lado as i32);
+    let editar = boton(copiar.x - lado as i32);
+    let marcar = boton(editar.x - lado as i32);
+    let mas = boton(marcar.x - lado as i32);
+    let menos = boton(mas.x - lado as i32);
+    let titulo_x = volver.derecha() + margen;
+    let titulo = Rect {
+        x: titulo_x,
+        y: cabecera.y,
+        ancho: (menos.x - margen - titulo_x).max(0) as u32,
+        alto: cabecera.alto,
+    };
+    let queda = hueco.alto - cabecera.alto;
+    let alto_marcas = if con_marcas {
+        e(LETRA_MARCAS).min(queda)
+    } else {
+        0
+    };
+    let marcas = Rect {
+        x: hueco.x,
+        y: cabecera.abajo(),
+        ancho: if con_marcas { hueco.ancho } else { 0 },
+        alto: alto_marcas,
+    };
+    let queda = queda - alto_marcas;
+    let alto_barra = if con_barra {
+        (e(crate::reproductor::ALTO) + e(ISLA_BAJO)).min(queda)
+    } else {
+        0
+    };
+    let texto = Rect {
+        x: hueco.x,
+        y: cabecera.abajo() + alto_marcas as i32,
+        ancho: hueco.ancho,
+        alto: queda - alto_barra,
+    };
+    let barra = if con_barra {
+        Rect {
+            x: hueco.x + e(ISLA_MARGEN_X) as i32,
+            y: texto.abajo(),
+            ancho: hueco.ancho.saturating_sub(2 * e(ISLA_MARGEN_X)),
+            alto: e(crate::reproductor::ALTO).min(alto_barra),
+        }
+    } else {
+        vacio()
+    };
+    Letra {
+        panel: hueco,
+        cabecera,
+        volver,
+        titulo,
+        menos,
+        mas,
+        marcar,
+        editar,
+        copiar,
+        marcas,
+        texto,
+        barra,
+    }
+}
+
+/// Las fichas de las banderitas en su fila, de izquierda a derecha, con
+/// `anchos` lo que mide cada rotulo (`⚑ 1:23`) mas su relleno. Las que no
+/// caben no salen: el movil las deja fuera de la vista de su `LazyRow`.
+pub fn fichas_de_marcas(fila: Rect, anchos: &[u32], escala_por_cien: u32) -> Vec<Rect> {
+    let e = |v: u32| v * escala_por_cien / 100;
+    let alto = fila.alto.saturating_sub(2 * e(3));
+    let mut x = fila.x + e(LETRA_MARGEN_X / 2) as i32;
+    let mut v = Vec::new();
+    for &ancho in anchos {
+        if x + ancho as i32 > fila.derecha() {
+            break;
+        }
+        v.push(Rect {
+            x,
+            y: fila.y + e(3) as i32,
+            ancho,
+            alto,
+        });
+        x += (ancho + e(LETRA_MARCA_AIRE)) as i32;
+    }
+    v
+}
+
+/// Lo ancho que tiene cada parrafo para partirse en renglones.
+pub fn ancho_de_la_letra(texto: Rect, escala_por_cien: u32) -> u32 {
+    texto
+        .ancho
+        .saturating_sub(2 * LETRA_MARGEN_X * escala_por_cien / 100)
+}
+
+/// La caja de cada parrafo, con `altos` lo que mide cada uno (texto y
+/// minuto) y desplazada `scroll` hacia arriba. Cada caja lleva su aire, que
+/// es donde se pinta el resalte del parrafo que suena y lo que se pulsa.
+pub fn parrafos_de_la_letra(
+    texto: Rect,
+    altos: &[u32],
+    scroll: i32,
+    escala_por_cien: u32,
+) -> Vec<Rect> {
+    let aire = 2 * LETRA_AIRE_Y * escala_por_cien / 100;
+    let mut y = texto.y - scroll;
+    altos
+        .iter()
+        .map(|alto| {
+            let caja = Rect {
+                x: texto.x,
+                y,
+                ancho: texto.ancho,
+                alto: alto + aire,
+            };
+            y = caja.abajo();
+            caja
+        })
+        .collect()
+}
+
+/// Hasta donde se puede bajar: lo que mide todo menos lo que se ve.
+pub fn tope_de_la_letra(texto: Rect, altos: &[u32], escala_por_cien: u32) -> i32 {
+    let aire = 2 * LETRA_AIRE_Y * escala_por_cien / 100;
+    let todo: u32 = altos.iter().map(|a| a + aire).sum();
+    (todo as i32 - texto.alto as i32).max(0)
+}
+
+/// El desplazamiento que deja a la vista el parrafo `n`, o el mismo si ya se
+/// ve entero. Es «la vista sigue al audio» de la letra del movil.
+pub fn scroll_para_ver(
+    texto: Rect,
+    altos: &[u32],
+    n: usize,
+    scroll: i32,
+    escala_por_cien: u32,
+) -> i32 {
+    let cajas = parrafos_de_la_letra(texto, altos, scroll, escala_por_cien);
+    let Some(caja) = cajas.get(n) else {
+        return scroll;
+    };
+    let tope = tope_de_la_letra(texto, altos, escala_por_cien);
+    let nuevo = if caja.y < texto.y {
+        scroll - (texto.y - caja.y)
+    } else if caja.abajo() > texto.abajo() {
+        // Que el parrafo suba hasta arriba, no que asome por abajo: lo que
+        // viene detras es lo siguiente que se va a oir.
+        scroll + (caja.y - texto.y)
+    } else {
+        scroll
+    };
+    nuevo.clamp(0, tope)
+}
+
+#[cfg(test)]
+mod pruebas_letra {
+    use super::*;
+
+    fn hueco() -> Rect {
+        Rect {
+            x: 300,
+            y: 54,
+            ancho: 600,
+            alto: 500,
+        }
+    }
+
+    #[test]
+    fn la_cabecera_lleva_volver_a_la_izquierda_y_copiar_en_la_punta() {
+        let l = letra(hueco(), true, 100);
+        assert_eq!(l.cabecera.y, 54);
+        assert!(l.volver.x < l.titulo.x);
+        assert!(l.titulo.derecha() <= l.menos.x);
+        assert!(l.menos.derecha() <= l.mas.x);
+        assert!(l.mas.derecha() <= l.copiar.x);
+        assert!(l.copiar.derecha() <= l.cabecera.derecha());
+        for b in [l.volver, l.menos, l.mas, l.copiar] {
+            assert!(l.cabecera.contiene(Punto {
+                x: b.x + 1,
+                y: b.y + 1
+            }));
+        }
+    }
+
+    #[test]
+    fn la_banderita_y_el_lapiz_van_entre_la_letra_mayor_y_copiar() {
+        let l = letra(hueco(), true, 100);
+        assert!(l.mas.derecha() <= l.marcar.x);
+        assert!(l.marcar.derecha() <= l.editar.x);
+        assert!(l.editar.derecha() <= l.copiar.x);
+    }
+
+    #[test]
+    fn con_banderitas_su_fila_va_bajo_la_cabecera_y_el_texto_debajo() {
+        let sin = letra_con(hueco(), true, false, 100);
+        assert_eq!(sin.marcas.alto, 0);
+        assert_eq!(sin.texto.y, sin.cabecera.abajo());
+        let con = letra_con(hueco(), true, true, 100);
+        assert_eq!(con.marcas.y, con.cabecera.abajo());
+        assert_eq!(con.texto.y, con.marcas.abajo());
+        assert_eq!(con.texto.abajo(), con.barra.y, "la barra sigue abajo");
+        assert_eq!(con.texto.alto + LETRA_MARCAS, sin.texto.alto);
+    }
+
+    #[test]
+    fn las_fichas_van_en_fila_y_las_que_no_caben_no_salen() {
+        let fila = Rect {
+            x: 0,
+            y: 100,
+            ancho: 200,
+            alto: LETRA_MARCAS,
+        };
+        let f = fichas_de_marcas(fila, &[60, 60, 60, 60], 100);
+        assert_eq!(f.len(), 2, "{f:?}");
+        assert_eq!(f[1].x, f[0].derecha() + LETRA_MARCA_AIRE as i32);
+        assert!(f.iter().all(|r| r.y >= fila.y && r.abajo() <= fila.abajo()));
+        assert!(fichas_de_marcas(fila, &[], 100).is_empty());
+    }
+
+    #[test]
+    fn la_barra_va_debajo_del_texto_y_sin_audio_no_ocupa_nada() {
+        let con = letra(hueco(), true, 100);
+        assert_eq!(con.texto.abajo(), con.barra.y);
+        assert!(con.barra.abajo() <= hueco().abajo());
+        let sin = letra(hueco(), false, 100);
+        assert_eq!(sin.barra.alto, 0);
+        assert_eq!(sin.texto.abajo(), hueco().abajo(), "el texto se lo queda");
+    }
+
+    #[test]
+    fn los_parrafos_van_uno_debajo_de_otro_y_suben_con_el_scroll() {
+        let l = letra(hueco(), false, 100);
+        let cajas = parrafos_de_la_letra(l.texto, &[30, 60], 0, 100);
+        assert_eq!(cajas[0].y, l.texto.y);
+        assert_eq!(cajas[0].alto, 30 + 2 * LETRA_AIRE_Y);
+        assert_eq!(cajas[1].y, cajas[0].abajo());
+        let bajadas = parrafos_de_la_letra(l.texto, &[30, 60], 25, 100);
+        assert_eq!(bajadas[0].y, l.texto.y - 25);
+    }
+
+    #[test]
+    fn un_texto_que_cabe_no_se_desplaza() {
+        let l = letra(hueco(), false, 100);
+        assert_eq!(tope_de_la_letra(l.texto, &[30, 60], 100), 0);
+        assert_eq!(tope_de_la_letra(l.texto, &[], 100), 0);
+        let largo = vec![100; 20];
+        assert!(tope_de_la_letra(l.texto, &largo, 100) > 0);
+    }
+
+    #[test]
+    fn la_vista_sigue_al_parrafo_que_suena_sin_pasarse_del_tope() {
+        let l = letra(hueco(), false, 100);
+        let altos = vec![100; 20];
+        let tope = tope_de_la_letra(l.texto, &altos, 100);
+        // Uno que ya se ve no mueve nada.
+        assert_eq!(scroll_para_ver(l.texto, &altos, 0, 0, 100), 0);
+        // Uno de mas abajo sube hasta arriba.
+        let s = scroll_para_ver(l.texto, &altos, 6, 0, 100);
+        let cajas = parrafos_de_la_letra(l.texto, &altos, s, 100);
+        assert_eq!(cajas[6].y, l.texto.y);
+        // El ultimo no puede dejar hueco debajo.
+        assert_eq!(scroll_para_ver(l.texto, &altos, 19, 0, 100), tope);
+        // Uno que no existe no mueve nada.
+        assert_eq!(scroll_para_ver(l.texto, &altos, 99, 40, 100), 40);
+        // Y uno que quedo por encima baja la vista hasta el.
+        assert_eq!(scroll_para_ver(l.texto, &altos, 1, 500, 100), 116);
     }
 }
