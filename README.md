@@ -113,11 +113,30 @@ Windows y pines flotantes que se anotan. Copiar una palabra mágica (`todo`, `ga
 |---|---|
 | ![](docs/img/pin-tareas.png) | ![](docs/img/pin-gastos.png) |
 
+### Anotar sobre la pantalla
+
+**Alt + doble clic central** en cualquier sitio abre el anotador con todas las
+herramientas del lienzo. La pastilla de abajo pasa a **clic a través** (la tinta sigue a
+la vista y los clics llegan a las ventanas de debajo), limpia, copia, sale o **guarda en
+Mensajes guardados**: la captura entra en el chat y lo dibujado queda encima, editable,
+en su lienzo.
+
+| La pastilla | Guardado: la captura con su tinta |
+|---|---|
+| ![](docs/img/anotador-pastilla.png) | ![](docs/img/anotador-guardado.png) |
+
 ### Sincronizar con el móvil
 
 Por Wi-Fi, sin nube: se encuentran por mDNS, se juntan cambio a cambio o manda uno
 («Lo mío manda»), se pregunta antes de borrar y se hace copia de seguridad antes de
 recibir. Un lienzo enviado del PC se abre en el lienzo del móvil y al revés.
+
+Lo anotado sobre los PDF, Word y EPUB del chat viaja en las dos direcciones (necesita
+PixPin Android 0.96 o superior): la tinta, los marcadores, los espacios para anotar y
+la columna fijada. El PC coloca el texto de un Word o un libro igual que el móvil, así
+que la tinta cae sobre las mismas palabras en los dos.
+
+![Tabla de Word en el lector](docs/img/word-tabla.png)
 
 ## Compilar
 
