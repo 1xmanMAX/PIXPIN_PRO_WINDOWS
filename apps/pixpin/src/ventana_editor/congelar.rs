@@ -179,6 +179,48 @@ mod pruebas {
         assert!(z.2 - z.0 < 400 && z.3 - z.1 < 300, "demasiado grande: {z:?}");
     }
 
+    fn marco_estirandose(nombre: &str) -> (Escena, Gesto) {
+        let mut escena = Escena::nueva();
+        let id = escena.anadir(Elemento {
+            figura: Figura::Marco { nombre: nombre.into() },
+            x: 100.0,
+            y: 100.0,
+            ancho: 300.0,
+            alto: 200.0,
+            grosor: 1.5,
+            ..Default::default()
+        });
+        let mut g = Gesto::nuevo();
+        g.tomar_herramienta(Herramienta::Mano);
+        g.seleccion.poner(id);
+        let q = g.tiradores(&escena, 1.0).expect("tiradores").tamano[4].1;
+        g.evento(EventoGesto::Pulsar { p: q, shift: false, alt: false, presion: None }, &mut escena, 1.0);
+        let p = Punto2::nuevo(q.x + 30.0, q.y + 20.0);
+        g.evento(EventoGesto::Mover { p, shift: false, alt: false, presion: None }, &mut escena, 1.0);
+        (escena, g)
+    }
+
+    #[test]
+    fn estirar_un_marco_con_nombre_rehace_su_trozo_con_el_nombre_y_no_la_escena_entera() {
+        let (escena, g) = marco_estirandose("Lamina");
+        assert!(g.transformando());
+        let z = zona_al_transformar(&escena, &g, &Camara::nueva(), &mut Cache::nueva()).expect("se acota");
+        // El nombre va encima de la raya de arriba (y = 100 - 16): tiene que
+        // entrar en el trozo, y el marco estirado (100,100)-(430,320) tambien.
+        let alto_nombre = 16;
+        assert!(z.1 <= 100 - alto_nombre, "el nombre entra: {z:?}");
+        assert!(z.0 <= 100 && z.2 >= 430 && z.3 >= 320, "{z:?}");
+        assert!(z.2 - z.0 < 500 && z.3 - z.1 < 400, "no la ventana: {z:?}");
+    }
+
+    #[test]
+    fn un_nombre_de_marco_mas_largo_que_el_marco_entero_no_se_sabe_acotar() {
+        // Partido al ancho del marco, baja por debajo de su raya de abajo:
+        // quedarse corto dejaria restos, asi que la escena entera.
+        let (escena, g) = marco_estirandose(&"Lamina muy larga ".repeat(40));
+        assert_eq!(zona_al_transformar(&escena, &g, &Camara::nueva(), &mut Cache::nueva()), None);
+    }
+
     #[test]
     fn con_una_lupa_mirando_lo_que_se_estira_se_rehace_la_escena_entera() {
         let (mut escena, g) = caja_elegida_estirandose();

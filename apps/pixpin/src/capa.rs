@@ -17,10 +17,13 @@
 //! ofrece guardar y pinea, D54). Las dos van por los duplicadores de
 //! `Recursos`, un monitor cada uno, y se unen en una del escritorio virtual.
 //!
-//! **Lo que se pierde respecto a la capa vieja**: alternar el pasante con el
-//! mismo atajo global que abrio la capa (el bucle del editor solo ve los
-//! eventos de su ventana). Espacio y Ctrl siguen haciendolo. La lupa en vivo
-//! ya no se pierde: se porto el 2026-09-26 (`pantalla::LupaViva`).
+//! Alternar el pasante con el mismo gesto que abrio la capa ya no se pierde
+//! (2026-09-28): **Alt + doble clic central** abre el anotador vivo y, con
+//! el abierto, alterna el clic a traves (`gestos::EscuchaAnotador`); y la
+//! pastilla de abajo (`pastilla_pantalla`, las acciones de `CapaPantalla.kt`)
+//! sigue recibiendo el raton aunque el lienzo lo deje pasar. Espacio y Ctrl
+//! siguen haciendolo. La lupa en vivo se porto el 2026-09-26
+//! (`pantalla::LupaViva`).
 
 use anyhow::{Context, Result};
 use pixpin_geom::{Monitor, Rect};
@@ -55,6 +58,9 @@ pub fn ejecutar_capa(
     modo: ModoCapa,
     nivel: Nivel,
     enganche: pixpin_motor2d::enganche::Ajustes,
+    // Para «Guardar en Mensajes guardados» de la pastilla y sus globos.
+    raiz: Option<std::path::PathBuf>,
+    avisos: isize,
 ) -> Result<Option<pixpin_codec::ImagenRgba>> {
     let t0 = std::time::Instant::now();
     let disposicion =
@@ -85,6 +91,8 @@ pub fn ejecutar_capa(
         foto,
         capturar: &mut capturar,
         resultado: None,
+        raiz,
+        avisos,
     };
     tracing::info!(
         ?modo,

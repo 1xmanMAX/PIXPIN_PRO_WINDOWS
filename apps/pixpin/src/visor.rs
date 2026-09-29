@@ -6,8 +6,8 @@
 //! lo ensena un `WebView`; aqui no hay navegador ni se va a arrastrar uno:
 //! `pixpin-docs` deja el documento en bloques de texto con estilo y esto
 //! los pinta con el mismo `Pintor` (Direct2D + DirectWrite) que el resto de
-//! la aplicacion. Se pierde la maquetacion fina —las imagenes se anuncian,
-//! las tablas se leen en una linea— y se gana lo que el usuario queria:
+//! la aplicacion. Se pierde la maquetacion fina —las imagenes se anuncian;
+//! las tablas si van como tablas, celda a celda (`tablas`)— y se gana lo que el usuario queria:
 //! **leerlo**, abrir al instante y que nada tiemble.
 //!
 //! Lo que se copia del movil:
@@ -27,6 +27,10 @@
 //!   (ver `lector_tinta`). La primera vez que se anota se fijan la columna
 //!   y la letra, como `columnaDeAnotar` del movil: si el texto volviera a
 //!   partirse en otras lineas, lo anotado quedaria sobre otra palabra.
+//! - **La maqueta del movil** (K16): el texto se coloca con la hoja de estilo,
+//!   las letras y los cortes de renglon de la pagina del movil
+//!   (`maqueta_movil`), asi que con la misma columna la tinta cae en la
+//!   misma palabra en los dos aparatos.
 //! - **Word a PDF** (v0.63): `pixpin_docs::pdf`.
 //!
 //! Lo que se guarda va **junto al documento**: `<nombre>.pixpin-lectura`
@@ -50,7 +54,7 @@
 #![forbid(unsafe_code)]
 
 use anyhow::{Context, Result};
-use pixpin_docs::documento::{Clase, TramoDoc, texto_y_tramos};
+use pixpin_docs::documento::{Clase, texto_y_tramos};
 use pixpin_docs::{Documento, indice, lectura, vista};
 #[cfg(test)]
 use pixpin_motor2d::vector::Punto2;
@@ -67,6 +71,12 @@ use crate::lector::{
 use crate::compartir::documento_web;
 use crate::lector_tinta::{self, Capa, Tinta};
 use crate::overlay::Recursos;
+
+mod maqueta_movil;
+mod maqueta_vieja;
+mod tablas;
+pub(crate) use maqueta_movil::{Hoja, Letra};
+pub(crate) use tablas::ordenes_de_celda;
 
 /// La pastilla del nombre se va sola tras esto, como en el movil.
 const MS_DE_LA_PASTILLA: u64 = 2600;
@@ -144,11 +154,25 @@ pub(crate) struct Colocado {
     pub(crate) tam: f32,
     /// Sangria a la izquierda respecto del borde de la columna.
     pub(crate) sangria: f32,
+    /// El ancho de la caja del texto: la columna menos la sangria, o el
+    /// hueco de dentro de su celda en una tabla.
+    pub(crate) ancho: f32,
     pub(crate) y: f32,
     pub(crate) alto: f32,
     pub(crate) color: Color,
     /// El bloque del documento del que sale (la cabecera no tiene).
     pub(crate) bloque: Option<usize>,
+    /// En una tabla, la caja de su celda y sus rayas (`tablas`).
+    pub(crate) caja: Option<tablas::Caja>,
+    /// La letra del bloque, la del movil (`maqueta_movil`): con otra, el
+    /// texto se parte en otros renglones que los que se midieron.
+    pub(crate) letra: Letra,
+    /// Una imagen: su hueco con un recuadro y lo que es.
+    pub(crate) recuadro: bool,
+    /// Donde empieza y acaba cada renglon, como se partio al medir (las
+    /// reglas del navegador, `pixpin_render::lectura::partir`): se pinta
+    /// por ahi y no por donde partiria DirectWrite.
+    pub(crate) renglones: Vec<(u32, u32)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -242,6 +266,13 @@ struct Estado {
     hallar: Hallar,
     /// El nombre de la pastilla y, si se esta cambiando, lo escrito (D5).
     nombre: crate::renombrar_doc::Pastilla,
+    /// Con que hoja de estilo del movil se coloca (K16).
+    hoja: Hoja,
+    /// La tinta es de la maqueta de antes de K16 y hay que llevarla a la
+    /// nueva al medir por primera vez.
+    tinta_de_antes: bool,
+    /// Algo cambio que tiene que ir al disco ya (la tinta mudada).
+    guardar_ya: bool,
 }
 
 pub fn abrir(
@@ -282,8 +313,14 @@ pub fn abrir(
     // Todos los puntos del trazo y la presion del lapiz, como en el lienzo.
     ventana.pedir_entrada_fina();
 
-    let ajustes = lectura::leer(ruta);
-    let capa = Capa::leer(&lector_tinta::ruta_de_capa(ruta));
+    // De un adjunto del chat, lo que viaja con su mensaje (v0.96).
+    let ajustes = crate::anotado_del_adjunto::leer(ruta);
+    // La tinta que ya estaba en el mensaje la escribio el movil (o el PC
+    // despues de K16) en la maqueta del movil; la de junto al documento con
+    // un fichero de antes, en la vieja del PC.
+    let del_mensaje = crate::anotado_del_adjunto::tinta_del_mensaje(ruta).is_some_and(|t| t.is_file());
+    let capa = crate::anotado_del_adjunto::leer_capa(ruta);
+    let tinta_de_antes = ajustes.de_antes && ajustes.letra_fijada() && !del_mensaje && !capa.vacia();
     let mut e = Estado {
         indice: indice::de(&doc),
         doc,
@@ -313,6 +350,9 @@ pub fn abrir(
         x_meta: None,
         hallar: Hallar::default(),
         nombre: crate::renombrar_doc::Pastilla::de(ubicacion.raiz(), ruta),
+        hoja: Hoja::de(ruta),
+        tinta_de_antes,
+        guardar_ya: false,
     };
     // Se entra por donde se dejo. Como el sitio es una fraccion, hace falta
     // medir antes, y medir necesita un fotograma: se apunta y se aplica en
@@ -532,6 +572,11 @@ pub fn abrir(
                 });
                 let _ = superficie.presentar();
             }
+            if e.guardar_ya {
+                e.guardar_ya = false;
+                guardar_capa(&mut e, ruta);
+                guardar_ajustes(&e, ruta);
+            }
         }
         // Veinte veces por segundo en reposo (la pastilla se desvanece a su
         // hora sin gastar nada), a sesenta mientras el iman se mueve.
@@ -585,12 +630,20 @@ fn columna_que_cabe(m: Marco) -> f32 {
 /// De donde a donde va el documento a lo ancho, en unidades. Con tinta (o
 /// anotando) se abren los dos margenes de dos tercios de columna.
 fn limites(e: &Estado) -> (f32, f32) {
-    if e.ajustes.letra_fijada() || e.anotando {
+    // Una tabla mas ancha que la columna se despliega hacia el margen
+    // derecho (§2.8): la vista tiene que poder llegar a verla entera.
+    let tablas = e
+        .colocados
+        .iter()
+        .filter_map(|c| c.caja.map(|k| k.x + k.ancho))
+        .fold(e.columna, f32::max);
+    let (izq, der) = if e.ajustes.letra_fijada() || e.anotando {
         let m = vista::margen_de(e.columna);
         (-m, e.columna + m)
     } else {
         (0.0, e.columna)
-    }
+    };
+    (izq, der.max(tablas))
 }
 
 fn fraccion(e: &Estado) -> f32 {
@@ -616,21 +669,6 @@ fn acotar(e: &mut Estado, m: Marco) {
 
 // ---------------------------------------------------------------------------
 // Medir
-
-fn tramos_de(lista: &[TramoDoc]) -> Vec<Tramo> {
-    lista
-        .iter()
-        .map(|t| Tramo {
-            inicio: t.inicio,
-            longitud: t.longitud,
-            estilo: EstiloTexto {
-                negrita: t.estilo.negrita,
-                cursiva: t.estilo.cursiva || t.estilo.enlace,
-                mono: t.estilo.mono,
-            },
-        })
-        .collect()
-}
 
 /// Cuanto crece cada clase de bloque respecto del cuerpo, y cuanto aire
 /// deja delante. Son las proporciones de la hoja de estilo del movil.
@@ -665,17 +703,17 @@ fn medir(e: &mut Estado, p: &Pintor, m: Marco) {
     let donde = fraccion(e);
     let habia = e.alto_doc > 0.0;
 
-    // Sin tramos, la medida sale de la cache de textos del motor: es la
-    // misma disposicion que luego se pinta, y no se rehace en cada
-    // fotograma.
-    let mide = |texto: &str, tam: f32, ancho: f32, tramos: &[Tramo]| {
-        if tramos.is_empty() {
-            p.medir_texto_ajustado(texto, tam, ancho).1
-        } else {
-            p.medir_parrafo(texto, tam, ancho, tramos).1
-        }
+    // La misma disposicion que luego se pinta: la letra del movil, sus
+    // pesos y su interlineado (`pixpin_render::lectura`).
+    let mide = |texto: &str, tam: f32, ancho: f32, tramos: &[Tramo], letra: &Letra| {
+        p.medir_de_lectura(texto, tam, ancho, tramos, &letra.para_pintar())
     };
-    let (colocados, alto_doc) = colocar(&e.doc, &e.ajustes, columna, &mide);
+    let (colocados, alto_doc) = colocar(&e.doc, &e.ajustes, columna, e.hoja, &mide);
+    // La tinta de antes de K16, a la maqueta nueva (una vez).
+    if e.tinta_de_antes {
+        e.tinta_de_antes = false;
+        mudar_tinta_de_antes(e, p, columna, &colocados);
+    }
     e.alto_doc = alto_doc;
     e.colocados = colocados;
     e.columna = columna;
@@ -688,125 +726,82 @@ fn medir(e: &mut Estado, p: &Pintor, m: Marco) {
     }
 }
 
-/// **Coloca el documento** en una columna de `columna` unidades: cada bloque
-/// con su letra, su sangria y su altura, y el alto del documento entero.
+/// **La tinta hecha con la maqueta de antes de K16, a la del movil**: cada
+/// trazo al mismo sitio de su bloque (`maqueta_vieja::mudanza`). Solo la
+/// que viene de junto al documento con un fichero de la version 1: la del
+/// mensaje ya la escribe el movil en su maqueta.
+fn mudar_tinta_de_antes(e: &mut Estado, p: &Pintor, columna: f32, nuevos: &[Colocado]) {
+    if e.capa.vacia() {
+        return;
+    }
+    let mide_viejo = |texto: &str, tam: f32, ancho: f32, tramos: &[Tramo]| {
+        if tramos.is_empty() {
+            p.medir_texto_ajustado(texto, tam, ancho)
+        } else {
+            p.medir_parrafo(texto, tam, ancho, tramos)
+        }
+    };
+    let (viejos, _) = maqueta_vieja::colocar(&e.doc, &e.ajustes, columna, &mide_viejo);
+    let bloques = bloques_de(nuevos);
+    let caja = maqueta_movil::caja_de_texto(e.hoja, &e.ajustes, columna);
+    let mut movidos = 0usize;
+    for el in e.capa.escena.elementos.iter_mut().filter(|x| !x.borrado) {
+        let (x0, y0, x1, y1) = el.caja();
+        let (dx, dy) = maqueta_vieja::mudanza(((x0 + x1) / 2.0, (y0 + y1) / 2.0), &viejos, &bloques, columna, caja);
+        if dx != 0.0 || dy != 0.0 {
+            // Con sus puntos (un trazo los guarda donde estan) y subiendo la
+            // version: esto si es un cambio que tiene que viajar.
+            el.mover(dx, dy);
+            movidos += 1;
+        }
+    }
+    tracing::info!(movidos, "tinta de antes de K16 llevada a la maqueta del movil");
+    e.capa.sucia |= movidos > 0;
+    e.ajustes.de_antes = false;
+    // Enseguida al disco, lo movido y el fichero ya nuevo: si no, la
+    // proxima vez se moveria otra vez.
+    e.guardar_ya = true;
+}
+
+/// Donde empieza y cuanto mide cada bloque colocado: el primero y el ultimo
+/// de sus trozos (una fila de tabla tiene varias celdas y parrafos).
+fn bloques_de(colocados: &[Colocado]) -> Vec<(usize, f32, f32)> {
+    let mut v: Vec<(usize, f32, f32)> = Vec::new();
+    for c in colocados {
+        let Some(b) = c.bloque else { continue };
+        let (y, fin) = match &c.caja {
+            Some(k) => (k.y, k.y + k.alto),
+            None => (c.y, c.y + c.alto),
+        };
+        match v.iter_mut().find(|x| x.0 == b) {
+            Some(x) => {
+                let abajo = (x.1 + x.2).max(fin);
+                x.1 = x.1.min(y);
+                x.2 = abajo - x.1;
+            }
+            None => v.push((b, y, fin - y)),
+        }
+    }
+    v
+}
+
+/// **Coloca el documento** en una columna de `columna` unidades, **como el
+/// movil** (`maqueta_movil`, K16): cada bloque con su letra, su sitio y su
+/// altura, y el alto de la pagina entera.
 ///
 /// Aparte de `medir` para que lo que se comparte (`compartir.rs`) salga con
 /// la misma disposicion que la pantalla: lo anotado va en estas unidades, y
-/// otra cuenta lo dejaria encima de otras palabras. `mide` da el alto de un
-/// parrafo a un ancho: aqui el `Pintor`; alli el motor, que mide igual fuera
-/// de un fotograma.
+/// otra cuenta lo dejaria encima de otras palabras. `mide` da lo que ocupa
+/// un parrafo a un ancho con su letra: aqui el `Pintor`; alli el motor, que
+/// mide igual fuera de un fotograma.
 pub(crate) fn colocar(
     doc: &Documento,
     ajustes: &lectura::Ajustes,
     columna: f32,
-    mide: &dyn Fn(&str, f32, f32, &[Tramo]) -> f32,
+    hoja: Hoja,
+    mide: &maqueta_movil::Mide<'_>,
 ) -> (Vec<Colocado>, f32) {
-    let base = tamano_base(ajustes);
-    let mut colocados = Vec::with_capacity(doc.bloques.len() + 2);
-    let mut y = base * 2.0;
-    let mut imagen = 0usize;
-
-    let mut cabecera = Vec::new();
-    if !doc.titulo.trim().is_empty() {
-        cabecera.push((Clase::Titulo(1), doc.titulo.trim().to_string()));
-    }
-    if !doc.autor.trim().is_empty() {
-        cabecera.push((Clase::Nota, doc.autor.trim().to_string()));
-    }
-    let bloques = cabecera
-        .iter()
-        .map(|(c, t)| (*c, t.clone(), Vec::new(), 0.0f32, None))
-        .chain(doc.bloques.iter().enumerate().map(|(i, b)| {
-            let (texto, tramos) = texto_y_tramos(b);
-            let sangria = match b.clase {
-                Clase::Lista => 1.2,
-                Clase::Cita => 1.4,
-                _ => 0.0,
-            };
-            (b.clase, texto, tramos, sangria, Some(i))
-        }))
-        .collect::<Vec<_>>();
-
-    for (clase, mut texto, tramos, sangria_em, bloque) in bloques {
-        let (factor, aire, negrita) = pinta(clase);
-        let tam = base * factor;
-        y += base * aire;
-        if clase == Clase::Regla || clase == Clase::Capitulo {
-            // Una raya no mide texto: ocupa su aire y ya.
-            colocados.push(Colocado {
-                texto: String::new(),
-                tramos: Vec::new(),
-                clase,
-                tam,
-                sangria: 0.0,
-                y,
-                alto: 1.0,
-                color: RAYA,
-                bloque,
-            });
-            y += base * aire;
-            continue;
-        }
-        if clase == Clase::Lista {
-            texto = format!("• {texto}");
-        }
-        if clase == Clase::Nota && texto == pixpin_docs::documento::MARCA_IMAGEN {
-            // El lector pinta texto; la imagen esta guardada y sale entera
-            // en la pagina que se guarda. Se dice cual es para que quien
-            // lee sepa que se esta perdiendo.
-            let peso = doc
-                .imagenes
-                .get(imagen)
-                .map(|i| i.datos.len() / 1024)
-                .unwrap_or(0);
-            imagen += 1;
-            texto = format!("🖼 imagen ({peso} kB) — se ve al guardar la página");
-        }
-        if texto.trim().is_empty() {
-            y += tam * 0.6;
-            continue;
-        }
-        let sangria = sangria_em * base;
-        let mut tramos = tramos_de(&tramos);
-        // El tipo y el grosor elegidos van por debajo de los del documento:
-        // un tramo que cubre todo, delante, para que la cursiva o el codigo
-        // de dentro sigan viendose.
-        let largo = texto.encode_utf16().count() as u32;
-        let todo = EstiloTexto {
-            negrita: negrita || ajustes.grosor == 1,
-            cursiva: false,
-            mono: ajustes.tipo == 1,
-        };
-        if todo != EstiloTexto::default() {
-            tramos.insert(
-                0,
-                Tramo {
-                    inicio: 0,
-                    longitud: largo,
-                    estilo: todo,
-                },
-            );
-        }
-        let alto = mide(&texto, tam, columna - sangria, &tramos);
-        let color = match clase {
-            Clase::Nota | Clase::Cita => APAGADO,
-            _ => TEXTO,
-        };
-        colocados.push(Colocado {
-            texto,
-            tramos,
-            clase,
-            tam,
-            sangria,
-            y,
-            alto,
-            color,
-            bloque,
-        });
-        y += alto;
-    }
-    (colocados, y + base * 2.0)
+    maqueta_movil::colocar(doc, ajustes, columna, hoja, mide)
 }
 
 /// La altura a la que empieza el bloque `i` del documento.
@@ -876,35 +871,44 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         if c.clase == Clase::Regla || c.clase == Clase::Capitulo {
             p.rellenar(
                 RectF {
-                    x: 0.0,
+                    x: c.sangria,
                     y: c.y,
-                    ancho: e.columna,
-                    alto: 1.0,
+                    ancho: c.ancho,
+                    alto: c.alto.max(1.0 / s),
                 },
                 c.color,
             );
             continue;
         }
-        if c.tramos.is_empty() {
-            p.texto_ajustado(
-                &c.texto,
-                c.sangria,
-                c.y,
-                c.tam,
-                e.columna - c.sangria,
-                c.color,
-            );
-        } else {
-            p.parrafo(
-                &c.texto,
-                c.sangria,
-                c.y,
-                c.tam,
-                e.columna - c.sangria,
-                &c.tramos,
-                c.color,
-            );
+        if c.recuadro {
+            // El hueco de una imagen, a su tamano, y que imagen es.
+            let r = RectF { x: c.sangria, y: c.y, ancho: c.ancho, alto: c.alto };
+            p.rellenar(r, con_alfa(RAYA, 0.18));
+            let linea = 1.0 / s;
+            for raya in [
+                RectF { alto: linea, ..r },
+                RectF { y: r.y + r.alto - linea, alto: linea, ..r },
+                RectF { ancho: linea, ..r },
+                RectF { x: r.x + r.ancho - linea, ancho: linea, ..r },
+            ] {
+                p.rellenar(raya, con_alfa(RAYA, 0.8));
+            }
+            let dentro = (c.ancho - 2.0 * c.tam).max(1.0);
+            p.parrafo_de_lectura(&c.texto, c.sangria + c.tam, c.y + c.tam * 0.6, c.tam, dentro, &[], &c.letra.para_pintar(), &[], c.color);
+            continue;
         }
+        if let Some(k) = &c.caja {
+            // La celda: su fondo y su raya de un pixel, de cerca y de lejos.
+            tablas::pintar_caja(p, c, k, 1.0 / s);
+            if c.texto.is_empty() {
+                continue;
+            }
+        }
+        if c.texto.is_empty() {
+            continue;
+        }
+        // Con la letra y el interlineado con que se midio: la del movil.
+        p.parrafo_de_lectura(&c.texto, c.sangria, c.y, c.tam, c.ancho, &c.tramos, &c.letra.para_pintar(), &c.renglones, c.color);
     }
     // La tinta, en la misma pasada y con la misma transformada que el
     // texto: no puede quedarse atras al desplazar ni al acercar. Sobre el
@@ -1205,15 +1209,24 @@ fn panel(e: &Estado, p: &Pintor, m: Marco, textos: &Catalogo, botones: &mut Vec<
             Accion::Tamano(i),
         ));
     }
-    // Tipo y grosor: dos pares de pastillas, la elegida en dorado.
+    // Tipo y grosor: las cuatro letras y los cuatro grosores del movil
+    // (`Lectura.LETRAS` y `GROSORES`, K16), la elegida en dorado.
     let y_letra = caja.y + 100.0 * m.e;
     let mut xx = x;
-    for (etiqueta, activa, que) in [
-        (textos.t("lector-letra-normal"), e.ajustes.tipo == 0, Accion::Tipo(0)),
-        (textos.t("lector-letra-fija"), e.ajustes.tipo == 1, Accion::Tipo(1)),
-        (textos.t("lector-grosor-normal"), e.ajustes.grosor == 0, Accion::Grosor(0)),
-        (textos.t("lector-grosor-gruesa"), e.ajustes.grosor == 1, Accion::Grosor(1)),
-    ] {
+    let letras = ["lector-letra-serif", "lector-letra-sans", "lector-letra-fija", "lector-letra-cursiva"];
+    let grosores = ["lector-grosor-fina", "lector-grosor-normal", "lector-grosor-gruesa", "lector-grosor-negra"];
+    let pastillas = letras
+        .iter()
+        .enumerate()
+        .map(|(i, k)| (textos.t(k), usize::from(e.ajustes.tipo) == i, Accion::Tipo(i as u8)))
+        .chain(
+            grosores
+                .iter()
+                .enumerate()
+                .map(|(i, k)| (textos.t(k), usize::from(e.ajustes.grosor) == i, Accion::Grosor(i as u8))),
+        )
+        .collect::<Vec<_>>();
+    for (etiqueta, activa, que) in pastillas {
         let (w, h) = p.medir_texto(&etiqueta, 13.0 * m.e);
         let r = RectF {
             x: xx,
@@ -1231,7 +1244,7 @@ fn panel(e: &Estado, p: &Pintor, m: Marco, textos: &Catalogo, botones: &mut Vec<
         );
         botones.push((r, que));
         xx += r.ancho + 8.0 * m.e;
-        if matches!(que, Accion::Tipo(1)) {
+        if matches!(que, Accion::Tipo(t) if usize::from(t) == lectura::TIPOS - 1) {
             xx += 24.0 * m.e;
         }
     }
@@ -1796,7 +1809,7 @@ fn hacer(e: &mut Estado, a: Accion, textos: &Catalogo, ruta: &Path, ubicacion: &
 }
 
 fn guardar_ajustes(e: &Estado, ruta: &Path) {
-    if let Err(err) = lectura::escribir(ruta, &e.ajustes) {
+    if let Err(err) = crate::anotado_del_adjunto::escribir(ruta, &e.ajustes) {
         // Un documento en un sitio de solo lectura no tiene por que
         // estropear la lectura: se apunta y ya.
         tracing::info!(?err, "no se pudo guardar la lectura junto al documento");
@@ -1823,7 +1836,7 @@ fn dejar_medidas(e: &Estado, ruta: &Path) {
 }
 
 fn guardar_capa(e: &mut Estado, ruta: &Path) {
-    if let Err(err) = e.capa.guardar(&lector_tinta::ruta_de_capa(ruta)) {
+    if let Err(err) = crate::anotado_del_adjunto::guardar_capa(ruta, &mut e.capa) {
         tracing::warn!(?err, "no se pudo guardar lo anotado junto al documento");
     }
 }
@@ -1979,11 +1992,13 @@ fn cajas_de_coincidencia(e: &mut Estado, p: &Pintor, i: usize) -> Vec<RectF> {
     let inicio = pixpin_docs::buscar::a_utf16(&col.texto, k.inicio);
     let fin = pixpin_docs::buscar::a_utf16(&col.texto, k.inicio + k.largo);
     let cajas: Vec<RectF> = p
-        .cajas_de_trozo(
+        .cajas_de_lectura(
             &col.texto,
             col.tam,
-            e.columna - col.sangria,
+            col.ancho,
             &col.tramos,
+            &col.letra.para_pintar(),
+            &col.renglones,
             inicio as u32,
             (fin - inicio) as u32,
         )
@@ -2069,7 +2084,7 @@ mod pruebas {
         }
     }
 
-    fn estado_de_prueba() -> Estado {
+    pub(super) fn estado_de_prueba() -> Estado {
         Estado {
             doc: Documento::default(),
             indice: Vec::new(),
@@ -2099,6 +2114,9 @@ mod pruebas {
             x_meta: None,
             hallar: Hallar::default(),
             nombre: Default::default(),
+            hoja: Hoja::Word,
+            tinta_de_antes: false,
+            guardar_ya: false,
         }
     }
 
@@ -2218,6 +2236,62 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// K16, la queja del usuario: «si varia el tamano de muestra se moverian
+    /// todas las anotaciones». Se anota con una ventana; con otra ventana,
+    /// otro aumento o intentando otra letra, el parrafo anotado cae en el
+    /// mismo sitio del documento, y en la pantalla texto y tinta van juntos.
+    #[test]
+    fn con_tinta_ni_la_ventana_ni_el_aumento_ni_la_letra_mueven_el_texto_bajo_ella() {
+        use pixpin_render::lectura::Medida;
+        let dir = std::env::temp_dir().join(format!("pixpin-visor-k16-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let ruta = dir.join("tesis.docx");
+        // Ocho unidades por letra, renglones de la letra por su interlineado.
+        let mide = |t: &str, tam: f32, ancho: f32, _: &[Tramo], l: &Letra| {
+            let renglones = ((t.chars().count() as f32 * 8.0) / ancho.max(1.0)).ceil().max(1.0);
+            Medida { ancho: ancho.min(t.chars().count() as f32 * 8.0), alto: renglones * tam * l.interlineado, minimo: 40.0, renglones: Vec::new() }
+        };
+        let ancha = marco();
+        let estrecha = Marco { ancho: 700.0, alto: 600.0, area: pixpin_geom::Rect { x: 0, y: 0, ancho: 700, alto: 600 }, ..marco() };
+        let mut e = estado_de_prueba();
+        e.doc = documento_de_muestra();
+        // Se anota con la ventana estrecha: la columna es la que cabia en ella.
+        alternar_anotar(&mut e, &ruta, estrecha);
+        let fijada = e.ajustes.columna as f32;
+        assert_eq!(fijada, columna_que_cabe(estrecha).round());
+        let donde = |e: &Estado, m: Marco| {
+            let (c, _) = colocar(&e.doc, &e.ajustes, columna_para(e, m), e.hoja, &mide);
+            c.iter().map(|x| (x.bloque, x.sangria, x.y)).collect::<Vec<_>>()
+        };
+        let antes = donde(&e, estrecha);
+        assert_eq!(donde(&e, ancha), antes, "otra ventana no recoloca el texto");
+        // Un trazo sobre el quinto bloque: en la pantalla va con su parrafo a
+        // cualquier aumento (la misma transformada para los dos).
+        let (_, x5, y5) = antes[5];
+        let trazo = Punto2::nuevo(x5 + 20.0, y5 + 5.0);
+        for zoom in [0.5f32, 1.0, 1.8] {
+            e.zoom = zoom;
+            let s = px(&e, ancha);
+            let pantalla = |x: f32, y: f32| ((x - e.x) * s, (y - e.y) * s);
+            let (px_t, py_t) = pantalla(trazo.x, trazo.y);
+            let (px_p, py_p) = pantalla(x5, y5);
+            assert!((px_t - px_p - 20.0 * s).abs() < 1e-3 && (py_t - py_p - 5.0 * s).abs() < 1e-3);
+        }
+        // Otra letra con tinta encima: no, y se dice por que.
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let guardados = e.ajustes.clone();
+        cambiar_letra(&mut e, &textos, &ruta, |a| a.tamano = 150);
+        cambiar_letra(&mut e, &textos, &ruta, |a| a.tipo = 3);
+        assert_eq!(e.ajustes, guardados);
+        assert!(e.aviso.is_some());
+        assert_eq!(donde(&e, ancha), antes);
+        // Caso negativo: sin tinta (columna suelta) la ventana si recoloca.
+        e.ajustes.columna = 0;
+        assert_ne!(donde(&e, ancha), donde(&e, estrecha), "sin columna fijada cada ventana tiene la suya");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn un_trazo_del_raton_cae_en_unidades_del_documento() {
         let mut e = estado_de_prueba();
@@ -2250,17 +2324,22 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    fn colocado(texto: &str, y: f32) -> Colocado {
+    pub(super) fn colocado(texto: &str, y: f32) -> Colocado {
         Colocado {
             texto: texto.into(),
             tramos: Vec::new(),
             clase: Clase::Parrafo,
             tam: 16.0,
             sangria: 0.0,
+            ancho: 800.0,
             y,
             alto: 100.0,
             color: TEXTO,
             bloque: None,
+            caja: None,
+            letra: Letra::del_cuerpo(Hoja::Word, &lectura::Ajustes::default()),
+            recuadro: false,
+            renglones: Vec::new(),
         }
     }
 
@@ -2311,10 +2390,15 @@ mod pruebas {
             clase: Clase::Parrafo,
             tam: 16.0,
             sangria: 0.0,
+            ancho: 800.0,
             y,
             alto: 20.0,
             color: TEXTO,
             bloque,
+            caja: None,
+            letra: Letra::del_cuerpo(Hoja::Word, &lectura::Ajustes::default()),
+            recuadro: false,
+            renglones: Vec::new(),
         };
         e.colocados = vec![colocar(10.0, None), colocar(40.0, Some(0)), colocar(900.0, Some(1))];
         assert_eq!(y_del_bloque(&e, 1), 900.0);
@@ -2456,6 +2540,142 @@ mod pruebas {
         trazo(&mut e, Herramienta::Resaltador, false, &[(0.0, 250.0), (300.0, 250.0)]);
         foto(&mut e, "anotando-alejado");
         let _ = std::fs::remove_file(lectura::ruta_de_ajustes(&ruta));
+    }
+
+    /// **La tinta del movil sobre el Word del usuario, en el PC** (K16): una
+    /// copia del Word (`PIXPIN_DOCX`), la tinta de su mensaje
+    /// (`PIXPIN_TINTA`, `anot-<uid>.excalidraw`) y su maqueta
+    /// (`PIXPIN_MAQUETA`, `columna,izq,der,t,g,l`), pintados como en el lector
+    /// a dos anchos de ventana y dos aumentos, en PNG para mirarlos junto a la
+    /// pagina del movil. Necesita GPU:
+    /// `cargo test -p pixpin --bin pixpinmax muestra_de_la_tinta_del_movil -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "necesita GPU y una copia de los datos del usuario"]
+    fn muestra_de_la_tinta_del_movil_en_el_pc() {
+        use pixpin_render::MotorRender;
+        use pixpin_render::fuera_de_pantalla::FueraDePantalla;
+
+        let docx = std::env::var("PIXPIN_DOCX").expect("PIXPIN_DOCX");
+        let tinta = std::env::var("PIXPIN_TINTA").expect("PIXPIN_TINTA");
+        let maqueta = pixpin_sincro::anotado::Maqueta::de_texto(&std::env::var("PIXPIN_MAQUETA").expect("PIXPIN_MAQUETA"))
+            .expect("maqueta");
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
+        let motor = MotorRender::nuevo(d.d3d()).expect("motor");
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let mut e = estado_de_prueba();
+        e.doc = pixpin_docs::abrir(Path::new(&docx)).expect("el Word se lee");
+        e.alto_doc = 0.0;
+        e.ajustes.columna = maqueta.columna as u32;
+        e.ajustes.tamano = maqueta.tamano as u32;
+        e.ajustes.tipo = crate::anotado_del_adjunto::tipo_del_movil(maqueta.tipo);
+        e.ajustes.grosor = crate::anotado_del_adjunto::grosor_del_movil(maqueta.grosor);
+        // La tinta del movil cuenta desde el borde de su pagina: se corre su `izq`.
+        e.capa = Capa::leer_corrida(Path::new(&tinta), maqueta.izq as f32);
+        let caja_tinta = e.capa.escena.caja().expect("hay tinta");
+        println!("tinta (columna): {caja_tinta:?}");
+        let foto = |e: &mut Estado, nombre: &str, ancho: u32, alto: u32, zoom: f32| {
+            let m = Marco {
+                ancho: ancho as f32,
+                alto: alto as f32,
+                e: 1.0,
+                escala_por_cien: 100,
+                area: pixpin_geom::Rect { x: 0, y: 0, ancho, alto },
+            };
+            let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), ancho, alto).expect("superficie");
+            e.zoom = zoom;
+            motor
+                .dibujar(&fuera.destino, |p| {
+                    medir(e, p, m);
+                    // La tinta en medio de la ventana.
+                    let s = px(e, m);
+                    e.x = (caja_tinta.0 + caja_tinta.2) / 2.0 - m.ancho / s / 2.0;
+                    e.y = (caja_tinta.1 + caja_tinta.3) / 2.0 - m.alto / s / 2.0;
+                    acotar(e, m);
+                    pintar(e, p, m, &textos);
+                })
+                .expect("pintar");
+            fuera.esperar_gpu().expect("esperar");
+            let (w, h, pixeles) = fuera.leer_rgba().expect("leer");
+            let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba { ancho: w, alto: h, pixeles })
+                .expect("png");
+            let ruta = carpeta.join(format!("k16-{nombre}.png"));
+            std::fs::write(&ruta, png).expect("guardar");
+            println!("{nombre}: {}", ruta.display());
+            // Donde cae la fila de la referencia 37 en esta ventana y la tinta:
+            // con la misma transformada, el texto y la tinta se mueven juntos.
+            let fila = e.colocados.iter().find(|c| c.texto.starts_with("Álvarez Ochoa")).map(|c| c.y);
+            println!("  {nombre}: fila 37 en y {fila:?}; alto del documento {}", e.alto_doc);
+        };
+        foto(&mut e, "word-1400", 1400, 900, 1.0);
+        foto(&mut e, "word-900", 900, 700, 1.0);
+        foto(&mut e, "word-1400-cerca", 1400, 900, 1.8);
+    }
+
+    /// **La tinta de antes de K16 llevada a la maqueta del movil**, con el
+    /// libro del usuario (una copia: `PIXPIN_LIBRO`, con su
+    /// `.pixpin-lectura` de la version 1 y su `.pixpin-anotado` al lado).
+    /// Deja un PNG donde empieza lo anotado para mirar que cada trazo sigue
+    /// sobre su renglon. Necesita GPU:
+    /// `cargo test -p pixpin --bin pixpinmax muestra_de_la_tinta_de_antes -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "necesita GPU y una copia de los datos del usuario"]
+    fn muestra_de_la_tinta_de_antes_mudada() {
+        use pixpin_render::MotorRender;
+        use pixpin_render::fuera_de_pantalla::FueraDePantalla;
+
+        let libro = PathBuf::from(std::env::var("PIXPIN_LIBRO").expect("PIXPIN_LIBRO"));
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
+        let motor = MotorRender::nuevo(d.d3d()).expect("motor");
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let mut e = estado_de_prueba();
+        e.doc = pixpin_docs::abrir(&libro).expect("el libro se lee");
+        e.hoja = Hoja::de(&libro);
+        e.alto_doc = 0.0;
+        e.ajustes = lectura::leer(&libro);
+        assert!(e.ajustes.de_antes, "la copia tiene que traer su fichero de la version 1");
+        e.capa = Capa::leer(&lector_tinta::ruta_de_capa(&libro));
+        e.tinta_de_antes = e.ajustes.letra_fijada() && !e.capa.vacia();
+        let antes: Vec<(f32, f32)> = e.capa.escena.visibles().map(|x| (x.caja().0, x.caja().1)).collect();
+        let m = Marco {
+            ancho: 1400.0,
+            alto: 900.0,
+            e: 1.0,
+            escala_por_cien: 100,
+            area: pixpin_geom::Rect { x: 0, y: 0, ancho: 1400, alto: 900 },
+        };
+        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), 1400, 900).expect("superficie");
+        for (k, nombre) in ["libro-mudado-1", "libro-mudado-2"].iter().enumerate() {
+            motor
+                .dibujar(&fuera.destino, |p| {
+                    let t = std::time::Instant::now();
+                    medir(&mut e, p, m);
+                    println!("medir {} bloques (y mudar): {:.0} ms", e.doc.bloques.len(), t.elapsed().as_secs_f64() * 1000.0);
+                    let cajas: Vec<(f32, f32, f32, f32)> = e.capa.escena.visibles().map(|x| x.caja()).collect();
+                    // La primera tanda de trazos, y la del medio.
+                    let c = cajas[(cajas.len() / 2) * k];
+                    e.zoom = 0.6;
+                    let s = px(&e, m);
+                    e.x = (c.0 + c.2) / 2.0 - m.ancho / s / 2.0;
+                    e.y = c.1 - m.alto / s / 3.0;
+                    acotar(&mut e, m);
+                    pintar(&mut e, p, m, &textos);
+                })
+                .expect("pintar");
+            fuera.esperar_gpu().expect("esperar");
+            let (w, h, pixeles) = fuera.leer_rgba().expect("leer");
+            let png = pixpin_codec::imagen::codificar_png(&pixpin_codec::imagen::ImagenRgba { ancho: w, alto: h, pixeles })
+                .expect("png");
+            let ruta = carpeta.join(format!("k16-{nombre}.png"));
+            std::fs::write(&ruta, png).expect("guardar");
+            println!("{nombre}: {}", ruta.display());
+        }
+        let despues: Vec<(f32, f32)> = e.capa.escena.visibles().map(|x| (x.caja().0, x.caja().1)).collect();
+        for (a, b) in antes.iter().zip(&despues).take(8) {
+            println!("  {a:?} -> {b:?}");
+        }
+        assert!(!e.ajustes.de_antes && e.guardar_ya, "mudada una vez y a guardar ya");
     }
 
     /// **La latencia de la tinta en el lector**, medida sin ventana como la

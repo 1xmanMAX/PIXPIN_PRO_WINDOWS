@@ -97,8 +97,14 @@ pub(crate) fn medidas_de(doc: &Documento, colocados: &[Colocado], alto: f32, bas
         abajo = colocados[i].y + colocados[i].alto;
         i += 1;
     }
+    // Un Word no lleva cabecera en la maqueta del movil (K16): el titulo y
+    // el autor de la pagina web van antes que todo, un pixel cada uno.
+    if tops.is_empty() {
+        abajo = 0.0;
+    }
     while tops.len() < cabecera {
         tops.push(abajo);
+        abajo += 1.0;
     }
     for (n, b) in doc.bloques.iter().enumerate() {
         // Los colocados van en orden: el de este bloque, si lo hay, es el
@@ -111,7 +117,7 @@ pub(crate) fn medidas_de(doc: &Documento, colocados: &[Colocado], alto: f32, bas
                 tops.push(c.y);
                 let (_, aire, _) = crate::visor::pinta(b.clase);
                 // Una raya ocupa su aire detras, no su pixel.
-                abajo = if c.texto.is_empty() { c.y + base * aire } else { c.y + c.alto };
+                abajo = if c.texto.is_empty() && c.caja.is_none() { c.y + base * aire } else { c.y + c.alto };
             }
             None => {
                 let (_, aire, _) = crate::visor::pinta(b.clase);
@@ -188,13 +194,13 @@ pub(crate) fn medidas_guardadas(documento: &Path, ajustes: &lectura::Ajustes) ->
 
 /// **Mide el documento ahora**, con el mismo DirectWrite que el lector y
 /// fuera de un fotograma: la misma disposicion que la pantalla.
-fn medir_ahora(doc: &Documento, ajustes: &lectura::Ajustes, columna: f32) -> Result<Medidas> {
+fn medir_ahora(doc: &Documento, ajustes: &lectura::Ajustes, columna: f32, hoja: crate::visor::Hoja) -> Result<Medidas> {
     let dispositivo = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para medir el texto")?;
     let motor = pixpin_render::MotorRender::nuevo(dispositivo.d3d()).context("sin motor para medir el texto")?;
-    let mide = |texto: &str, tam: f32, ancho: f32, tramos: &[pixpin_render::Tramo]| {
-        motor.medir_parrafo(texto, tam, ancho, tramos).1
+    let mide = |texto: &str, tam: f32, ancho: f32, tramos: &[pixpin_render::Tramo], letra: &crate::visor::Letra| {
+        motor.medir_de_lectura(texto, tam, ancho, tramos, &letra.para_pintar())
     };
-    let (colocados, alto) = crate::visor::colocar(doc, ajustes, columna, &mide);
+    let (colocados, alto) = crate::visor::colocar(doc, ajustes, columna, hoja, &mide);
     Ok(medidas_de(doc, &colocados, alto, crate::visor::tamano_base(ajustes)))
 }
 
@@ -283,12 +289,15 @@ fn estilo_de_texto(ajustes: &lectura::Ajustes, columna: f32, margen: f32, piezas
     use pixpin_docs::documento::Clase;
     let b = crate::visor::tamano_base(ajustes);
     let aire = |c: Clase| px(b * crate::visor::pinta(c).1);
-    let familia = if ajustes.tipo == 1 {
-        "Consolas,'Cascadia Mono',monospace"
-    } else {
-        "'Segoe UI',system-ui,-apple-system,sans-serif"
+    // Las cuatro letras y los cuatro pesos del movil (K16), con las del
+    // navegador de reserva.
+    let familia = match ajustes.tipo {
+        0 => "'Noto Serif',Georgia,serif",
+        2 => "'Courier New',monospace",
+        3 => "Caveat,cursive",
+        _ => "Roboto,'Segoe UI',system-ui,sans-serif",
     };
-    let peso = if ajustes.grosor == 1 { 700 } else { 400 };
+    let peso = lectura::PESOS[usize::from(ajustes.grosor).min(lectura::GROSORES - 1)];
     let mut s = String::with_capacity(2048);
     s.push_str(&format!(
         ".doc-caja{{background:{fondo}}}\
@@ -397,18 +406,18 @@ pub(crate) fn web_de_texto(ruta: &Path) -> Result<String> {
 /// tarjeta para comprobar que se cae a lo guardado.
 pub(crate) fn web_de_texto_con(
     ruta: &Path,
-    medir: &dyn Fn(&Documento, &lectura::Ajustes, f32) -> Result<Medidas>,
+    medir: &dyn Fn(&Documento, &lectura::Ajustes, f32, crate::visor::Hoja) -> Result<Medidas>,
 ) -> Result<String> {
     let doc = pixpin_docs::abrir(ruta).map_err(|e| anyhow::anyhow!("{e}"))?;
-    let ajustes = lectura::leer(ruta);
-    let capa = crate::lector_tinta::Capa::leer(&crate::lector_tinta::ruta_de_capa(ruta));
+    let ajustes = crate::anotado_del_adjunto::leer(ruta);
+    let capa = crate::anotado_del_adjunto::leer_capa(ruta);
     let guardadas = medidas_guardadas(ruta, &ajustes);
     let columna = if ajustes.letra_fijada() {
         ajustes.columna as f32
     } else {
         guardadas.as_ref().map_or(super::COLUMNA_SIN_ANOTAR, |(c, _)| *c)
     };
-    let medidas = match medir(&doc, &ajustes, columna) {
+    let medidas = match medir(&doc, &ajustes, columna, crate::visor::Hoja::de(ruta)) {
         Ok(m) => Some(m),
         Err(e) => {
             tracing::info!(?e, "no se pudo medir el documento; se usan las medidas que dejo el lector");
@@ -620,6 +629,8 @@ pub(crate) fn web_de_pdf(ruta: &Path, paginas: Option<&[usize]>) -> Result<Strin
     let planos = std::fs::read(ruta)
         .map(|b| pixpin_pdf::plano_web::de_paginas(&b, &cuales, COLUMNA_PDF as f64))
         .unwrap_or_else(|_| vec![None; cuales.len()]);
+    // La tinta de un PDF de proyecto esta en sus hojas (`lector_pdf_proyecto`).
+    let donde = crate::lector_pdf_proyecto::DondeVa::solo_leer(ruta);
     let hojas: Vec<HojaPdf> = cuales
         .iter()
         .zip(planos)
@@ -632,7 +643,7 @@ pub(crate) fn web_de_pdf(ruta: &Path, paginas: Option<&[usize]>) -> Result<Strin
                     .ok()
                     .and_then(|img| foto_para_la_web(&img, CALIDAD_PDF))
             };
-            let capa = crate::lector_tinta::ruta_de_hoja(ruta, i);
+            let capa = donde.para_leer(ruta, i);
             let tinta = if capa.is_file() {
                 crate::lector_tinta::Capa::leer(&capa).escena
             } else {
@@ -647,7 +658,7 @@ pub(crate) fn web_de_pdf(ruta: &Path, paginas: Option<&[usize]>) -> Result<Strin
             }
         })
         .collect();
-    let ajustes = lectura::leer(ruta);
+    let ajustes = crate::anotado_del_adjunto::leer(ruta);
     let titulo = pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta));
     let hoja = hoja_de_pdf(&titulo, &hojas, &ajustes.marcas);
     pagina(&[hoja], &titulo).context("sin hoja")

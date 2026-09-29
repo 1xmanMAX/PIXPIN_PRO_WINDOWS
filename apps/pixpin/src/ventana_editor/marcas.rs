@@ -117,7 +117,9 @@ pub(crate) fn ruta_de_marcas(dibujo: &Path) -> PathBuf {
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "dibujo".into());
     nombre.push_str(".pixpin-marcas");
-    dibujo.with_file_name(nombre)
+    // Un lienzo de un chat las lleva junto a su dibujo del movil
+    // (`<dibujo>.marcas`, v0.96), que viaja con el al sincronizar.
+    crate::anotado_del_adjunto::marcas_del_lienzo(dibujo, dibujo.with_file_name(nombre))
 }
 
 /// Las marcas de un dibujo. Sin fichero, o roto, ninguna: no tener marcas es
@@ -132,6 +134,11 @@ pub(crate) fn leer(dibujo: &Path) -> Vec<Marca> {
 /// vacio al lado de cada dibujo que alguna vez tuvo una seria basura.
 pub(crate) fn escribir(dibujo: &Path, lista: &[Marca]) -> std::io::Result<()> {
     let ruta = ruta_de_marcas(dibujo);
+    if !ruta.to_string_lossy().ends_with(".pixpin-marcas") {
+        // La que viaja no se borra al vaciarla: se deja vacia, como el movil
+        // (un fichero que desaparece no le dice nada al otro aparato).
+        return pixpin_proyecto::anotado::escribir(&ruta, &marcas::a_texto(lista));
+    }
     if lista.is_empty() {
         return match std::fs::remove_file(&ruta) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),

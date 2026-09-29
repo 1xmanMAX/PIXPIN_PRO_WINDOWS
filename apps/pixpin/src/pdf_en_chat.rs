@@ -974,6 +974,9 @@ pub fn fondo_de_pagina(
             .join(format!("pagina-{:02}.png", pagina + 1));
         return pixpin_codec::cargar(&vieja).ok().map(Fuente::Imagen);
     };
+    // Sin lo que el movil cocio dentro: eso se pinta encima, vivo, y en el
+    // fondo saldria dos veces (el recuadro doble de una zona vinculada).
+    let pdf = crate::pdf_del_proyecto::sin_lo_cocido(raiz, &pdf, pagina);
     // Solo la ruta y la proporcion (la cabecera del PNG): descomprimirlo
     // lo hace el hilo del fondo.
     let previa = pagina_pintada(raiz, &pdf, pagina, ANCHO_VISTA);

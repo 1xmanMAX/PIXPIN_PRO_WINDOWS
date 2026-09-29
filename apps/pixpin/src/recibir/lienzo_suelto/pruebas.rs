@@ -97,6 +97,19 @@ fn como_lo_lee_el_movil(json: &str) -> Result<(), String> {
             if !l.iter().all(es_pt) {
                 return Err(format!("{id}: points no son Pt {{x,y}}"));
             }
+            // `Renderer.sePierdeDePequeno`: un trazo, una linea o una flecha
+            // con la caja por debajo de dos pixeles se pinta como la raya de
+            // su primer punto al ultimo. El que se extiende no puede llegar asi.
+            let eje = |k: &str| l.iter().filter_map(|q| q[k].as_f64()).fold((f64::MAX, f64::MIN), |(a, b), v| (a.min(v), b.max(v)));
+            let ((x1, x2), (y1, y2)) = (eje("x"), eje("y"));
+            let num = |k: &str| e.get(k).and_then(Value::as_f64).unwrap_or(0.0);
+            if ["freedraw", "line", "arrow"].contains(&tipo)
+                && l.len() >= 2
+                && (x2 - x1) + (y2 - y1) >= 2.0
+                && num("width") + num("height") < 2.0
+            {
+                return Err(format!("{id}: caja a cero, se pintaria como una raya recta"));
+            }
         }
         if let Some(p) = e.get("lastCommittedPoint").filter(|p| !p.is_null())
             && !es_pt(p)

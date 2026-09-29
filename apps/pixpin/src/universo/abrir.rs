@@ -196,7 +196,21 @@ pub fn abrir_hoja(
         Some(i) => {
             crate::ventana_chat::abrir_hojas(raiz, proyecto, &mensajes, i, opciones);
         }
-        None => tracing::warn!(%referencia, %proyecto, "la hoja no esta en el chat"),
+        // Una hoja que no esta en el chat (un sublienzo que solo esta en
+        // `proyecto.json`, uno con el nombre de antes de importarse) se busca
+        // como la busca una zona vinculada.
+        None => match crate::salto_por_enlace::hoja_del_enlace(raiz, proyecto, &mensajes, referencia) {
+            Some(crate::salto_por_enlace::HojaDelEnlace::EnLaLista(i)) => {
+                crate::ventana_chat::abrir_hojas(raiz, proyecto, &mensajes, i, opciones);
+            }
+            Some(crate::salto_por_enlace::HojaDelEnlace::Leida(m)) => {
+                let mut todos = mensajes;
+                todos.push(m);
+                let i = todos.len() - 1;
+                crate::ventana_chat::abrir_hojas(raiz, proyecto, &todos, i, opciones);
+            }
+            None => tracing::warn!(%referencia, %proyecto, "la hoja no esta en el chat"),
+        },
     }
 }
 

@@ -149,6 +149,11 @@ fn punto_que_agarra(escena: &Escena, gesto: &Gesto, escala: f32) -> Punto2 {
     for id in gesto.seleccion.ids() {
         let Some(e) = escena.buscar(*id) else { continue };
         let (x0, y0, x1, y1) = e.caja();
+        // Un marco solo se coge por su raya: la de arriba, lejos de los
+        // tiradores.
+        if matches!(e.figura, Figura::Marco { .. }) {
+            return Punto2::nuevo(x0 + (x1 - x0) / 4.0, y0);
+        }
         for i in 1..8 {
             for j in 1..8 {
                 let p = Punto2::nuevo(
@@ -576,4 +581,326 @@ fn apuntar_la_lupa(b: &mut Banco, escena: &mut Escena, id: u64, camara: &Camara)
 /// el bucle de verdad: ver `ventana_editor.rs`, «apuntando una lupa»).
 fn ventana_editor_apunta_con_capa() -> bool {
     true
+}
+
+// ---------------------------------------------------------------------------
+// **Cotas y marcos** (queja del 28-sep: «cuando pongo la cota esta se mueve
+// lento» y «al poner los frames pasa lo mismo»).
+//
+// ```text
+// cargo test --release -p pixpin --bin pixpinmax medir_el_arrastre_de_cotas -- --ignored --nocapture --test-threads=1
+// ```
+
+/// Una cota de `a` a `b` como las deja la herramienta (rugosa, con semilla).
+fn cota_de(a: Punto2, b: Punto2, semilla: u32) -> Elemento {
+    let mut e = Elemento {
+        figura: Figura::Cota { puntos: vec![a, b] },
+        x: a.x.min(b.x),
+        y: a.y.min(b.y),
+        ancho: (b.x - a.x).abs(),
+        alto: (b.y - a.y).abs(),
+        trazo: ColorRgba::opaco(0.05, 0.87, 1.0),
+        grosor: 2.5,
+        rugosidad: 1.0,
+        ..Default::default()
+    };
+    e.semilla = semilla;
+    e
+}
+
+/// La lamina de antes con veinte cotas repartidas por lo que se ve, una
+/// escala puesta (las cotas dicen centimetros) y dos marcos: uno vacio y
+/// otro con cosas dentro.
+struct LaminaDeCotas {
+    escena: Escena,
+    camara: Camara,
+    cotas: Vec<u64>,
+    suelta: u64,
+    marco_vacio: u64,
+    marco_lleno: u64,
+}
+
+fn lamina_de_cotas(b: &Banco) -> LaminaDeCotas {
+    let l = lamina(b);
+    let mut escena = l.escena;
+    escena.escala = Some(pixpin_motor2d::Escala {
+        unidades_por_pixel: 0.0166,
+        unidad: "cm".into(),
+        decimales: 2,
+    });
+    let mut cotas = Vec::new();
+    for i in 0..20u32 {
+        let x = 150.0 + (i % 5) as f32 * 520.0;
+        let y = 150.0 + (i / 5) as f32 * 280.0;
+        let a = Punto2::nuevo(x, y);
+        let b = Punto2::nuevo(x + 300.0 - (i % 3) as f32 * 60.0, y + (i % 4) as f32 * 45.0);
+        cotas.push(escena.anadir(cota_de(a, b, 40 + i)));
+    }
+    let marco = |x: f32, y: f32| Elemento {
+        figura: Figura::Marco { nombre: "Lamina".into() },
+        x,
+        y,
+        ancho: 420.0,
+        alto: 300.0,
+        grosor: 1.5,
+        ..Default::default()
+    };
+    let marco_vacio = escena.anadir(marco(2200.0, 1250.0));
+    let marco_lleno = escena.anadir(marco(100.0, 1250.0));
+    // Lo de dentro: una cota y unas figuras, lo que hay en una lamina.
+    escena.anadir(cota_de(Punto2::nuevo(140.0, 1300.0), Punto2::nuevo(400.0, 1300.0), 99));
+    for i in 0..6 {
+        escena.anadir(Elemento {
+            figura: Figura::Rectangulo,
+            x: 130.0 + i as f32 * 60.0,
+            y: 1400.0,
+            ancho: 50.0,
+            alto: 50.0,
+            trazo: ColorRgba::opaco(0.2, 0.2, 0.2),
+            grosor: 2.0,
+            ..Default::default()
+        });
+    }
+    LaminaDeCotas {
+        escena,
+        camara: l.camara,
+        cotas,
+        suelta: l.suelta,
+        marco_vacio,
+        marco_lleno,
+    }
+}
+
+/// **Trazar una figura nueva** con lo que hace el bucle del editor: pulsar
+/// hornea la capa congelada sin lo que nace (`congelar::hornear`), y cada
+/// aviso copia de ella el trozo sucio (`Region::Caja` del gesto, el de antes
+/// y el de ahora) y repinta encima lo que se esta trazando.
+fn trazar(b: &mut Banco, escena: &mut Escena, herramienta: Herramienta, desde: Punto2, camara: &Camara) -> Arrastre {
+    let copia = escena.clone();
+    let mut gesto = Gesto::nuevo();
+    gesto.herramienta = herramienta;
+    let mut rejilla = Rejilla::nueva();
+    rejilla.sincronizar(escena);
+    let mut cache = Cache::nueva();
+    let mut cache_tinta = pixpin_render::CacheTinta::nueva();
+    cache_tinta.fijar_escala(camara.zoom);
+    let escala = 1.0 / camara.zoom;
+    b.escena_en(&b.destino, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|_| true);
+    b.destino.esperar_gpu().expect("GPU");
+    gesto.evento(
+        EventoGesto::Pulsar {
+            p: desde,
+            shift: false,
+            alt: false,
+            presion: None,
+        },
+        escena,
+        escala,
+    );
+    let mut a = Arrastre::default();
+    let (nuevo, _) = gesto.elemento_en_curso().expect("algo nace");
+    // Hornear la capa sin lo que nace, como `congelar::hornear`.
+    let t = Instant::now();
+    rejilla.sincronizar(escena);
+    b.escena_en(&b.capa, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|id| id != nuevo);
+    b.capa.esperar_gpu().expect("GPU");
+    a.empezar_ms = t.elapsed().as_secs_f64() * 1000.0;
+    let mut zona_antes: Option<(i32, i32, i32, i32)> = None;
+    for i in 1..=AVISOS {
+        let q = Punto2::nuevo(desde.x + i as f32 * 11.0 * escala, desde.y + i as f32 * 5.0 * escala);
+        let t = Instant::now();
+        let r = gesto.evento(
+            EventoGesto::Mover {
+                p: q,
+                shift: false,
+                alt: false,
+                presion: None,
+            },
+            escena,
+            escala,
+        );
+        a.gesto_ms += t.elapsed().as_secs_f64() * 1000.0;
+        a.avisos += 1;
+        let t = Instant::now();
+        rejilla.sincronizar(escena);
+        let ahora = match r.region {
+            pixpin_motor2d::gesto::Region::Caja(x0, y0, x1, y1) => {
+                Some(caja_en_pantalla(camara, (x0, y0, x1, y1), 2.0))
+            }
+            _ => None,
+        };
+        let zona = match (ahora, zona_antes) {
+            (Some(z), Some(p)) => Some((p.0.min(z.0), p.1.min(z.1), p.2.max(z.2), p.3.max(z.3))),
+            (Some(z), None) => Some(z),
+            _ => None,
+        };
+        zona_antes = ahora;
+        a.en_zona += zona.is_some() as usize;
+        let zona = zona.map(|z| (z.0.max(0), z.1.max(0), z.2.min(ANCHO as i32), z.3.min(ALTO as i32)));
+        b.destino.copiar_desde(&b.capa, zona).expect("volcar");
+        let vista = camara.ventana(ANCHO as f32, ALTO as f32);
+        let imagenes = &b.imagenes;
+        b.motor
+            .dibujar(&b.destino.destino, |p| {
+                if let Some((x0, y0, x1, y1)) = zona {
+                    p.empujar_recorte(pixpin_render::RectF {
+                        x: x0 as f32,
+                        y: y0 as f32,
+                        ancho: (x1 - x0).max(0) as f32,
+                        alto: (y1 - y0).max(0) as f32,
+                    });
+                }
+                let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
+                p.poner_vista((0.0, 0.0), camara.zoom, (origen.x, origen.y));
+                if let Some(e) = escena.buscar(nuevo) {
+                    let grano = pixpin_motor2d::pintado::grano_de(e);
+                    por_cada_orden(&mut cache, e, camara.zoom, escena.escala.as_ref(), |orden| {
+                        dibujar_orden(p, orden, vista, None, imagenes, camara.zoom, grano);
+                    });
+                }
+                p.desplazar(0.0, 0.0);
+                if zona.is_some() {
+                    p.soltar_recorte();
+                }
+            })
+            .expect("lo que nace");
+        b.destino.esperar_gpu().expect("GPU");
+        let f = t.elapsed().as_secs_f64() * 1000.0;
+        a.enteros += 1;
+        a.fotograma_ms += f;
+        a.fotograma_peor = a.fotograma_peor.max(f);
+    }
+    *escena = copia;
+    a
+}
+
+/// La escena entera, `AVISOS` veces: lo que cuesta un fotograma sin capa
+/// congelada (con el universo detras, al acercar o al soltar lo arrastrado).
+fn escena_entera(b: &mut Banco, escena: &Escena, camara: &Camara) -> f64 {
+    let mut rejilla = Rejilla::nueva();
+    rejilla.sincronizar(escena);
+    let mut cache = Cache::nueva();
+    let mut cache_tinta = pixpin_render::CacheTinta::nueva();
+    cache_tinta.fijar_escala(camara.zoom);
+    b.escena_en(&b.destino, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|_| true);
+    b.destino.esperar_gpu().expect("GPU");
+    let t = Instant::now();
+    for _ in 0..AVISOS {
+        b.escena_en(&b.destino, escena, &rejilla, &mut cache, &mut cache_tinta, camara, true, &|_| true);
+        b.destino.esperar_gpu().expect("GPU");
+    }
+    t.elapsed().as_secs_f64() * 1000.0 / AVISOS as f64
+}
+
+/// El desglose de una cota: cuanto de CPU es la raya de rough.js, cuanto
+/// medir el numero con DirectWrite y cuanto adaptar el color; y de GPU,
+/// cuanto el numero con su halo de 24 copias frente al numero solo.
+fn desglose_de_la_cota(b: &Banco, escena: &Escena, cotas: &[u64], camara: &Camara) {
+    use pixpin_motor2d::pintado::Orden;
+    let vueltas = 200;
+    let e = escena.buscar(cotas[0]).expect("cota").clone();
+    let papel = ColorRgba::opaco(1.0, 1.0, 1.0);
+    let t = Instant::now();
+    for _ in 0..vueltas {
+        std::hint::black_box(pixpin_motor2d::pintado::ordenes_medibles(&e, escena.escala.as_ref(), ',', papel));
+    }
+    let total = t.elapsed().as_secs_f64() * 1000.0 / vueltas as f64;
+    let texto = pixpin_motor2d::medida::texto_de_cota(&e, escena.escala.as_ref(), ',');
+    let t = Instant::now();
+    for _ in 0..vueltas {
+        std::hint::black_box(pixpin_motor2d::texto::medida(
+            &texto,
+            20.0,
+            "Segoe UI",
+            pixpin_motor2d::texto::EstiloDeTexto::default(),
+        ));
+    }
+    let medir = t.elapsed().as_secs_f64() * 1000.0 / vueltas as f64;
+    let t = Instant::now();
+    for _ in 0..vueltas {
+        std::hint::black_box(pixpin_motor2d::contraste::adaptar(
+            e.trazo,
+            pixpin_motor2d::contraste::papel_de(papel),
+        ));
+    }
+    let contraste = t.elapsed().as_secs_f64() * 1000.0 / vueltas as f64;
+    println!(
+        "una cota, CPU: ordenes_medibles {total:.3} ms (medir el numero {medir:.3}, contraste {contraste:.4}, rough y resto {:.3})",
+        total - medir - contraste
+    );
+    // GPU: las veinte cotas ya calculadas, pintadas con y sin halo.
+    let ordenes: Vec<Orden> = cotas
+        .iter()
+        .filter_map(|id| escena.buscar(*id))
+        .flat_map(|e| pixpin_motor2d::pintado::ordenes_medibles(e, escena.escala.as_ref(), ',', papel))
+        .collect();
+    let vista = camara.ventana(ANCHO as f32, ALTO as f32);
+    let pasar = |filtro: &dyn Fn(&Orden) -> Option<Orden>| {
+        let t = Instant::now();
+        for _ in 0..AVISOS {
+            b.motor
+                .dibujar(&b.destino.destino, |p| {
+                    p.limpiar(crate::dibujo::pintar::a_color(papel));
+                    let origen = camara.a_pantalla(Punto2::nuevo(0.0, 0.0));
+                    p.poner_vista((0.0, 0.0), camara.zoom, (origen.x, origen.y));
+                    for o in &ordenes {
+                        if let Some(o) = filtro(o) {
+                            dibujar_orden(p, &o, vista, None, &b.imagenes, camara.zoom, None);
+                        }
+                    }
+                })
+                .expect("fotograma");
+            b.destino.esperar_gpu().expect("GPU");
+        }
+        t.elapsed().as_secs_f64() * 1000.0 / AVISOS as f64
+    };
+    let nada = pasar(&|_| None);
+    let todo = pasar(&|o| Some(o.clone()));
+    let sin_numero = pasar(&|o| (!matches!(o, Orden::Rotulo { .. })).then(|| o.clone()));
+    let sin_halo = pasar(&|o| {
+        let mut o = o.clone();
+        if let Orden::Rotulo { grosor_halo, .. } = &mut o {
+            *grosor_halo = 0.0;
+        }
+        Some(o)
+    });
+    println!(
+        "veinte cotas, GPU (fotograma con limpiar {nada:.2} ms): todo {todo:.2} ms | sin numero {sin_numero:.2} | numero sin halo {sin_halo:.2}"
+    );
+}
+
+#[test]
+#[ignore = "necesita GPU real; ejecutar en --release con --ignored --nocapture"]
+fn medir_el_arrastre_de_cotas_y_marcos() {
+    let mut b = Banco::nuevo();
+    let l = lamina_de_cotas(&b);
+    let mut escena = l.escena.clone();
+    desglose_de_la_cota(&b, &escena, &l.cotas, &l.camara);
+    println!("escena entera con 20 cotas: {:.2} ms/fotograma", escena_entera(&mut b, &escena, &l.camara));
+    {
+        let mut sin = escena.clone();
+        for id in &l.cotas {
+            if let Some(e) = sin.buscar_mut(*id) {
+                e.borrado = true;
+            }
+        }
+        println!("escena entera sin las cotas: {:.2} ms/fotograma", escena_entera(&mut b, &sin, &l.camara));
+    }
+    let a = trazar(&mut b, &mut escena, Herramienta::Cota, Punto2::nuevo(1300.0, 700.0), &l.camara);
+    escribir("trazar una cota nueva", &a);
+    let a = trazar(&mut b, &mut escena, Herramienta::Marco, Punto2::nuevo(1300.0, 700.0), &l.camara);
+    escribir("trazar un marco nuevo", &a);
+    for (que, id) in [
+        ("una cota", l.cotas[7]),
+        ("marco vacio", l.marco_vacio),
+        ("marco con cosas", l.marco_lleno),
+        ("figura suelta (20 cotas)", l.suelta),
+    ] {
+        let a = arrastrar(&mut b, &mut escena, &[id], &l.camara, false);
+        escribir(&format!("mover {que}"), &a);
+        let a = arrastrar(&mut b, &mut escena, &[id], &l.camara, true);
+        escribir(&format!("estirar {que}"), &a);
+    }
+    lupas::olvidar();
+    let _ = &b.dispositivo;
 }

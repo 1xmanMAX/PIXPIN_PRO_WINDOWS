@@ -173,8 +173,10 @@ fn las_medidas_salen_una_por_bloque_y_los_vacios_ocupan_su_hueco() {
     d.bloques.insert(1, Bloque::nuevo(Clase::Parrafo, vec![Trozo::llano("   ")]));
     let a = lectura::Ajustes::default();
     // Cada renglon, su letra por 1,33; una linea por bloque.
-    let mide = |_: &str, tam: f32, _: f32, _: &[pixpin_render::Tramo]| tam * 1.33;
-    let (colocados, alto) = crate::visor::colocar(&d, &a, 500.0, &mide);
+    let mide = |_: &str, tam: f32, _: f32, _: &[pixpin_render::Tramo], l: &crate::visor::Letra| {
+        pixpin_render::lectura::Medida { ancho: 0.0, alto: tam * l.interlineado, minimo: 0.0, renglones: Vec::new() }
+    };
+    let (colocados, alto) = crate::visor::colocar(&d, &a, 500.0, crate::visor::Hoja::Word, &mide);
     let m = medidas_de(&d, &colocados, alto, crate::visor::tamano_base(&a));
     assert_eq!(m.tops.len(), pixpin_docs::documento::bloques_para_anotar(&d));
     assert!(m.tops.windows(2).all(|w| w[0] < w[1]), "{:?}", m.tops);
@@ -203,7 +205,8 @@ fn las_medidas_que_deja_el_lector_sirven_sin_poder_medir_y_solo_con_su_letra() {
     let otra = lectura::Ajustes { tamano: 130, ..a.clone() };
     assert!(medidas_guardadas(&ruta, &otra).is_none());
     // Sin tarjeta para medir, la pagina sale con lo guardado.
-    let sin_tarjeta = |_: &Documento, _: &lectura::Ajustes, _: f32| -> Result<Medidas> { anyhow::bail!("sin tarjeta") };
+    let sin_tarjeta =
+        |_: &Documento, _: &lectura::Ajustes, _: f32, _: crate::visor::Hoja| -> Result<Medidas> { anyhow::bail!("sin tarjeta") };
     let html = web_de_texto_con(&ruta, &sin_tarjeta).unwrap();
     assert!(html.contains("data-tops=\"34.0,80.0,140.0,200.0\""), "con lo guardado");
     assert!(html.contains("data-i=\"2\" data-y=\"150\""), "el marcador, en su bloque");
@@ -397,7 +400,7 @@ fn muestras_para_el_navegador() {
         lectura::escribir(&ruta, &a).unwrap();
         // Tinta junto a varios parrafos, medidos de verdad.
         let d = pixpin_docs::abrir(&ruta).unwrap();
-        let m = medir_ahora(&d, &a, 500.0).unwrap();
+        let m = medir_ahora(&d, &a, 500.0, crate::visor::Hoja::de(&ruta)).unwrap();
         let mut capa = Escena::nueva();
         for (n, t) in m.tops.iter().enumerate().skip(1).step_by(3).take(6) {
             if n % 2 == 0 {

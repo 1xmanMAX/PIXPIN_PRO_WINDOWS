@@ -18,8 +18,9 @@ use pixpin_render::{Color, RectF};
 
 /// Todas las ordenes de un elemento para un fotograma: las cacheadas (forma,
 /// colores...) mas las que dependen de la escala (el numero de una cota, el
-/// cuadro de una barra), que se recalculan cada vez porque `cache` no las
-/// guarda -es lo que hace que calibrar surta efecto sin invalidar nada-.
+/// cuadro de una barra), que `cache.medibles` guarda aparte con la escala y
+/// el papel en la clave -asi calibrar o cambiar el papel surte efecto sin
+/// tocar la version de nada-.
 ///
 /// La usan `pintar` y el cierre de `capa.preparar` (mas abajo, en `abrir`):
 /// las dos veces que se decide que ordenes representan a un elemento en un
@@ -72,8 +73,14 @@ pub(crate) fn por_cada_orden(
             }
         }
     }
-    for orden in pixpin_motor2d::pintado::ordenes_medibles(e, escala, ',') {
-        dibuja(&orden);
+    // La cota entera (raya y numero) sale de aqui con la tinta adaptada al
+    // papel de este fotograma, como el movil (`pintado::cota_entera`). De la
+    // cache, con la escala y el papel en la clave (`Cache::medibles`): antes
+    // se recalculaba cada cota visible en cada pintado, y lo que se traza
+    // sube de version en cada aviso, asi que solo se recalcula lo vivo.
+    let papel = super::tema::papel_del_fotograma();
+    for orden in cache.medibles(e, escala, ',', papel) {
+        dibuja(orden);
     }
 }
 
@@ -265,6 +272,28 @@ pub(crate) fn dibujar_orden(
             let letra = letra_de(familia, *negrita, *cursiva);
             p.texto_con_letra(texto, *x, *y, *tam, *ancho_max, &letra, a_tinta(*color));
         }
+        // El numero de una cota, girado con su raya y con halo. La tinta ya
+        // viene adaptada al papel desde el motor, y el halo va tal cual: es
+        // el contrario de esa tinta (`contrastingTextColor`), y pasarlo por
+        // `a_tinta` lo volveria a adaptar y sobre papel de noche el halo negro
+        // saldria gris claro, pegado a la letra.
+        Orden::Rotulo {
+            texto,
+            x,
+            y,
+            tam,
+            familia,
+            color,
+            halo,
+            grosor_halo,
+            centro,
+            angulo,
+        } => {
+            let letra = letra_de(familia, false, false);
+            p.girado((centro.x, centro.y), *angulo, |p| {
+                p.texto_con_halo(texto, *x, *y, *tam, &letra, a_tinta(*color), a_color(*halo), *grosor_halo);
+            });
+        }
         Orden::Imagen {
             id_objeto,
             x,
@@ -273,6 +302,7 @@ pub(crate) fn dibujar_orden(
             alto,
             opacidad,
             recorte,
+            angulo,
         } => {
             // El motor no sabe de bitmaps: solo dice «aqui va la imagen
             // numero N». Quien la tiene es el almacen del lienzo. Con su
@@ -286,19 +316,24 @@ pub(crate) fn dibujar_orden(
                 ancho_natural: r.ancho_natural,
                 alto_natural: r.alto_natural,
             });
-            imagenes.pintar_recortada(
-                p,
-                *id_objeto,
-                RectF {
-                    x: *x,
-                    y: *y,
-                    ancho: *ancho,
-                    alto: *alto,
-                },
-                zoom,
-                *opacidad,
-                recorte.as_ref(),
-            );
+            // Y con su giro, alrededor del centro de su caja: una foto girada
+            // en el movil se veia aqui derecha.
+            let centro = (*x + *ancho / 2.0, *y + *alto / 2.0);
+            p.girado(centro, *angulo, |p| {
+                imagenes.pintar_recortada(
+                    p,
+                    *id_objeto,
+                    RectF {
+                        x: *x,
+                        y: *y,
+                        ancho: *ancho,
+                        alto: *alto,
+                    },
+                    zoom,
+                    *opacidad,
+                    recorte.as_ref(),
+                );
+            });
         }
     }
 }
@@ -319,6 +354,7 @@ pub(crate) fn pintar_copia_predicha(
     vista: (f32, f32, f32, f32),
     imagenes: &ImagenesLienzo,
     zoom: f32,
+    escala: Option<&Escala>,
 ) {
     use pixpin_motor2d::tinta::grafito;
     let adaptado = grafito::es_de_grafito(copia)
@@ -331,6 +367,12 @@ pub(crate) fn pintar_copia_predicha(
         return;
     }
     for orden in pixpin_motor2d::pintado::ordenes_a_distancia(copia, zoom) {
+        dibujar_orden(p, &orden, vista, None, imagenes, zoom, None);
+    }
+    // Una cota que se arrastra no tiene nada en las ordenes cacheables: su
+    // raya y su numero salen de las medibles, con la escala de la escena.
+    let papel = super::tema::papel_del_fotograma();
+    for orden in pixpin_motor2d::pintado::ordenes_medibles(copia, escala, ',', papel) {
         dibujar_orden(p, &orden, vista, None, imagenes, zoom, None);
     }
 }

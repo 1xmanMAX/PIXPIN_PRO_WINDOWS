@@ -845,6 +845,7 @@ name = "pixpin-pdf"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "memchr",
  "pixpin-codec",
  "pixpin-motor2d",
  "serde_json",

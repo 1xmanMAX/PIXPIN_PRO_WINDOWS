@@ -247,6 +247,7 @@ pub(crate) fn hoja_anotada(
         alto,
         opacidad: 1.0,
         recorte: None,
+        angulo: 0.0,
     }];
     ordenes.extend(tinta.unwrap_or_default().iter().cloned());
     Some(pixpin_motor2d::exportar::Hoja {
@@ -324,6 +325,9 @@ enum Accion {
     AbrirCarpeta,
     QuitarMarcas,
     QuitarTinta,
+    /// «Al proyecto» (`LectorPdfActivity`): el PDF pasa a ser un proyecto con
+    /// lo anotado en sus hojas, que asi viaja al sincronizar.
+    AlProyecto,
     /// Pulsar el nombre: cambiarlo (D5).
     Renombrar,
     /// Un boton de la caja de buscar (D9).
@@ -366,6 +370,9 @@ struct Estado {
     zoom_cambiado: u64,
     marcas: Vec<Marca>,
     capas: HashMap<usize, Capa>,
+    /// Donde va la capa de cada hoja: la hoja del proyecto si el PDF es de
+    /// uno (y viaja al sincronizar, como en el movil), o junto al PDF.
+    donde: crate::lector_pdf_proyecto::DondeVa,
     /// Las hojas tocadas, en orden, para que Ctrl+Z deshaga en la que toca.
     hechos: Vec<usize>,
     deshechos: Vec<usize>,
@@ -428,13 +435,17 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta
     let (tx_pedidos, rx_pedidos) = mpsc::channel::<Pedido>();
     let (tx_llega, rx_llega) = mpsc::channel::<Llega>();
     let hwnd = ventana.handle().0 as isize;
-    let ruta_hilo = ruta.to_path_buf();
+    // Antes que nada: de que proyecto es, y lo anotado antes junto al PDF
+    // adoptado en sus hojas. Se pinta su copia limpia si la tiene.
+    let donde = crate::lector_pdf_proyecto::DondeVa::de(ubicacion.raiz(), ruta, ahora_ms() as i64);
+    let ruta_hilo = donde.documento(ruta);
     let hilo = std::thread::Builder::new()
         .name("lector-pdf-hojas".into())
         .spawn(move || hilo_de_hojas(ruta_hilo, rx_pedidos, tx_llega, hwnd))
         .context("sin hilo para dibujar las hojas")?;
 
-    let ajustes = lectura::leer(ruta);
+    // Con lo que viaja del chat encima, si es un adjunto (v0.96).
+    let ajustes = crate::anotado_del_adjunto::leer(ruta);
     let mut e = Estado {
         nombre: pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta)),
         marcas: marcas::de_texto(&ajustes.marcas),
@@ -448,6 +459,7 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta
         y: 0.0,
         zoom_cambiado: 0,
         capas: HashMap::new(),
+        donde,
         hechos: Vec::new(),
         deshechos: Vec::new(),
         anotando: false,
@@ -876,9 +888,10 @@ fn pedir_hojas(e: &mut Estado, tx: &mpsc::Sender<Pedido>, m: Marco) {
 /// Lee del disco lo anotado de las hojas que se ven (una vez cada una).
 fn cargar_capas_visibles(e: &mut Estado, ruta: &Path, m: Marco) {
     for i in visibles(e, m) {
+        let donde = &e.donde;
         e.capas
             .entry(i)
-            .or_insert_with(|| Capa::leer(&lector_tinta::ruta_de_hoja(ruta, i)));
+            .or_insert_with(|| Capa::leer(&donde.para_leer(ruta, i)));
     }
 }
 
@@ -907,10 +920,11 @@ fn a_la_tinta(e: &mut Estado, ev: &EventoOverlay, ruta: &Path, m: Marco) -> lect
     };
     e.tinta.hoja = Some(i);
     let camara = camara_de_la_hoja(e, i, m);
+    let donde = &e.donde;
     let capa = e
         .capas
         .entry(i)
-        .or_insert_with(|| Capa::leer(&lector_tinta::ruta_de_hoja(ruta, i)));
+        .or_insert_with(|| Capa::leer(&donde.para_leer(ruta, i)));
     e.tinta.evento(ev, capa, &camara, m.area, m.escala_por_cien)
 }
 
@@ -1220,6 +1234,10 @@ fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
         filas.push((textos.t("visor-quitar-marcadores"), Accion::QuitarMarcas));
     }
     filas.push((textos.t("lector-quitar-tinta"), Accion::QuitarTinta));
+    // Solo si no lo es ya: como en el movil, anotar no crea ningun proyecto.
+    if !e.donde.es_de_un_proyecto() {
+        filas.push((textos.t("lector-al-proyecto"), Accion::AlProyecto));
+    }
     filas
 }
 
@@ -1593,6 +1611,7 @@ fn hacer(
 ) {
     match a {
         Accion::Renombrar => e.renombre.empezar(),
+        Accion::AlProyecto => al_proyecto(e, textos, ruta, ubicacion),
         Accion::Buscar(b) => {
             let h = e.hallar.caja.boton(b);
             hecho_de_buscar(e, h, ruta);
@@ -1646,12 +1665,9 @@ fn hacer(
         }
         Accion::QuitarTinta => {
             for i in 0..e.hojas.cuantas() {
-                let hay_fichero = lector_tinta::ruta_de_hoja(ruta, i).is_file();
-                if hay_fichero || e.capas.contains_key(&i) {
-                    let capa = e
-                        .capas
-                        .entry(i)
-                        .or_insert_with(|| Capa::leer(&lector_tinta::ruta_de_hoja(ruta, i)));
+                let de_aqui = e.donde.para_leer(ruta, i);
+                if de_aqui.is_file() || e.capas.contains_key(&i) {
+                    let capa = e.capas.entry(i).or_insert_with(|| Capa::leer(&de_aqui));
                     capa.vaciar();
                     e.hechos.push(i);
                 }
@@ -1662,6 +1678,44 @@ fn hacer(
     }
 }
 
+/// **«Al proyecto»** (`LectorPdfActivity.alProyecto`): lo anotado a disco,
+/// el PDF pasa a ser un proyecto (`capas_del_pdf::al_proyecto`) y desde ese
+/// momento la tinta de cada hoja es la de su hoja del proyecto, la que viaja
+/// al sincronizar.
+fn al_proyecto(e: &mut Estado, textos: &Catalogo, ruta: &Path, ubicacion: &Ubicacion) {
+    guardar_capas(e, ruta);
+    let paginas = u32::try_from(e.hojas.cuantas()).unwrap_or(0);
+    // Lo anotado hasta ahora, de donde este (con el codigo del mensaje si
+    // es un adjunto del chat), pasa a las hojas del proyecto nuevo.
+    let donde = e.donde.clone();
+    let hecho = pixpin_proyecto::capas_del_pdf::al_proyecto(
+        ubicacion.raiz(),
+        ruta,
+        &e.nombre,
+        paginas,
+        ahora_ms() as i64,
+        &|i| donde.para_leer(ruta, i as usize),
+    );
+    let aviso = match hecho {
+        Ok(ficha) => {
+            tracing::info!(%ficha, "PDF del lector pasado a proyecto");
+            // Lo abierto se vuelve a leer de las hojas del proyecto.
+            e.donde = crate::lector_pdf_proyecto::DondeVa::de(ubicacion.raiz(), ruta, ahora_ms() as i64);
+            e.capas.clear();
+            e.hechos.clear();
+            e.deshechos.clear();
+            e.panel = false;
+            crate::ventana_chat::refrescar();
+            textos.t("lector-al-proyecto-hecho")
+        }
+        Err(err) => {
+            tracing::warn!(?err, "no se pudo pasar el PDF a proyecto");
+            textos.t("lector-al-proyecto-fallo")
+        }
+    };
+    e.aviso = Some((aviso, ahora_ms() + 4000));
+}
+
 /// Lo anotado en cada hoja que tiene algo, como ordenes del motor: lo que
 /// ya esta abierto y lo que solo esta en disco.
 fn tinta_de_todas(e: &mut Estado, ruta: &Path) -> HashMap<usize, Vec<Orden>> {
@@ -1670,7 +1724,7 @@ fn tinta_de_todas(e: &mut Estado, ruta: &Path) -> HashMap<usize, Vec<Orden>> {
         let ordenes = match e.capas.get(&i) {
             Some(c) => pintado::ordenes_de_escena(&c.escena),
             None => {
-                let r = lector_tinta::ruta_de_hoja(ruta, i);
+                let r = e.donde.para_leer(ruta, i);
                 if !r.is_file() {
                     continue;
                 }
@@ -1686,14 +1740,20 @@ fn tinta_de_todas(e: &mut Estado, ruta: &Path) -> HashMap<usize, Vec<Orden>> {
 
 fn guardar_ajustes(e: &mut Estado, ruta: &Path) {
     e.ajustes.marcas = marcas::a_texto(&e.marcas);
-    if let Err(err) = lectura::escribir(ruta, &e.ajustes) {
+    if let Err(err) = crate::anotado_del_adjunto::escribir(ruta, &e.ajustes) {
         tracing::info!(?err, "no se pudo guardar la lectura junto al PDF");
     }
 }
 
 fn guardar_capas(e: &mut Estado, ruta: &Path) {
+    let donde = &e.donde;
     for (i, c) in e.capas.iter_mut() {
-        if let Err(err) = c.guardar(&lector_tinta::ruta_de_hoja(ruta, *i)) {
+        // Solo lo que cambio: pedir donde escribir le pone su dibujo a la
+        // hoja del proyecto, y mirar una hoja no la anota.
+        if !c.sucia {
+            continue;
+        }
+        if let Err(err) = c.guardar(&donde.para_escribir(ruta, *i)) {
             tracing::warn!(?err, hoja = i, "no se pudo guardar lo anotado en la hoja");
         }
     }
@@ -1953,6 +2013,7 @@ mod pruebas {
             zoom_cambiado: 0,
             marcas: Vec::new(),
             capas: HashMap::new(),
+            donde: crate::lector_pdf_proyecto::DondeVa::solo_leer(Path::new("plano.pdf")),
             hechos: Vec::new(),
             deshechos: Vec::new(),
             anotando: false,
@@ -2039,6 +2100,34 @@ mod pruebas {
         assert!(se_abre("a.pdf"));
         assert!(!se_abre("a.docx"));
         assert!(!se_abre("pdf"));
+    }
+
+    #[test]
+    fn al_proyecto_se_ofrece_solo_si_el_pdf_no_es_ya_de_uno() {
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let tiene = |e: &Estado| {
+            filas_del_panel(e, &textos)
+                .iter()
+                .any(|(_, a)| matches!(a, Accion::AlProyecto))
+        };
+        let mut e = estado(3);
+        assert!(tiene(&e), "un PDF suelto puede pasar a proyecto");
+        // Caso negativo: el documento de un proyecto ya lo es.
+        let raiz = std::env::temp_dir().join(format!("pixpin-lector-al-proyecto-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let pdf = raiz.join("fuera/plano.pdf");
+        std::fs::create_dir_all(pdf.parent().unwrap()).unwrap();
+        std::fs::write(&pdf, b"%PDF-1.4").unwrap();
+        pixpin_proyecto::capas_del_pdf::al_proyecto(&raiz, &pdf, "plano", 3, 1, &|_| raiz.join("no")).unwrap();
+        let doc = std::fs::read_dir(raiz.join("proyectos"))
+            .unwrap()
+            .flatten()
+            .map(|d| d.path().join("archivos/doc-1.pdf"))
+            .find(|p| p.is_file())
+            .unwrap();
+        e.donde = crate::lector_pdf_proyecto::DondeVa::de(&raiz, &doc, 2);
+        assert!(!tiene(&e));
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 
     #[test]
@@ -2201,6 +2290,72 @@ mod pruebas {
     #[test]
     #[ignore = "necesita GPU; genera PNG para mirarlos"]
     fn muestra_del_lector_de_pdf() {
+        muestra_del_lector_de_pdf_inventado();
+    }
+
+    /// **La tinta del movil sobre un PDF del usuario, en el PC** (K16): una
+    /// copia del PDF (`PIXPIN_PDF`) y la tinta de una hoja tal como la mando
+    /// el movil (`PIXPIN_HOJA_TINTA`, `anot-<uid>-p<n>`, de la hoja
+    /// `PIXPIN_HOJA`), con los dos espacios abiertos y a dos aumentos. La
+    /// hoja mide 1400 de ancho en los dos aparatos (`PAGE_WIDTH`) y la tinta
+    /// va en esas unidades, sin correr nada. Necesita GPU:
+    /// `cargo test -p pixpin --bin pixpinmax muestra_de_la_tinta_del_movil_en_un_pdf -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "necesita GPU y una copia de los datos del usuario"]
+    fn muestra_de_la_tinta_del_movil_en_un_pdf() {
+        use pixpin_render::MotorRender;
+        use pixpin_render::fuera_de_pantalla::FueraDePantalla;
+
+        let ruta = PathBuf::from(std::env::var("PIXPIN_PDF").expect("PIXPIN_PDF"));
+        let tinta = PathBuf::from(std::env::var("PIXPIN_HOJA_TINTA").expect("PIXPIN_HOJA_TINTA"));
+        let hoja: usize = std::env::var("PIXPIN_HOJA").ok().and_then(|h| h.parse().ok()).unwrap_or(0);
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
+        let motor = MotorRender::nuevo(d.d3d()).expect("motor");
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let documento = pixpin_pdf::Documento::abrir(&ruta).expect("abre");
+        let mut e = estado(0);
+        e.medidas = documento.medidas();
+        e.hojas = vista::Hojas::colocar(&e.medidas);
+        let (w, h) = e.medidas[hoja];
+        println!("hoja {hoja}: {w}x{h} puntos -> {} de alto en unidades (1400 * {h}/{w} = {})", e.hojas.altos[hoja], 1400.0 * h / w);
+        e.ajustes.espacios = 3;
+        e.capas.insert(hoja, Capa::leer(&tinta));
+        let caja = e.capas[&hoja].escena.caja().expect("hay tinta");
+        println!("tinta (unidades de la hoja): {caja:?}");
+        for (nombre, ancho, alto, zoom) in [("pdf-1400", 1400u32, 900u32, 0.45f32), ("pdf-900-cerca", 900, 700, 1.0)] {
+            let m = Marco {
+                ancho: ancho as f32,
+                alto: alto as f32,
+                e: 1.0,
+                escala_por_cien: 100,
+                area: pixpin_geom::Rect { x: 0, y: 0, ancho, alto },
+            };
+            let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), ancho, alto).expect("superficie");
+            e.zoom = zoom;
+            acotar(&mut e, m);
+            let s = px(&e, m);
+            // La tinta en medio de la ventana.
+            e.x = (caja.0 + caja.2) / 2.0 - m.ancho / s / 2.0;
+            e.y = e.hojas.arriba[hoja] + (caja.1 + caja.3) / 2.0 - m.alto / s / 2.0;
+            acotar(&mut e, m);
+            e.pintadas.clear();
+            for i in visibles(&e, m) {
+                let img = documento.renderizar(i as u32, ancho_para(&e, i, m)).expect("hoja");
+                let b = motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles).expect("bitmap");
+                e.pintadas.insert(i, (img.ancho, b));
+            }
+            motor.dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos)).expect("pintar");
+            fuera.esperar_gpu().expect("esperar");
+            let (a, b, pixeles) = fuera.leer_rgba().expect("leer");
+            let png = pixpin_codec::imagen::codificar_png(&ImagenRgba { ancho: a, alto: b, pixeles }).expect("png");
+            let salida = carpeta.join(format!("k16-{nombre}.png"));
+            std::fs::write(&salida, png).expect("guardar");
+            println!("{nombre}: {}", salida.display());
+        }
+    }
+
+    fn muestra_del_lector_de_pdf_inventado() {
         use pixpin_render::MotorRender;
         use pixpin_render::fuera_de_pantalla::FueraDePantalla;
 

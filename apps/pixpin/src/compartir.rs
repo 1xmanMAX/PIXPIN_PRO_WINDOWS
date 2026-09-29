@@ -1062,11 +1062,13 @@ fn anadir_pdf(p: &mut Preparado, ruta: &Path, clave: &str, t: &Catalogo) -> bool
         }
     };
     let hojas = pixpin_docs::vista::Hojas::colocar(&doc.medidas());
-    let ajustes = pixpin_docs::lectura::leer(ruta);
+    let ajustes = crate::anotado_del_adjunto::leer(ruta);
     let espacios = pixpin_docs::vista::espacios_del_pdf(ajustes.espacios);
     let mut anotadas = 0;
+    // La de un PDF de proyecto esta en sus hojas, como la escribe el lector.
+    let donde = crate::lector_pdf_proyecto::DondeVa::solo_leer(ruta);
     for i in 0..hojas.cuantas() {
-        let capa = crate::lector_tinta::ruta_de_hoja(ruta, i);
+        let capa = donde.para_leer(ruta, i);
         let tinta = capa.is_file().then(|| {
             pixpin_motor2d::pintado::ordenes_de_escena(&crate::lector_tinta::Capa::leer(&capa).escena)
         });
@@ -1115,8 +1117,8 @@ const MARGEN_SIN_ANOTAR: f32 = 40.0;
 /// renglones si un bloque no cabe entero.
 fn anadir_texto_leido(p: &mut Preparado, ruta: &Path, clave: &str, t: &Catalogo) -> Result<bool> {
     let doc = pixpin_docs::abrir(ruta).map_err(|e| anyhow::anyhow!("{e}"))?;
-    let ajustes = pixpin_docs::lectura::leer(ruta);
-    let capa = crate::lector_tinta::Capa::leer(&crate::lector_tinta::ruta_de_capa(ruta));
+    let ajustes = crate::anotado_del_adjunto::leer(ruta);
+    let capa = crate::anotado_del_adjunto::leer_capa(ruta);
     let tinta = pixpin_motor2d::pintado::ordenes_de_escena(&capa.escena);
     let fijada = ajustes.letra_fijada();
     let columna = if fijada {
@@ -1126,10 +1128,10 @@ fn anadir_texto_leido(p: &mut Preparado, ruta: &Path, clave: &str, t: &Catalogo)
     };
     let dispositivo = pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para medir el texto")?;
     let motor = pixpin_render::MotorRender::nuevo(dispositivo.d3d()).context("sin motor para medir el texto")?;
-    let mide = |texto: &str, tam: f32, ancho: f32, tramos: &[pixpin_render::Tramo]| {
-        motor.medir_parrafo(texto, tam, ancho, tramos).1
+    let mide = |texto: &str, tam: f32, ancho: f32, tramos: &[pixpin_render::Tramo], letra: &crate::visor::Letra| {
+        motor.medir_de_lectura(texto, tam, ancho, tramos, &letra.para_pintar())
     };
-    let (colocados, alto_doc) = crate::visor::colocar(&doc, &ajustes, columna, &mide);
+    let (colocados, alto_doc) = crate::visor::colocar(&doc, &ajustes, columna, crate::visor::Hoja::de(ruta), &mide);
     let margen = if fijada || !tinta.is_empty() {
         pixpin_docs::vista::margen_de(columna)
     } else {
@@ -1143,12 +1145,28 @@ fn anadir_texto_leido(p: &mut Preparado, ruta: &Path, clave: &str, t: &Catalogo)
     let mut texto: Vec<(f32, f32, Orden)> = Vec::with_capacity(colocados.len());
     let mut renglones: Vec<(f32, f32, f32)> = Vec::new(); // arriba, abajo, renglon
     for c in &colocados {
+        // Una celda de tabla: su fondo y sus rayas, como en el lector.
+        if let Some(k) = &c.caja {
+            for (r, color) in crate::visor::ordenes_de_celda(c, k) {
+                texto.push((
+                    r.y,
+                    r.y + r.alto,
+                    Orden::Relleno {
+                        puntos: rect(r.x, r.y, r.x + r.ancho, r.y + r.alto),
+                        color: a_rgba(color),
+                    },
+                ));
+            }
+        }
+        if c.texto.is_empty() && c.caja.is_some() {
+            continue;
+        }
         if c.texto.is_empty() {
             texto.push((
                 c.y,
                 c.y + 1.0,
                 Orden::Relleno {
-                    puntos: rect(0.0, c.y, columna, c.y + 1.0),
+                    puntos: rect(c.sangria, c.y, c.sangria + c.ancho, c.y + 1.0),
                     color: a_rgba(c.color),
                 },
             ));
@@ -1162,9 +1180,9 @@ fn anadir_texto_leido(p: &mut Preparado, ruta: &Path, clave: &str, t: &Catalogo)
                 x: c.sangria,
                 y: c.y,
                 tam: c.tam,
-                familia: "Segoe UI".into(),
+                familia: c.letra.familia.into(),
                 color: a_rgba(c.color),
-                ancho_max: columna - c.sangria,
+                ancho_max: c.ancho,
                 negrita: false,
                 cursiva: false,
             },
@@ -1246,6 +1264,12 @@ fn caja_de_orden(o: &Orden) -> Option<(f32, f32, f32, f32)> {
         Orden::Tinta { contorno, .. } => de(contorno),
         Orden::Velo { .. } => None,
         Orden::Texto { x, y, tam, .. } => Some((*x, *y, *x, *y + tam * ex::INTERLINEA)),
+        // El numero de una cota va girado: lo que puede ocupar es el circulo
+        // que barre su caja alrededor del centro.
+        Orden::Rotulo { x, y, centro, .. } => {
+            let r = (centro.x - x).hypot(centro.y - y);
+            Some((centro.x - r, centro.y - r, centro.x + r, centro.y + r))
+        }
         Orden::Imagen {
             x, y, ancho, alto, ..
         } => Some((*x, *y, x + ancho, y + alto)),

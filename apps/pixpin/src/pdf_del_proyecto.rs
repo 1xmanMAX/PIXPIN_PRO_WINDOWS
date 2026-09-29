@@ -118,9 +118,107 @@ pub fn reparar(documento: &Path) -> Option<PathBuf> {
     }
 }
 
+/// **El documento para el fondo del lienzo, sin lo que el movil cocio
+/// dentro** (`pixpin_pdf::cocido`). Lo anotado sobre la pagina se pinta
+/// encima, vivo, desde su hoja; si el fondo lo trae tambien, se ve doble (el
+/// recuadro de una zona vinculada salia dos veces). Devuelve una copia del
+/// documento de antes de la primera capa de PixPin, guardada en
+/// `cache/sin-cocer/`, o el propio documento si no lleva nada cocido o si la
+/// copia no tiene esa `pagina` (una hoja pegada despues de anotar).
+///
+/// Se recuerda por ruta, tamano y fecha: el documento se lee entero (el del
+/// usuario, 11 MB) una vez, no en cada lienzo que se abre.
+pub fn sin_lo_cocido(raiz: &Path, documento: &Path, pagina: u32) -> PathBuf {
+    type Clave = (PathBuf, u64, Option<std::time::SystemTime>);
+    static RECUERDO: OnceLock<Mutex<HashMap<Clave, Option<(PathBuf, u32)>>>> = OnceLock::new();
+    let Ok(meta) = std::fs::metadata(documento) else {
+        return documento.to_path_buf();
+    };
+    let clave: Clave = (documento.to_path_buf(), meta.len(), meta.modified().ok());
+    let recuerdo = RECUERDO.get_or_init(Default::default);
+    let sabido = recuerdo.lock().ok().and_then(|r| r.get(&clave).cloned());
+    let limpio = match sabido {
+        Some(v) => v.filter(|(r, _)| r.is_file()),
+        None => {
+            let hecho = copia_sin_lo_cocido(raiz, documento, &clave);
+            if let Ok(mut r) = recuerdo.lock() {
+                r.insert(clave, hecho.clone());
+            }
+            hecho
+        }
+    };
+    match limpio {
+        Some((ruta, paginas)) if pagina < paginas => ruta,
+        _ => documento.to_path_buf(),
+    }
+}
+
+fn copia_sin_lo_cocido(
+    raiz: &Path,
+    documento: &Path,
+    clave: &(PathBuf, u64, Option<std::time::SystemTime>),
+) -> Option<(PathBuf, u32)> {
+    use std::hash::{Hash, Hasher};
+    let bytes = std::fs::read(documento).ok()?;
+    let largo = pixpin_pdf::cocido::largo_sin_lo_cocido(&bytes)?;
+    let antes = &bytes[..largo];
+    // Tiene que ser un PDF que se lee entero: si no, mejor el documento con
+    // lo cocido que un fondo en blanco.
+    let paginas = pixpin_pdf::union::contar_paginas(antes)?;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    clave.hash(&mut h);
+    let destino = raiz.join("cache").join("sin-cocer").join(format!("{:016x}.pdf", h.finish()));
+    if !destino.is_file() {
+        std::fs::create_dir_all(destino.parent()?).ok()?;
+        let temporal = destino.with_extension("pdf.tmp");
+        std::fs::write(&temporal, antes)
+            .and_then(|_| std::fs::rename(&temporal, &destino))
+            .inspect_err(|e| tracing::warn!(?e, "no se pudo guardar el documento sin lo cocido"))
+            .ok()?;
+    }
+    tracing::info!(
+        documento = %documento.display(),
+        de = bytes.len(),
+        queda = largo,
+        "fondo del lienzo sin lo anotado que el movil cocio en el PDF"
+    );
+    Some((destino, paginas))
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    /// Lo que hace el movil al anotar: una revision anadida al final con la
+    /// capa `PixPin — pagina 1`.
+    fn con_capa_del_movil(pdf: &[u8]) -> Vec<u8> {
+        let mut v = pdf.to_vec();
+        v.extend_from_slice(
+            b"99 0 obj\n<</Type /OCG /Name <feff00500069007800500069006e>>>\nendobj\nstartxref\n0\n%%EOF\n",
+        );
+        v
+    }
+
+    #[test]
+    fn el_fondo_del_lienzo_no_trae_lo_que_el_movil_cocio_en_el_pdf() {
+        let raiz = std::env::temp_dir().join(format!("pixpin-sin-cocer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        std::fs::create_dir_all(&raiz).unwrap();
+        let bueno = sano();
+        let doc = raiz.join("limpio-1.pdf");
+        std::fs::write(&doc, con_capa_del_movil(&bueno)).unwrap();
+        let fondo = sin_lo_cocido(&raiz, &doc, 1);
+        assert_ne!(fondo, doc);
+        assert_eq!(std::fs::read(&fondo).unwrap(), bueno, "el PDF de antes de anotar");
+        assert_eq!(pixpin_pdf::Documento::abrir(&fondo).unwrap().paginas(), 2, "y Windows lo pinta");
+        // Caso negativo: una pagina que la copia no tiene sale del documento.
+        assert_eq!(sin_lo_cocido(&raiz, &doc, 5), doc);
+        // Caso negativo: un documento sin nada cocido se usa tal cual.
+        let limpio = raiz.join("otro.pdf");
+        std::fs::write(&limpio, &bueno).unwrap();
+        assert_eq!(sin_lo_cocido(&raiz, &limpio, 0), limpio);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
 
     fn proyecto_con_documento(nombre: &str, documento: &[u8], limpio: Option<&[u8]>) -> (PathBuf, PathBuf) {
         let raiz = std::env::temp_dir().join(format!("pixpin-pdf-sano-{nombre}-{}", std::process::id()));

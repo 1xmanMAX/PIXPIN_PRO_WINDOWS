@@ -168,8 +168,17 @@ fn es_excluido(gesto: &Gesto, id: u64) -> bool {
         // Las flechas atadas a lo que se mueve cambian de forma en cada
         // aviso igual que lo elegido: horneadas en la capa congelada se
         // verian quietas en su sitio viejo debajo de las que se mueven.
-        None => gesto.seleccion.contiene(id) || gesto.sigue_la_flecha(id),
+        None => se_arrastra(gesto, id) || gesto.sigue_la_flecha(id),
     }
+}
+
+/// **Lo que se mueve con el raton**: lo elegido y, si se arrastra un marco,
+/// lo que encerraba al cogerlo (`Gesto::lleva_el_marco`). Sin lo segundo,
+/// lo de dentro de un marco se quedaba quieto en la capa congelada (o en la
+/// escena, con el marco en la capa de la tinta) hasta soltar, y daba un
+/// salto: «al poner los frames pasa lo mismo» (28-sep-2026).
+fn se_arrastra(gesto: &Gesto, id: u64) -> bool {
+    gesto.seleccion.contiene(id) || gesto.lleva_el_marco(id)
 }
 
 fn excluidos_de(gesto: &Gesto) -> Vec<u64> {
@@ -180,6 +189,7 @@ fn excluidos_de(gesto: &Gesto) -> Vec<u64> {
         Some((id, _)) => vec![id],
         None => {
             let mut ids = gesto.seleccion.ids().to_vec();
+            ids.extend_from_slice(gesto.lo_que_lleva_el_marco());
             ids.extend_from_slice(gesto.flechas_que_siguen());
             ids
         }
@@ -273,6 +283,10 @@ fn decidir_zoom(
 /// para su zoom (D89): mas corto se pinta a mitad de gesto y no se gana
 /// nada, mas largo se nota que la imagen esta estirada.
 const REPOSO_CAMARA: std::time::Duration = std::time::Duration::from_millis(150);
+
+/// Cuanto se ve el aviso de una zona vinculada que no lleva a nada: lo de un
+/// `Toast.LENGTH_SHORT` del movil y un poco mas, que aqui no se tapa solo.
+const AVISO_ENLACE_DURA: std::time::Duration = std::time::Duration::from_millis(3000);
 
 /// Lo mas que se deja estirar la escena antes de exigir un repintado. Por
 /// encima de esto, la textura ampliada se ve claramente borrosa.
@@ -690,6 +704,27 @@ fn abrir_en_modo(
     }
     ventana.enfocar();
     ventana.pedir_entrada_fina();
+    // **El anotador de pantalla: su pastilla y Alt + doble clic central**
+    // (`pastilla_pantalla.rs`). La pastilla va en su propia ventana, con el
+    // motor y el dispositivo de este editor; el gesto, mientras viva
+    // `escucha`, alterna el clic a traves en vez de abrir otro anotador.
+    let mut pastilla = pantalla.as_deref().and_then(|p| {
+        let t = exportar::textos();
+        let rotulos = (t.t("anotador-rotulo-dibujando"), t.t("anotador-rotulo-atravesando"));
+        pastilla_pantalla::Pastilla::nueva(&motor, dispositivo.d3d(), &p.principal, rotulos)
+            .inspect_err(|e| tracing::warn!(?e, "el anotador sin su pastilla"))
+            .ok()
+    });
+    if let Some(ps) = pastilla.as_ref() {
+        ps.mostrar();
+    }
+    let _escucha = pantalla.is_some().then(|| {
+        pixpin_shell::gestos::EscuchaAnotador::tomar(ventana.handle(), pixpin_shell::overlay::MSG_DESPIERTA)
+    });
+    let mut accion_pastilla: Option<pastilla_pantalla::Accion> = None;
+    // La tinta tal como se guardo en el chat por ultima vez: al salir sin
+    // haberla cambiado no se vuelve a preguntar por ella (D54).
+    let mut tinta_guardada: Option<Vec<Elemento>> = None;
     // Rueda del raton = zoom al cursor; panel tactil: dos dedos desplazan y
     // el pellizco acerca (`navegacion::decidir_rueda`, DirectManipulation en
     // `pixpin_shell::gestos_tactiles`). El anotador de pantalla no se mueve
@@ -724,7 +759,20 @@ fn abrir_en_modo(
             area.alto as f32,
             monitor.escala_por_cien,
         ),
-        None => Camara::nueva(),
+        // Sin fondo, todo lo dibujado a la vista y centrado; vacio, el origen.
+        None => escena
+            .visibles()
+            .map(|e| e.caja())
+            .reduce(|a, b| (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3)))
+            .filter(|c| [c.0, c.1, c.2, c.3].iter().all(|v| v.is_finite()))
+            .map_or_else(Camara::nueva, |caja| {
+                crate::fondo_lienzo::encuadre_de_contenido(
+                    caja,
+                    area.ancho as f32,
+                    area.alto as f32,
+                    monitor.escala_por_cien,
+                )
+            }),
     };
     // D127: la camara del usuario va en pixeles logicos; `efectiva` es la
     // que pinta y traduce el raton. Se recalcula si cambia la escala.
@@ -860,6 +908,9 @@ fn abrir_en_modo(
     let mut plazo_previsto: Option<std::time::Instant> = None;
     // La hoja a la que lleva el recuadro que se pulso, si se pulso alguno.
     let mut enlace_pedido: Option<String> = None;
+    // Se pulso una zona vinculada cuyo lienzo no existe: se dice un momento
+    // arriba, sin cerrar (`salto_por_enlace`).
+    let mut aviso_enlace: Option<(String, std::time::Instant)> = None;
     // Se pulso F11: hay que volver a abrir en el otro modo.
     let mut cambiar_modo = false;
     // La zona sucia del fotograma anterior (D148): hace falta para la union
@@ -957,8 +1008,25 @@ fn abrir_en_modo(
         }
         en_primer_plano = delante;
         for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
+            // La pastilla del anotador de pantalla: sus clics son suyos.
+            if let Some(ps) = pastilla.as_mut()
+                && hwnd == ps.handle()
+            {
+                if let Some(a) = ps.evento(&ev) {
+                    accion_pastilla = Some(a);
+                }
+                continue;
+            }
             if hwnd != ventana.handle() {
                 continue;
+            }
+            // Alt + doble clic central con el anotador abierto: el gancho
+            // (`gestos::EscuchaAnotador`) despierta esta ventana.
+            if matches!(ev, EventoOverlay::Despierta)
+                && pantalla.is_some()
+                && pixpin_shell::gestos::tomar_doble_central_del_anotador()
+            {
+                accion_pastilla = Some(pastilla_pantalla::Accion::Atravesar);
             }
             if matches!(
                 ev,
@@ -1041,6 +1109,9 @@ fn abrir_en_modo(
                     Some(TeclaPantalla::AlternarPasante) => {
                         pasante_fijo = !pasante_fijo;
                         ventana.poner_pasante(pasante_fijo);
+                        if let Some(ps) = pastilla.as_mut() {
+                            ps.poner_pasante(pasante_fijo);
+                        }
                         // Al volver a dibujar se recupera el foco: mientras
                         // era pasante se estuvo pulsando en la aplicacion de
                         // abajo, y Escape y las letras seguirian yendo alli.
@@ -1619,6 +1690,13 @@ fn abrir_en_modo(
             // Con CUALQUIER herramienta: una zona enlazada es un boton, no una
             // figura. Pedir la mano lo hacia inalcanzable, porque el editor
             // abre con el lapiz.
+            // El aviso de un enlace roto se va con el primer aviso del raton
+            // pasado su tiempo: sin repintar, se quedaria puesto.
+            if aviso_enlace.as_ref().is_some_and(|(_, d)| d.elapsed() >= AVISO_ENLACE_DURA) {
+                aviso_enlace = None;
+                interfaz_sucia = true;
+                ventana.invalidar();
+            }
             if let EventoOverlay::BotonPulsado(p) = ev
                 // Las hermanas de un grupo de la barra caen sobre el dibujo:
                 // un clic en ellas no es en el enlace de debajo.
@@ -1637,12 +1715,36 @@ fn abrir_en_modo(
                 })
             {
                 let _ = p;
-                if let Some(id) = pixpin_motor2d::impacto::elemento_en(&escena.elementos, q)
-                    && let Some(destino) = escena.buscar(id).and_then(|e| e.enlace.clone())
-                {
-                    tracing::info!(%destino, "enlace a otra hoja");
-                    enlace_pedido = Some(destino);
-                    break 'bucle;
+                // Su icono (`enlaceBajoElDedo` del movil), que cae fuera del
+                // recuadro, o el propio recuadro.
+                let destino = pixpin_motor2d::zona::enlace_bajo_el_puntero(&escena.elementos, q, efectiva.zoom)
+                    .map(str::to_string)
+                    .or_else(|| {
+                        pixpin_motor2d::impacto::elemento_en(&escena.elementos, q)
+                            .and_then(|id| escena.buscar(id))
+                            .and_then(|e| e.enlace.clone())
+                    });
+                if let Some(destino) = destino {
+                    // Se cierra SOLO si hay adonde ir: antes se cerraba igual
+                    // y, si el enlace no llevaba a nada, el usuario se quedaba
+                    // fuera del lienzo sin el otro.
+                    match hoja_del_chat
+                        .as_ref()
+                        .and_then(|h| crate::salto_por_enlace::dibujo_del_enlace(&h.raiz, &h.proyecto, &destino))
+                    {
+                        Some(dibujo) => {
+                            tracing::info!(%destino, %dibujo, "enlace a otra hoja");
+                            enlace_pedido = Some(dibujo);
+                            break 'bucle;
+                        }
+                        None => {
+                            tracing::warn!(%destino, "el enlace no lleva a ningun lienzo; el lienzo sigue abierto");
+                            aviso_enlace = Some((marcas::textos().t("zona-enlace-roto"), std::time::Instant::now()));
+                            interfaz_sucia = true;
+                            ventana.invalidar();
+                            continue;
+                        }
+                    }
                 }
             }
             // El panel lateral, la caja y el texto que se esta escribiendo
@@ -2349,6 +2451,129 @@ fn abrir_en_modo(
             }
         }
         let vaciar = t_vuelta.elapsed();
+        // **Las acciones de la pastilla del anotador** (`pastilla_pantalla`),
+        // tambien Alt + doble clic central, que alterna el clic a traves.
+        if let Some(accion) = accion_pastilla.take()
+            && let Some(pa) = pantalla.as_deref_mut()
+        {
+            use pastilla_pantalla::Accion;
+            if gesto.esta_escribiendo() {
+                gesto.cerrar_texto(&mut escena);
+            }
+            match accion {
+                Accion::Salir => break 'bucle,
+                Accion::Atravesar => {
+                    pasante_fijo = !pasante_fijo;
+                    ventana.poner_pasante(pasante_fijo);
+                    // Al volver a dibujar se recupera el foco (como Espacio).
+                    if !pasante_fijo {
+                        ventana.enfocar();
+                    }
+                    if let Some(ps) = pastilla.as_mut() {
+                        ps.poner_pasante(pasante_fijo);
+                    }
+                    tracing::info!(pasante = pasante_fijo, "el anotador cambia de modo");
+                }
+                Accion::Limpiar => {
+                    gesto.seleccion.limpiar();
+                    gesto.lazo = None;
+                    let borrados = pastilla_pantalla::limpiar(&mut escena);
+                    tracing::info!(borrados, "anotador limpio (Ctrl+Z lo devuelve)");
+                    capa.soltar();
+                    contenido_sucio = true;
+                }
+                Accion::Guardar => {
+                    let tinta = crate::anotador_al_chat::tinta_de(&escena);
+                    let foto = pantalla::foto_de_debajo(pa, fondo.as_ref(), &ventana, pastilla.as_ref(), !pasante_fijo);
+                    match (foto, pa.raiz.clone()) {
+                        (Some(foto), Some(raiz)) => {
+                            tracing::info!(trazos = tinta.len(), ancho = foto.ancho, alto = foto.alto, "anotador: a Mensajes guardados");
+                            crate::anotador_al_chat::guardar_en_segundo_plano(
+                                raiz,
+                                crate::anotador_al_chat::Sesion {
+                                    foto,
+                                    tinta: tinta.clone(),
+                                },
+                                pa.avisos,
+                                pantalla::globo(exportar::textos()),
+                            );
+                            tinta_guardada = Some(tinta);
+                        }
+                        (foto, raiz) => tracing::warn!(
+                            sin_foto = foto.is_none(),
+                            sin_almacen = raiz.is_none(),
+                            "la pantalla anotada no se pudo guardar"
+                        ),
+                    }
+                }
+                Accion::Copiar => {
+                    // Como la foto de al salir: la pantalla con lo anotado y
+                    // SIN barra, panel, marco de lo elegido ni pastilla.
+                    gesto.seleccion.limpiar();
+                    gesto.lazo = None;
+                    if let Some(ps) = pastilla.as_ref() {
+                        ps.ocultar();
+                    }
+                    superficie.apagar_tinta(&motor);
+                    rejilla.sincronizar(&escena);
+                    capa.soltar();
+                    let _ = pintar(
+                        &mut motor,
+                        &superficie,
+                        &escena,
+                        &efectiva,
+                        &gesto,
+                        &mut cache,
+                        &mut cache_tinta,
+                        &rejilla,
+                        &capa,
+                        &mut fondo,
+                        &mut imagenes,
+                        &caja,
+                        None,
+                        corrimiento_ui,
+                        false,
+                        escala_por_cien,
+                        ancho_px,
+                        alto_px,
+                        None,
+                        None,
+                        None,
+                        None,
+                        true,
+                        FueraDeLaEscena::default(),
+                        None,
+                        |_, _| {},
+                    );
+                    superficie.dejar_de_estirar();
+                    pixpin_shell::esperar_composicion();
+                    let foto = (pa.capturar)();
+                    if let Some(ps) = pastilla.as_ref() {
+                        ps.mostrar();
+                    }
+                    // Lo que esperaba en la capa de la tinta ya esta en la
+                    // escena, y el fotograma de abajo lo rehace entero.
+                    trazo_por_hornear = None;
+                    trazo_limpio = None;
+                    contenido_sucio = true;
+                    let copiado = foto.map(|f| pixpin_codec::copiar_imagen(&f));
+                    tracing::info!(ok = matches!(copiado, Some(Ok(()))), "anotador: copiado al portapapeles");
+                    if matches!(copiado, Some(Ok(()))) && pa.avisos != 0 {
+                        let t = exportar::textos();
+                        let _ = pixpin_shell::aviso::Aviso::sobre_la_bandeja(windows::Win32::Foundation::HWND(
+                            pa.avisos as *mut _,
+                        ))
+                        .mostrar(&t.t("anotador-globo-titulo"), &t.t("anotador-globo-copiado"));
+                    }
+                }
+            }
+            interfaz_sucia = true;
+            todo_sucio = true;
+            ventana.invalidar();
+        }
+        if let Some(ps) = pastilla.as_mut() {
+            ps.al_dia(&motor);
+        }
         // La rueda y la inercia del universo, con el reloj: se mueven sin
         // eventos hasta llegar.
         if suave.activo() {
@@ -2903,6 +3128,13 @@ fn abrir_en_modo(
                     if let (Some(l), Some(b)) = (lupa.as_ref(), cristal.as_ref()) {
                         l.pintar(p, b);
                     }
+                    // La zona vinculada que no lleva a nada, dicho arriba
+                    // tres segundos (el `Toast` del movil).
+                    if let Some((texto, desde)) = aviso_enlace.as_ref()
+                        && desde.elapsed() < AVISO_ENLACE_DURA
+                    {
+                        presentar::pintar_solo_mirar(p, base, ancho_px, escala_por_cien, texto);
+                    }
                 },
             );
             match pintado {
@@ -3106,8 +3338,15 @@ fn abrir_en_modo(
     // esperando a que el compositor lo haya puesto en pantalla. La ventana
     // sigue viva hasta que se captura: la foto la recoge tal cual se ve. Sin
     // nada dibujado no hay foto, y `main` no pregunta nada.
+    // Lo ya guardado en «Mensajes guardados» sin tocar despues no vuelve a
+    // preguntar ni a pinearse: ya esta a salvo.
+    let sin_guardar = tinta_guardada.as_ref() != Some(&crate::anotador_al_chat::tinta_de(&escena));
+    // Ni la pastilla ni el gesto sobreviven al anotador.
+    drop(pastilla.take());
+    drop(_escucha);
     if let Some(pa) = pantalla.as_deref_mut()
         && escena.cuantos_visibles() > 0
+        && sin_guardar
     {
         if gesto.esta_escribiendo() {
             gesto.cerrar_texto(&mut escena);
@@ -3410,7 +3649,7 @@ fn pintar(
                 }
                 // Lo que se arrastra en la capa de la tinta no va en la
                 // escena: se veria dos veces, una quieta y otra moviendose.
-                if fuera.seleccion && gesto.seleccion.contiene(id) {
+                if fuera.seleccion && se_arrastra(gesto, id) {
                     continue;
                 }
                 // Derecho a su sitio con lo que sabe la rejilla (se acaba de
@@ -3446,7 +3685,7 @@ fn pintar(
                             if let Some(copia) =
                                 pixpin_motor2d::tinta::prediccion::con_punta(e, origen, q)
                             {
-                                pintar_copia_predicha(p, &copia, vista, imagenes, camara.zoom);
+                                pintar_copia_predicha(p, &copia, vista, imagenes, camara.zoom, escena.escala.as_ref());
                                 continue;
                             }
                         }
@@ -3593,7 +3832,7 @@ fn pintar(
             // La lupa que se arrastra en la capa de la tinta lleva lo de
             // dentro con ella (`lupas::pintar_en_capa`): aqui se quedaria
             // detras, donde estaba al cogerla.
-            &|id| fuera.seleccion && gesto.seleccion.contiene(id),
+            &|id| fuera.seleccion && se_arrastra(gesto, id),
         );
     }
     if error.is_err() {
@@ -3936,7 +4175,7 @@ fn pintar_tinta_viva(
                         if let Some(copia) =
                             pixpin_motor2d::tinta::prediccion::con_punta(e, origen_trazo, q)
                         {
-                            pintar_copia_predicha(p, &copia, vista, imagenes, camara.zoom);
+                            pintar_copia_predicha(p, &copia, vista, imagenes, camara.zoom, escena.escala.as_ref());
                             return;
                         }
                     }
@@ -3993,7 +4232,7 @@ fn pintar_seleccion_en_capa(
             );
             // En el orden de la escena, para que lo de encima siga encima.
             for e in &escena.elementos {
-                if e.borrado || !gesto.seleccion.contiene(e.id) || tapar::es_mosaico(e) {
+                if e.borrado || !se_arrastra(gesto, e.id) || tapar::es_mosaico(e) {
                     continue;
                 }
                 let grano = pixpin_motor2d::pintado::grano_de(e);
@@ -4094,11 +4333,12 @@ fn zona_de_seleccion(
     // Dos pixeles de pantalla por el suavizado de bordes.
     let suavizado = 2.0 * escala;
     for e in escena.elementos.iter() {
-        if e.borrado || !gesto.seleccion.contiene(e.id) {
+        if e.borrado || !se_arrastra(gesto, e.id) {
             continue;
         }
         let mut se_sabe = true;
         let es_texto = matches!(e.figura, Figura::Texto { .. });
+        let es_marco = matches!(e.figura, Figura::Marco { .. });
         let girado = e.angulo != 0.0;
         por_cada_orden(cache, e, camara.zoom, escena.escala.as_ref(), |orden| match orden {
             Orden::Poligono { puntos, .. } | Orden::Relleno { puntos, .. } => {
@@ -4133,7 +4373,7 @@ fn zona_de_seleccion(
                 }
             }
             Orden::Texto {
-                x, y, tam, ancho_max, ..
+                texto, x, y, tam, ancho_max, familia, ..
             } => {
                 if es_texto && !girado {
                     let (c0, c1, c2, c3) = e.caja();
@@ -4152,9 +4392,37 @@ fn zona_de_seleccion(
                             c3.max(*y) + tam,
                         ),
                     );
+                } else if es_marco && !girado {
+                    // El nombre de un marco: encima de su raya, partido al
+                    // ancho del marco. Baja hacia dentro del marco, cuya caja
+                    // ya esta en la cuenta; si sus renglones no caben ni en
+                    // el alto del marco, no se sabe. Sin esto, estirar un
+                    // marco con nombre rehacia la escena entera en cada aviso.
+                    let (c0, c1, c2, c3) = e.caja();
+                    let (ancho, _) = pixpin_motor2d::texto::medida(
+                        texto,
+                        *tam,
+                        familia,
+                        pixpin_motor2d::texto::EstiloDeTexto::default(),
+                    );
+                    let renglones = texto.split('\n').count() as f32 + (ancho / ancho_max.max(1.0)).floor();
+                    let abajo = y + renglones * tam * 1.5;
+                    if abajo <= c3 {
+                        unir(&mut u, (x.min(c0) - tam, y - tam, (x + ancho_max).max(c2) + tam, c3.max(c1)));
+                    } else {
+                        se_sabe = false;
+                    }
                 } else {
                     se_sabe = false;
                 }
+            }
+            // El numero de una cota va girado con su raya: el circulo que
+            // barre su caja alrededor del centro, con el halo.
+            Orden::Rotulo {
+                x, y, centro, grosor_halo, ..
+            } => {
+                let r = (centro.x - x).hypot(centro.y - y) + grosor_halo + suavizado;
+                unir(&mut u, (centro.x - r, centro.y - r, centro.x + r, centro.y + r));
             }
             Orden::Velo { .. } => se_sabe = false,
         });
@@ -4338,7 +4606,7 @@ fn pintar_zona(
     }
     let visibles = candidatos.len() as u32;
     for id in candidatos {
-        if fuera_seleccion && gesto.seleccion.contiene(id) {
+        if fuera_seleccion && se_arrastra(gesto, id) {
             continue;
         }
         let Some(e) = elemento_por_id(escena, rejilla, id) else {
@@ -4784,6 +5052,9 @@ mod pastilla_zona;
 mod presentar;
 /// El anotador de pantalla: este mismo editor encima del escritorio.
 pub(crate) mod pantalla;
+/// La pastilla del anotador de pantalla: atravesar, limpiar, copiar, guardar
+/// y salir, en su propia ventana (`CapaPantalla.kt`).
+pub(crate) mod pastilla_pantalla;
 
 #[cfg(test)]
 pub(crate) mod medir;
@@ -5645,6 +5916,41 @@ mod pruebas {
     }
 
     #[test]
+    fn arrastrando_un_marco_lo_de_dentro_sale_de_la_capa_congelada_y_lo_de_fuera_no() {
+        let mut escena = Escena::nueva();
+        let caja = |figura: Figura, x: f32, y: f32, ancho: f32, alto: f32| Elemento {
+            figura,
+            x,
+            y,
+            ancho,
+            alto,
+            grosor: 2.0,
+            ..Default::default()
+        };
+        let marco = escena.anadir(caja(Figura::Marco { nombre: String::new() }, 0.0, 0.0, 400.0, 300.0));
+        let dentro = escena.anadir(caja(Figura::Rectangulo, 100.0, 100.0, 50.0, 50.0));
+        let fuera = escena.anadir(caja(Figura::Rectangulo, 600.0, 100.0, 50.0, 50.0));
+        let mut g = Gesto::nuevo();
+        g.herramienta = Herramienta::Mano;
+        g.seleccion.poner(marco);
+        assert!(!se_arrastra(&g, dentro), "quieto no se arrastra nada");
+        for (evento, p) in [(true, Punto2::nuevo(100.0, 0.0)), (false, Punto2::nuevo(130.0, 10.0))] {
+            let e = if evento {
+                EventoGesto::Pulsar { p, shift: false, alt: false, presion: None }
+            } else {
+                EventoGesto::Mover { p, shift: false, alt: false, presion: None }
+            };
+            g.evento(e, &mut escena, 1.0);
+        }
+        assert!(g.moviendo());
+        assert!(es_excluido(&g, marco) && es_excluido(&g, dentro));
+        assert!(!es_excluido(&g, fuera), "lo de fuera sigue en la capa congelada");
+        let mut ex = excluidos_de(&g);
+        ex.sort_unstable();
+        assert_eq!(ex, vec![marco, dentro]);
+    }
+
+    #[test]
     fn dibujando_se_excluye_el_trazo_y_moviendo_la_seleccion() {
         let mut escena = Escena::nueva();
         let mut g = Gesto::nuevo();
@@ -5832,7 +6138,9 @@ mod pruebas {
         let mut cuantas = 0usize;
         por_cada_orden(&mut cache, &cota, 1.0, None, |o| {
             cuantas += 1;
-            if matches!(o, Orden::Texto { .. }) {
+            // Desde que la cota se pinta como en el movil, su numero va girado
+            // con la raya y con halo: un `Rotulo`, no un `Texto`.
+            if matches!(o, Orden::Texto { .. } | Orden::Rotulo { .. }) {
                 hay_rotulo = true;
             }
         });

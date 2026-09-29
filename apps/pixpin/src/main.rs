@@ -50,6 +50,8 @@
 #![forbid(unsafe_code)]
 
 mod aligerar;
+mod anotado_del_adjunto;
+mod anotador_al_chat;
 mod audio;
 mod biblioteca_audio;
 mod buscador;
@@ -62,6 +64,7 @@ mod diapositivas;
 mod dibujo;
 mod editor;
 mod fondo_lienzo;
+mod foto_anotada;
 mod fusionar_paginas;
 mod gif;
 mod grupos_ventanas;
@@ -69,6 +72,7 @@ mod grabador;
 mod imagenes_lienzo;
 mod lector;
 mod lector_pdf;
+mod lector_pdf_proyecto;
 mod lector_tinta;
 mod llamada;
 mod medir_fotogramas;
@@ -88,6 +92,7 @@ mod recibir;
 mod recordatorios;
 mod renombrar_doc;
 mod reproductor;
+mod salto_por_enlace;
 mod scroll;
 mod sincronizar;
 mod teleprompter;
@@ -1301,13 +1306,21 @@ fn arrancar(
                 Continuar::Si
             }
             // Desde la bandeja (lo normal: de fabrica no tienen atajo, D81) o
-            // desde el atajo que el usuario se ponga en el TOML.
+            // desde el atajo que el usuario se ponga en el TOML, o con
+            // Alt + doble clic central (el cuarto gesto, 2026-09-28), que abre
+            // al instante el vivo: nada que capturar antes de ensenarlo.
             _ if matches!(
                 comando,
                 Some(comandos::Comando::Anotar | comandos::Comando::AnotarCongelada)
+            ) || matches!(
+                evento,
+                Evento::Gesto {
+                    boton: BotonGesto::DobleCentral,
+                    ..
+                }
             ) =>
             {
-                let modo = if comando == Some(comandos::Comando::Anotar) {
+                let modo = if comando != Some(comandos::Comando::AnotarCongelada) {
                     capa::ModoCapa::Viva
                 } else {
                     capa::ModoCapa::Congelada
@@ -1319,8 +1332,16 @@ fn arrancar(
                 if let Some(g) = &gancho {
                     g.suspender(true);
                 }
-                let capa_hecha =
-                    listo.and_then(|r| capa::ejecutar_capa(r, modo, decision.nivel, config.enganche));
+                let capa_hecha = listo.and_then(|r| {
+                    capa::ejecutar_capa(
+                        r,
+                        modo,
+                        decision.nivel,
+                        config.enganche,
+                        Some(ubicacion.raiz().to_path_buf()),
+                        hwnd.0 as isize,
+                    )
+                });
                 if let Some(g) = &gancho {
                     g.suspender(false);
                 }

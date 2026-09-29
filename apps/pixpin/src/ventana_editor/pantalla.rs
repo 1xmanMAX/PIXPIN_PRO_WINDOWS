@@ -29,6 +29,12 @@
 //! Todo lo demas —las herramientas, la capa de tinta de baja latencia, el
 //! horneado, las zonas, el panel— es el editor tal cual.
 //!
+//! Desde el 2026-09-28 se abre tambien con **Alt + doble clic central** y
+//! lleva abajo **la pastilla** de `CapaPantalla.kt` en su propia ventana
+//! (`pastilla_pantalla.rs`): clic a traves, limpiar, copiar, guardar en
+//! «Mensajes guardados» (la captura de debajo con la tinta editable encima,
+//! `anotador_al_chat.rs`) y salir.
+//!
 //! Lo unico que el editor no tenia es **la lupa viva** (D52, D60) de la capa
 //! vieja: con la lupa (Q) elegida, un cristal amplia lo que hay alrededor
 //! del cursor y la rueda sube o baja el aumento. Va aqui, en [`LupaViva`].
@@ -57,6 +63,61 @@ pub struct Pantalla<'a> {
     pub capturar: &'a mut dyn FnMut() -> Option<pixpin_codec::ImagenRgba>,
     /// La foto que se hizo al salir, si habia algo dibujado.
     pub resultado: Option<pixpin_codec::ImagenRgba>,
+    /// El almacen del chat, para «Guardar en Mensajes guardados» de la
+    /// pastilla (`anotador_al_chat`). `None`: la pastilla no guarda.
+    pub raiz: Option<std::path::PathBuf>,
+    /// La ventana de mensajes de `main`, dueña del icono de la bandeja: los
+    /// globos de guardado y copiado salen sobre el. 0 = sin globos.
+    pub avisos: isize,
+}
+
+/// Los globos del anotador, ya traducidos.
+pub fn globo(textos: &pixpin_store::Catalogo) -> crate::anotador_al_chat::Globo {
+    crate::anotador_al_chat::Globo {
+        titulo: textos.t("anotador-globo-titulo"),
+        hecho: textos.t("anotador-globo-guardado"),
+        fallo: textos.t("anotador-globo-fallo"),
+    }
+}
+
+/// **La foto de lo que hay DEBAJO del anotador**, sin la tinta ni la barra
+/// ni la pastilla: lo que va de fondo al guardar en el chat.
+///
+/// Congelada, es la foto que ya se tomo al abrir (el fondo). Viva, se
+/// esconden las dos ventanas un instante, se espera a que el compositor lo
+/// haya puesto en pantalla (sin esperar, la captura puede salir con ellas,
+/// D59) y se fotografia; luego vuelven. Es lo que hace el movil al copiar
+/// (`setVisible(false)`, 64 ms, `ProjectionSession.grab()`): se nota como un
+/// parpadeo de la tinta, y es el precio de no fotografiarse a si mismo.
+pub fn foto_de_debajo(
+    pa: &mut Pantalla<'_>,
+    fondo: Option<&crate::fondo_lienzo::FondoLienzo>,
+    ventana: &pixpin_shell::overlay::VentanaOverlay,
+    pastilla: Option<&super::pastilla_pantalla::Pastilla>,
+    con_foco: bool,
+) -> Option<pixpin_codec::ImagenRgba> {
+    if pa.modo == Modo::Congelada {
+        return fondo.and_then(|f| f.imagen()).cloned();
+    }
+    ventana.ocultar();
+    if let Some(p) = pastilla {
+        p.ocultar();
+    }
+    pixpin_shell::overlay::bombear_pendientes();
+    pixpin_shell::esperar_composicion();
+    let foto = (pa.capturar)();
+    ventana.mostrar();
+    ventana.traer_encima();
+    if let Some(p) = pastilla {
+        p.mostrar();
+    }
+    // Esconderla le quito el foco: dibujando, se le devuelve (con el clic a
+    // traves, el teclado es de la aplicacion de debajo y alli se queda).
+    if con_foco {
+        ventana.enfocar();
+    }
+    ventana.invalidar();
+    foto
 }
 
 impl Pantalla<'_> {
@@ -447,6 +508,63 @@ mod pruebas {
             && b.x < a.x + a.ancho as i32
             && a.y < b.y + b.alto as i32
             && b.y < a.y + a.alto as i32
+    }
+
+    /// **Banco: lo que cuesta ENTRAR en el anotador** (Alt + doble clic
+    /// central), paso a paso y SIN ensenar nada: el dispositivo de GPU, el
+    /// motor, la ventana del escritorio virtual (creada oculta), su
+    /// superficie con capas y la pastilla con su primer pintado. Es lo que
+    /// hace `abrir_en_modo` antes del primer fotograma; en viva no hay
+    /// captura. Cinco vueltas: la primera paga lo que Windows carga una vez
+    /// por proceso (DirectWrite, las DLL del controlador).
+    /// `cargo test -p pixpin --release --bin pixpinmax banco_de_entrar_en_el_anotador -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "necesita GPU y escritorio (crea ventanas ocultas); ejecutar con --ignored --nocapture"]
+    fn banco_de_entrar_en_el_anotador() {
+        let d = pixpin_capture::enumerar_monitores().expect("monitores");
+        let escritorio = d.escritorio_virtual();
+        let principal = *d.principal().expect("principal");
+        let t = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let rotulos = (t.t("anotador-rotulo-dibujando"), t.t("anotador-rotulo-atravesando"));
+        println!(
+            "escritorio virtual {}x{} ({} monitores)",
+            escritorio.ancho,
+            escritorio.alto,
+            d.monitores().len()
+        );
+        for vuelta in 0..5 {
+            let t0 = std::time::Instant::now();
+            let disp = pixpin_capture::Dispositivo::nuevo().expect("dispositivo");
+            let t_disp = t0.elapsed();
+            let motor = pixpin_render::MotorRender::nuevo(disp.d3d()).expect("motor");
+            let t_motor = t0.elapsed();
+            let ventana = pixpin_shell::overlay::VentanaOverlay::nueva(escritorio).expect("ventana");
+            let t_ventana = t0.elapsed();
+            let sup = pixpin_render::Superficie::nueva_con_capas(
+                &motor,
+                disp.d3d(),
+                ventana.handle(),
+                escritorio.ancho,
+                escritorio.alto,
+                1,
+            )
+            .expect("superficie");
+            let t_sup = t0.elapsed();
+            let mut ps = super::super::pastilla_pantalla::Pastilla::nueva(&motor, disp.d3d(), &principal, rotulos.clone())
+                .expect("pastilla");
+            ps.al_dia(&motor);
+            let t_pastilla = t0.elapsed();
+            println!(
+                "vuelta {vuelta}: dispositivo {:.1} ms, motor {:.1}, ventana {:.1}, superficie {:.1}, pastilla {:.1} -> total {:.1} ms",
+                t_disp.as_secs_f64() * 1e3,
+                (t_motor - t_disp).as_secs_f64() * 1e3,
+                (t_ventana - t_motor).as_secs_f64() * 1e3,
+                (t_sup - t_ventana).as_secs_f64() * 1e3,
+                (t_pastilla - t_sup).as_secs_f64() * 1e3,
+                t_pastilla.as_secs_f64() * 1e3,
+            );
+            drop((ps, sup, ventana, motor, disp));
+        }
     }
 
     #[test]

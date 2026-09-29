@@ -282,6 +282,31 @@ fn pintar_hoja(p: &Pintor<'_>, hoja: &Hoja, bitmaps: &Subidas) {
                 &crate::dibujo::pintar::letra_de(familia, *negrita, *cursiva),
                 a_color(*color),
             ),
+            // El numero de una cota, girado con su raya y con halo, igual que
+            // en pantalla (`dibujo::pintar`).
+            Orden::Rotulo {
+                texto,
+                x,
+                y,
+                tam,
+                familia,
+                color,
+                halo,
+                grosor_halo,
+                centro,
+                angulo,
+            } => p.girado((centro.x, centro.y), *angulo, |p| {
+                p.texto_con_halo(
+                    texto,
+                    *x,
+                    *y,
+                    *tam,
+                    &crate::dibujo::pintar::letra_de(familia, false, false),
+                    a_color(*color),
+                    a_color(*halo),
+                    *grosor_halo,
+                )
+            }),
             Orden::Imagen {
                 id_objeto,
                 x,
@@ -290,28 +315,32 @@ fn pintar_hoja(p: &Pintor<'_>, hoja: &Hoja, bitmaps: &Subidas) {
                 alto,
                 opacidad,
                 recorte,
+                angulo,
             } => {
                 if let Some((b, bw, bh)) = bitmaps.get(id_objeto) {
                     // El trozo en pixeles del bitmap subido, que aqui es la
                     // imagen tal cual (`subir` no la reduce).
                     let fuente = recorte.and_then(|r| r.trozo_en(*bw as f32, *bh as f32));
-                    p.bitmap_translucido(
-                        b,
-                        RectF {
-                            x: *x,
-                            y: *y,
-                            ancho: *ancho,
-                            alto: *alto,
-                        },
-                        fuente.map(|(a, b, c, d)| RectF {
-                            x: a,
-                            y: b,
-                            ancho: c - a,
-                            alto: d - b,
-                        }),
-                        Interpolacion::Cubica,
-                        *opacidad,
-                    );
+                    // Girada como en pantalla, alrededor del centro de su caja.
+                    p.girado((*x + *ancho / 2.0, *y + *alto / 2.0), *angulo, |p| {
+                        p.bitmap_translucido(
+                            b,
+                            RectF {
+                                x: *x,
+                                y: *y,
+                                ancho: *ancho,
+                                alto: *alto,
+                            },
+                            fuente.map(|(a, b, c, d)| RectF {
+                                x: a,
+                                y: b,
+                                ancho: c - a,
+                                alto: d - b,
+                            }),
+                            Interpolacion::Cubica,
+                            *opacidad,
+                        );
+                    });
                 }
             }
         }

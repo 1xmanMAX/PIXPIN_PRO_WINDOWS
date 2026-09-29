@@ -201,6 +201,32 @@ pub fn encuadre_inicial(
     Camara::encajar((0.0, 0.0, ancho, alto), w, h, MARGEN_ENCUADRE)
 }
 
+/// **La camara con la que se abre un lienzo con dibujo**: todo lo dibujado
+/// a la vista y centrado, con el mismo criterio que la imagen de fondo (zoom
+/// 1 si cabe con margen; si no, el que lo hace caber). Abrir en el origen
+/// dejaba al usuario mirando un trozo vacio cuando el dibujo estaba en otra
+/// parte. `caja` es `(x0, y0, x1, y1)` en el mundo.
+pub fn encuadre_de_contenido(
+    caja: (f32, f32, f32, f32),
+    area_ancho_px: f32,
+    area_alto_px: f32,
+    escala_por_cien: u32,
+) -> Camara {
+    let (x0, y0, x1, y1) = caja;
+    let mut c = encuadre_inicial(
+        (x1 - x0).max(1.0),
+        (y1 - y0).max(1.0),
+        area_ancho_px,
+        area_alto_px,
+        escala_por_cien,
+    );
+    // `encuadre_inicial` encuadra una caja con esquina en el origen: se
+    // corre hasta donde de verdad esta el dibujo.
+    c.x += x0;
+    c.y += y0;
+    c
+}
+
 /// Como se muestrea la imagen segun cuantos pixeles fisicos ocupa cada
 /// pixel suyo (D141): al 100 % exacto o muy ampliada, pixeles tal cual (una
 /// captura se lee nitida); reducida, cubica (sin dientes); entre medias,
@@ -919,6 +945,23 @@ mod pruebas {
             encuadre_inicial(1824.0, 600.0, 1920.0, 1080.0, 100).zoom,
             1.0
         );
+    }
+
+    #[test]
+    fn un_dibujo_lejos_del_origen_se_abre_centrado_y_entero() {
+        // Pequeno: a zoom 1, con su centro en el centro de la vista.
+        let c = encuadre_de_contenido((1000.0, 2000.0, 1400.0, 2300.0), 1920.0, 1080.0, 100);
+        assert_eq!(c.zoom, 1.0);
+        assert!((c.x + 960.0 - 1200.0).abs() < 0.01 && (c.y + 540.0 - 2150.0).abs() < 0.01);
+        // Grande: se aleja hasta que cabe, y cabe entero.
+        let (x0, y0, x1, y1) = (-5000.0, -300.0, 4000.0, 2000.0);
+        let c = encuadre_de_contenido((x0, y0, x1, y1), 1920.0, 1080.0, 100);
+        assert!(c.zoom < 1.0);
+        let a = c.a_pantalla(Punto2::nuevo(x0, y0));
+        let b = c.a_pantalla(Punto2::nuevo(x1, y1));
+        assert!(a.x >= 0.0 && a.y >= 0.0 && b.x <= 1920.0 && b.y <= 1080.0, "{a:?} {b:?}");
+        // Un punto solo (caja sin ancho) no divide por cero.
+        assert!(encuadre_de_contenido((5.0, 5.0, 5.0, 5.0), 1920.0, 1080.0, 100).zoom.is_finite());
     }
 
     #[test]

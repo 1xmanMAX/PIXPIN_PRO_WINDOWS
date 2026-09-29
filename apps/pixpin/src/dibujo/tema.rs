@@ -151,6 +151,9 @@ thread_local! {
     /// distintos y adaptarlos es buscar paso a paso. Sin esto se repetiria
     /// la busqueda con cada orden de cada elemento en cada fotograma.
     static HECHOS: RefCell<Vec<([u8; 4], ColorRgba)>> = const { RefCell::new(Vec::new()) };
+    /// El papel del fotograma tal cual, de dia o de noche: la cota lo
+    /// necesita siempre (ver [`papel_del_fotograma`]).
+    static PAPEL_DEL_FOTOGRAMA: Cell<Option<ColorRgba>> = const { Cell::new(None) };
 }
 
 fn clave(c: ColorRgba) -> [u8; 4] {
@@ -160,12 +163,14 @@ fn clave(c: ColorRgba) -> [u8; 4] {
 /// Pinta lo que haga `f` con la tinta adaptada a `papel`, si es de noche.
 /// Se puede anidar: al salir vuelve el papel que hubiera.
 pub fn con_papel<R>(papel: Option<ColorRgba>, f: impl FnOnce() -> R) -> R {
+    let crudo_antes = PAPEL_DEL_FOTOGRAMA.with(|c| c.replace(papel));
     let nuevo = papel.filter(|p| es_de_noche(*p));
     let antes = PAPEL.with(|c| c.replace(nuevo));
     if antes.map(clave) != nuevo.map(clave) {
         HECHOS.with(|h| h.borrow_mut().clear());
     }
     let r = f();
+    PAPEL_DEL_FOTOGRAMA.with(|c| c.set(crudo_antes));
     let ahora = PAPEL.with(|c| c.replace(antes));
     if antes.map(clave) != ahora.map(clave) {
         HECHOS.with(|h| h.borrow_mut().clear());
@@ -178,11 +183,22 @@ pub fn con_papel<R>(papel: Option<ColorRgba>, f: impl FnOnce() -> R) -> R {
 /// capa de la tinta, el horneado, las zonas) y fijan el papel una vez por
 /// vuelta en vez de envolver cada uno. `None` lo quita.
 pub fn fijar_papel(papel: Option<ColorRgba>) {
+    PAPEL_DEL_FOTOGRAMA.with(|c| c.set(papel));
     let nuevo = papel.filter(|p| es_de_noche(*p));
     let antes = PAPEL.with(|c| c.replace(nuevo));
     if antes.map(clave) != nuevo.map(clave) {
         HECHOS.with(|h| h.borrow_mut().clear());
     }
+}
+
+/// **El papel sobre el que se pinta ahora**, sea de dia o de noche, o blanco
+/// si nadie lo fijo. Lo pide la cota: el movil pinta su raya y su numero con
+/// la tinta adaptada a CUALQUIER papel (`tema(...)` en `drawMeasure`), no
+/// solo al de noche como el resto de la tinta aqui.
+pub fn papel_del_fotograma() -> ColorRgba {
+    PAPEL_DEL_FOTOGRAMA
+        .with(Cell::get)
+        .unwrap_or(ColorRgba::opaco(1.0, 1.0, 1.0))
 }
 
 /// **Si lo que se pinta ahora va sobre papel de noche.** La barra de
@@ -238,6 +254,61 @@ pub fn grafito_adaptado(e: &pixpin_motor2d::Elemento) -> Option<pixpin_motor2d::
     copia.trazo = trazo;
     copia.relleno = relleno;
     Some(copia)
+}
+
+/// **Unas ordenes con la tinta tal como las pinta el lienzo sobre `papel`**,
+/// para quien las pinta fuera del lienzo: las vistas previas del chat y de
+/// Proyectos. Es la misma regla y la misma cuenta que [`tinta`] al pintar
+/// (solo en papel de noche), hecha una vez al leer en vez de en cada
+/// fotograma. Sin esto la vista previa de un lienzo en la pizarra ensenaba
+/// la tinta negra guardada sobre el papel negro: nada, mientras en el lienzo
+/// se leia blanca. El movil hace lo mismo en `DrawExport.aBitmap`
+/// (`Renderer(dark = DrawTheme.esDeNoche(scene.backgroundColor))`).
+pub fn ordenes_como_en_el_lienzo(
+    ordenes: Vec<pixpin_motor2d::Orden>,
+    papel: ColorRgba,
+) -> Vec<pixpin_motor2d::Orden> {
+    use pixpin_motor2d::Orden;
+    if !es_de_noche(papel) {
+        return ordenes;
+    }
+    con_papel(Some(papel), || {
+        ordenes
+            .into_iter()
+            .map(|mut o| {
+                match &mut o {
+                    Orden::Poligono { color, .. }
+                    | Orden::Tinta { color, .. }
+                    | Orden::Polilinea { color, .. }
+                    | Orden::Relleno { color, .. }
+                    | Orden::Velo { color, .. }
+                    | Orden::Texto { color, .. }
+                    | Orden::Rotulo { color, .. } => *color = tinta(*color),
+                    Orden::Imagen { .. } => {}
+                }
+                o
+            })
+            .collect()
+    })
+}
+
+/// **El grafito de `escena` con la tinta del lienzo sobre su papel**
+/// (`escena.fondo`), antes de cocerlo para una vista previa: su color va
+/// dentro del mapa y [`ordenes_como_en_el_lienzo`] no llega a verlo. Es
+/// [`grafito_adaptado`], lo mismo que hace el lienzo al cocerlo.
+pub fn grafito_como_en_el_lienzo(escena: &mut pixpin_motor2d::Escena) {
+    if !es_de_noche(escena.fondo) {
+        return;
+    }
+    con_papel(Some(escena.fondo), || {
+        for e in escena.elementos.iter_mut() {
+            if pixpin_motor2d::tinta::grafito::es_de_grafito(e)
+                && let Some(copia) = grafito_adaptado(e)
+            {
+                *e = copia;
+            }
+        }
+    });
 }
 
 #[cfg(test)]
@@ -375,5 +446,85 @@ mod pruebas {
         });
         assert_ne!(dentro, negro);
         assert_eq!(tinta(negro), negro, "fuera del fotograma, nada");
+    }
+
+    // --- Fuera del lienzo: las vistas previas ------------------------------
+
+    fn texto(color: ColorRgba) -> pixpin_motor2d::Orden {
+        pixpin_motor2d::Orden::Texto {
+            texto: "Hola".into(),
+            x: 0.0,
+            y: 0.0,
+            tam: 20.0,
+            familia: "Virgil".into(),
+            color,
+            ancho_max: 100.0,
+            negrita: false,
+            cursiva: false,
+        }
+    }
+
+    fn color_de(o: &pixpin_motor2d::Orden) -> ColorRgba {
+        match o {
+            pixpin_motor2d::Orden::Texto { color, .. } | pixpin_motor2d::Orden::Tinta { color, .. } => *color,
+            _ => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn la_vista_previa_sobre_papel_de_noche_pinta_la_tinta_como_el_lienzo() {
+        let negro = hex(0x1e1e1e);
+        let ordenes = vec![
+            texto(negro),
+            pixpin_motor2d::Orden::Tinta {
+                contorno: Vec::new(),
+                color: negro,
+            },
+        ];
+        let vistas = ordenes_como_en_el_lienzo(ordenes, hex(NEGRO));
+        // Lo mismo que el lienzo pinta con ese papel fijado.
+        let en_el_lienzo = con_papel(Some(hex(NEGRO)), || tinta(negro));
+        for o in &vistas {
+            assert_eq!(color_de(o), en_el_lienzo);
+            assert!(color_de(o).r > 0.8, "{:?}", color_de(o));
+        }
+        // Y no deja el papel fijado: lo que se pinte despues sale tal cual.
+        assert_eq!(tinta(negro), negro);
+    }
+
+    #[test]
+    fn la_vista_previa_sobre_papel_claro_o_con_tinta_que_ya_se_lee_no_cambia_nada() {
+        // Casos negativos: tinta negra en papel blanco; tinta blanca en
+        // papel negro (ya se lee: no pasa a negra); y papel crema.
+        let negro = hex(0x1e1e1e);
+        let blanco = hex(0xffffff);
+        assert_eq!(color_de(&ordenes_como_en_el_lienzo(vec![texto(negro)], hex(0xffffff))[0]), negro);
+        assert_eq!(color_de(&ordenes_como_en_el_lienzo(vec![texto(blanco)], hex(NEGRO))[0]), blanco);
+        assert_eq!(color_de(&ordenes_como_en_el_lienzo(vec![texto(blanco)], hex(0xfdf6e3))[0]), blanco);
+    }
+
+    #[test]
+    fn el_grafito_de_la_vista_previa_se_cuece_con_la_tinta_del_lienzo() {
+        let mut escena = pixpin_motor2d::Escena::nueva();
+        escena.fondo = hex(PIZARRA);
+        escena.elementos.push(pixpin_motor2d::Elemento {
+            trazo: hex(0x1e1e1e),
+            material: pixpin_motor2d::tinta::MaterialTinta::Cuadritos,
+            ..Default::default()
+        });
+        // Uno que no es de grafito no se toca aqui: su tinta la adapta
+        // `ordenes_como_en_el_lienzo`, como en el lienzo.
+        escena.elementos.push(pixpin_motor2d::Elemento {
+            trazo: hex(0x1e1e1e),
+            ..Default::default()
+        });
+        grafito_como_en_el_lienzo(&mut escena);
+        assert!(escena.elementos[0].trazo.r > 0.8, "{:?}", escena.elementos[0].trazo);
+        assert_eq!(escena.elementos[1].trazo, hex(0x1e1e1e));
+        // Caso negativo: en papel blanco el grafito se queda como es.
+        escena.fondo = hex(0xffffff);
+        escena.elementos[0].trazo = hex(0x1e1e1e);
+        grafito_como_en_el_lienzo(&mut escena);
+        assert_eq!(escena.elementos[0].trazo, hex(0x1e1e1e));
     }
 }

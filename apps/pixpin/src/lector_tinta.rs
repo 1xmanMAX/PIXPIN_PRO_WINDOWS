@@ -34,6 +34,10 @@
 //! Excalidraw de siempre, el mismo que lee el movil: si la carpeta viaja con
 //! el documento, lo anotado viaja con el. `compartir.rs` lee estas capas con
 //! `Capa::leer` y `ruta_de_*`: sus firmas no cambian.
+//!
+//! **Salvo el PDF de un proyecto** (27-sep): ahi, como en el movil, cada
+//! hoja escribe en el dibujo de su hoja del proyecto, que es lo que viaja al
+//! sincronizar. Lo decide `lector_pdf_proyecto::DondeVa`.
 
 use crate::dibujo::mano::{Atendido, Mano, Vista};
 use crate::dibujo::permitidas::{self, Anfitrion};
@@ -41,7 +45,7 @@ use crate::imagenes_lienzo::ImagenesLienzo;
 use pixpin_geom::{Punto, Rect};
 use pixpin_motor2d::cache::Cache;
 use pixpin_motor2d::camara::Camara;
-use pixpin_motor2d::elemento::Figura;
+use pixpin_motor2d::elemento::{Elemento, Figura};
 use pixpin_motor2d::excalidraw;
 use pixpin_motor2d::gesto::{FormaCursor, Gesto, Herramienta};
 use pixpin_motor2d::vector::Punto2;
@@ -69,6 +73,12 @@ pub struct Capa {
     lienzo: excalidraw::Lienzo,
     /// Hay cambios sin escribir.
     pub sucia: bool,
+    /// **Lo que se corrio al leer** (ver [`Capa::leer_corrida`]): cuanto se
+    /// resto a lo ancho y, de cada elemento, como quedo en memoria y como
+    /// estaba en el fichero. Lo que no se toco vuelve tal cual del fichero:
+    /// restar y sumar en `f32` no siempre deja el mismo numero, y un numero
+    /// cambiado es un elemento cambiado que viajaria sin que nadie lo tocara.
+    corrida: (f32, Vec<(Elemento, Elemento)>),
 }
 
 impl Default for Capa {
@@ -77,6 +87,7 @@ impl Default for Capa {
             escena: Escena::nueva(),
             lienzo: excalidraw::Lienzo::vacio(),
             sucia: false,
+            corrida: (0.0, Vec::new()),
         }
     }
 }
@@ -109,6 +120,17 @@ fn con_resaltadores(mut escena: Escena) -> Escena {
         }
     }
     escena
+}
+
+/// **Corre un elemento a lo ancho**, con sus puntos: un trazo guarda sus
+/// puntos donde estan (no respecto de su x), y correr la x sola lo dejaba
+/// donde estaba. Asi la tinta del movil, que cuenta desde el borde de su
+/// pagina, cae en el PC sobre su palabra y no `izq` mas a la derecha (K16).
+/// Sin subir la version: correrlo al leer o al guardar no es cambiarlo.
+fn correr(e: &mut Elemento, dx: f32) {
+    let version = e.version;
+    e.mover(dx, 0.0);
+    e.version = version;
 }
 
 /// La carpeta hermana donde van las capas de un documento.
@@ -153,17 +175,55 @@ impl Capa {
         }
     }
 
+    /// **Una capa guardada en las unidades del movil**, que cuenta desde el
+    /// borde de su pagina: la columna de texto empieza `dx` mas alla (su
+    /// margen izquierdo, `Maqueta.izq`). El lector del PC cuenta desde el
+    /// borde de la columna, asi que al leer todo se corre `dx` a la izquierda
+    /// y al guardar ([`Capa::guardar_corrida`]) se devuelve.
+    pub fn leer_corrida(ruta: &Path, dx: f32) -> Capa {
+        let mut c = Capa::leer(ruta);
+        if dx != 0.0 {
+            let mut apuntes = Vec::with_capacity(c.escena.elementos.len());
+            for e in c.escena.elementos.iter_mut() {
+                let disco = e.clone();
+                correr(e, -dx);
+                apuntes.push((e.clone(), disco));
+            }
+            c.corrida = (dx, apuntes);
+        }
+        c
+    }
+
     /// Escribe la capa si hay cambios. Una capa que se queda vacia se
     /// escribe igual (vacia): borrar el fichero perderia lo ajeno que
     /// trajera del movil.
     pub fn guardar(&mut self, ruta: &Path) -> std::io::Result<()> {
+        self.guardar_corrida(ruta, 0.0)
+    }
+
+    /// Lo mismo, devolviendo lo corrido: en el fichero la columna empieza
+    /// `dx` mas alla (ver [`Capa::leer_corrida`]).
+    pub fn guardar_corrida(&mut self, ruta: &Path, dx: f32) -> std::io::Result<()> {
         if !self.sucia {
             return Ok(());
         }
         if let Some(carpeta) = ruta.parent() {
             std::fs::create_dir_all(carpeta)?;
         }
-        let lienzo = excalidraw::con_escena(&self.lienzo, &para_el_disco(&self.escena));
+        let mut en_disco = para_el_disco(&self.escena);
+        let (antes, apuntes) = &self.corrida;
+        if dx != 0.0 || !apuntes.is_empty() {
+            let mismo = *antes == dx;
+            for e in en_disco.elementos.iter_mut() {
+                // Lo que sigue como se leyo, tal cual del fichero; lo nuevo
+                // o tocado, corrido.
+                match apuntes.iter().find(|(m, _)| m.id == e.id) {
+                    Some((memoria, disco)) if mismo && memoria == e => *e = disco.clone(),
+                    _ => correr(e, dx),
+                }
+            }
+        }
+        let lienzo = excalidraw::con_escena(&self.lienzo, &en_disco);
         // Primero a un temporal y luego encima: un corte a medias no puede
         // dejar la capa buena convertida en medio fichero.
         let temporal = ruta.with_extension("excalidraw.tmp");
@@ -171,6 +231,19 @@ impl Capa {
         std::fs::rename(&temporal, ruta)?;
         self.lienzo = lienzo;
         self.sucia = false;
+        // Lo escrito es ahora lo del fichero: la proxima vez se compara con esto.
+        if dx != 0.0 {
+            let apuntes = self
+                .escena
+                .elementos
+                .iter()
+                .zip(en_disco.elementos.iter())
+                .map(|(m, d)| (m.clone(), d.clone()))
+                .collect();
+            self.corrida = (dx, apuntes);
+        } else {
+            self.corrida = (0.0, Vec::new());
+        }
         Ok(())
     }
 
@@ -712,6 +785,47 @@ mod pruebas {
         let (x0, _, x1, _) = e.caja();
         assert!(x0 <= 10.5 && x1 >= 59.5, "{x0} {x1}");
         assert!(c.sucia);
+    }
+
+    /// K16: la tinta del movil cuenta desde el borde de su pagina y el lector
+    /// desde el de la columna. Correrla es correr sus PUNTOS, no solo su x:
+    /// antes el trazo del movil salia `izq` pixeles a la derecha de su
+    /// palabra, y el del PC viajaba sin correr.
+    #[test]
+    fn la_tinta_corrida_mueve_sus_puntos_y_lo_que_no_se_toca_vuelve_igual_al_fichero() {
+        let dir = std::env::temp_dir().join(format!("pixpin-corrida-puntos-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let ruta = dir.join("anot.excalidraw");
+        let fichero = r#"{"type":"excalidraw","elements":[{"id":"m1","type":"freedraw","x":364.1875,"y":100.0,"width":20,"height":4,"seed":1,"version":3,"versionNonce":1,"updated":1,"points":[[0,0],[20.5,4]]}],"files":{}}"#;
+        std::fs::write(&ruta, fichero).unwrap();
+        let mut c = Capa::leer_corrida(&ruta, 256.0);
+        let e = c.escena.visibles().next().unwrap().clone();
+        let sin = Capa::leer(&ruta).escena.visibles().next().unwrap().caja();
+        let (x0, _, x1, _) = e.caja();
+        assert!((sin.0 - x0 - 256.0).abs() < 1e-3 && (sin.2 - x1 - 256.0).abs() < 1e-3, "la caja entera, corrida: {sin:?} {x0} {x1}");
+        assert_eq!(e.version, 3, "correr al leer no es cambiar");
+        // Un trazo nuevo del PC en la columna (x 10..30) va al fichero corrido.
+        let mut t = tinta_de_prueba(Herramienta::Lapiz);
+        t.trazar(&mut c, &[Punto2::nuevo(10.0, 50.0), Punto2::nuevo(30.0, 50.0)]);
+        c.guardar_corrida(&ruta, 256.0).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&ruta).unwrap()).unwrap();
+        let els = v["elements"].as_array().unwrap();
+        assert_eq!(els[0]["x"].as_f64(), Some(364.1875), "el del movil, tal cual");
+        assert_eq!(els[0]["version"].as_u64(), Some(3));
+        let nuevo = &els[1];
+        let x = nuevo["x"].as_f64().unwrap();
+        let p0 = nuevo["points"][0][0].as_f64().or_else(|| nuevo["points"][0]["x"].as_f64()).unwrap();
+        assert!((x + p0 - 266.0).abs() < 0.5, "el del PC, en unidades de la pagina: {x} + {p0}");
+        // Y al volver a leerlo cae donde se dibujo.
+        let otra = Capa::leer_corrida(&ruta, 256.0);
+        let n = otra.escena.visibles().nth(1).unwrap();
+        let hecho = c.escena.visibles().nth(1).unwrap().caja();
+        assert!((n.caja().0 - hecho.0).abs() < 0.01, "{:?} {hecho:?}", n.caja());
+        // Caso negativo: sin corrida (un documento suelto) nada se mueve.
+        let quieta = Capa::leer_corrida(&ruta, 0.0);
+        assert!((quieta.escena.visibles().next().unwrap().caja().0 - sin.0).abs() < 1e-3);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

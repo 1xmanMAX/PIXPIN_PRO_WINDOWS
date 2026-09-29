@@ -22,114 +22,15 @@
 //! `PaquetePixpin.importar` hace `?: continue` y la hoja llega sin dibujo,
 //! o sea sin mensaje en el chat. Los lienzos nacidos en el PC llevan los
 //! puntos como `[x, y]` y el movil los quiere como `{"x":…,"y":…}` (`Pt`);
-//! eso solo ya bastaba. [`escena_para_el_movil`] lo deja como lo espera.
+//! eso solo ya bastaba. [`escena_para_el_movil`] lo deja como lo espera, con
+//! las reglas de `pixpin_proyecto::para_el_movil` (las mismas con que sale
+//! un lienzo al sincronizar).
 
 use std::path::{Path, PathBuf};
 
-use pixpin_proyecto::{Hoja, Paquete, Proyecto, almacen, cuaderno};
+use pixpin_proyecto::{Hoja, Paquete, Proyecto, almacen, cuaderno, para_el_movil};
 use pixpin_sincro::envio::{self, Elemento};
 use serde_json::{Map, Value};
-
-/// Los `type` que el movil sabe leer (`ElementType` de `motor/Element.kt`).
-/// Un elemento con otro tira la escena entera alla.
-const TIPOS_DEL_MOVIL: &[&str] = &[
-    "rectangle",
-    "diamond",
-    "ellipse",
-    "arrow",
-    "line",
-    "freedraw",
-    "text",
-    "image",
-    "pixpin-mosaic",
-    "pixpin-spotlight",
-    "pixpin-lupa",
-    "pixpin-serial",
-    "pixpin-measure",
-    "pixpin-arc",
-    "pixpin-region",
-    "pixpin-scalebar",
-    "frame",
-    "pixpin-point",
-    "pixpin-axes",
-    "pixpin-number-line",
-    "pixpin-space",
-    "pixpin-solid",
-    "pixpin-gantt",
-];
-
-/// Los campos de enumeracion del `Element` del movil y las palabras que
-/// admite cada uno. Con otra palabra kotlinx rechaza la escena; sin el campo,
-/// el movil pone el suyo de fabrica. Por eso lo que no encaja se QUITA.
-const ENUMERADOS: &[(&str, &[&str])] = &[
-    (
-        "fillStyle",
-        &["hachure", "cross-hatch", "solid", "zigzag", "pixpin-lines"],
-    ),
-    ("strokeStyle", &["solid", "dashed", "dotted"]),
-    ("textAlign", &["left", "center", "right"]),
-    ("verticalAlign", &["top", "middle", "bottom"]),
-    ("startArrowhead", PUNTAS),
-    ("endArrowhead", PUNTAS),
-    (
-        "material",
-        &[
-            "lisa",
-            "luz",
-            "hdr",
-            "rayado",
-            "cruzado",
-            "puntos",
-            "tiza",
-            "lapiz2b",
-            "seco",
-            "trama",
-            "cuadritos",
-        ],
-    ),
-    ("dureza", &["4H", "2H", "HB", "2B", "4B", "6B", "8B"]),
-    ("papel", &["a4", "a5", "carta", "cuadrada", "apaisada"]),
-    ("pauta", &["lisa", "rayada", "cuadros", "puntos"]),
-    (
-        "formaSolida",
-        &[
-            "caja",
-            "cuna",
-            "cilindro",
-            "prisma",
-            "revolucion",
-            "extrusion",
-        ],
-    ),
-];
-
-const PUNTAS: &[&str] = &[
-    "arrow",
-    "bar",
-    "circle",
-    "circle_outline",
-    "triangle",
-    "triangle_outline",
-    "diamond",
-    "diamond_outline",
-];
-
-/// Los campos `Int` del `Element` del movil: un `1.0` o un numero que no
-/// cabe en 32 bits hace fallar la lectura.
-const ENTEROS: &[&str] = &[
-    "roughness",
-    "opacity",
-    "seed",
-    "version",
-    "versionNonce",
-    "fontFamily",
-    "periodos",
-    "oscurecer",
-];
-
-/// Los campos que son un `Pt` (`{"x","y"}`) o listas de ellos.
-const PUNTO_SUELTO: &[&str] = &["lastCommittedPoint", "foco"];
-const LISTA_DE_PUNTOS: &[&str] = &["points", "planta", "forma"];
 
 /// Lo que se hizo al pasar un lienzo a la forma del movil.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -162,7 +63,7 @@ pub(crate) fn escena_para_el_movil(
     let antes = elementos.len();
     let elementos: Vec<Value> = elementos
         .into_iter()
-        .filter_map(|v| elemento_para_el_movil(v))
+        .filter_map(para_el_movil::elemento)
         .collect();
     informe.quitados = antes - elementos.len();
     mapa.insert("elements".into(), Value::Array(elementos));
@@ -179,7 +80,7 @@ pub(crate) fn escena_para_el_movil(
         mapa.insert("backgroundColor".into(), Value::String(c.to_string()));
     }
     if let Some(p) = mapa.get_mut("origenCoordenadas") {
-        a_punto(p);
+        para_el_movil::a_punto(p);
     }
 
     let mut fotos = Vec::new();
@@ -222,149 +123,6 @@ pub(crate) fn escena_para_el_movil(
     mapa.insert("files".into(), Value::Object(nuevos));
     let texto = serde_json::to_string(&raiz).map_err(|e| e.to_string())?;
     Ok((texto, fotos, informe))
-}
-
-/// Un elemento como lo lee el `Element` del movil, o `None` si no hay forma.
-fn elemento_para_el_movil(v: Value) -> Option<Value> {
-    let Value::Object(mut e) = v else {
-        return None;
-    };
-    let tipo = e.get("type").and_then(Value::as_str)?;
-    if !TIPOS_DEL_MOVIL.contains(&tipo) {
-        return None;
-    }
-    let id = e.get("id").and_then(Value::as_str)?.to_string();
-    for clave in ["x", "y", "width", "height"] {
-        if !e.get(clave).is_some_and(Value::is_number) {
-            e.insert(clave.into(), Value::from(0));
-        }
-    }
-    // `seed` no tiene valor por omision alla: sin el, no se lee.
-    if !e.get("seed").is_some_and(Value::is_number) {
-        e.insert("seed".into(), Value::from(semilla_de(&id)));
-    }
-    for clave in ENTEROS {
-        if let Some(n) = e.get(*clave).and_then(Value::as_f64) {
-            e.insert((*clave).into(), Value::from(entero_de_32(n)));
-        }
-    }
-    if let Some(n) = e.get("updated").and_then(Value::as_f64) {
-        e.insert("updated".into(), Value::from(n.round() as i64));
-    }
-    for (clave, palabras) in ENUMERADOS {
-        let vale = match e.get(*clave) {
-            None | Some(Value::Null) => true,
-            Some(Value::String(s)) => palabras.contains(&s.as_str()),
-            Some(_) => false,
-        };
-        if !vale {
-            e.remove(*clave);
-        }
-    }
-    for clave in PUNTO_SUELTO {
-        if let Some(p) = e.get_mut(*clave)
-            && !a_punto(p)
-        {
-            e.remove(*clave);
-        }
-    }
-    for clave in LISTA_DE_PUNTOS {
-        if let Some(l) = e.get_mut(*clave)
-            && !a_puntos(l)
-        {
-            e.remove(*clave);
-        }
-    }
-    if let Some(Value::Array(huecos)) = e.get_mut("huecos") {
-        huecos.retain_mut(a_puntos);
-    }
-    // Cada atadura con su `id` y un `type` que alla exista.
-    if let Some(Value::Array(atados)) = e.get_mut("boundElements") {
-        atados.retain(|a| {
-            a.get("id").is_some_and(Value::is_string)
-                && a
-                    .get("type")
-                    .and_then(Value::as_str)
-                    .is_some_and(|t| TIPOS_DEL_MOVIL.contains(&t))
-        });
-    }
-    for clave in ["startBinding", "endBinding"] {
-        let vale = match e.get(clave) {
-            None | Some(Value::Null) => true,
-            Some(b) => {
-                b.get("elementId").is_some_and(Value::is_string)
-                    && b.get("mode")
-                        .and_then(Value::as_str)
-                        .is_none_or(|m| m == "orbit" || m == "inside")
-            }
-        };
-        if !vale {
-            e.remove(clave);
-        }
-    }
-    if let Some(r) = e.get("roundness")
-        && !r.is_null()
-    {
-        match r.get("type").and_then(Value::as_f64) {
-            Some(t) => {
-                e.insert(
-                    "roundness".into(),
-                    serde_json::json!({ "type": entero_de_32(t) }),
-                );
-            }
-            None => {
-                e.insert("roundness".into(), Value::Null);
-            }
-        }
-    }
-    if let Some(c) = e.get("crop")
-        && !c.is_null()
-        && !["x", "y", "width", "height", "naturalWidth", "naturalHeight"]
-            .iter()
-            .all(|k| c.get(*k).is_some_and(Value::is_number))
-    {
-        e.remove("crop");
-    }
-    Some(Value::Object(e))
-}
-
-/// `[x, y]` a `{"x": x, "y": y}`. Devuelve si quedo un punto.
-fn a_punto(v: &mut Value) -> bool {
-    match v {
-        Value::Null => true,
-        Value::Object(m) => m.get("x").is_some_and(Value::is_number) && m.get("y").is_some_and(Value::is_number),
-        Value::Array(a) if a.len() >= 2 && a[0].is_number() && a[1].is_number() => {
-            *v = serde_json::json!({ "x": a[0], "y": a[1] });
-            true
-        }
-        _ => false,
-    }
-}
-
-/// Una lista de puntos. Los que no son punto se quitan.
-fn a_puntos(v: &mut Value) -> bool {
-    match v {
-        Value::Null => true,
-        Value::Array(l) => {
-            l.retain_mut(|p| !p.is_null() && a_punto(p));
-            true
-        }
-        _ => false,
-    }
-}
-
-fn entero_de_32(n: f64) -> i64 {
-    (n.round() as i64).clamp(i32::MIN as i64, i32::MAX as i64)
-}
-
-/// Una semilla que no cambia para el mismo id (FNV-1a), en positivo.
-fn semilla_de(id: &str) -> i64 {
-    let mut h: u32 = 0x811c_9dc5;
-    for b in id.bytes() {
-        h ^= b as u32;
-        h = h.wrapping_mul(0x0100_0193);
-    }
-    (h & 0x7fff_ffff) as i64
 }
 
 fn mime_de_bytes(b: &[u8]) -> &'static str {

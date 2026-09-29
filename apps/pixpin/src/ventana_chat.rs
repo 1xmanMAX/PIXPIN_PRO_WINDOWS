@@ -50,6 +50,9 @@ mod tarjetas;
 /// F8: muestra en PNG del chat con una zona recien mandada.
 #[cfg(test)]
 mod muestra_zona;
+/// La vista previa de un lienzo, con el papel y la tinta del lienzo.
+#[cfg(test)]
+mod papel_de_la_vista;
 
 /// Tamano con el que nace, en pixeles logicos (el de Telegram en escritorio).
 const ANCHO_LOGICO: u32 = 1024;
@@ -5194,7 +5197,14 @@ fn tocar_la_burbuja(
         // estan las herramientas. Dibujar en la propia burbuja sigue estando,
         // en el menu del boton derecho.
         Some(a) if es_foto => {
-            if let Some(ruta) = a
+            // Una foto se abre en SU lienzo, como en el movil: el que trajo
+            // de alli o el que se estrena aqui (K11, `foto_anotada`).
+            if crate::foto_anotada::abrir_en_su_lienzo(ubicacion.raiz(), &a.ficha.id, &mut a.mensajes, indice, lienzo) {
+                if let Some(m) = a.mensajes.get(indice).cloned() {
+                    a.vistas[indice] = leer_vista(ubicacion, &a.ficha.id, &m);
+                }
+                a.colocado.borrow_mut().ancho = 0;
+            } else if let Some(ruta) = a
                 .mensajes
                 .get(indice)
                 .and_then(|m| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
@@ -6330,6 +6340,7 @@ fn pintar_foto(
                     caja: (0.0, 0.0, dw, dh),
                     fondo: None,
                     papel: None,
+                    giro_del_fondo: 0.0,
                 },
                 dest,
                 None,
@@ -6393,6 +6404,7 @@ fn pintar_foto(
                         caja: (x0, y0, x1, y1),
                         fondo: None,
                         papel: None,
+                        giro_del_fondo: 0.0,
                     },
                     dest,
                     None,
@@ -7282,23 +7294,29 @@ struct LienzoVisto {
     /// se dibujo, o la foto de la hoja. Sin esto, una hoja de un plano se
     /// ensena como cuatro rayas flotando en blanco.
     fondo: Option<(std::path::PathBuf, (f32, f32, f32, f32))>,
-    /// El papel del lienzo (`viewBackgroundColor`), **solo si no es el
-    /// blanco de fabrica**. Con el de fabrica manda el papel del tema del
-    /// chat, que en oscuro es un gris claro a proposito; un papel elegido
-    /// («Crema», «Azul noche»...) es parte del dibujo y se ensena tal cual.
+    /// El giro de ese fondo alrededor del centro de su caja (el `angle` de
+    /// la foto en el movil). Cero para una pagina del PDF.
+    giro_del_fondo: f32,
+    /// El papel del lienzo (`backgroundColor` / `viewBackgroundColor`),
+    /// **siempre el suyo, tambien el blanco**: la vista previa tiene que
+    /// verse como el lienzo, mismos colores (`DrawExport.aBitmap` del movil
+    /// pinta `scene.backgroundColor`). Antes el blanco de fabrica se cambiaba
+    /// por el papel del tema del chat, que en oscuro es un gris. `None` solo
+    /// en lo que no es un lienzo (una pagina de PDF sola): el del tema.
     papel: Option<Color>,
 }
 
-/// El papel con que se ensena un lienzo en el chat: el suyo si lo eligio,
-/// o `tema` si no (ver `LienzoVisto::papel`).
+/// El papel con que se ensena un lienzo en el chat: el suyo, o `tema` si
+/// no es un lienzo (ver `LienzoVisto::papel`).
 fn papel_de_vista(vista: &LienzoVisto, tema: Color) -> Color {
     vista.papel.unwrap_or(tema)
 }
 
-/// Lo que va en `LienzoVisto::papel` para este lienzo.
-fn papel_elegido(lienzo: &pixpin_motor2d::excalidraw::Lienzo) -> Option<Color> {
+/// Lo que va en `LienzoVisto::papel` para este lienzo: el papel con que lo
+/// abre el editor (`excalidraw::fondo`).
+fn papel_del_lienzo(lienzo: &pixpin_motor2d::excalidraw::Lienzo) -> Option<Color> {
     let c = pixpin_motor2d::excalidraw::fondo(lienzo);
-    (c != pixpin_motor2d::escena::FONDO_DE_FABRICA).then_some(Color {
+    Some(Color {
         r: c.r,
         g: c.g,
         b: c.b,
@@ -7331,14 +7349,26 @@ fn leer_vista(
         // Lo dibujado encima, si lo hay: una foto anotada tiene que verse
         // anotada tambien cuando su burbuja esta quieta.
         let escena = pixpin_motor2d::cargar(&dibujo_de_foto(&ruta)).ok();
-        let dibujo = escena
+        let mut dibujo = escena
             .as_ref()
-            .map(pixpin_motor2d::ordenes_de_escena)
+            // Con la tinta como la pinta el lienzo sobre su papel.
+            .map(|e| crate::dibujo::tema::ordenes_como_en_el_lienzo(pixpin_motor2d::ordenes_de_escena(e), e.fondo))
             .unwrap_or_default();
+        let mut trazos = escena.as_ref().and_then(|e| e.caja());
+        // Y lo dibujado en el movil, que vive en su propio lienzo
+        // (`foto_anotada`): sin esto de una foto anotada alli solo llegaba
+        // la foto.
+        if let Some(d) = crate::foto_anotada::dibujo_de_la_foto(ubicacion.raiz(), proyecto, m, (w as f32, h as f32)) {
+            dibujo.extend(d.ordenes);
+            trazos = match (trazos, d.trazos) {
+                (Some(a), Some(b)) => Some((a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3))),
+                (a, b) => a.or(b),
+            };
+        }
         return Some(Ojeada::Foto {
             doc: (w as f32, h as f32),
             dibujo,
-            trazos: escena.as_ref().and_then(|e| e.caja()),
+            trazos,
         });
     }
     // Una tabla no tiene fichero: su documento es el propio texto del
@@ -7372,6 +7402,7 @@ fn leer_vista(
             caja: (0.0, 0.0, w, h),
             fondo: Some((ruta, (0.0, 0.0, w, h))),
             papel: None,
+            giro_del_fondo: 0.0,
         }));
     }
     if !matches!(m.clase, Some(Clase::Dibujo) | Some(Clase::Pagina)) {
@@ -7414,6 +7445,7 @@ fn leer_vista(
             caja: (0.0, 0.0, w, h),
             fondo: Some((ruta, (0.0, 0.0, w, h))),
             papel: None,
+            giro_del_fondo: 0.0,
         }));
     }
     // `referencia` es el id del dibujo, no un fichero: asi lo escribe
@@ -7429,20 +7461,22 @@ fn leer_vista(
     let lienzo = pixpin_motor2d::excalidraw::leer(&texto)
         .inspect_err(|e| tracing::warn!(?e, "lienzo que no se entiende"))
         .ok()?;
-    let mut escena = pixpin_motor2d::Escena::nueva();
-    for e in lienzo.elementos() {
-        escena.anadir(e);
-    }
+    // Como la abre el editor (`a_escena`): con su papel, que decide la tinta.
+    let mut escena = pixpin_motor2d::excalidraw::a_escena(&lienzo);
+    // El grafito, cocido con la tinta que se ve en el lienzo (ver abajo).
+    crate::dibujo::tema::grafito_como_en_el_lienzo(&mut escena);
     // El fondo de la hoja: la pagina del PDF si se dibujo sobre una, y si no
     // la foto que trae el propio dibujo (`imagenes/<id>` del paquete).
-    let fondo = match m.pagina {
-        Some(pagina) => pagina_del_pdf(ubicacion.raiz(), proyecto, pagina)
-            .map(|(r, w, h)| (r, (0.0, 0.0, w, h))),
+    // Con su giro: una foto girada en el movil se ensenaba derecha.
+    let (fondo, giro_del_fondo) = match m.pagina {
+        Some(pagina) => (
+            pagina_del_pdf(ubicacion.raiz(), proyecto, pagina).map(|(r, w, h)| (r, (0.0, 0.0, w, h))),
+            0.0,
+        ),
         None => {
             let ficheros = pixpin_motor2d::excalidraw::ficheros(&lienzo);
             escena
-                .elementos
-                .iter()
+                .visibles()
                 .find_map(|e| match e.figura {
                     pixpin_motor2d::Figura::Imagen { id_objeto } => ficheros
                         .iter()
@@ -7450,16 +7484,17 @@ fn leer_vista(
                         .and_then(|(_, rel)| {
                             pixpin_proyecto::vista::ruta_real(ubicacion.raiz(), proyecto, rel)
                         })
-                        .map(|r| (r, e.caja())),
+                        .map(|r| ((r, e.caja()), e.angulo)),
                     _ => None,
                 })
-                .filter(|(r, _)| r.is_file())
+                .filter(|((r, _), _)| r.is_file())
+                .map_or((None, 0.0), |(f, giro)| (Some(f), giro))
         }
     };
-    let caja = match fondo {
-        // Con fondo manda su caja: un trazo que se salga de la hoja no puede
-        // encoger el plano entero para caber con el.
-        Some((_, c)) => c,
+    let caja = match &fondo {
+        // Con fondo manda su caja (girada, si lo esta): un trazo que se salga
+        // de la hoja no puede encoger el plano entero para caber con el.
+        Some((_, c)) => crate::foto_anotada::caja_girada(*c, giro_del_fondo),
         None => escena.caja()?,
     };
     // El grafito, cocido una vez aqui y no en cada fotograma. A la finura de
@@ -7474,6 +7509,10 @@ fn leer_vista(
         (LADO_DEL_GRAFITO_EN_VISTA / lado).min(1.0),
         TOPE_DEL_GRAFITO_EN_VISTA,
     );
+    // **La tinta como en el lienzo**: sobre papel de noche el editor la pinta
+    // adaptada (`dibujo::tema`); la vista previa, igual. Sin esto la tinta
+    // negra guardada salia negra sobre el papel negro y no se veia nada.
+    let ordenes = crate::dibujo::tema::ordenes_como_en_el_lienzo(ordenes, escena.fondo);
     if ordenes.is_empty() && grafitos.is_empty() && fondo.is_none() {
         return None;
     }
@@ -7482,7 +7521,8 @@ fn leer_vista(
         grafitos,
         caja,
         fondo,
-        papel: papel_elegido(&lienzo),
+        giro_del_fondo,
+        papel: papel_del_lienzo(&lienzo),
     }))
 }
 
@@ -7600,7 +7640,10 @@ fn pintar_lienzo(
             alto: (fy1 - fy0) * escala,
         };
         let _ = (w, alto);
-        p.bitmap_con(b, caja, None, pixpin_render::Interpolacion::Lineal);
+        let centro = (caja.x + caja.ancho / 2.0, caja.y + caja.alto / 2.0);
+        p.girado(centro, vista.giro_del_fondo, |p| {
+            p.bitmap_con(b, caja, None, pixpin_render::Interpolacion::Lineal);
+        });
     }
     // El grafito, cada mapa justo antes de la orden que le toca, llevado a la
     // vista con la misma escala que los puntos.
@@ -7670,6 +7713,34 @@ fn pintar_lienzo(
                 },
                 &crate::dibujo::pintar::letra_de(familia, *negrita, *cursiva),
                 color(*c),
+            ),
+            // El numero de una cota, girado y con halo como en el lienzo.
+            Orden::Rotulo {
+                texto,
+                x,
+                y,
+                tam,
+                familia,
+                color: c,
+                halo,
+                grosor_halo,
+                centro,
+                angulo,
+            } => p.girado(
+                ((centro.x - x0) * escala + dx, (centro.y - y0) * escala + dy),
+                *angulo,
+                |p| {
+                    p.texto_con_halo(
+                        texto,
+                        (x - x0) * escala + dx,
+                        (y - y0) * escala + dy,
+                        (tam * escala).max(4.0),
+                        &crate::dibujo::pintar::letra_de(familia, false, false),
+                        color(*c),
+                        color(*halo),
+                        grosor_halo * escala,
+                    )
+                },
             ),
             // El velo es de la capa viva y las imagenes incrustadas todavia
             // no tienen almacen: en una vista previa no se echan de menos.
@@ -8319,28 +8390,32 @@ mod pruebas {
     }
 
     #[test]
-    fn la_vista_previa_ensena_el_papel_elegido_y_si_no_el_del_tema() {
+    fn la_vista_previa_ensena_el_papel_del_lienzo_tambien_el_blanco_y_el_del_tema_solo_sin_lienzo() {
         let leer = |json: &str| pixpin_motor2d::excalidraw::leer(json).unwrap();
         let crema = leer(
             r##"{"type":"excalidraw","elements":[],"appState":{"viewBackgroundColor":"#fdf6e3"}}"##,
         );
-        let c = papel_elegido(&crema).expect("un papel elegido se ensena");
+        let c = papel_del_lienzo(&crema).expect("el papel del lienzo se ensena");
         assert!((c.r - 253.0 / 255.0).abs() < 1e-3 && (c.b - 227.0 / 255.0).abs() < 1e-3);
-        // Casos negativos: sin papel, con el blanco de fabrica o con uno que
-        // no se entiende, manda el del tema (el gris claro del chat oscuro).
+        // Sin papel, con el blanco de fabrica o con uno que no se entiende:
+        // blanco, como lo abre el editor, y no el gris del tema oscuro.
         for json in [
             r#"{"type":"excalidraw","elements":[]}"#,
             r##"{"type":"excalidraw","elements":[],"appState":{"viewBackgroundColor":"#ffffff"}}"##,
             r#"{"type":"excalidraw","elements":[],"appState":{"viewBackgroundColor":"transparent"}}"#,
         ] {
-            assert_eq!(papel_elegido(&leer(json)), None, "{json}");
+            let c = papel_del_lienzo(&leer(json)).expect("siempre el suyo");
+            assert!(c.r > 0.999 && c.g > 0.999 && c.b > 0.999, "{json}: {c:?}");
         }
+        // Caso negativo: lo que no es un lienzo (una pagina de PDF sola) va
+        // sobre el papel del tema.
         let vista = LienzoVisto {
             ordenes: Vec::new(),
             grafitos: Vec::new(),
             caja: (0.0, 0.0, 1.0, 1.0),
             fondo: None,
             papel: None,
+            giro_del_fondo: 0.0,
         };
         assert_eq!(papel_de_vista(&vista, TEMA_OSCURO_PAPEL), TEMA_OSCURO_PAPEL);
     }
@@ -11058,6 +11133,9 @@ fn apagar_lienzo(ubicacion: &Ubicacion, a: &mut Abierto) {
         ),
         Err(e) => tracing::error!(?e, ruta = %v.dibujo.display(), "no se pudo guardar el lienzo"),
     }
+    // K11: lo dibujado en la burbuja pasa al lienzo de la foto, el que viaja
+    // al movil (el `.pixpin2d` no viaja).
+    crate::foto_anotada::asegurar_lienzo(ubicacion.raiz(), &a.ficha.id, &mut a.mensajes, v.indice);
     // La burbuja vuelve a quedarse quieta, pero con lo dibujado: se rehace su
     // ojeada, o el trazo desapareceria al apagar el lienzo.
     if let Some(m) = a.mensajes.get(v.indice).cloned() {
@@ -11366,42 +11444,13 @@ pub(crate) fn abrir_hojas(
     indice: usize,
     opciones: OpcionesLienzo,
 ) -> Vec<usize> {
-    let mut guardadas = Vec::new();
-    // Pulsar una «zona» de una pagina lleva a su hoja, y desde ella se puede
-    // saltar a otra: por eso es un bucle y no una llamada. El tope es por si
-    // dos hojas se enlazan entre si; sin el, el ir y venir no acabaria.
-    let mut indice = indice;
-    // Una zona mandada al chat con el lienzo abierto (F8) nace despues de
-    // que el chat leyera su lista: su hoja se busca en el cuaderno y se
-    // anade aqui, sin tocar la del chat.
-    let mut todos = std::borrow::Cow::Borrowed(mensajes);
-    for _ in 0..SALTOS_MAXIMOS {
-        let (guardada, destino) = abrir_una_hoja(raiz, proyecto, &todos, indice, opciones);
-        if guardada && indice < mensajes.len() {
-            guardadas.push(indice);
-        }
-        // Se pulso un recuadro con enlace: la hoja a la que lleva es la que
-        // tiene ese dibujo como referencia.
-        let Some(destino) = destino else { break };
-        match todos.iter().position(|m| m.referencia.as_deref() == Some(destino.as_str())) {
-            Some(s) => indice = s,
-            None => match crate::zona_al_chat::mensaje_con_dibujo(raiz, proyecto, &destino) {
-                Some(m) => {
-                    todos.to_mut().push(m);
-                    indice = todos.len() - 1;
-                }
-                None => {
-                    tracing::warn!(%destino, "el enlace no lleva a ninguna hoja de este proyecto");
-                    break;
-                }
-            },
-        }
-    }
-    guardadas
+    // Pulsar una zona vinculada abre su lienzo y cerrarlo vuelve a este, como
+    // el movil; el camino (y a que hoja lleva cada enlace) esta en
+    // `salto_por_enlace`, probado sin ventanas.
+    crate::salto_por_enlace::recorrer_hojas(raiz, proyecto, mensajes, indice, |todos, i| {
+        abrir_una_hoja(raiz, proyecto, todos, i, opciones)
+    })
 }
-
-/// Cuantas hojas encadenadas se abren antes de parar.
-const SALTOS_MAXIMOS: usize = 32;
 
 /// Lo que hace falta para abrir una hoja en el lienzo, ya leido.
 struct HojaPreparada {
@@ -14057,7 +14106,12 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             }
         }
         Accion::FotoEnLienzo(i) => {
-            if let Some(ruta) = ruta_de(a, i) {
+            // Como al pulsarla: en su lienzo, estrenandolo si hace falta.
+            if crate::foto_anotada::abrir_en_su_lienzo(cx.ubicacion.raiz(), &a.ficha.id, &mut a.mensajes, i, cx.lienzo) {
+                if let Some(m) = a.mensajes.get(i).cloned() {
+                    a.vistas[i] = leer_vista(cx.ubicacion, &a.ficha.id, &m);
+                }
+            } else if let Some(ruta) = ruta_de(a, i) {
                 abrir_foto_en_lienzo(&ruta, cx.lienzo);
                 // Al volver, la burbuja tiene que ensenar lo que se dibujo.
                 if let Some(m) = a.mensajes.get(i).cloned() {

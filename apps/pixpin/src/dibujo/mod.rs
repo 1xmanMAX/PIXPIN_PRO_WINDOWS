@@ -21,6 +21,9 @@ pub(crate) mod grupos;
 /// La varita de la lupa y apuntar lo que mira (lienzo-imagen, 26-sep).
 pub(crate) mod lupa;
 pub(crate) mod mano;
+/// La cota del movil pintada por el camino de la pantalla, para mirarla.
+#[cfg(test)]
+mod muestra_cota;
 pub(crate) mod permitidas;
 pub(crate) mod pintar;
 pub(crate) mod teclas;
