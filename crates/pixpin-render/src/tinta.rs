@@ -409,7 +409,7 @@ pub fn pasos_de_tinta(contorno: &[(f32, f32)]) -> Vec<PasoTrayecto> {
 }
 
 #[cfg(test)]
-mod pruebas {
+pub(crate) mod pruebas {
     use super::*;
     use crate::motor::Color;
 
@@ -534,7 +534,7 @@ mod pruebas {
     }
 
     /// Motor y un destino de `ancho x alto` sobre un D3D11 hardware propio.
-    fn motor_y_destino_de_prueba(
+    pub(crate) fn motor_y_destino_de_prueba(
         ancho: u32,
         alto: u32,
     ) -> (

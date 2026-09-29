@@ -244,6 +244,13 @@ pub(crate) struct DisposicionCacheada {
     w: f32,
     h: f32,
     usado: u64,
+    /// El halo de este renglon ya pintado en su mapa (`texto_con_halo`,
+    /// `halo.rs`), con el grosor, la escala y el color con que se hizo. Vive
+    /// y muere con la disposicion.
+    halo: Option<(ClaveHalo, crate::halo::MapaDelHalo)>,
+    /// El fotograma en que se hizo la disposicion: el mapa del halo solo se
+    /// hace para un renglon que ya se pinto antes (ver `halo_cacheado`).
+    nacido: u64,
 }
 
 /// La letra de una disposicion cacheada, comparable.
@@ -328,9 +335,81 @@ pub(crate) fn disposicion_cacheada(
             w,
             h: hh,
             usado: ahora,
+            halo: None,
+            nacido: ahora,
         },
     );
     Some((disposicion, w, hh))
+}
+
+/// Grosor del halo, nivel de escala (`halo::nivel_de`) y color: lo que hace
+/// distinto el mapa de un mismo renglon.
+pub(crate) type ClaveHalo = (u32, i32, [u32; 4]);
+
+/// **El mapa del halo de un renglon de `texto_con_halo`**, de la cache del
+/// motor: la entrada de la disposicion lo guarda con su clave, y `hacer`
+/// solo se llama si no esta o si cambio. `None` si la disposicion no esta en
+/// la cache (quien llama la acaba de pedir, asi que no deberia pasar) o
+/// `hacer` no pudo.
+fn halo_cacheado(
+    motor: &MotorRender,
+    texto: &str,
+    tam: f32,
+    letra: &crate::letras::Letra,
+    clave_halo: ClaveHalo,
+    hacer: impl FnOnce(&IDWriteTextLayout, f32, f32) -> Option<crate::halo::MapaDelHalo>,
+) -> Option<crate::halo::MapaDelHalo> {
+    use std::hash::{Hash, Hasher};
+    let ancho_max = crate::letras::SIN_PARTIR;
+    let clave_letra = Some(ClaveLetra::de(letra));
+    // La misma clave que `disposicion_cacheada` con `SIN_PARTIR`, sin
+    // partir en una linea y con letra: la entrada que acaba de pedir
+    // `texto_con_halo`.
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    texto.hash(&mut h);
+    tam.to_bits().hash(&mut h);
+    ancho_max.to_bits().hash(&mut h);
+    false.hash(&mut h);
+    clave_letra.hash(&mut h);
+    let clave = h.finish();
+    let (disposicion, w, alto) = {
+        let mapa = motor.textos.borrow();
+        let e = mapa.get(&clave).filter(|e| {
+            e.texto == texto
+                && e.tam == tam.to_bits()
+                && e.ancho == ancho_max.to_bits()
+                && !e.una_linea
+                && e.letra == clave_letra
+        })?;
+        if let Some((c, hecho)) = &e.halo
+            && *c == clave_halo
+        {
+            return Some(hecho.clone());
+        }
+        // **El numero de la cota que se esta trazando cambia en cada aviso**
+        // y su renglon nace y no vuelve: hacerle un mapa (0,5 ms medidos) es
+        // mas caro que pintar sus copias una vez. El mapa se hace cuando el
+        // renglon vuelve a pintarse en otro fotograma, que es lo que le pasa
+        // a una cota quieta.
+        if e.nacido == motor.fotograma.get() {
+            return None;
+        }
+        (e.disposicion.clone(), e.w, e.h)
+    };
+    // Sin el prestamo del mapa: `hacer` habla con DirectWrite y Direct2D.
+    let hecho = hacer(&disposicion, w, alto)?;
+    if let Some(e) = motor.textos.borrow_mut().get_mut(&clave) {
+        e.halo = Some((clave_halo, hecho.clone()));
+    }
+    Some(hecho)
+}
+
+/// Olvida los mapas de halo: son del dispositivo (ver
+/// `MotorRender::olvidar_recursos_de_dispositivo`).
+pub(crate) fn olvidar_halos(motor: &MotorRender) {
+    for e in motor.textos.borrow_mut().values_mut() {
+        e.halo = None;
+    }
 }
 
 /// El lado del brillo pre-pintado. Se estira al radio que haga falta: un
@@ -819,6 +898,14 @@ impl Pintor<'_> {
         let Some((disposicion, _, _)) = disposicion else {
             return Vec::new();
         };
+        cajas_de_disposicion(&disposicion, inicio, largo)
+    }
+}
+
+/// Las cajas de las letras `inicio..inicio+largo` de una disposicion, con
+/// el origen en su esquina (ver `Pintor::cajas_de_trozo`).
+pub(crate) fn cajas_de_disposicion(disposicion: &IDWriteTextLayout, inicio: u32, largo: u32) -> Vec<RectF> {
+    {
         let mut cuantas = 0u32;
         // SAFETY: la disposicion esta viva; la primera llamada solo pide
         // cuantas cajas hacen falta (falla con «buffer insuficiente», que es
@@ -850,7 +937,9 @@ impl Pintor<'_> {
                 .collect()
         }
     }
+}
 
+impl Pintor<'_> {
     /// Una sola linea que, si no cabe en `ancho_max`, termina en puntos
     /// suspensivos en vez de partirse o salirse: el nombre de una ficha.
     pub fn texto_linea(&self, texto: &str, x: f32, y: f32, tam: f32, ancho_max: f32, color: Color) {
@@ -1453,6 +1542,126 @@ impl Pintor<'_> {
             return;
         }
         self.dibujar_disposicion(&disposicion, x, y, color);
+    }
+
+    /// **Un renglon con halo**: el numero de una cota (`dibujarRotulo` de
+    /// `Renderer.kt`). Primero el halo y encima las letras.
+    ///
+    /// El movil traza el contorno de las letras con un pincel de `grosor`
+    /// (`Paint.Style.STROKE`, juntas redondas). Direct2D no traza texto sin
+    /// sacar antes la geometria de cada glifo (`GetGlyphRunOutline`), que
+    /// para un numero de pocas letras es mucho andamio; el mismo halo sale
+    /// estampando el renglon en `color_halo` en un anillo de 16 posiciones a
+    /// `grosor / 2` (el radio del trazo) y otro de 8 a la mitad, que rellena
+    /// los huecos entre copias en las letras finas. Girado, eso eran 24
+    /// dibujos de texto sin atlas por numero y fotograma (la mitad del coste
+    /// de pintar una cota): desde el segundo fotograma en que se pinta el
+    /// mismo renglon, las copias van en un mapa hecho una vez (`halo.rs`).
+    #[allow(clippy::too_many_arguments)] // texto, posicion, tamano, letra, dos colores y grosor
+    pub fn texto_con_halo(
+        &self,
+        texto: &str,
+        x: f32,
+        y: f32,
+        tam: f32,
+        letra: &crate::letras::Letra,
+        color: Color,
+        color_halo: Color,
+        grosor: f32,
+    ) {
+        let Some((disposicion, _, _)) =
+            disposicion_cacheada(self.motor, texto, tam, crate::letras::SIN_PARTIR, false, Some(letra))
+        else {
+            return;
+        };
+        let radio = grosor / 2.0;
+        if radio > 0.0 && color_halo.a > 0.0 && !self.halo_de_mapa(texto, x, y, tam, letra, color_halo, grosor) {
+            // Solo si no se pudo hacer el mapa (demasiado grande, o
+            // Direct2D no pudo): las 24 copias a pelo, como antes.
+            for (n, r) in [(16, radio), (8, radio / 2.0)] {
+                for i in 0..n {
+                    let a = i as f32 * std::f32::consts::TAU / n as f32;
+                    self.dibujar_disposicion(&disposicion, x + r * a.cos(), y + r * a.sin(), color_halo);
+                }
+            }
+        }
+        self.dibujar_disposicion(&disposicion, x, y, color);
+    }
+
+    /// El halo de siempre (24 copias) y la letra, para medir contra el nuevo.
+    #[cfg(test)]
+    pub(crate) fn texto_con_halo_de_copias_para_medir(
+        &self,
+        texto: &str,
+        x: f32,
+        y: f32,
+        tam: f32,
+        letra: &crate::letras::Letra,
+        color: Color,
+        grosor: f32,
+    ) {
+        let Some((disposicion, _, _)) =
+            disposicion_cacheada(self.motor, texto, tam, crate::letras::SIN_PARTIR, false, Some(letra))
+        else {
+            return;
+        };
+        let radio = grosor / 2.0;
+        for (n, r) in [(16, radio), (8, radio / 2.0)] {
+            for i in 0..n {
+                let a = i as f32 * std::f32::consts::TAU / n as f32;
+                self.dibujar_disposicion(&disposicion, x + r * a.cos(), y + r * a.sin(), color);
+            }
+        }
+        self.dibujar_disposicion(&disposicion, x, y, color);
+    }
+
+    /// **El halo desde su mapa** (`halo.rs`): las 24 copias pintadas una vez
+    /// en un mapa a la escala de la vista, guardado con la disposicion, y
+    /// aqui un solo `DrawBitmap`. Devuelve `false` si no se pudo, para que
+    /// quien llama pinte las copias a pelo.
+    #[allow(clippy::too_many_arguments)]
+    fn halo_de_mapa(
+        &self,
+        texto: &str,
+        x: f32,
+        y: f32,
+        tam: f32,
+        letra: &crate::letras::Letra,
+        color: Color,
+        grosor: f32,
+    ) -> bool {
+        use windows::Win32::Graphics::Direct2D::D2D1_INTERPOLATION_MODE_LINEAR;
+        let c = self.motor.contexto();
+        let mut vista = windows_numerics::Matrix3x2::default();
+        // SAFETY: lectura de la transformada del contexto vivo.
+        unsafe { c.GetTransform(&mut vista) };
+        // Cuantos pixeles mide una unidad del renglon con esta vista (y el
+        // giro, que no cambia la escala).
+        let escala = (vista.M11 * vista.M22 - vista.M12 * vista.M21).abs().sqrt();
+        let Some(nivel) = crate::halo::nivel_de(escala) else {
+            return false;
+        };
+        let clave = (
+            grosor.to_bits(),
+            nivel,
+            [color.r.to_bits(), color.g.to_bits(), color.b.to_bits(), color.a.to_bits()],
+        );
+        let hecho = halo_cacheado(self.motor, texto, tam, letra, clave, |d, w, h| {
+            crate::halo::hacer_mapa(self.motor, d, w, h, grosor / 2.0, nivel, color)
+        });
+        let Some(hecho) = hecho else {
+            return false;
+        };
+        let (cx, cy, cw, ch) = hecho.caja;
+        let destino = D2D_RECT_F {
+            left: x + cx,
+            top: y + cy,
+            right: x + cx + cw,
+            bottom: y + cy + ch,
+        };
+        // SAFETY: dentro del fotograma; mapa hecho por este motor.
+        unsafe { c.DrawBitmap(&hecho.mapa, Some(&destino), 1.0, D2D1_INTERPOLATION_MODE_LINEAR, None, None) };
+        true
     }
 
     /// Lo que ocupa un texto con su letra, con la MISMA disposicion que

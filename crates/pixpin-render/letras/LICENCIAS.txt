@@ -21,6 +21,14 @@ fraunces-600.woff2    Fraunces       OFL 1.1   Copyright 2020 The Fraunces Proje
                                                Origen: @fontsource/fraunces (latin 600)
 caveat-500.woff2      Caveat         OFL 1.1   Copyright 2014 The Caveat Project Authors (https://github.com/googlefonts/caveat).
 caveat-700.woff2                               Origen: @fontsource/caveat (latin 500 y 700)
+noto-serif-*.woff2    Noto Serif     OFL 1.1   Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic).
+                                               Origen: @fontsource/noto-serif (latin 400 y 700, recta y cursiva)
+roboto-*.woff2        Roboto         OFL 1.1   Copyright 2011 The Roboto Project Authors (https://github.com/googlefonts/roboto-classic).
+                                               Origen: @fontsource/roboto (latin 400 y 700, recta y cursiva)
+
+Noto Serif y Roboto son las letras «serif» y «sans-serif» del WebView de
+Android: con ellas el lector de Word y libros del PC parte los renglones
+igual que el movil, y lo anotado encima cae en la misma palabra (K16).
 
 Las fuentes OFL no se venden por separado y sus nombres reservados no se usan
 para derivados. El texto completo de las dos licencias va a continuacion.

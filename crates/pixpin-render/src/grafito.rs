@@ -156,6 +156,29 @@ pub fn interpolacion_a(zoom: f32) -> Interpolacion {
 }
 
 impl Pintor<'_> {
+    /// **Pinta girado `angulo` radianes alrededor de `centro`**, encima de la
+    /// transformada que ya hubiera (el zoom y el desplazamiento del lienzo), y
+    /// la deja como estaba al salir. Es lo que hace `canvas.rotate(angulo, cx,
+    /// cy)` en `Renderer.kt` antes de pintar una foto girada. Sin giro no
+    /// toca la transformada.
+    pub fn girado(&self, centro: (f32, f32), angulo: f32, pintar: impl FnOnce(&Pintor)) {
+        if angulo == 0.0 {
+            pintar(self);
+            return;
+        }
+        let c = self.motor.contexto();
+        let mut previa = Matrix3x2::default();
+        // SAFETY: dentro del fotograma; se lee la transformada y se restaura
+        // justo despues de pintar.
+        unsafe {
+            c.GetTransform(&mut previa);
+            c.SetTransform(&componer(&giro(angulo, centro), &previa));
+        }
+        pintar(self);
+        // SAFETY: la misma transformada que habia.
+        unsafe { c.SetTransform(&previa) };
+    }
+
     /// **Pinta un mapa de grafito** en su caja del dibujo, con `opacidad` y
     /// muestreado segun `zoom`. Con `cache` (lo quieto), el bitmap se guarda
     /// por elemento y se reusa mientras la huella no cambie; sin ella (el

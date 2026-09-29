@@ -52,7 +52,7 @@ use windows::core::{BOOL, HSTRING, Interface, w};
 /// Es el nombre que el motor guarda en `Figura::Texto::familia` y el que
 /// Excalidraw escribe en su CSS: pedirlas por otro nombre seria tener que
 /// traducirlo en cada sitio que pinta.
-pub const FAMILIAS_PROPIAS: [&str; 7] = [
+pub const FAMILIAS_PROPIAS: [&str; 9] = [
     "Excalifont",
     "Nunito",
     "Lilita One",
@@ -60,12 +60,16 @@ pub const FAMILIAS_PROPIAS: [&str; 7] = [
     "Work Sans",
     "Fraunces",
     "Caveat",
+    // Las del lector de documentos: «serif» y «sans-serif» del WebView de
+    // Android (ver `lectura`).
+    "Noto Serif",
+    "Roboto",
 ];
 
 /// Los ficheros, cada uno con la familia a la que pertenece. Caveat lleva dos
 /// caras (500 y 700) porque la app de citas escribe su «Manuscrita» en 500 y
 /// la negrita de una letra a mano simulada se ve emborronada.
-const FICHEROS: [(&str, &[u8]); 8] = [
+const FICHEROS: [(&str, &[u8]); 16] = [
     ("Excalifont", include_bytes!("../letras/excalifont.woff2")),
     ("Nunito", include_bytes!("../letras/nunito.woff2")),
     ("Lilita One", include_bytes!("../letras/lilita-one.woff2")),
@@ -74,6 +78,16 @@ const FICHEROS: [(&str, &[u8]); 8] = [
     ("Fraunces", include_bytes!("../letras/fraunces-600.woff2")),
     ("Caveat", include_bytes!("../letras/caveat-500.woff2")),
     ("Caveat", include_bytes!("../letras/caveat-700.woff2")),
+    // Las cuatro caras que trae Android de su serif (y las mismas de Roboto):
+    // pedir 600 u 800 cae en la 700 aqui como alli.
+    ("Noto Serif", include_bytes!("../letras/noto-serif-400-normal.woff2")),
+    ("Noto Serif", include_bytes!("../letras/noto-serif-700-normal.woff2")),
+    ("Noto Serif", include_bytes!("../letras/noto-serif-400-italic.woff2")),
+    ("Noto Serif", include_bytes!("../letras/noto-serif-700-italic.woff2")),
+    ("Roboto", include_bytes!("../letras/roboto-400-normal.woff2")),
+    ("Roboto", include_bytes!("../letras/roboto-700-normal.woff2")),
+    ("Roboto", include_bytes!("../letras/roboto-400-italic.woff2")),
+    ("Roboto", include_bytes!("../letras/roboto-700-italic.woff2")),
 ];
 
 /// La letra de reserva: la de siempre de Windows, y la que se usa si la
@@ -358,6 +372,67 @@ pub(crate) fn formato(dwrite: &IDWriteFactory, letra: &Letra, tam: f32) -> Optio
                     .SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, linea, base)
                     .ok()?;
             }
+        }
+        Some(formato)
+    })
+}
+
+/// **El formato de un texto del lector de documentos** (`lectura`): como
+/// [`formato`], pero con el peso de CSS tal cual (300, 400, 600, 800…) y el
+/// interlineado siempre fijo, que es lo que hace `line-height:1.55` en la
+/// pagina del movil. Sin una cara de ese peso, DirectWrite toma la mas
+/// cercana, igual que el navegador.
+pub(crate) fn formato_con_peso(
+    dwrite: &IDWriteFactory,
+    familia: &str,
+    peso: u16,
+    cursiva: bool,
+    tam: f32,
+    interlineado: f32,
+) -> Option<IDWriteTextFormat> {
+    let propia = es_propia(familia);
+    con_propias(dwrite, |p| {
+        let (nombre, coleccion): (&str, Option<&IDWriteFontCollection>) = match (propia, p) {
+            (true, Some(p)) => (nombre_real(familia), Some(&p.coleccion)),
+            (true, None) => (LETRA_DEL_SISTEMA, None),
+            (false, _) => (familia, None),
+        };
+        let nombre = if nombre.trim().is_empty() { LETRA_DEL_SISTEMA } else { nombre };
+        // SAFETY: cadenas propias vivas durante la llamada; el formato copia
+        // el nombre y guarda su propia referencia a la coleccion.
+        let formato = unsafe {
+            dwrite
+                .CreateTextFormat(
+                    &HSTRING::from(nombre),
+                    coleccion,
+                    windows::Win32::Graphics::DirectWrite::DWRITE_FONT_WEIGHT(i32::from(peso.clamp(1, 999))),
+                    estilo(cursiva),
+                    DWRITE_FONT_STRETCH_NORMAL,
+                    tam.max(0.01),
+                    w!("es-ES"),
+                )
+                .ok()?
+        };
+        let negrita = peso >= 600;
+        let letra = Letra { familia: nombre, negrita, cursiva, interlineado: None };
+        let alturas = match (coleccion, p) {
+            (Some(c), Some(p)) => *p
+                .alturas
+                .borrow_mut()
+                .entry((nombre.to_string(), negrita, cursiva))
+                .or_insert_with(|| alturas_de(c, nombre, negrita, cursiva)),
+            _ => sistema(dwrite, nombre, &letra),
+        };
+        let (asc, desc) = alturas.unwrap_or((0.8, 0.2));
+        // La linea base centrada en el renglon, como el «medio interlineado»
+        // de CSS: lo que sobra se reparte arriba y abajo.
+        let linea = tam * interlineado.max(0.1);
+        let base = tam * asc + (linea - tam * (asc + desc)) / 2.0;
+        // SAFETY: formato recien creado y vivo.
+        unsafe {
+            formato
+                .SetLineSpacing(DWRITE_LINE_SPACING_METHOD_UNIFORM, linea, base)
+                .ok()?;
         }
         Some(formato)
     })

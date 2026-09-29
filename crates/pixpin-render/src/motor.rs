@@ -323,12 +323,14 @@ impl MotorRender {
         Some(p)
     }
 
-    /// Los recursos cacheados que son del dispositivo (pinceles, brillos) se
+    /// Los recursos cacheados que son del dispositivo (pinceles, brillos, los
+    /// mapas del halo de las cotas) se
     /// olvidan: tras perderse el dispositivo ya no valen. Las disposiciones
     /// de texto son de DirectWrite y se quedan.
     pub fn olvidar_recursos_de_dispositivo(&self) {
         self.pinceles.borrow_mut().clear();
         self.brillos.borrow_mut().clear();
+        crate::lienzo::olvidar_halos(self);
     }
 
     /// Cuantas disposiciones de texto hay guardadas: para las pruebas.
