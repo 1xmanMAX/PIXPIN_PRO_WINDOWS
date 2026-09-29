@@ -55,6 +55,94 @@ pub fn linea(a: Punto2, b: Punto2, rugosidad: f32, azar: &mut Azar) -> Vec<Vec<P
         .collect()
 }
 
+/// **La raya de rough.js como la pinta el movil** (`Rough.doubleLine`, que
+/// son dos `lineOps`): la de las lineas, las flechas y la cota.
+///
+/// `linea` de arriba era una aproximacion propia con un desvio que crecia
+/// con el largo hasta 4 px en los extremos y 8 en la panza: una linea larga
+/// del movil (que alli sale casi recta) salia aqui visiblemente torcida, y
+/// el usuario lo vio («las lineas se representan con error», 27-sep-2026).
+/// Lo que hace el movil, y rough.js, es lo contrario: **cuanto mas larga,
+/// menos tiembla** (`roughnessGain` baja a 0,4 pasados 500 px), el ruido de
+/// los extremos se topa en `maxRandomnessOffset` (2 px) y la panza sale del
+/// `bowing`, no de un desvio a ojo.
+///
+/// `preservar` es `preserveVertices` (rugosidad menor que la de dibujante):
+/// los extremos no se mueven, y la raya empieza y acaba donde se solto.
+/// Con rugosidad cero, una sola pasada exacta: dos iguales solo engordarian.
+pub fn linea_rough(
+    a: Punto2,
+    b: Punto2,
+    rugosidad: f32,
+    preservar: bool,
+    azar: &mut Azar,
+) -> Vec<Vec<Punto2>> {
+    if rugosidad <= 0.0 {
+        return vec![vec![a, b]];
+    }
+    vec![
+        pasada_rough(a, b, rugosidad, preservar, false, azar),
+        pasada_rough(a, b, rugosidad, preservar, true, azar),
+    ]
+}
+
+/// `maxRandomnessOffset` y `bowing` de rough.js (`RoughOptions` del movil).
+const DESVIO_MAXIMO: f32 = 2.0;
+const PANZA: f32 = 1.0;
+
+/// Una pasada (`lineOps`). `repaso` es la segunda (`overlay`), con la mitad
+/// de ruido para que las dos se crucen en vez de ir paralelas.
+fn pasada_rough(
+    a: Punto2,
+    b: Punto2,
+    rug: f32,
+    preservar: bool,
+    repaso: bool,
+    azar: &mut Azar,
+) -> Vec<Punto2> {
+    let largo2 = (a.x - b.x).powi(2) + (a.y - b.y).powi(2);
+    let largo = largo2.sqrt();
+    // Las lineas largas se dibujan mas rectas: el temblor constante en un
+    // trazo de 800 px se ve como un error, no como un dibujo a mano.
+    let ganancia = if largo < 200.0 {
+        1.0
+    } else if largo > 500.0 {
+        0.4
+    } else {
+        -0.0016668 * largo + 1.233334
+    };
+    let mut desvio = DESVIO_MAXIMO;
+    if desvio * desvio * 100.0 > largo2 {
+        desvio = largo / 10.0;
+    }
+    let medio_desvio = desvio / 2.0;
+    let divergencia = 0.2 + azar.siguiente() * 0.2;
+    // `offsetOpt(x, gain)` = rugosidad * ganancia * (azar en [-x, x)).
+    let mut ruido = |x: f32| rug * ganancia * azar.desvio(x);
+    let panza_x = ruido(PANZA * DESVIO_MAXIMO * (b.y - a.y) / 200.0);
+    let panza_y = ruido(PANZA * DESVIO_MAXIMO * (a.x - b.x) / 200.0);
+    let d = if repaso { medio_desvio } else { desvio };
+    let inicio = if preservar {
+        a
+    } else {
+        Punto2::nuevo(a.x + ruido(d), a.y + ruido(d))
+    };
+    let c1 = Punto2::nuevo(
+        panza_x + a.x + (b.x - a.x) * divergencia + ruido(d),
+        panza_y + a.y + (b.y - a.y) * divergencia + ruido(d),
+    );
+    let c2 = Punto2::nuevo(
+        panza_x + a.x + 2.0 * (b.x - a.x) * divergencia + ruido(d),
+        panza_y + a.y + 2.0 * (b.y - a.y) * divergencia + ruido(d),
+    );
+    let fin = if preservar {
+        b
+    } else {
+        Punto2::nuevo(b.x + ruido(d), b.y + ruido(d))
+    };
+    bezier(inicio, c1, c2, fin)
+}
+
 /// Bezier cubica evaluada en `TRAMOS` tramos.
 fn bezier(p0: Punto2, c1: Punto2, c2: Punto2, p3: Punto2) -> Vec<Punto2> {
     (0..=TRAMOS)
@@ -743,6 +831,54 @@ pub fn rectangulo_redondo_a_mano(
         Some(t) if rugosidad > 0.0 => contorno_a_mano(&t, rugosidad, azar),
         Some(t) => vec![contorno_liso(&t)],
         None => rectangulo(x, y, ancho, alto, rugosidad, azar),
+    }
+}
+
+#[cfg(test)]
+mod raya_de_rough {
+    use super::*;
+    use crate::vector::distancia_a_segmento;
+
+    fn peor_desvio(pasadas: &[Vec<Punto2>], a: Punto2, b: Punto2) -> f32 {
+        pasadas
+            .iter()
+            .flatten()
+            .map(|p| distancia_a_segmento(*p, a, b))
+            .fold(0.0, f32::max)
+    }
+
+    #[test]
+    fn una_linea_larga_sale_casi_recta_como_en_el_movil() {
+        // La del usuario: 1.215 px de alto. Con `ganancia` 0,4 la panza no
+        // pasa de 0,4 * 2 * 1215 / 200 = 4,9 px, y los extremos no se mueven.
+        let (a, b) = (Punto2::nuevo(760.0, -27.0), Punto2::nuevo(763.0, 1188.0));
+        for semilla in [1, 7, 950_731_993, 123_456] {
+            let pasadas = linea_rough(a, b, 1.0, true, &mut Azar::nuevo(semilla));
+            assert_eq!(pasadas.len(), 2, "dos pasadas, como rough.js");
+            assert!(peor_desvio(&pasadas, a, b) < 5.0, "semilla {semilla}: {}", peor_desvio(&pasadas, a, b));
+            // Y la de antes, con la misma semilla, se torcia mas.
+            let antes = linea(a, b, 1.0, &mut Azar::nuevo(semilla));
+            assert!(peor_desvio(&antes, a, b) > peor_desvio(&pasadas, a, b), "semilla {semilla}");
+        }
+    }
+
+    #[test]
+    fn preservar_los_vertices_deja_los_extremos_donde_se_soltaron() {
+        let (a, b) = (Punto2::nuevo(0.0, 0.0), Punto2::nuevo(300.0, 40.0));
+        for p in linea_rough(a, b, 1.0, true, &mut Azar::nuevo(5)) {
+            assert_eq!((p[0], *p.last().unwrap()), (a, b));
+        }
+        // Sin preservar (dibujante), los extremos si tiemblan.
+        let sueltas = linea_rough(a, b, 2.0, false, &mut Azar::nuevo(5));
+        assert!(sueltas.iter().any(|p| p[0] != a));
+    }
+
+    #[test]
+    fn una_linea_corta_si_tiembla_y_con_rugosidad_cero_es_exacta() {
+        let (a, b) = (Punto2::nuevo(0.0, 0.0), Punto2::nuevo(120.0, 0.0));
+        let corta = linea_rough(a, b, 1.0, true, &mut Azar::nuevo(3));
+        assert!(peor_desvio(&corta, a, b) > 0.05, "a mano, no a regla");
+        assert_eq!(linea_rough(a, b, 0.0, true, &mut Azar::nuevo(3)), vec![vec![a, b]]);
     }
 }
 

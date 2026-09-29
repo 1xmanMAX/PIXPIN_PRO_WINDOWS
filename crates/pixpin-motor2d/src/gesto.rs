@@ -402,6 +402,9 @@ pub struct Gesto {
     /// para re-trazarlas en cada aviso sin buscarlas (ver
     /// `enlace::Seguidoras`).
     seguidoras: crate::enlace::Seguidoras,
+    /// Lo que encerraban los marcos elegidos al cogerlos para mover,
+    /// ordenado y sin lo elegido (`preparar_seguidoras`).
+    del_marco: Vec<u64>,
     /// Lo elegido tal como estaba al pulsar un tirador, si son varios: el
     /// bloque se estira siempre desde aqui (`estirar_bloque`).
     originales_del_bloque: Vec<Elemento>,
@@ -461,6 +464,7 @@ impl Default for Gesto {
             estilo_tomado: None,
             grafito_en_la_mano: false,
             seguidoras: crate::enlace::Seguidoras::default(),
+            del_marco: Vec::new(),
             originales_del_bloque: Vec::new(),
             candidatas: [None; 2],
             arrastrado: false,
@@ -1736,11 +1740,13 @@ impl Gesto {
                     let ids = self.seleccion.ids().to_vec();
                     crate::nudos::arrastrar(escena, &ids, anterior, p);
                 } else if hay_marco {
-                    let ids =
-                        crate::marco::con_contenidos(&escena.elementos, self.seleccion.ids());
-                    for &id in &ids {
+                    // Lo elegido y lo que encerraba cada marco al cogerlo
+                    // (`preparar_seguidoras`), ya apuntado para deshacer.
+                    for &id in self.seleccion.ids() {
                         escena.apuntar_edicion(id);
-                        if let Some(e) = escena.buscar_mut(id) {
+                    }
+                    for e in escena.elementos.iter_mut() {
+                        if self.seleccion.contiene(e.id) || self.del_marco.binary_search(&e.id).is_ok() {
                             e.mover(dx, dy);
                         }
                     }
@@ -2375,19 +2381,50 @@ impl Gesto {
             .elementos
             .iter()
             .any(|e| self.seleccion.contiene(e.id) && crate::marco::es_marco(e));
-        let del_marco: std::collections::HashSet<u64> = if hay_marco {
-            crate::marco::con_contenidos(&escena.elementos, self.seleccion.ids())
-                .into_iter()
-                .collect()
-        } else {
-            Default::default()
-        };
+        //
+        // **Lo de dentro se apunta aqui, una vez**, y no en cada aviso: el
+        // arrastre lo mueve y la ventana lo pinta con lo elegido (fuera de la
+        // capa congelada). Antes se recalculaba en cada movimiento del raton
+        // y ademas iba recogiendo lo que el marco pisaba por el camino; y la
+        // ventana, que no lo sabia, lo dejaba quieto en la capa congelada
+        // hasta soltar (28-sep-2026: «al poner los frames pasa lo mismo»).
+        self.del_marco.clear();
+        if hay_marco {
+            let seleccion = &self.seleccion;
+            self.del_marco.extend(
+                crate::marco::con_contenidos(&escena.elementos, seleccion.ids())
+                    .into_iter()
+                    .filter(|id| !seleccion.contiene(*id)),
+            );
+            self.del_marco.sort_unstable();
+        }
+        for &id in &self.del_marco {
+            escena.apuntar_edicion(id);
+        }
         let seleccion = &self.seleccion;
+        let del_marco = &self.del_marco;
         self.seguidoras.preparar(&escena.elementos, |id| {
-            seleccion.contiene(id) || del_marco.contains(&id)
+            seleccion.contiene(id) || del_marco.binary_search(&id).is_ok()
         });
         for &id in self.seguidoras.ids() {
             escena.apuntar_edicion(id);
+        }
+    }
+
+    /// Si `id` es de lo que un marco elegido se lleva en este arrastre (lo
+    /// que encerraba al cogerlo). Solo mientras se mueve: estirar o girar un
+    /// marco no mueve lo de dentro.
+    pub fn lleva_el_marco(&self, id: u64) -> bool {
+        matches!(self.estado, Estado::Moviendo { .. }) && self.del_marco.binary_search(&id).is_ok()
+    }
+
+    /// Todo lo que los marcos elegidos se llevan en este arrastre, ordenado.
+    /// Vacio si no se esta moviendo un marco.
+    pub fn lo_que_lleva_el_marco(&self) -> &[u64] {
+        if matches!(self.estado, Estado::Moviendo { .. }) {
+            &self.del_marco
+        } else {
+            &[]
         }
     }
 

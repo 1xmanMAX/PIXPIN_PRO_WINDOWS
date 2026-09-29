@@ -190,10 +190,54 @@ pub fn icono_de_enlace(e: &Elemento) -> Option<crate::vector::Punto2> {
     Some(crate::vector::Punto2::nuevo(x1, y0))
 }
 
+/// **El enlace cuyo icono esta bajo el puntero** (`enlaceBajoElDedo` del
+/// movil): el redondel de la esquina de arriba a la derecha, con un 40 % de
+/// holgura para acertarlo, medido en pixeles de pantalla (`zoom` = pixeles por
+/// unidad). Si hay varios, el de encima, que es el que se ve. El icono es el
+/// sitio que se pulsa: sin esto un clic en el ahi pintaba un punto con el
+/// lapiz, porque cae fuera del recuadro.
+pub fn enlace_bajo_el_puntero(
+    elementos: &[Elemento],
+    p: crate::vector::Punto2,
+    zoom: f32,
+) -> Option<&str> {
+    let radio = RADIO_DEL_ICONO_DE_ENLACE * 1.4 / zoom.max(0.0001);
+    elementos
+        .iter()
+        .rev()
+        .find(|e| icono_de_enlace(e).is_some_and(|c| (p.x - c.x).hypot(p.y - c.y) <= radio))
+        .and_then(|e| e.enlace.as_deref())
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
     use crate::vector::Punto2;
+
+    #[test]
+    fn el_icono_de_enlace_se_acierta_con_holgura_y_mide_en_pantalla() {
+        let m = marca((10.0, 20.0, 110.0, 70.0), "foto-1");
+        let v = [m];
+        // Justo en la esquina, y un poco fuera del recuadro.
+        assert_eq!(enlace_bajo_el_puntero(&v, Punto2::nuevo(110.0, 20.0), 1.0), Some("foto-1"));
+        assert_eq!(enlace_bajo_el_puntero(&v, Punto2::nuevo(125.0, 10.0), 1.0), Some("foto-1"));
+        // Caso negativo: a 25 px de pantalla ya no.
+        assert_eq!(enlace_bajo_el_puntero(&v, Punto2::nuevo(135.0, 20.0), 1.0), None);
+        // Acercado al doble, 25 px de pantalla son 12,5 del dibujo: si.
+        assert_eq!(enlace_bajo_el_puntero(&v, Punto2::nuevo(122.5, 20.0), 2.0), None);
+        assert_eq!(enlace_bajo_el_puntero(&v, Punto2::nuevo(118.0, 20.0), 2.0), Some("foto-1"));
+        // Caso negativo: una borrada o sin enlace no tiene icono.
+        let mut b = v[0].clone();
+        b.borrado = true;
+        assert_eq!(enlace_bajo_el_puntero(&[b], Punto2::nuevo(110.0, 20.0), 1.0), None);
+    }
+
+    #[test]
+    fn con_dos_iconos_juntos_gana_el_de_encima() {
+        let abajo = marca((0.0, 0.0, 100.0, 50.0), "abajo");
+        let arriba = marca((0.0, 0.0, 100.0, 50.0), "arriba");
+        assert_eq!(enlace_bajo_el_puntero(&[abajo, arriba], Punto2::nuevo(100.0, 0.0), 1.0), Some("arriba"));
+    }
 
     #[test]
     fn la_marca_de_una_zona_mandada_es_un_recuadro_discontinuo_azul_con_su_enlace() {

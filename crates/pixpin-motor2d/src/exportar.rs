@@ -143,7 +143,7 @@ fn ordenes_al_exportar(escena: &Escena, e: &Elemento) -> Vec<Orden> {
         return marco::ordenes_del_papel(e);
     }
     let mut v = pintado::ordenes(e);
-    v.extend(pintado::ordenes_medibles(e, escena.escala.as_ref(), ','));
+    v.extend(pintado::ordenes_medibles(e, escena.escala.as_ref(), ',', escena.fondo));
     v
 }
 
@@ -164,7 +164,7 @@ fn meter(
         && let Some(g) = crate::tinta::grafito::suelto(e, ordenes.len())
     {
         grafitos.push(g);
-        ordenes.extend(pintado::ordenes_medibles(e, escena.escala.as_ref(), ','));
+        ordenes.extend(pintado::ordenes_medibles(e, escena.escala.as_ref(), ',', escena.fondo));
         return;
     }
     let grano = pintado::grano_de(e);
@@ -297,6 +297,7 @@ fn orden_del_papel(papel: (f32, f32)) -> Orden {
         alto: papel.1,
         opacidad: 1.0,
         recorte: None,
+        angulo: 0.0,
     }
 }
 

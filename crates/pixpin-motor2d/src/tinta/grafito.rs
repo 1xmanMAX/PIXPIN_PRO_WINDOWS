@@ -1864,7 +1864,7 @@ pub fn ordenes_con_grafito_guardando(
             }
             None => ordenes.extend(crate::pintado::ordenes(e)),
         }
-        ordenes.extend(crate::pintado::ordenes_medibles(e, escena.escala.as_ref(), ','));
+        ordenes.extend(crate::pintado::ordenes_medibles(e, escena.escala.as_ref(), ',', escena.fondo));
     }
     guardados.mapas.retain(|id, _| vistos.contains(id));
     (ordenes, grafitos)

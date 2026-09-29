@@ -209,6 +209,45 @@ fn orden(
             }
             s.push_str("</text>\n");
         }
+        // El numero de una cota: girado con su raya y con halo. El halo es
+        // el trazo de las letras con `paint-order="stroke"`, que lo pinta
+        // debajo del relleno como el movil (primero el halo, luego la letra).
+        Orden::Rotulo {
+            texto,
+            x,
+            y,
+            tam,
+            familia,
+            color,
+            halo,
+            grosor_halo,
+            centro,
+            angulo,
+        } => {
+            let base = match crate::texto::fuente_por_nombre(familia) {
+                Some(f) => f.linea_base() * tam,
+                None => tam * exportar::LINEA_BASE,
+            };
+            let familia = if familia.trim().is_empty() {
+                String::new()
+            } else {
+                format!("{}, ", escapar(familia))
+            };
+            let _ = writeln!(
+                s,
+                "<g transform=\"rotate({} {} {})\"><text x=\"{}\" y=\"{}\" font-family=\"{familia}Segoe UI, Helvetica, Arial, sans-serif\" font-size=\"{}\" {} {} stroke-width=\"{}\" stroke-linejoin=\"round\" paint-order=\"stroke\" xml:space=\"preserve\">{}</text></g>",
+                num(angulo.to_degrees()),
+                num(centro.x),
+                num(centro.y),
+                num(*x),
+                num(*y + base),
+                num(*tam),
+                pintura(*color, "fill"),
+                pintura(*halo, "stroke"),
+                num(*grosor_halo),
+                escapar(texto)
+            );
+        }
         Orden::Imagen {
             id_objeto,
             x,
@@ -217,6 +256,7 @@ fn orden(
             alto,
             opacidad,
             recorte,
+            angulo,
         } => {
             // Una imagen que no se encuentra no rompe el documento: se queda
             // su hueco, como en pantalla.
@@ -228,6 +268,20 @@ fn orden(
             } else {
                 String::new()
             };
+            // Girada, dentro de un `<g>` que la gira alrededor del centro de
+            // su caja, como el movil. En un grupo y no en la propia etiqueta:
+            // un `<svg>` anidado (la recortada) no admite `transform` en SVG 1.1.
+            let girada = angulo.abs() > 1e-6;
+            if girada {
+                let _ = write!(
+                    s,
+                    "<g transform=\"rotate({} {} {})\">",
+                    num(angulo.to_degrees()),
+                    num(*x + *ancho / 2.0),
+                    num(*y + *alto / 2.0)
+                );
+            }
+            let cierre = if girada { "</g>\n" } else { "" };
             // **Recortada**: un `<svg>` anidado cuyo `viewBox` es el trozo, en
             // pixeles del original, y dentro la imagen entera a su tamano
             // natural. El `<svg>` anidado recorta solo lo que se sale, asi que
@@ -254,6 +308,7 @@ fn orden(
                     img.mime,
                     exportar::base64(&img.bytes)
                 );
+                s.push_str(cierre);
                 return;
             }
             let _ = writeln!(
@@ -266,6 +321,7 @@ fn orden(
                 img.mime,
                 exportar::base64(&img.bytes)
             );
+            s.push_str(cierre);
         }
     }
 }
@@ -555,6 +611,33 @@ mod pruebas {
     }
 
     #[test]
+    fn el_numero_de_una_cota_va_girado_y_con_el_halo_debajo_de_la_letra() {
+        let mut s = String::new();
+        orden(
+            &Orden::Rotulo {
+                texto: "5,00 cm".into(),
+                x: 10.0,
+                y: 20.0,
+                tam: 20.0,
+                familia: String::new(),
+                color: ColorRgba::opaco(0.0, 0.0, 0.0),
+                halo: ColorRgba::opaco(1.0, 1.0, 1.0),
+                grosor_halo: 4.4,
+                centro: Punto2::nuevo(50.0, 30.0),
+                angulo: std::f32::consts::FRAC_PI_2,
+            },
+            (0.0, 0.0, 100.0, 100.0),
+            &|_| None,
+            &mut s,
+        );
+        assert!(s.contains("transform=\"rotate(90 50 30)\""), "{s}");
+        assert!(s.contains("stroke=\"#ffffff\""), "el halo: {s}");
+        assert!(s.contains("stroke-width=\"4.4\""), "{s}");
+        assert!(s.contains("paint-order=\"stroke\""), "debajo de la letra: {s}");
+        assert!(s.contains(">5,00 cm</text>"), "{s}");
+    }
+
+    #[test]
     fn una_imagen_que_no_se_encuentra_deja_su_hueco_y_no_rompe_nada() {
         let o = Orden::Imagen {
             id_objeto: 7,
@@ -564,6 +647,7 @@ mod pruebas {
             alto: 10.0,
             opacidad: 1.0,
             recorte: None,
+            angulo: 0.0,
         };
         let sin = svg(&hoja(vec![o.clone()]), OpcionesSvg::default(), &ninguna);
         assert!(!sin.contains("<image"));
@@ -574,6 +658,32 @@ mod pruebas {
             })
         });
         assert!(con.contains("href=\"data:image/png;base64,Zm9vYmFy\""));
+    }
+
+    #[test]
+    fn una_imagen_girada_sale_girada_alrededor_de_su_centro_y_una_derecha_sin_grupo() {
+        let img = |_: u64| {
+            Some(Incrustada {
+                mime: "image/png",
+                bytes: b"x".to_vec(),
+            })
+        };
+        let orden = |angulo: f32| Orden::Imagen {
+            id_objeto: 7,
+            x: 10.0,
+            y: 20.0,
+            ancho: 40.0,
+            alto: 20.0,
+            opacidad: 1.0,
+            recorte: None,
+            angulo,
+        };
+        let girada = svg(&hoja(vec![orden(std::f32::consts::FRAC_PI_2)]), OpcionesSvg::default(), &img);
+        assert!(girada.contains("<g transform=\"rotate(90 30 30)\"><image"), "{girada}");
+        assert!(girada.contains("/>
+</g>"), "el grupo se cierra: {girada}");
+        let derecha = svg(&hoja(vec![orden(0.0)]), OpcionesSvg::default(), &img);
+        assert!(!derecha.contains("rotate("), "{derecha}");
     }
 
     #[test]
@@ -653,6 +763,7 @@ mod pruebas {
                 ancho_natural: 100.0,
                 alto_natural: 100.0,
             }),
+            angulo: 0.0,
         };
         let img = |_: u64| {
             Some(Incrustada {
@@ -675,6 +786,7 @@ mod pruebas {
             alto: 30.0,
             opacidad: 1.0,
             recorte: recorte.map(|r| crate::RecorteImagen { ancho_natural: 0.0, ..r }),
+            angulo: 0.0,
         };
         let s2 = svg(&hoja(vec![roto]), OpcionesSvg::default(), &img);
         assert!(s2.contains("<image x=\"10\" y=\"20\" width=\"30\" height=\"30\""), "{s2}");

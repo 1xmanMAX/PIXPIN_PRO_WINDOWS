@@ -26,6 +26,7 @@ pub mod cache;
 pub mod camara;
 pub mod cara_exacta;
 pub mod codo;
+pub mod contraste;
 pub mod cronograma;
 pub mod cuadricula;
 pub mod curva;

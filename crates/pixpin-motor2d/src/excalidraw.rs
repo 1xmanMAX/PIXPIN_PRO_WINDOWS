@@ -77,20 +77,27 @@ pub struct Lienzo {
     /// en `resto`, porque `leer`/`escribir` la traducen a su propio tipo en
     /// vez de dejarla como JSON crudo.
     pub escala: Option<Escala>,
-    /// La clave `escala` cruda del JSON, cuando no supimos entenderla.
+    /// La clave `escala` cruda del JSON, tal como venia (o `None` si no venia).
+    ///
+    /// Sirve para dos cosas. Si no supimos entenderla, se devuelve tal cual.
+    /// Y si la entendimos y nadie la cambio, tambien: `Escala` guarda el
+    /// numero en `f32`, y reescribirlo convertia los 0,13647374510765076 del
+    /// movil en 0,1364737451076507568...; la ida y vuelta
+    /// tiene que devolver lo mismo que entro.
+    ///
     ///
     /// `escala` es `None` tanto si no habia ninguna como si la habia y era
     /// invalida — eso esta bien para medir, pero no para escribir: «no la
     /// entiendo» y «no la hay» no pueden representarse igual, o una escala
     /// corrupta de una version futura del movil se destruye en silencio al
     /// pasar por Windows. Privado: solo lo usan `leer` y `escribir`.
-    escala_no_entendida: Option<Value>,
+    escala_cruda: Option<Value>,
 }
 
 impl Lienzo {
     /// Un lienzo recien creado, sin nada dentro.
     ///
-    /// Hace falta porque `escala_no_entendida` es privado y desde fuera de
+    /// Hace falta porque `escala_cruda` es privado y desde fuera de
     /// este modulo no se puede escribir un `Lienzo` entero a mano. Lo demas
     /// —`type`, `version`, `appState`— lo pone `escribir`.
     pub fn vacio() -> Lienzo {
@@ -98,7 +105,7 @@ impl Lienzo {
             entradas: Vec::new(),
             resto: Map::new(),
             escala: None,
-            escala_no_entendida: None,
+            escala_cruda: None,
         }
     }
 
@@ -146,17 +153,12 @@ pub fn leer(json: &str) -> Result<Lienzo, ErrorExcalidraw> {
         .collect();
     let escala_cruda = mapa.remove("escala");
     let escala = escala_cruda.as_ref().and_then(escala_desde);
-    // Si habia una clave y no supimos entenderla, se guarda tal cual para
-    // devolverla intacta al escribir en vez de pisarla con null.
-    let escala_no_entendida = match (&escala_cruda, &escala) {
-        (Some(v), None) => Some(v.clone()),
-        _ => None,
-    };
+    // Se guarda cruda para devolverla intacta al escribir (ver `escala_cruda`).
     Ok(Lienzo {
         entradas,
         resto: mapa,
         escala,
-        escala_no_entendida,
+        escala_cruda,
     })
 }
 
@@ -193,11 +195,17 @@ pub fn escribir(lienzo: &Lienzo) -> String {
     // significa «no hay»: si habia una clave y no se entendio, se devuelve
     // tal cual en vez de null, para no destruir en silencio una escala
     // corrupta o de una version futura del movil.
-    match (&lienzo.escala, &lienzo.escala_no_entendida) {
-        (Some(e), _) => mapa.insert("escala".into(), escala_hacia(e)),
-        (None, Some(cruda)) => mapa.insert("escala".into(), cruda.clone()),
-        (None, None) => mapa.insert("escala".into(), Value::Null),
+    let cruda_entendida = lienzo.escala_cruda.as_ref().map(escala_desde);
+    let valor = match (&lienzo.escala, &lienzo.escala_cruda, cruda_entendida) {
+        // La misma que entro: los mismos bytes.
+        (Some(e), Some(cruda), Some(Some(leida))) if leida == *e => cruda.clone(),
+        (Some(e), _, _) => escala_hacia(e),
+        // Una que no se entendio: intacta.
+        (None, Some(cruda), Some(None)) => cruda.clone(),
+        // No habia, o se quito aqui: null, que en el movil tambien la quita.
+        (None, _, _) => Value::Null,
     };
+    mapa.insert("escala".into(), valor);
     serde_json::to_string_pretty(&Value::Object(mapa)).unwrap_or_default()
 }
 
@@ -304,34 +312,63 @@ pub fn a_escena(lienzo: &Lienzo) -> crate::Escena {
     // A mano y no con `poner_fondo`: abrir un lienzo no es un cambio que se
     // pueda deshacer.
     escena.fondo = fondo(lienzo);
+    // Lo que mide un pixel. Se leia del fichero y se quedaba en el lienzo:
+    // la escena salia sin escala y las cotas del movil decian «37 px» donde
+    // alli dicen «5,00 cm» (27-sep-2026).
+    escena.escala = lienzo.escala.clone();
     // Los clavos de soldar (`alfileres` del movil): siguen en `resto` y aqui
     // se traducen a los numeros de la escena. Ver `nudos::leer_del_fichero`.
     escena.alfileres = crate::nudos::leer_del_fichero(&lienzo.resto, &escena.elementos);
     escena
 }
 
-/// **El papel del lienzo**: su `appState.viewBackgroundColor`, o blanco si
-/// no lo trae o no se entiende.
+/// **El papel del lienzo.** Primero el `backgroundColor` de ARRIBA, que es
+/// donde lo guarda el movil de verdad (`Scene.backgroundColor`, lo que viaja
+/// al sincronizar: `ExcalidrawStore.guardar` escribe la escena entera y sin
+/// `appState`); si no, el `appState.viewBackgroundColor` de un `.excalidraw`
+/// de la web o de `ExcalidrawStore.exportar`; y si no, blanco. Manda el de
+/// arriba cuando estan los dos porque es el que el movil sigue cambiando: el
+/// `appState` lo ignora (`ignoreUnknownKeys`).
 ///
-/// Es el campo que escriben los dos: Excalidraw y el movil
-/// (`ExcalidrawAppState.viewBackgroundColor`, `"#ffffff"` por defecto). Sin
-/// alfa, como lo lee el movil (`DrawTheme.colorDe` se queda con los seis
+/// Sin alfa, como lo lee el movil (`DrawTheme.colorDe` se queda con los seis
 /// ultimos digitos): un papel medio transparente se veria distinto en cada
 /// lado. `"transparent"` tampoco es un papel: blanco, como el movil.
 pub fn fondo(lienzo: &Lienzo) -> ColorRgba {
-    lienzo
-        .resto
-        .get("appState")
-        .and_then(|a| color_desde(a.get("viewBackgroundColor")))
+    papel_leido(lienzo)
         .map_or(crate::escena::FONDO_DE_FABRICA, |c| ColorRgba { a: 1.0, ..c })
 }
 
-/// Pone el papel de la escena en el `appState` del lienzo, **solo si
-/// cambio**: el `appState` que vino (con su `gridSize`, su tema, lo que sea)
-/// sale intacto, y un lienzo del movil que nadie repinto no cambia ni un
-/// byte por haberlo abierto aqui.
+/// El papel que dice el fichero, si dice alguno que se entienda.
+fn papel_leido(lienzo: &Lienzo) -> Option<ColorRgba> {
+    color_desde(lienzo.resto.get(PAPEL_DE_LA_ESCENA)).or_else(|| {
+        lienzo
+            .resto
+            .get("appState")
+            .and_then(|a| color_desde(a.get("viewBackgroundColor")))
+    })
+}
+
+/// La clave del papel en la `Scene` del movil.
+const PAPEL_DE_LA_ESCENA: &str = "backgroundColor";
+
+/// Pone el papel de la escena en el lienzo, **solo si cambio**: lo que vino
+/// (su `gridSize`, su tema, lo que sea) sale intacto, y un lienzo del movil
+/// que nadie repinto no cambia ni un byte por haberlo abierto aqui.
+///
+/// Va SIEMPRE arriba (`backgroundColor`), que es lo unico que lee el movil
+/// al abrir lo sincronizado. Y en el `appState` cuando el fichero ya lo
+/// traia o no es una escena del movil, para que excalidraw.com lo vea
+/// igual; a una escena del movil no se le inventa un `appState`.
 fn fondo_hacia(salida: &mut Lienzo, papel: ColorRgba) {
     if fondo(salida) == papel {
+        return;
+    }
+    let es_escena_del_movil = salida.resto.contains_key(PAPEL_DE_LA_ESCENA);
+    let texto = Value::String(color_hacia(papel));
+    salida
+        .resto
+        .insert(PAPEL_DE_LA_ESCENA.into(), texto.clone());
+    if es_escena_del_movil && !salida.resto.contains_key("appState") {
         return;
     }
     let estado = salida
@@ -339,15 +376,12 @@ fn fondo_hacia(salida: &mut Lienzo, papel: ColorRgba) {
         .entry("appState")
         .or_insert_with(|| Value::Object(Map::new()));
     // Un `appState` que no es un objeto no se puede completar: se sustituye,
-    // porque el movil lo lee como objeto y rechazaria el fichero entero.
+    // porque excalidraw.com lo lee como objeto y rechazaria el fichero.
     if !estado.is_object() {
         *estado = Value::Object(Map::new());
     }
     if let Value::Object(mapa) = estado {
-        mapa.insert(
-            "viewBackgroundColor".into(),
-            Value::String(color_hacia(papel)),
-        );
+        mapa.insert("viewBackgroundColor".into(), texto);
     }
 }
 
@@ -359,6 +393,9 @@ fn fondo_hacia(salida: &mut Lienzo, papel: ColorRgba) {
 /// nunca». Lo nuevo va al final, que es encima de todo.
 pub fn con_escena(lienzo: &Lienzo, escena: &crate::Escena) -> Lienzo {
     let mut salida = lienzo.clone();
+    // Y de vuelta: calibrar en Windows se ve en el movil (`escribir` decide
+    // si sale la cruda de siempre o la nueva).
+    salida.escala = escena.escala.clone();
     fondo_hacia(&mut salida, escena.fondo);
     let mut n: u64 = 0;
     for entrada in &mut salida.entradas {
@@ -943,7 +980,9 @@ fn extras_desde(v: &Value) -> Extras {
             .then(|| v.get("fontFamily").and_then(Value::as_u64))
             .flatten()
             .map(|n| crate::texto::nombre_de_familia(Some(n.min(u8::MAX as u64) as u8)).to_string()),
-        tam_letra: (v.get("type").and_then(Value::as_str) == Some("pixpin-gantt"))
+        // El tamano de lo que rotula: el cronograma y el numero de la cota
+        // (`e.fontSize ?: MEASURE_TEXT_SIZE` en `drawMeasure`).
+        tam_letra: matches!(v.get("type").and_then(Value::as_str), Some("pixpin-gantt" | "pixpin-measure"))
             .then(|| num(v, "fontSize"))
             .flatten()
             .filter(|t| t.is_finite() && *t > 0.0),
@@ -1121,6 +1160,36 @@ fn extras_hacia(mapa: &mut Map<String, Value>, x: &Extras) {
 /// Encima y no de cero: el original trae campos que no usamos —`groupIds`,
 /// `boundElements`, `link`, `frameId`— y que atan unos elementos con otros.
 /// Escribir solo lo que entendemos desharia esas ataduras en silencio.
+/// El `width` y el `height` con que sale un elemento.
+///
+/// **En un trazo, una linea o una flecha son la caja de sus puntos**, como
+/// los deja el movil al trazar (`Element.withPoint`: `boundsOfPoints`). Aqui
+/// el modelo no los lleva al dia —`ancho`/`alto` de lo que nace aqui son
+/// 0— y salian a 0: el movil pinta todo lo que mide menos de dos pixeles
+/// como la raya de su primer punto al ultimo (`Renderer.sePierdeDePequeno`
+/// y `pintarComoRaya`), asi que lo anotado en el PC se veia alli como
+/// rayas rectas de un pixel (queja del 28-sep-2026). Lo demas lleva su caja.
+fn caja_escrita(e: &Elemento) -> (f64, f64) {
+    let puntos = match &e.figura {
+        Figura::Lapiz { puntos, .. }
+        | Figura::Resaltador { puntos }
+        | Figura::Linea { puntos }
+        | Figura::Flecha { puntos, .. } => puntos,
+        _ => return (e.ancho as f64, e.alto as f64),
+    };
+    // Con los mismos numeros que se escriben en `points` (relativos), para
+    // que la caja sea exactamente la de lo escrito.
+    let rel = |p: &Punto2| ((p.x - e.x) as f64, (p.y - e.y) as f64);
+    let Some(primero) = puntos.first().map(rel) else {
+        return (0.0, 0.0);
+    };
+    let (mut x1, mut y1, mut x2, mut y2) = (primero.0, primero.1, primero.0, primero.1);
+    for (x, y) in puntos.iter().map(rel) {
+        (x1, y1, x2, y2) = (x1.min(x), y1.min(y), x2.max(x), y2.max(y));
+    }
+    (x2 - x1, y2 - y1)
+}
+
 fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
     // La forma de los puntos la manda el propio elemento si ya los traia; el
     // aviso del lienzo solo decide para los que nacen aqui.
@@ -1135,8 +1204,16 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
     };
     mapa.insert("x".into(), Value::from(e.x as f64));
     mapa.insert("y".into(), Value::from(e.y as f64));
-    mapa.insert("width".into(), Value::from(e.ancho as f64));
-    mapa.insert("height".into(), Value::from(e.alto as f64));
+    // Solo lo que aqui lleva la caja a cero (lo nacido en el PC) la saca de
+    // sus puntos; una caja que ya tiene medida (la del movil) no se toca:
+    // mover una flecha del movil no puede cambiarle el alto que el escribio.
+    let (ancho, alto) = if e.ancho == 0.0 && e.alto == 0.0 {
+        caja_escrita(e)
+    } else {
+        (e.ancho as f64, e.alto as f64)
+    };
+    mapa.insert("width".into(), Value::from(ancho));
+    mapa.insert("height".into(), Value::from(alto));
     mapa.insert("angle".into(), Value::from(e.angulo as f64));
     mapa.insert("strokeColor".into(), Value::String(color_hacia(e.trazo)));
     mapa.insert(
@@ -1353,6 +1430,9 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
         Figura::Cota { puntos } => {
             mapa.insert("type".into(), Value::String("pixpin-measure".to_string()));
             mapa.insert("points".into(), puntos_hacia(puntos, e.x, e.y, objetos));
+            if let Some(t) = e.extras.tam_letra {
+                mapa.insert("fontSize".into(), Value::from(t as f64));
+            }
         }
         Figura::EscalaGrafica => {
             mapa.insert("type".into(), Value::String("pixpin-scalebar".to_string()));
@@ -2804,6 +2884,87 @@ mod pruebas {
         assert_eq!(vuelta.escala, l.escala, "sobrevive la ida y la vuelta");
     }
 
+    /// Un lienzo inventado con la forma exacta del movil: la escala arriba
+    /// del todo (`Scene.escala`, junto a `backgroundColor`) y dos cotas con
+    /// su `fontSize` y sus puntos como objetos. 36,637 px a 0,13647 cm/px
+    /// son 5 cm.
+    const FOTO_MEDIDA_DEL_MOVIL: &str = r##"{"type":"excalidraw","backgroundColor":"#ffffff",
+        "escala":{"decimales":2,"unidad":"cm","unidadesPorPixel":0.13647374510765076},
+        "elements":[
+          {"type":"pixpin-measure","id":"cota-a","x":100.5,"y":200.25,"width":2.2e-15,"height":36.637,
+           "points":[{"x":0.0,"y":0.0},{"x":2.2e-15,"y":36.637}],"strokeColor":"#0edeff",
+           "strokeWidth":2.5,"roughness":1,"opacity":100,"seed":42,"fontFamily":5,"fontSize":9.0,
+           "angle":0.0,"isDeleted":false,"version":3},
+          {"type":"pixpin-measure","id":"cota-b","x":300.0,"y":400.0,"width":0.6955,"height":36.6305,
+           "points":[{"x":0.0,"y":0.0},{"x":-0.6955,"y":36.6305}],"strokeColor":"#0edeff",
+           "strokeWidth":2.5,"roughness":1,"opacity":100,"seed":7,"fontFamily":5,"fontSize":20.0,
+           "angle":0.0,"isDeleted":false,"version":2}
+        ]}"##;
+
+    #[test]
+    fn la_escala_del_movil_llega_a_la_escena_y_la_cota_dice_centimetros() {
+        let escena = a_escena(&leer(FOTO_MEDIDA_DEL_MOVIL).unwrap());
+        let e = escena.escala.as_ref().expect("la escala del fichero llega a la escena");
+        assert_eq!(e.unidad, "cm");
+        let cotas: Vec<&Elemento> = escena.visibles().collect();
+        let textos: Vec<String> = cotas
+            .iter()
+            .map(|c| crate::medida::texto_de_cota(c, escena.escala.as_ref(), ','))
+            .collect();
+        // Lo mismo que `textoDeCota` del movil: la medida con sus dos
+        // decimales y coma, y el angulo porque la raya esta torcida.
+        assert_eq!(textos, vec!["5,00 cm · -90°".to_string(), "5,00 cm · -91°".to_string()]);
+        // Sin la escala (lo que pasaba), pixeles: el fallo que vio el usuario.
+        assert_eq!(crate::medida::texto_de_medida(36.637, None, ','), "37 px");
+    }
+
+    #[test]
+    fn el_tamano_del_numero_de_la_cota_viaja_en_su_font_size() {
+        let l = leer(FOTO_MEDIDA_DEL_MOVIL).unwrap();
+        let tams: Vec<Option<f32>> = l.elementos().iter().map(|e| e.extras.tam_letra).collect();
+        assert_eq!(tams, vec![Some(9.0), Some(20.0)]);
+        // Y una cota tocada en Windows lo devuelve.
+        let mut escena = a_escena(&l);
+        let id = escena.visibles().next().unwrap().id;
+        escena.buscar_mut(id).unwrap().extras.tam_letra = Some(12.0);
+        escena.buscar_mut(id).unwrap().version += 1;
+        let v: Value = serde_json::from_str(&escribir(&con_escena(&l, &escena))).unwrap();
+        assert_eq!(v["elements"][0]["fontSize"], 12.0);
+        assert_eq!(v["elements"][1]["fontSize"], 20.0);
+    }
+
+    #[test]
+    fn la_escala_hace_ida_y_vuelta_por_la_escena_sin_perder_un_decimal() {
+        let l = leer(FOTO_MEDIDA_DEL_MOVIL).unwrap();
+        let vuelta: Value = serde_json::from_str(&escribir(&con_escena(&l, &a_escena(&l)))).unwrap();
+        let original: Value = serde_json::from_str(FOTO_MEDIDA_DEL_MOVIL).unwrap();
+        assert_eq!(vuelta["escala"], original["escala"], "tal cual, con sus 17 cifras");
+    }
+
+    #[test]
+    fn calibrar_o_quitar_la_escala_en_la_escena_llega_al_fichero() {
+        let l = leer(FOTO_MEDIDA_DEL_MOVIL).unwrap();
+        let mut escena = a_escena(&l);
+        escena.escala = Escala::calibrando(100.0, 3.0, "m", 1);
+        let v: Value = serde_json::from_str(&escribir(&con_escena(&l, &escena))).unwrap();
+        assert_eq!(v["escala"]["unidad"], "m");
+        assert_eq!(v["escala"]["decimales"], 1);
+        // Quitarla la quita tambien alla (no sobrevive la del original).
+        escena.escala = None;
+        let v: Value = serde_json::from_str(&escribir(&con_escena(&l, &escena))).unwrap();
+        assert!(v["escala"].is_null());
+    }
+
+    #[test]
+    fn una_escala_que_no_se_entiende_sobrevive_al_pasar_por_la_escena() {
+        let json = r##"{"type":"excalidraw","elements":[],"escala":{"unidadesPorPixel":-1,"futuro":true}}"##;
+        let l = leer(json).unwrap();
+        let escena = a_escena(&l);
+        assert!(escena.escala.is_none(), "no se mide con ella");
+        let v: Value = serde_json::from_str(&escribir(&con_escena(&l, &escena))).unwrap();
+        assert_eq!(v["escala"]["futuro"], true, "pero no se destruye");
+    }
+
     #[test]
     fn un_lienzo_sin_escala_se_lee_igual() {
         // Compatibilidad hacia atras: los ficheros que ya hay no la llevan.
@@ -3212,5 +3373,244 @@ mod pruebas {
         let json = r##"{"type":"excalidraw","elements":[],"appState":{"viewBackgroundColor":"#11223380"}}"##;
         let escena = a_escena(&leer(json).unwrap());
         assert_eq!(color_hacia(escena.fondo), "#112233");
+    }
+
+    /// Lo que se escribe de un elemento de puntos nacido aqui.
+    fn escrito(figura: Figura) -> Value {
+        let mut escena = crate::Escena::nueva();
+        let mut e = Elemento {
+            figura,
+            grosor: 1.0,
+            ..Elemento::default()
+        };
+        // Como lo deja el gesto: el origen en el primer punto.
+        if let Some(p) = e.puntos().and_then(|l| l.first()).copied() {
+            (e.x, e.y) = (p.x, p.y);
+        }
+        escena.anadir(e);
+        let json = escribir(&con_escena(&Lienzo::vacio(), &escena));
+        let v: Value = serde_json::from_str(&json).unwrap();
+        v["elements"][0].clone()
+    }
+
+    #[test]
+    fn un_trazo_una_linea_y_una_flecha_del_pc_llevan_la_caja_de_sus_puntos_como_en_el_movil() {
+        // Queja del 28-sep: «las anotaciones se pasan solo como rayas
+        // rectas, conectando los puntos iniciales y finales». El PC escribia
+        // `width` y `height` a 0 y el movil (`Renderer.sePierdeDePequeno`)
+        // pinta todo lo que mide menos de dos pixeles como la cuerda de su
+        // primer punto al ultimo (`pintarComoRaya`). Alli la caja de un
+        // elemento de puntos es la de sus puntos (`Element.withPoint`).
+        let puntos: Vec<Punto2> = (0..9)
+            .map(|i| Punto2::nuevo(300.0 + i as f32 * 5.0, 100.0 + ((i % 3) as f32) * 10.0))
+            .collect();
+        for figura in [
+            Figura::Lapiz { puntos: puntos.clone(), presiones: Vec::new(), opciones: Some(Default::default()) },
+            Figura::Linea { puntos: puntos.clone() },
+            Figura::Flecha {
+                puntos: puntos.clone(),
+                punta_inicio: TipoPunta::Ninguna,
+                punta_fin: TipoPunta::Flecha,
+                codos: false,
+            },
+        ] {
+            let e = escrito(figura);
+            assert_eq!((e["width"].as_f64(), e["height"].as_f64()), (Some(40.0), Some(20.0)), "{e}");
+            // Los N puntos, relativos a su x/y.
+            let p = e["points"].as_array().unwrap();
+            assert_eq!(p.len(), 9);
+            assert_eq!((e["x"].as_f64(), e["y"].as_f64()), (Some(300.0), Some(100.0)));
+            assert_eq!(p[0], serde_json::json!([0.0, 0.0]));
+            assert_eq!(p[8], serde_json::json!([40.0, 20.0]));
+        }
+    }
+
+    #[test]
+    fn la_caja_de_lo_que_no_es_de_puntos_y_la_de_lo_que_nadie_toco_no_cambian() {
+        // Caso negativo: un rectangulo sigue con su ancho y su alto.
+        let mut escena = crate::Escena::nueva();
+        escena.anadir(Elemento {
+            figura: Figura::Rectangulo,
+            ancho: 70.0,
+            alto: 30.0,
+            ..Elemento::default()
+        });
+        let v: Value =
+            serde_json::from_str(&escribir(&con_escena(&Lienzo::vacio(), &escena))).unwrap();
+        assert_eq!((v["elements"][0]["width"].as_f64(), v["elements"][0]["height"].as_f64()), (Some(70.0), Some(30.0)));
+        // Y un trazo del movil que aqui no se toco sale como entro, con su
+        // caja aunque no sea la exacta (el movil la deja asi al mover un punto).
+        let del_movil = r#"{"elements":[{"id":"m","type":"freedraw","x":1,"y":2,"width":99,"height":7,"seed":3,"version":2,"points":[{"x":0.0,"y":0.0},{"x":4.0,"y":4.0}]}]}"#;
+        let l = leer(del_movil).unwrap();
+        let salida = escribir(&con_escena(&l, &a_escena(&l)));
+        let v: Value = serde_json::from_str(&salida).unwrap();
+        assert_eq!(v["elements"][0]["width"].as_f64(), Some(99.0));
+        // Uno solo o ninguno: una caja de nada, como alli.
+        let e = escrito(Figura::Lapiz { puntos: vec![Punto2::nuevo(5.0, 5.0)], presiones: Vec::new(), opciones: None });
+        assert_eq!((e["width"].as_f64(), e["height"].as_f64()), (Some(0.0), Some(0.0)));
+    }
+}
+
+/// **El papel tal como lo guarda el movil de verdad.** Lo que llega al
+/// sincronizar no es el `.excalidraw` de exportar sino la `Scene` entera
+/// (`ExcalidrawStore.guardar`): el papel va ARRIBA, en `backgroundColor`, y
+/// no hay `appState`. Se leia solo `appState.viewBackgroundColor` y todo
+/// lienzo del movil se abria en blanco: un dibujo con tiza blanca sobre
+/// «Azul noche» desaparecia.
+#[cfg(test)]
+mod papel_de_la_escena_del_movil {
+    use super::*;
+
+    /// La forma de `Scene` (motor/Scene.kt): `style` lleva su propio
+    /// `backgroundColor` (el relleno de la proxima figura), que NO es el
+    /// papel.
+    const ESCENA_AZUL_NOCHE: &str = r##"{"elements":[
+        {"id":"t1","type":"freedraw","x":10,"y":10,"width":20,"height":0,"angle":0,
+         "strokeColor":"#ffffff","backgroundColor":"transparent","points":[[0,0],[20,0]],
+         "pressures":[],"simulatePressure":true,"seed":7,"version":1,"isDeleted":false}],
+      "files":{},"viewport":{"scrollX":0,"scrollY":0,"zoom":1},
+      "style":{"strokeColor":"#ffffff","backgroundColor":"transparent"},
+      "backgroundColor":"#14213d","luces":{"encendidas":true,"fuerza":1},
+      "tablas":[],"referenciasVisibles":true,"alfileres":[],"vista":"cero"}"##;
+
+    fn raiz(json: &str) -> Value {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn el_papel_de_una_escena_del_movil_se_lee_de_su_background_color_de_arriba() {
+        let escena = a_escena(&leer(ESCENA_AZUL_NOCHE).unwrap());
+        assert_eq!(color_hacia(escena.fondo), "#14213d");
+    }
+
+    #[test]
+    fn abrir_una_escena_del_movil_y_guardarla_sin_tocar_el_papel_no_cambia_nada_arriba() {
+        let lienzo = leer(ESCENA_AZUL_NOCHE).unwrap();
+        let salida = raiz(&escribir(&con_escena(&lienzo, &a_escena(&lienzo))));
+        assert_eq!(salida["backgroundColor"], "#14213d");
+        assert!(salida.get("appState").is_none(), "no se inventa un appState: {salida}");
+        assert_eq!(salida["style"]["backgroundColor"], "transparent", "el estilo no es el papel");
+    }
+
+    #[test]
+    fn cambiar_el_papel_de_una_escena_del_movil_lo_escribe_arriba_que_es_donde_lo_lee_el_movil() {
+        let lienzo = leer(ESCENA_AZUL_NOCHE).unwrap();
+        let mut escena = a_escena(&lienzo);
+        assert!(escena.poner_fondo(color_desde(Some(&Value::from("#1f3b33"))).unwrap()));
+        let salida = raiz(&escribir(&con_escena(&lienzo, &escena)));
+        assert_eq!(salida["backgroundColor"], "#1f3b33");
+        assert_eq!(salida["style"]["backgroundColor"], "transparent");
+        assert_eq!(salida["vista"], "cero", "lo demas de la escena sigue");
+        // Y reabierto aqui, el mismo papel.
+        let otra = a_escena(&leer(&salida.to_string()).unwrap());
+        assert_eq!(otra.fondo, escena.fondo);
+    }
+
+    #[test]
+    fn si_las_dos_claves_no_coinciden_manda_la_de_arriba_que_es_la_que_el_movil_mantiene() {
+        // Un lienzo del movil al que una version vieja de aqui le puso un
+        // `appState`: el movil lo ignora y sigue cambiando la de arriba.
+        let json = r##"{"elements":[],"backgroundColor":"#000000",
+            "appState":{"viewBackgroundColor":"#ffffff"}}"##;
+        let escena = a_escena(&leer(json).unwrap());
+        assert_eq!(color_hacia(escena.fondo), "#000000");
+        // Y al cambiarlo aqui, las dos dicen lo mismo.
+        let lienzo = leer(json).unwrap();
+        let mut e = a_escena(&lienzo);
+        e.poner_fondo(color_desde(Some(&Value::from("#121212"))).unwrap());
+        let salida = raiz(&escribir(&con_escena(&lienzo, &e)));
+        assert_eq!(salida["backgroundColor"], "#121212");
+        assert_eq!(salida["appState"]["viewBackgroundColor"], "#121212");
+    }
+
+    #[test]
+    fn un_background_color_de_arriba_que_no_se_entiende_se_ve_blanco_y_no_se_pisa() {
+        // Caso negativo: como en el movil (`colorDe`), lo que no es un color
+        // es blanco; pero si nadie elige otro papel, vuelve tal cual.
+        for raro in [r#""transparent""#, r#""azulito""#, "42", "null"] {
+            let json = format!(r#"{{"elements":[],"backgroundColor":{raro}}}"#);
+            let lienzo = leer(&json).unwrap();
+            let escena = a_escena(&lienzo);
+            assert_eq!(escena.fondo, crate::escena::FONDO_DE_FABRICA, "{raro}");
+            let salida = raiz(&escribir(&con_escena(&lienzo, &escena)));
+            assert_eq!(salida["backgroundColor"], raiz(&json)["backgroundColor"], "{raro}");
+        }
+    }
+
+    #[test]
+    fn un_lienzo_nuevo_con_papel_elegido_lleva_el_papel_arriba_para_el_movil_y_en_app_state_para_la_web() {
+        let mut escena = crate::Escena::nueva();
+        escena.poner_fondo(color_desde(Some(&Value::from("#f5faff"))).unwrap());
+        let salida = raiz(&escribir(&con_escena(&Lienzo::vacio(), &escena)));
+        assert_eq!(salida["backgroundColor"], "#f5faff");
+        assert_eq!(salida["appState"]["viewBackgroundColor"], "#f5faff");
+    }
+}
+
+/// **La vuelta**: un lienzo del movil con una foto girada, papel oscuro y
+/// rayas encima, abierto aqui, tocado y guardado, no pierde nada de lo que
+/// el movil puso (el giro, el papel, las rayas, sus campos propios).
+#[cfg(test)]
+mod vuelta_de_un_lienzo_del_movil {
+    use super::*;
+
+    const DEL_MOVIL: &str = r##"{"elements":[
+      {"id":"img-1","type":"image","x":100,"y":150,"width":400,"height":300,"angle":1.5813086,
+       "strokeColor":"#1e1e1e","backgroundColor":"transparent","fillStyle":"solid","strokeWidth":2,
+       "strokeStyle":"solid","roughness":1,"opacity":100,"seed":1,"version":2,"versionNonce":0,
+       "isDeleted":false,"groupIds":[],"updated":0,"locked":false,"formaSolida":"caja",
+       "lupaRedonda":true,"periodos":6,"fileId":"Qwertyuiopasdfghjklzx","scale":[1,1]},
+      {"id":"t-1","type":"freedraw","x":80,"y":80,"width":40,"height":40,"angle":0,
+       "strokeColor":"#ffffff","backgroundColor":"transparent","strokeWidth":4,"seed":3,
+       "version":1,"isDeleted":false,"points":[{"x":0,"y":0},{"x":40,"y":40}],"pressures":[],
+       "simulatePressure":true,"material":"tiza","presionFirme":false}],
+      "files":{"Qwertyuiopasdfghjklzx":{"id":"Qwertyuiopasdfghjklzx","mimeType":"image/png",
+        "path":"pixpin:files/pins/draw/files/Qwertyuiopasdfghjklzx","created":1}},
+      "viewport":{"scrollX":1,"scrollY":2,"zoom":0.5},"style":{"backgroundColor":"transparent"},
+      "backgroundColor":"#121212","luces":{"encendidas":true,"fuerza":1},"tablas":[],
+      "referenciasVisibles":true,"alfileres":[],"vista":"cero"}"##;
+
+    fn raiz(json: &str) -> Value {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn anadir_una_raya_aqui_no_le_quita_nada_al_lienzo_del_movil() {
+        let lienzo = leer(DEL_MOVIL).unwrap();
+        assert_eq!(lienzo.cuantos_ajenos(), 0, "la foto y la tiza se entienden");
+        let mut escena = a_escena(&lienzo);
+        let foto = escena.elementos[0].clone();
+        assert!((foto.angulo - 1.5813086).abs() < 1e-6, "el giro se lee");
+        let mut raya = escena.elementos[1].clone();
+        raya.x += 200.0;
+        raya.extras.id_de_fichero = None;
+        escena.anadir(raya);
+        let antes = raiz(DEL_MOVIL);
+        let despues = raiz(&escribir(&con_escena(&lienzo, &escena)));
+        // Lo que no se toco sale identico, con sus campos propios.
+        assert_eq!(despues["elements"][0], antes["elements"][0]);
+        assert_eq!(despues["elements"][1], antes["elements"][1]);
+        assert_eq!(despues["elements"].as_array().unwrap().len(), 3);
+        for clave in ["backgroundColor", "files", "viewport", "luces", "vista", "style", "alfileres"] {
+            assert_eq!(despues[clave], antes[clave], "{clave}");
+        }
+        // Y la raya nueva va con los puntos como objetos, como las del movil.
+        assert!(despues["elements"][2]["points"][0].is_object(), "{}", despues["elements"][2]);
+    }
+
+    #[test]
+    fn mover_la_foto_girada_aqui_conserva_su_giro_y_sus_campos_del_movil() {
+        let lienzo = leer(DEL_MOVIL).unwrap();
+        let mut escena = a_escena(&lienzo);
+        escena.elementos[0].x += 10.0;
+        escena.elementos[0].version += 1;
+        let despues = raiz(&escribir(&con_escena(&lienzo, &escena)));
+        let foto = &despues["elements"][0];
+        assert_eq!(foto["x"], 110.0);
+        assert!((foto["angle"].as_f64().unwrap() - 1.5813086).abs() < 1e-6, "{foto}");
+        assert_eq!(foto["fileId"], "Qwertyuiopasdfghjklzx");
+        assert_eq!(foto["formaSolida"], "caja", "un campo propio del movil no se pierde");
+        assert_eq!(foto["periodos"], 6);
+        assert_eq!(despues["backgroundColor"], "#121212");
     }
 }
