@@ -220,6 +220,10 @@ impl Disco for DiscoAndroid {
             {
                 let _ = std::fs::remove_file(self.files.join(r));
             }
+            // Y lo anotado sobre el, que sin su mensaje ya no viaja (v0.96).
+            if kotlin::cadena(m, "ruta").is_some() {
+                self.borrar_anotado(chat, &kotlin::unico(m));
+            }
         }
         self.avisar(disco::Cambio::Mensajes);
         Ok(())

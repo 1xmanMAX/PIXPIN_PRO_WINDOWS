@@ -28,12 +28,16 @@
 //! Por eso se guardan las entradas crudas del ZIP y no solo lo interpretado.
 
 pub mod almacen;
+pub mod anotado;
+pub mod capas_del_pdf;
 pub mod codigos;
 pub mod cuaderno;
 pub mod formula;
 pub mod identidad;
 pub mod importar_hojas;
+pub mod lienzo_de_la_foto;
 pub mod mini;
+pub mod para_el_movil;
 pub mod tabla;
 pub mod tabla_web;
 pub mod portapapeles_tabla;

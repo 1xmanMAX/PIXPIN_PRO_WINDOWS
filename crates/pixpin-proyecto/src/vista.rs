@@ -361,6 +361,32 @@ pub fn ruta_real(raiz: &Path, ficha_id: &str, ruta: &str) -> Option<PathBuf> {
     Some(almacen::carpeta(raiz, ficha_id).join(ruta))
 }
 
+/// Al reves que [ruta_real]: la ruta portatil (`pixpin:files/…`) de un
+/// fichero de este equipo que esta dentro de la carpeta de algun chat, como
+/// la veria el movil. `None` si esta fuera de todas (un PDF abierto desde el
+/// Explorador): no hay forma de que el movil lo encuentre.
+pub fn portatil_de_ruta(raiz: &Path, fichero: &Path) -> Option<String> {
+    let fichero = std::fs::canonicalize(fichero).unwrap_or_else(|_| fichero.to_path_buf());
+    for (chat, f) in mapa_de(raiz, &Indice::leer(raiz)) {
+        let carpeta = almacen::carpeta(raiz, &f.id);
+        let carpeta = std::fs::canonicalize(&carpeta).unwrap_or(carpeta);
+        let Ok(rel) = fichero.strip_prefix(&carpeta) else {
+            continue;
+        };
+        let rel: Vec<String> = rel
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().to_string())
+            .collect();
+        let rel = rel.join("/");
+        if rel.is_empty() {
+            continue;
+        }
+        let v = virtual_de(&chat, &rel);
+        return disco::permitida(&v).then(|| format!("{PORTATIL}{v}"));
+    }
+    None
+}
+
 /// **El PDF del proyecto en este equipo**: el que dice su `pdfOrigen`
 /// (`archivos/doc-<t>.pdf` si se unio aqui, `pixpin:files/…` si llego del
 /// movil) o, en un proyecto que entro por un `.pixpin`, su `documento.pdf`.
@@ -396,6 +422,10 @@ pub fn anotar_borrados(
         .filter_map(|m| serde_json::to_value(m).ok())
         .filter_map(|v| d.portatil_de(&chat, &Json::de_valor(&v)))
         .collect();
+    // Lo anotado sobre ellos se va con ellos (`MensajesStore.borrarAdjunto(m)`, v0.96).
+    for m in portatiles.iter().filter(|m| kotlin::cadena(m, "ruta").is_some()) {
+        d.borrar_anotado(&chat, &kotlin::unico(m));
+    }
     disco::anotar_marcas_en(&d.sincro(), &disco::marcas_de(&chat, &portatiles, cuando))
 }
 
@@ -546,6 +576,10 @@ impl Disco for DiscoPc {
             (salida, quitados)
         };
         self.marcas_tras_aplicar(chat, &llegan, borrar, &quitados, ahora)?;
+        // Lo anotado sobre lo que se fue, con el (`Disco.aplicarMensajes`, v0.96).
+        for m in quitados.iter().filter(|m| kotlin::cadena(m, "ruta").is_some()) {
+            self.borrar_anotado(chat, &kotlin::unico(m));
+        }
         // La ficha, al dia: la lista del chat ensena lo ultimo.
         let mut indice = Indice::leer(&self.raiz);
         if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == ficha.id) {
@@ -681,11 +715,61 @@ impl Disco for DiscoPc {
         texto
     }
 
+    /// Lo anotado de este chat: la tinta en `lienzos/anot-…excalidraw`
+    /// (`pins/draw/anot-….excalidraw.gz`, como cualquier dibujo) y el resto
+    /// en `android/pins/draw/`, donde [Disco::ruta] pone lo del movil.
+    fn anotado(&self, chat: &str) -> Vec<String> {
+        let carpeta = self.carpeta_de(chat);
+        let mut salida = Vec::new();
+        let nombres = |dir: PathBuf| -> Vec<String> {
+            std::fs::read_dir(dir)
+                .map(|l| {
+                    l.flatten()
+                        .filter(|e| e.path().is_file())
+                        .map(|e| e.file_name().to_string_lossy().to_string())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        for n in nombres(carpeta.join("lienzos")) {
+            if let Some(d) = n.strip_suffix(".excalidraw") {
+                let rel = pixpin_sincro::anotado::rel(d, ".excalidraw.gz");
+                if pixpin_sincro::anotado::uid_del_nombre(&format!("{d}.excalidraw.gz")).is_some() {
+                    salida.push(rel);
+                }
+            }
+        }
+        for n in nombres(carpeta.join("android").join(pixpin_sincro::anotado::CARPETA)) {
+            if !n.ends_with(".excalidraw.gz") && pixpin_sincro::anotado::uid_del_nombre(&n).is_some() {
+                salida.push(format!("{}/{n}", pixpin_sincro::anotado::CARPETA));
+            }
+        }
+        salida.sort();
+        salida
+    }
+
     /// Un lienzo nacido aqui lleva sus fotos como `imagenes/<id>`, relativas
     /// a su carpeta: al salir se ponen como las veria el movil. Lo que ya
     /// venia del movil no se toca, ni se reescribe el texto si no hace falta.
+    ///
+    /// Y sale **en la forma que lee el `Scene` del movil**
+    /// ([`crate::para_el_movil`]): un lienzo nacido aqui lleva los puntos
+    /// como `[x, y]`, y alli eso tiraba la escena entera. Lo que ya se lee
+    /// alli sale tal cual.
     fn a_portatil(&self, chat: &str, rel: &str, texto: String) -> String {
-        if !rel.ends_with(".excalidraw.gz") || !texto.contains("\"imagenes/") {
+        if !rel.ends_with(".excalidraw.gz") {
+            return texto;
+        }
+        let texto = self.fotos_a_portatil(chat, texto);
+        crate::para_el_movil::lienzo_legible(&texto).unwrap_or(texto)
+    }
+}
+
+impl DiscoPc {
+    /// Las fotos de un lienzo nacido aqui (`imagenes/<id>`), como las veria
+    /// el movil.
+    fn fotos_a_portatil(&self, chat: &str, texto: String) -> String {
+        if !texto.contains("\"imagenes/") {
             return texto;
         }
         let Ok(mut j) = Json::analizar(&texto) else {
@@ -779,6 +863,32 @@ mod pruebas {
             Some(carpeta.join("documento.pdf"))
         );
         let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn un_lienzo_nacido_aqui_sale_hacia_el_movil_con_los_puntos_que_su_scene_lee() {
+        // El trazo del PC lleva los puntos como `[x, y]`: tal cual, el movil
+        // tiraba la escena entera y el lienzo se abria en blanco alli.
+        let d = DiscoPc::nuevo(Path::new("C:/no-hace-falta"));
+        let del_pc = r#"{"type":"excalidraw","elements":[{"id":"t","type":"freedraw","x":0,"y":0,"width":2,"height":2,"seed":3,"points":[[0,0],[2,2]]}]}"#;
+        let sale = d.a_portatil("pr-1", "pins/draw/d1.excalidraw.gz", del_pc.to_string());
+        let v: serde_json::Value = serde_json::from_str(&sale).unwrap();
+        assert_eq!(v["elements"][0]["points"][1], serde_json::json!({"x": 2, "y": 2}));
+        // Lo que no es un lienzo no se toca aunque lo parezca.
+        let tabla = r#"{"elements":[{"id":"t","type":"x","points":[[0,0]]}]}"#;
+        assert_eq!(d.a_portatil("pr-1", "tablas/t.json", tabla.to_string()), tabla);
+    }
+
+    #[test]
+    fn un_lienzo_del_movil_vuelve_a_salir_byte_a_byte() {
+        // Caso negativo: lo que ya lee el movil sale igual que entro, o su
+        // resumen cambiaria y se mandaria en cada vuelta.
+        let d = DiscoPc::nuevo(Path::new("C:/no-hace-falta"));
+        let del_movil = r#"{"elements":[{"id":"t","type":"freedraw","x":1.10,"y":0,"width":2,"height":2,"seed":3,"points":[{"x":0.0,"y":0.0}]}],"files":{"f":{"id":"f","mimeType":"image/png","path":"pixpin:files/pins/draw/files/f"}}}"#;
+        assert_eq!(
+            d.a_portatil("pr-1", "pins/draw/d1.excalidraw.gz", del_movil.to_string()),
+            del_movil
+        );
     }
 
     #[test]

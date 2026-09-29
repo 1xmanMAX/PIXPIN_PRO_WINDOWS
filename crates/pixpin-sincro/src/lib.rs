@@ -38,6 +38,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod anotado;
 pub mod base;
 pub mod canal;
 pub mod canonico;

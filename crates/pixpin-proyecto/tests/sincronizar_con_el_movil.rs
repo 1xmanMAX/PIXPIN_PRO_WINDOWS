@@ -737,3 +737,577 @@ fn un_mensaje_del_movil_da_en_el_pc_el_resumen_que_da_en_el_movil() {
     assert_eq!(m.nombre, "plano.pdf");
     assert_eq!(m.codigo_chat().as_deref(), Some("3·K7Q2"));
 }
+
+/// Un lienzo dibujado en el PC, escrito por su motor: los puntos del trazo
+/// como `[x, y]`, que es como los deja `excalidraw::escribir` en un lienzo
+/// que no vino del movil.
+fn lienzo_dibujado_en_el_pc() -> String {
+    use pixpin_motor2d::elemento::{Elemento, Figura};
+    use pixpin_motor2d::vector::Punto2;
+    let mut escena = pixpin_motor2d::Escena::nueva();
+    escena.anadir(Elemento {
+        figura: Figura::Lapiz {
+            puntos: (0..6).map(|i| Punto2::nuevo(i as f32 * 4.0, i as f32 * 2.0)).collect(),
+            presiones: Vec::new(),
+            opciones: Some(Default::default()),
+        },
+        grosor: 3.0,
+        ..Elemento::default()
+    });
+    let lienzo = pixpin_motor2d::excalidraw::con_escena(
+        &pixpin_motor2d::excalidraw::Lienzo::vacio(),
+        &escena,
+    );
+    pixpin_motor2d::excalidraw::escribir(&lienzo)
+}
+
+/// Los puntos de cada trazo son `Pt` (`{"x","y"}`), como los lee el movil.
+fn puntos_del_movil(texto: &str) -> bool {
+    let v: serde_json::Value = serde_json::from_str(texto).unwrap();
+    v["elements"].as_array().unwrap().iter().all(|e| {
+        e.get("points").is_none_or(|p| {
+            p.as_array()
+                .unwrap()
+                .iter()
+                .all(|q| q.get("x").is_some() && q.get("y").is_some())
+        })
+    })
+}
+
+#[test]
+fn un_lienzo_dibujado_en_el_pc_llega_al_movil_con_puntos_que_su_scene_lee() {
+    let p = montar("puntos");
+    let obra = proyecto_del_pc(&p);
+    let carpeta = almacen::carpeta(&p.raiz(), &obra.id);
+    let texto = lienzo_dibujado_en_el_pc();
+    assert!(!puntos_del_movil(&texto), "el PC escribe listas: es el fallo");
+    std::fs::write(carpeta.join("lienzos/d9.excalidraw"), &texto).unwrap();
+
+    p.vuelta_desde_pc();
+
+    let alli = de_gz(&p.movil.raiz().join("pins/draw/d9.excalidraw.gz"));
+    assert!(puntos_del_movil(&alli), "{alli}");
+    // En el PC el fichero no se reescribe: sigue como lo dejo su editor.
+    assert_eq!(
+        std::fs::read_to_string(carpeta.join("lienzos/d9.excalidraw")).unwrap(),
+        texto
+    );
+    // Y la vuelta siguiente no lo manda otra vez: los dos lo ven igual.
+    let chat = vista::chat_de_ficha(&p.raiz(), &obra.id).unwrap();
+    p.quieto(&chat);
+}
+
+#[test]
+fn un_lienzo_del_movil_vuelve_del_pc_sin_tocarle_un_byte() {
+    // Caso negativo: el movil lo escribe ya con `Pt`, y el PC lo devuelve
+    // igual aunque lo tenga guardado: otro texto seria otro resumen.
+    let p = montar("puntos-movil");
+    proyecto_del_movil(&p);
+    let d1 = p.movil.raiz().join("pins/draw/d1.excalidraw.gz");
+    let del_movil = r#"{"elements":[{"id":"A","type":"freedraw","x":0,"y":0,"width":1,"height":1,"seed":5,"version":1,"versionNonce":7,"updated":1,"points":[{"x":0.0,"y":0.0},{"x":1.0E-4,"y":1.0}]}],"files":{}}"#;
+    gz(&d1, del_movil);
+    p.desde_movil(&["pr-1"]);
+    let rel = "pins/draw/d1.excalidraw.gz";
+    assert_eq!(
+        canonico::de(&p.pc.texto_de("pr-1", rel).unwrap()),
+        canonico::de(&p.movil.texto_de("pr-1", rel).unwrap())
+    );
+    p.quieto("pr-1");
+    assert_eq!(de_gz(&d1), del_movil, "el movil no recibe nada nuevo");
+}
+
+/// Una foto del chat del PC anotada en el PC: su lienzo `foto-<id>` lo crea
+/// `lienzo_de_la_foto::asegurar` como el movil, con lo del `.pixpin2d` de
+/// antes dentro. Datos inventados.
+fn foto_anotada_en_el_pc(p: &Par) -> (Ficha, Mensaje, String) {
+    let raiz = p.raiz();
+    let ficha = Ficha::nueva("Fachada", p.reloj.tic(), &p.aparato_pc());
+    let mut i = Indice::leer(&raiz);
+    i.proyectos.push(ficha.clone());
+    i.guardar(&raiz).unwrap();
+    let jpg = [0xFF, 0xD8, 0xFF, 0xE0, 9, 9, 9, 9];
+    let ruta = almacen::guardar_adjunto(&raiz, &ficha.id, "fachada.jpg", &jpg).unwrap();
+    let carpeta = almacen::carpeta(&raiz, &ficha.id);
+    let sello = Sello {
+        cuando: p.reloj.tic(),
+        numero: 1,
+        aparato: p.aparato_pc(),
+        proyecto: ficha.id.clone(),
+    };
+    let m = Mensaje::adjunto(Clase::Imagen, "fachada.jpg", &ruta, jpg.len() as i64, &sello);
+    cuaderno::anadir(&carpeta, &m).unwrap();
+    // Lo que el PC dibujo antes, en pixeles de la foto (4000x3000).
+    let foto = carpeta.join(&ruta);
+    let mut escena = pixpin_motor2d::Escena::nueva();
+    escena.anadir(pixpin_motor2d::Elemento {
+        figura: pixpin_motor2d::Figura::Lapiz {
+            puntos: (0..5)
+                .map(|k| pixpin_motor2d::Punto2::nuevo(1000.0 + k as f32 * 100.0, 800.0))
+                .collect(),
+            presiones: Vec::new(),
+            opciones: Some(Default::default()),
+        },
+        grosor: 6.0,
+        ..pixpin_motor2d::Elemento::default()
+    });
+    let viejo = pixpin_proyecto::lienzo_de_la_foto::pixpin2d_de(&foto);
+    pixpin_motor2d::guardar(&viejo, &escena).unwrap();
+    let hecho =
+        pixpin_proyecto::lienzo_de_la_foto::asegurar(&raiz, &ficha.id, &m, &foto, (4000, 3000), p.reloj.tic())
+            .unwrap();
+    assert!(hecho.creado && hecho.referencia_puesta && hecho.adoptados == 1);
+    let m = p.mensajes_pc(&ficha.id).remove(0);
+    (ficha, m, hecho.id)
+}
+
+#[test]
+fn una_foto_anotada_en_el_pc_llega_al_movil_con_su_lienzo_su_foto_y_su_referencia() {
+    let p = montar("foto-anotada");
+    let (ficha, m, id) = foto_anotada_en_el_pc(&p);
+    assert_eq!(id, format!("foto-{}", m.id));
+    assert_eq!(m.referencia.as_deref(), Some(id.as_str()));
+
+    p.vuelta_desde_pc();
+
+    let chat = vista::chat_de_ficha(&p.raiz(), &ficha.id).unwrap();
+    // El lienzo, donde el movil lo busca y en la forma que su `Scene` lee.
+    let alli = de_gz(&p.movil.raiz().join(format!("pins/draw/{id}.excalidraw.gz")));
+    assert!(puntos_del_movil(&alli), "{alli}");
+    let v: serde_json::Value = serde_json::from_str(&alli).unwrap();
+    let foto = &v["elements"][0];
+    assert_eq!(foto["type"], "image");
+    assert_eq!(foto["locked"], true);
+    assert_eq!(foto["width"].as_f64(), Some(2000.0), "a su ancho del movil, no a sus pixeles");
+    assert_eq!(v["elements"].as_array().unwrap().len(), 2, "la foto y la raya");
+    // Su foto viaja con el, y el lienzo la senala donde queda alli.
+    let fichero = foto["fileId"].as_str().unwrap();
+    let rel = format!("guardados/pc/{chat}/imagenes/{fichero}");
+    assert_eq!(
+        std::fs::read(p.movil.raiz().join(&rel)).unwrap(),
+        [0xFF, 0xD8, 0xFF, 0xE0, 9, 9, 9, 9]
+    );
+    assert!(alli.contains(&p.movil.absoluta(&rel)), "{alli}");
+    // Y el mensaje llega con su `referencia`: el movil abre ESE lienzo.
+    let imagen = p
+        .movil
+        .leer_mensajes()
+        .into_iter()
+        .find(|x| kotlin::cadena(x, "id") == Some(m.id.as_str()))
+        .expect("la foto esta en el movil");
+    assert_eq!(kotlin::cadena(&imagen, "referencia"), Some(id.as_str()));
+    // La vuelta siguiente no mueve nada.
+    p.quieto(&chat);
+}
+
+#[test]
+fn una_foto_sin_anotar_no_manda_ningun_lienzo() {
+    // Caso negativo: sin lienzo en el PC, la foto viaja sola.
+    let p = montar("foto-sin-anotar");
+    let raiz = p.raiz();
+    let ficha = Ficha::nueva("Solo foto", p.reloj.tic(), &p.aparato_pc());
+    let mut i = Indice::leer(&raiz);
+    i.proyectos.push(ficha.clone());
+    i.guardar(&raiz).unwrap();
+    let ruta = almacen::guardar_adjunto(&raiz, &ficha.id, "sola.jpg", &[0xFF, 0xD8, 1]).unwrap();
+    let sello = Sello {
+        cuando: p.reloj.tic(),
+        numero: 1,
+        aparato: p.aparato_pc(),
+        proyecto: ficha.id.clone(),
+    };
+    let m = Mensaje::adjunto(Clase::Imagen, "sola.jpg", &ruta, 3, &sello);
+    cuaderno::anadir(&almacen::carpeta(&raiz, &ficha.id), &m).unwrap();
+    p.vuelta_desde_pc();
+    assert!(!p.movil.raiz().join(format!("pins/draw/foto-{}.excalidraw.gz", m.id)).exists());
+    let chat = vista::chat_de_ficha(&raiz, &ficha.id).unwrap();
+    assert!(p.movil.raiz().join(format!("guardados/pc/{chat}/{ruta}")).is_file());
+}
+
+// ------------------------------------------- lo anotado viaja (v0.96 del movil)
+
+/// Un trazo del movil, con los puntos como `Pt`.
+fn fig_movil(id: &str) -> String {
+    format!(
+        r#"{{"id":"{id}","type":"freedraw","x":10.5,"y":20.0,"width":4,"height":4,"seed":3,"version":1,"versionNonce":1,"updated":1,"points":[{{"x":0.0,"y":0.0}},{{"x":4.0,"y":4.0}}]}}"#
+    )
+}
+
+/// Un dibujo del movil en `pins/draw/<base>.excalidraw.gz` con esas figuras.
+fn dibujo_movil(p: &Par, base: &str, figuras: &[&str]) {
+    let figs: Vec<String> = figuras.iter().map(|f| fig_movil(f)).collect();
+    gz(
+        &p.movil.raiz().join(format!("pins/draw/{base}.excalidraw.gz")),
+        &format!(r#"{{"elements":[{}],"files":{{}}}}"#, figs.join(",")),
+    );
+}
+
+/// Los ids de las figuras vivas de un dibujo (texto JSON).
+fn figuras(texto: &str) -> BTreeSet<String> {
+    let v: serde_json::Value = serde_json::from_str(texto).unwrap();
+    v["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["isDeleted"] != true)
+        .map(|e| e["id"].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// Un adjunto del movil (`ARCHIVO`) en su chat general, como lo guarda su chat.
+fn adjunto_movil(p: &Par, id: &str, fichero: &str, bytes: &[u8]) -> String {
+    let rel = format!("guardados/{fichero}");
+    let f = p.movil.raiz().join(&rel);
+    std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+    std::fs::write(&f, bytes).unwrap();
+    let m = Json::de_valor(&json!({
+        "id": id, "cuando": p.reloj.tic(), "clase": "ARCHIVO", "ruta": p.movil.absoluta(&rel),
+        "nombre": fichero, "numero": p.movil.leer_mensajes().len() + 1, "letra": "a",
+    }));
+    p.movil.anadir_mensaje(&m).unwrap();
+    kotlin::unico(&m)
+}
+
+/// Escribe `texto` en un fichero del movil (`AnotacionesDelAdjunto.escribir`).
+fn escribir_movil(p: &Par, rel: &str, texto: &str) {
+    let f = p.movil.raiz().join(rel);
+    std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+    std::fs::write(f, texto).unwrap();
+}
+
+fn leer_movil(p: &Par, rel: &str) -> Option<String> {
+    std::fs::read_to_string(p.movil.raiz().join(rel)).ok()
+}
+
+/// Deja la fecha de un fichero un minuto por delante: dos escrituras del
+/// mismo largo en el mismo milisegundo se tomarian por la misma.
+fn adelantar(f: &Path) {
+    let t = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
+    std::fs::OpenOptions::new().write(true).open(f).unwrap().set_modified(t).unwrap();
+}
+
+/// Donde esta en el PC el adjunto del movil `id` (la ruta que su mensaje senala).
+fn doc_en_pc(p: &Par, id: &str) -> PathBuf {
+    let g = p.pc.ficha_de(GENERAL).unwrap();
+    let m = p.mensajes_pc(&g.id).into_iter().find(|m| m.id == id).unwrap();
+    vista::ruta_real(&p.raiz(), &g.id, m.ruta.as_deref().unwrap()).unwrap()
+}
+
+#[test]
+fn lo_anotado_sobre_un_pdf_un_word_y_un_libro_del_chat_viaja_con_el_codigo_del_mensaje() {
+    use pixpin_proyecto::anotado;
+    let p = montar("anotado");
+    let u_pdf = adjunto_movil(&p, "p", "1_plano.pdf", b"%PDF-1.4");
+    let u_docx = adjunto_movil(&p, "d", "2_informe.docx", b"PK docx");
+    let u_epub = adjunto_movil(&p, "e", "3_libro.epub", b"PK epub");
+    dibujo_movil(&p, &format!("anot-{u_pdf}-p2"), &["trazo-pdf"]);
+    escribir_movil(&p, &format!("pins/draw/anot-{u_pdf}.marcas"), "m1:0.5:2.25:⭐");
+    escribir_movil(&p, &format!("pins/draw/anot-{u_pdf}.espacios"), "3");
+    dibujo_movil(&p, &format!("anot-{u_docx}"), &["trazo-docx"]);
+    escribir_movil(&p, &format!("pins/draw/anot-{u_docx}.maqueta"), "420,280,280,100,1,0");
+    dibujo_movil(&p, &format!("anot-{u_epub}"), &["trazo-epub"]);
+    escribir_movil(&p, &format!("pins/draw/anot-{u_epub}.marcas"), "0.3:📌");
+    // Un temporal a medias no viaja.
+    escribir_movil(&p, &format!("pins/draw/anot-{u_pdf}.marcas.tmp"), "?");
+
+    p.vuelta_desde_pc();
+
+    // En el PC, el mismo mensaje con otra ruta da el mismo codigo: el lector
+    // encuentra lo anotado por el documento que tiene delante.
+    let raiz = p.raiz();
+    let (pdf, docx, epub) = (doc_en_pc(&p, "p"), doc_en_pc(&p, "d"), doc_en_pc(&p, "e"));
+    assert_eq!(anotado::adjunto_de(&raiz, &pdf).unwrap().uid, u_pdf);
+    let hoja = anotado::hoja_del_pdf(&raiz, &pdf, 2).unwrap();
+    assert_eq!(figuras(&std::fs::read_to_string(&hoja).unwrap()), ["trazo-pdf".to_string()].into());
+    let b_pdf = anotado::base_del_pdf(&raiz, &pdf, None).unwrap();
+    assert_eq!(anotado::leer(&b_pdf.fichero(".marcas")).as_deref(), Some("m1:0.5:2.25:⭐"));
+    assert_eq!(anotado::leer(&b_pdf.fichero(".espacios")).as_deref(), Some("3"));
+    assert!(!b_pdf.fichero(".marcas.tmp").exists(), "el temporal no viaja");
+    let b_docx = anotado::base_del_documento(&raiz, &docx).unwrap();
+    assert_eq!(figuras(&std::fs::read_to_string(b_docx.tinta()).unwrap()), ["trazo-docx".to_string()].into());
+    assert_eq!(
+        pixpin_sincro::anotado::Maqueta::de_texto(&anotado::leer(&b_docx.fichero(".maqueta")).unwrap()),
+        pixpin_sincro::anotado::Maqueta::de_texto("420,280,280,100,1,0")
+    );
+    let b_epub = anotado::base_del_documento(&raiz, &epub).unwrap();
+    assert_eq!(figuras(&std::fs::read_to_string(b_epub.tinta()).unwrap()), ["trazo-epub".to_string()].into());
+    assert_eq!(anotado::leer(&b_epub.fichero(".marcas")).as_deref(), Some("0.3:📌"));
+
+    // Y de vuelta: lo que se cambia en el PC llega al movil con el mismo
+    // nombre y en la forma que su `Scene` lee.
+    p.reloj.saltar(10_000);
+    anotado::escribir(&b_pdf.fichero(".espacios"), "1").unwrap();
+    adelantar(&b_pdf.fichero(".espacios"));
+    let con_otro = std::fs::read_to_string(&hoja).unwrap().replacen(
+        "\"elements\":[",
+        r#""elements":[{"id":"otro","type":"freedraw","x":1,"y":1,"width":2,"height":2,"seed":9,"version":1,"versionNonce":2,"updated":5,"points":[[0,0],[2,2]]},"#,
+        1,
+    );
+    std::fs::write(&hoja, con_otro).unwrap();
+    adelantar(&hoja);
+    p.vuelta_desde_pc();
+    assert_eq!(leer_movil(&p, &format!("pins/draw/anot-{u_pdf}.espacios")).as_deref(), Some("1"));
+    let alli = de_gz(&p.movil.raiz().join(format!("pins/draw/anot-{u_pdf}-p2.excalidraw.gz")));
+    assert_eq!(figuras(&alli), ["trazo-pdf".to_string(), "otro".into()].into());
+    assert!(puntos_del_movil(&alli), "{alli}");
+    p.quieto(GENERAL);
+}
+
+#[test]
+fn un_word_anotado_en_el_pc_llega_al_movil_con_los_nombres_y_textos_exactos() {
+    use pixpin_proyecto::anotado;
+    let p = montar("anotado-pc");
+    let g = p.guardados();
+    let raiz = p.raiz();
+    let ruta = almacen::guardar_adjunto(&raiz, &g.id, "acta.docx", b"PK acta").unwrap();
+    let sello = Sello { cuando: p.reloj.tic(), numero: 1, aparato: p.aparato_pc(), proyecto: g.id.clone() };
+    let m = Mensaje::adjunto(Clase::Archivo, "acta.docx", &ruta, 7, &sello);
+    let carpeta = almacen::carpeta(&raiz, &g.id);
+    cuaderno::anadir(&carpeta, &m).unwrap();
+    let doc = carpeta.join(&ruta);
+    let b = anotado::base_del_documento(&raiz, &doc).unwrap();
+    // Lo que deja el lector del PC: tinta con puntos `[x, y]`, maqueta,
+    // marcadores y sitio.
+    std::fs::create_dir_all(b.tinta().parent().unwrap()).unwrap();
+    std::fs::write(b.tinta(), lienzo_dibujado_en_el_pc()).unwrap();
+    anotado::escribir(&b.fichero(".maqueta"), "860,573,573,100,1,1").unwrap();
+    anotado::escribir(&b.fichero(".marcas"), "1790218080412:0.34022403:📌").unwrap();
+    anotado::escribir(&b.fichero(".sitio"), "0.6239229").unwrap();
+    // Caso negativo: lo de un documento que no es del chat se queda aqui.
+    std::fs::write(carpeta.join("archivos/suelto.docx.pixpin-lectura"), "marcadores 1:0.1:⭐").unwrap();
+
+    p.vuelta_desde_pc();
+
+    let base = &b.base;
+    assert!(base.starts_with("anot-") && base.len() == "anot-".len() + 10, "{base}");
+    let alli = de_gz(&p.movil.raiz().join(format!("pins/draw/{base}.excalidraw.gz")));
+    assert!(puntos_del_movil(&alli), "{alli}");
+    for (t, esperado) in [
+        (".maqueta", "860,573,573,100,1,1"),
+        (".marcas", "1790218080412:0.34022403:📌"),
+        (".sitio", "0.6239229"),
+    ] {
+        assert_eq!(leer_movil(&p, &format!("pins/draw/{base}{t}")).as_deref(), Some(esperado), "{t}");
+    }
+    let nombres: Vec<String> = std::fs::read_dir(p.movil.raiz().join("pins/draw"))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    assert!(nombres.iter().all(|n| !n.contains("pixpin-lectura")), "{nombres:?}");
+    // Y el movil encuentra el mensaje por su codigo.
+    let alla = p
+        .movil
+        .leer_mensajes()
+        .into_iter()
+        .find(|x| kotlin::cadena(x, "id") == Some(m.id.as_str()))
+        .unwrap();
+    assert_eq!(format!("anot-{}", kotlin::unico(&alla)), *base);
+    p.quieto(GENERAL);
+}
+
+#[test]
+fn los_marcadores_de_un_lienzo_la_voz_el_sitio_y_los_del_pdf_de_un_proyecto_tambien_viajan() {
+    use pixpin_proyecto::anotado;
+    let p = montar("anotado-lienzo");
+    // Un lienzo del movil con sus marcadores al lado.
+    proyecto_del_movil(&p);
+    escribir_movil(&p, "pins/draw/d1.marcas", "k:10.0:20.0:🏠");
+    // Un Word con el verde de la voz y el punto de lectura.
+    let u_w = adjunto_movil(&p, "w", "4_acta.docx", b"PK");
+    escribir_movil(&p, &format!("pins/draw/anot-{u_w}.voz"), "12:0.4");
+    escribir_movil(&p, &format!("pins/draw/anot-{u_w}.sitio"), "0.37");
+    p.vuelta_desde_pc();
+    let raiz = p.raiz();
+    let lienzo = almacen::lienzo(&raiz, "pr-1", "d1");
+    let marcas = anotado::marcas_del_lienzo(&lienzo).unwrap();
+    assert_eq!(anotado::leer(&marcas).as_deref(), Some("k:10.0:20.0:🏠"));
+    let b = anotado::base_del_documento(&raiz, &doc_en_pc(&p, "w")).unwrap();
+    assert_eq!(anotado::leer(&b.fichero(".voz")).as_deref(), Some("12:0.4"));
+    assert_eq!(anotado::leer(&b.fichero(".sitio")).as_deref(), Some("0.37"));
+
+    // El PDF de un proyecto: marcadores y espacios con el codigo del proyecto.
+    let u_p = kotlin::unico_de_proyecto(&p.movil.proyecto_portatil("pr-1").unwrap().unwrap());
+    assert_eq!(u_p, "RRRRRRRRRR");
+    escribir_movil(&p, &format!("pins/draw/anot-{u_p}.marcas"), "m:0.1:0.5:⭐");
+    escribir_movil(&p, &format!("pins/draw/anot-{u_p}.espacios"), "2");
+    p.desde_movil(&["pr-1"]);
+    let bp = anotado::base_del_pdf(&raiz, Path::new("no-hace-falta.pdf"), Some("pr-1")).unwrap();
+    assert_eq!(bp.base, format!("anot-{u_p}"));
+    assert_eq!(anotado::leer(&bp.fichero(".marcas")).as_deref(), Some("m:0.1:0.5:⭐"));
+    assert_eq!(anotado::leer(&bp.fichero(".espacios")).as_deref(), Some("2"));
+
+    // Y al reves: marcadores puestos en el lienzo del PC llegan al movil.
+    p.reloj.saltar(10_000);
+    anotado::escribir(&marcas, "k:10.0:20.0:🏠|z:5.0:6.0:⭐").unwrap();
+    adelantar(&marcas);
+    p.vuelta_desde_pc();
+    assert_eq!(leer_movil(&p, "pins/draw/d1.marcas").as_deref(), Some("k:10.0:20.0:🏠|z:5.0:6.0:⭐"));
+    p.quieto("pr-1");
+    p.quieto(GENERAL);
+}
+
+#[test]
+fn borrar_el_mensaje_se_lleva_lo_anotado_en_los_dos_aparatos() {
+    use pixpin_proyecto::anotado;
+    let p = montar("anotado-borrar");
+    let u = adjunto_movil(&p, "p", "5_libro.pdf", b"%PDF");
+    let u_queda = adjunto_movil(&p, "q", "6_otro.pdf", b"%PDF-2");
+    dibujo_movil(&p, &format!("anot-{u}-p0"), &["t"]);
+    escribir_movil(&p, &format!("pins/draw/anot-{u}.marcas"), "x:0:0:⭐");
+    escribir_movil(&p, &format!("pins/draw/anot-{u_queda}.espacios"), "1");
+    p.vuelta_desde_pc();
+    let raiz = p.raiz();
+    let pdf = doc_en_pc(&p, "p");
+    let hoja = anotado::hoja_del_pdf(&raiz, &pdf, 0).unwrap();
+    let marcas = anotado::base_del_pdf(&raiz, &pdf, None).unwrap().fichero(".marcas");
+    assert!(hoja.is_file() && marcas.is_file());
+
+    // Borrado en el movil (lo que hace su chat): fuera el mensaje, su marca
+    // y lo anotado.
+    let (ido, quedan): (Vec<Json>, Vec<Json>) =
+        p.movil.leer_mensajes().into_iter().partition(|m| kotlin::cadena(m, "id") == Some("p"));
+    p.movil.escribir_mensajes(&quedan).unwrap();
+    p.movil
+        .anotar_borrados(&pixpin_sincro::disco::marcas_de(GENERAL, &ido, p.reloj.tic()))
+        .unwrap();
+    p.movil.borrar_anotado(GENERAL, &u);
+    p.vuelta_desde_pc();
+    assert!(!hoja.exists() && !marcas.exists(), "se fue con su mensaje");
+    // Caso negativo: lo del otro mensaje sigue.
+    let otro = anotado::base_del_pdf(&raiz, &doc_en_pc(&p, "q"), None).unwrap();
+    assert_eq!(anotado::leer(&otro.fichero(".espacios")).as_deref(), Some("1"));
+
+    // Y borrado en el PC, como lo borra su chat: llega al movil y se lleva lo suyo.
+    let g = p.pc.ficha_de(GENERAL).unwrap();
+    let carpeta = almacen::carpeta(&raiz, &g.id);
+    let q = p.mensajes_pc(&g.id).into_iter().find(|m| m.id == "q").unwrap();
+    let quedan: Vec<String> = std::fs::read_to_string(carpeta.join("guardados.jsonl"))
+        .unwrap()
+        .lines()
+        .filter(|l| !l.contains("\"id\":\"q\""))
+        .map(str::to_string)
+        .collect();
+    std::fs::write(carpeta.join("guardados.jsonl"), quedan.join("\n") + "\n").unwrap();
+    vista::anotar_borrados(&raiz, &g.id, std::slice::from_ref(&q), p.reloj.tic()).unwrap();
+    assert!(!otro.fichero(".espacios").exists(), "en el PC tambien se va");
+    p.vuelta_desde_pc();
+    assert!(p.movil.leer_mensajes().iter().all(|m| kotlin::cadena(m, "id") != Some("q")));
+    assert_eq!(leer_movil(&p, &format!("pins/draw/anot-{u_queda}.espacios")), None);
+}
+
+// ------------------------------- lo que el PC anota llega al movil (28-sep)
+
+/// Lo que hace el lector del PC al soltar un trazo (`lector_tinta::Capa::guardar`):
+/// lee la capa, le pone un trazo de `n` puntos tirado con el raton (muestras
+/// separadas, como llegan de Windows) y la escribe entera por un temporal.
+fn anotar_como_el_lector(hoja: &Path, n: usize, desde: f32) {
+    use pixpin_motor2d::elemento::{Elemento, Figura};
+    use pixpin_motor2d::excalidraw;
+    use pixpin_motor2d::vector::Punto2;
+    let lienzo = std::fs::read_to_string(hoja)
+        .ok()
+        .and_then(|t| excalidraw::leer(&t).ok())
+        .unwrap_or_else(excalidraw::Lienzo::vacio);
+    let mut escena = excalidraw::a_escena(&lienzo);
+    let puntos: Vec<Punto2> = (0..n)
+        .map(|i| {
+            let t = i as f32 / (n - 1) as f32;
+            // Media vuelta de circulo: nada que se parezca a una recta.
+            Punto2::nuevo(desde + 200.0 * (t * std::f32::consts::PI).cos(), 300.0 + 200.0 * (t * std::f32::consts::PI).sin())
+        })
+        .collect();
+    // Como lo deja el gesto del raton: el origen en el primer punto.
+    escena.anadir(Elemento {
+        x: puntos[0].x,
+        y: puntos[0].y,
+        figura: Figura::Lapiz { puntos, presiones: Vec::new(), opciones: Some(Default::default()) },
+        grosor: 1.0,
+        ..Elemento::default()
+    });
+    let nuevo = excalidraw::con_escena(&lienzo, &escena);
+    std::fs::create_dir_all(hoja.parent().unwrap()).unwrap();
+    let tmp = hoja.with_extension("excalidraw.tmp");
+    std::fs::write(&tmp, excalidraw::escribir(&nuevo)).unwrap();
+    std::fs::rename(&tmp, hoja).unwrap();
+}
+
+/// Cuantos trazos vivos hay y cuantos puntos lleva cada uno. Y que cada uno
+/// llega con sus puntos relativos y la caja de ellos: con la caja a cero el
+/// movil lo pinta como la raya de su primer punto al ultimo
+/// (`Renderer.sePierdeDePequeno`).
+fn trazos(texto: &str) -> Vec<usize> {
+    let v: serde_json::Value = serde_json::from_str(texto).unwrap();
+    v["elements"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["isDeleted"] != true && e["type"] == "freedraw")
+        .map(|e| {
+            let p = e["points"].as_array().unwrap();
+            let xs: Vec<f64> = p.iter().map(|q| q["x"].as_f64().unwrap()).collect();
+            let ys: Vec<f64> = p.iter().map(|q| q["y"].as_f64().unwrap()).collect();
+            let ancho = |l: &[f64]| {
+                l.iter().cloned().fold(f64::MIN, f64::max) - l.iter().cloned().fold(f64::MAX, f64::min)
+            };
+            assert!((e["width"].as_f64().unwrap() - ancho(&xs)).abs() < 1e-3, "caja: {e}");
+            assert!((e["height"].as_f64().unwrap() - ancho(&ys)).abs() < 1e-3, "caja: {e}");
+            assert_eq!((xs[0], ys[0]), (0.0, 0.0), "relativos a su x/y: {e}");
+            p.len()
+        })
+        .collect()
+}
+
+#[test]
+fn lo_que_el_pc_anota_en_un_pdf_que_el_movil_ya_tiene_le_llega_en_cada_vuelta() {
+    use pixpin_proyecto::anotado;
+    let p = montar("anota-pc");
+    let u = adjunto_movil(&p, "p", "1_plano.pdf", b"%PDF-1.4");
+    p.vuelta_desde_pc();
+    let raiz = p.raiz();
+    let pdf = doc_en_pc(&p, "p");
+    let hoja = anotado::hoja_del_pdf(&raiz, &pdf, 0).unwrap();
+    let alli = |p: &Par| {
+        leer_gz_movil(p, &format!("pins/draw/anot-{u}-p0.excalidraw.gz")).map(|t| trazos(&t)).unwrap_or_default()
+    };
+
+    // Lo que el PC ya tenia escrito como antes (caja a 0, puntos `[x, y]`):
+    // en el disco del PC se queda asi y sale arreglado.
+    let vieja = anotado::hoja_del_pdf(&raiz, &pdf, 1).unwrap();
+    std::fs::create_dir_all(vieja.parent().unwrap()).unwrap();
+    let antes = r#"{"elements":[{"id":"pc1","type":"freedraw","x":475.0,"y":1130.0,"width":0.0,"height":0.0,
+        "seed":1,"version":87,"opacity":100,"roughness":1,"pressures":[],"simulatePressure":true,
+        "points":[[0.0,0.0],[-16.8,-8.4],[-50.4,-14.9],[-113.9,-14.9],[-191.3,4.7]]}],"type":"excalidraw"}"#;
+    std::fs::write(&vieja, antes).unwrap();
+
+    // Primera vez: la hoja no tenia nada.
+    anotar_como_el_lector(&hoja, 40, 100.0);
+    p.vuelta_desde_pc();
+    assert_eq!(alli(&p), vec![40], "la primera anotacion llega con sus 40 puntos");
+    let p1 = leer_gz_movil(&p, &format!("pins/draw/anot-{u}-p1.excalidraw.gz")).unwrap();
+    assert_eq!(trazos(&p1), vec![5], "la de antes llega con su caja");
+    assert_eq!(std::fs::read_to_string(&vieja).unwrap(), antes, "en el PC no se reescribe");
+
+    // Segunda, enseguida: la vuelta tiene que ver el cambio.
+    anotar_como_el_lector(&hoja, 25, 500.0);
+    p.vuelta_desde_pc();
+    assert_eq!(alli(&p), vec![40, 25], "la segunda tambien llega");
+
+    // El movil abre la hoja y la guarda a su manera (sus campos, compacta):
+    // al PC le llega, y lo que el PC anota despues vuelve a llegar alli.
+    let rel = format!("pins/draw/anot-{u}-p0.excalidraw.gz");
+    let mut v: serde_json::Value = serde_json::from_str(&leer_gz_movil(&p, &rel).unwrap()).unwrap();
+    for e in v["elements"].as_array_mut().unwrap() {
+        e["presionFirme"] = json!(false);
+    }
+    gz(&p.movil.raiz().join(&rel), &v.to_string());
+    p.vuelta_desde_pc();
+    anotar_como_el_lector(&hoja, 30, 900.0);
+    p.vuelta_desde_pc();
+    assert_eq!(alli(&p), vec![40, 25, 30], "y la tercera, tras pasar por el movil");
+    p.quieto(GENERAL);
+}
+
+fn leer_gz_movil(p: &Par, rel: &str) -> Option<String> {
+    let f = p.movil.raiz().join(rel);
+    f.is_file().then(|| de_gz(&f))
+}

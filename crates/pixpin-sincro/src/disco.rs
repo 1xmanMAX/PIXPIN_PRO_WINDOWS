@@ -151,6 +151,41 @@ pub trait Disco {
     /// Un texto que llega, a como se guarda aqui (`Rutas.aLocal`).
     fn a_local(&self, chat: &str, texto: String) -> String;
 
+    /// **Lo anotado sobre los adjuntos de `chat` que hay en disco**
+    /// (`AnotacionesDelAdjunto.porUid`), en rutas portatiles
+    /// (`pins/draw/anot-<uid>…`). Por defecto, lo que haya en la carpeta
+    /// donde este aparato pone `pins/draw/` (la del movil); un aparato que
+    /// reparte esa carpeta en dos (el PC: los dibujos en `lienzos/`) lo dice.
+    fn anotado(&self, chat: &str) -> Vec<String> {
+        let dir = self.ruta(chat, &crate::anotado::rel("x", ".marcas"));
+        let Some(dir) = dir.parent() else {
+            return Vec::new();
+        };
+        let Ok(l) = std::fs::read_dir(dir) else {
+            return Vec::new();
+        };
+        let mut salida: Vec<String> = l
+            .flatten()
+            .filter(|e| e.path().is_file())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| crate::anotado::uid_del_nombre(n).is_some())
+            .map(|n| format!("{}/{n}", crate::anotado::CARPETA))
+            .collect();
+        salida.sort();
+        salida
+    }
+
+    /// Borra lo anotado sobre el mensaje `uid` de `chat` (`todoDe(...).delete()`):
+    /// sin su mensaje ya no viaja ni se abre.
+    fn borrar_anotado(&self, chat: &str, uid: &str) {
+        for rel in self.anotado(chat) {
+            let nombre = rel.rsplit('/').next().unwrap_or_default();
+            if crate::anotado::uid_del_nombre(nombre) == Some(uid) {
+                let _ = std::fs::remove_file(self.ruta(chat, &rel));
+            }
+        }
+    }
+
     // ------------------------------------------------------------ por defecto
 
     /// `Disco.apuntes`: uno por mensaje, por su codigo unico, y uno por cada
@@ -1254,14 +1289,23 @@ pub fn alcance_de<D: Disco + ?Sized>(d: &D, chat: &str) -> io::Result<Vec<(Strin
     let mut salida: Vec<(String, String)> = Vec::new();
     let poner = |rel: Option<String>, etiqueta: &str, salida: &mut Vec<(String, String)>| {
         let Some(rel) = rel else { return };
-        if salida.iter().any(|(r, _)| *r == rel) || !permitida(&rel) {
-            return;
+        // Los marcadores de un lienzo, con el (`marcasJuntoA`, v0.96).
+        let marcas = crate::anotado::marcas_junto_a(&rel);
+        for r in std::iter::once(rel).chain(marcas) {
+            if salida.iter().any(|(x, _)| *x == r) || !permitida(&r) {
+                continue;
+            }
+            if !d.ruta(chat, &r).is_file() {
+                continue;
+            }
+            salida.push((r, etiqueta.to_string()));
         }
-        if !d.ruta(chat, &rel).is_file() {
-            return;
-        }
-        salida.push((rel, etiqueta.to_string()));
     };
+    // Lo anotado sobre los adjuntos (PDF suelto, Word, libro), nombrado por
+    // el codigo del mensaje: tinta, marcadores, espacios, maqueta, voz y
+    // sitio. Una sola lectura de la carpeta por vuelta, como `porUid`.
+    let lista_anotado = d.anotado(chat);
+    let anotado = crate::anotado::por_uid(lista_anotado.iter().map(String::as_str));
     let dibujo = |id: Option<&str>| id.map(|i| format!("pins/draw/{i}.excalidraw.gz"));
     let croquis = |id: Option<&str>| id.map(|i| format!("croquis3d/{i}.croquis.gz"));
     let tabla = |id: Option<&str>| id.map(|i| format!("tablas/{}.json", limpio(i)));
@@ -1269,6 +1313,13 @@ pub fn alcance_de<D: Disco + ?Sized>(d: &D, chat: &str) -> io::Result<Vec<(Strin
         let etiqueta = etiqueta_de(&m);
         for rel in en_texto(&m.a_texto()) {
             poner(Some(rel), &etiqueta, &mut salida);
+        }
+        if kotlin::cadena(&m, "ruta").is_some()
+            && let Some(l) = anotado.get(&kotlin::unico(&m))
+        {
+            for rel in l {
+                poner(Some(rel.clone()), &etiqueta, &mut salida);
+            }
         }
         let referencia = kotlin::cadena(&m, "referencia");
         match kotlin::cadena(&m, "clase").unwrap_or_default() {
@@ -1302,6 +1353,12 @@ pub fn alcance_de<D: Disco + ?Sized>(d: &D, chat: &str) -> io::Result<Vec<(Strin
         let nombre = kotlin::cadena(&p, "nombre").unwrap_or_default().to_string();
         for rel in en_texto(&p.a_texto()) {
             poner(Some(rel), &nombre, &mut salida);
+        }
+        // Los marcadores y espacios de su PDF, con el codigo del proyecto.
+        if let Some(l) = anotado.get(&kotlin::unico_de_proyecto(&p)) {
+            for rel in l {
+                poner(Some(rel.clone()), &nombre, &mut salida);
+            }
         }
         let lista = |k: &str| {
             p.como_objeto()
