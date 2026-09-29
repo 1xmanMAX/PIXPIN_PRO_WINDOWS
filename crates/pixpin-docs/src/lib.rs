@@ -28,6 +28,7 @@ pub mod indice;
 pub mod lectura;
 pub mod md_vivo;
 pub mod pdf;
+pub mod tabla;
 pub mod vista;
 pub mod xml;
 

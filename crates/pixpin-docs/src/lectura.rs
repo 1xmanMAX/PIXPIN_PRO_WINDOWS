@@ -61,15 +61,30 @@ pub fn punto_del_tamano(actual: u32) -> usize {
         .unwrap_or(TAMANOS.len() - 1)
 }
 
-/// Los tipos de letra que se ofrecen. Son los que el pintor de la
-/// aplicacion sabe poner sin traer nada: la de la interfaz (Segoe UI) y la
-/// de ancho fijo (Consolas). El movil ofrece cuatro (`Lectura.LETRAS`):
-/// serif y cursiva piden una familia que el pintor todavia no deja elegir.
-pub const TIPOS: usize = 2;
+/// **Los tipos de letra, los cuatro del movil** (`Lectura.LETRAS`, en su
+/// orden): serif, sans, ancho fijo y cursiva. Son los mismos indices que
+/// viajan en la maqueta (`anot-<uid>.maqueta`), asi que la letra con la que
+/// se anoto en un aparato es la misma en el otro (K16). Antes el PC tenia
+/// dos (Segoe UI y Consolas) y los traducia a ojo: con otra letra el texto
+/// se parte en otros renglones y lo anotado cae en otra palabra.
+pub const TIPOS: usize = 4;
 
-/// Los grosores que se ofrecen: normal y gruesa. Mismo motivo que [`TIPOS`]:
-/// el pintor sabe negrita, no los cuatro pesos de CSS del movil.
-pub const GROSORES: usize = 2;
+/// Los grosores, los cuatro del movil (`Lectura.GROSORES`): 300, 400, 600 y
+/// 800 de CSS.
+pub const GROSORES: usize = 4;
+
+/// Los pesos de CSS de cada grosor.
+pub const PESOS: [u16; GROSORES] = [300, 400, 600, 800];
+
+/// La letra y el grosor con los que abre un documento que nunca se toco:
+/// los del movil (`prefsDeLectura.getInt("tipo", 0)` y `("grosor", 1)`).
+pub const TIPO_DE_FABRICA: u8 = 0;
+pub const GROSOR_DE_FABRICA: u8 = 1;
+
+/// La version del fichero. La 1 es la del PC de antes de K16: dos letras
+/// (0 Segoe UI, 1 Consolas) y dos grosores (0 normal, 1 gruesa), y la tinta
+/// en la maqueta propia del PC. Se lee y se traduce ([`de_texto`]).
+const VERSION: u32 = 2;
 
 /// Todo lo que se recuerda de un documento entre una lectura y la
 /// siguiente.
@@ -79,9 +94,9 @@ pub struct Ajustes {
     /// Por donde se iba, de 0 a 1 (Word, libro, pagina).
     pub sitio: f32,
     pub marcadores: Vec<Marcador>,
-    /// Que letra, de `0..TIPOS` (0 = la de siempre, 1 = ancho fijo).
+    /// Que letra, de `0..TIPOS` (0 serif, 1 sans, 2 ancho fijo, 3 cursiva).
     pub tipo: u8,
-    /// Que grosor, de `0..GROSORES` (0 = normal, 1 = gruesa).
+    /// Que grosor, de `0..GROSORES` (0 fina, 1 normal, 2 gruesa, 3 negra).
     pub grosor: u8,
     /// **La columna de texto con la que se anoto por primera vez**, en
     /// pixeles logicos; 0 si nunca se anoto. Es `columnaDeAnotar` del
@@ -101,6 +116,11 @@ pub struct Ajustes {
     /// guardan tal cual: quien las entiende es `pixpin_motor2d::marcas`, y
     /// este crate no depende del motor.
     pub marcas: String,
+    /// **Se leyo de un fichero de antes de K16** (version 1): la tinta que
+    /// hubiera junto al documento se hizo sobre la maqueta vieja del PC y el
+    /// lector la pasa una vez a la del movil. No se escribe: al guardar, el
+    /// fichero ya es de la version nueva.
+    pub de_antes: bool,
 }
 
 impl Default for Ajustes {
@@ -109,13 +129,14 @@ impl Default for Ajustes {
             tamano: 100,
             sitio: 0.0,
             marcadores: Vec::new(),
-            tipo: 0,
-            grosor: 0,
+            tipo: TIPO_DE_FABRICA,
+            grosor: GROSOR_DE_FABRICA,
             columna: 0,
             zoom: 1.0,
             espacios: 0,
             pagina: 0.0,
             marcas: String::new(),
+            de_antes: false,
         }
     }
 }
@@ -193,7 +214,7 @@ pub fn a_texto(a: &Ajustes) -> String {
     // Las lineas nuevas van detras: un PixPin anterior las salta (lee por
     // clave e ignora lo que no conoce) y el fichero le sigue sirviendo.
     format!(
-        "pixpin-lectura 1\ntamano {}\nsitio {}\nmarcadores {marcadores}\ntipo {}\ngrosor {}\ncolumna {}\nzoom {}\nespacios {}\npagina {}\nmarcas {}\n",
+        "pixpin-lectura {VERSION}\ntamano {}\nsitio {}\nmarcadores {marcadores}\ntipo {}\ngrosor {}\ncolumna {}\nzoom {}\nespacios {}\npagina {}\nmarcas {}\n",
         a.tamano,
         a.sitio,
         a.tipo,
@@ -210,18 +231,46 @@ pub fn a_texto(a: &Ajustes) -> String {
 
 pub fn de_texto(texto: &str) -> Ajustes {
     let mut a = Ajustes::default();
+    // Con la 1, el fichero es del PC de antes (sus letras y su maqueta): el
+    // PC siempre escribio la cabecera, asi que sin ella es un fichero roto y
+    // se lee como de hoy. Uno de una version futura, con las claves de hoy.
+    let version = texto
+        .lines()
+        .next()
+        .and_then(|l| l.strip_prefix("pixpin-lectura "))
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .unwrap_or(VERSION);
+    let vieja = version < VERSION;
+    a.de_antes = vieja;
+    if vieja {
+        // Lo que no diga el fichero viejo era Segoe UI normal: la sans del
+        // movil a su peso normal, no la serif de fabrica de ahora.
+        a.tipo = 1;
+        a.grosor = 1;
+    }
     for linea in texto.lines() {
         let (clave, valor) = linea.split_once(' ').unwrap_or((linea, ""));
         match clave {
+            // Las dos letras y los dos grosores del PC de antes, a los del
+            // movil: Segoe UI a la sans, Consolas a la de ancho fijo; la
+            // normal a la normal y la gruesa a la gruesa.
+            "tipo" if vieja => a.tipo = if valor.trim() == "1" { 2 } else { 1 },
+            "grosor" if vieja => a.grosor = if valor.trim() == "1" { 2 } else { 1 },
             "tamano" => a.tamano = tamano_valido(valor.trim().parse().unwrap_or(100)),
             "sitio" => a.sitio = valor.trim().parse::<f32>().unwrap_or(0.0).clamp(0.0, 1.0),
             "marcadores" => a.marcadores = marcadores_de_texto(valor),
-            "tipo" => a.tipo = valor.trim().parse::<u8>().unwrap_or(0).min(TIPOS as u8 - 1),
+            "tipo" => {
+                a.tipo = valor
+                    .trim()
+                    .parse::<u8>()
+                    .unwrap_or(TIPO_DE_FABRICA)
+                    .min(TIPOS as u8 - 1)
+            }
             "grosor" => {
                 a.grosor = valor
                     .trim()
                     .parse::<u8>()
-                    .unwrap_or(0)
+                    .unwrap_or(GROSOR_DE_FABRICA)
                     .min(GROSORES as u8 - 1)
             }
             // Una columna absurda solo puede venir de un fichero roto: se
@@ -333,6 +382,7 @@ mod pruebas {
             espacios: 3,
             pagina: 4.5,
             marcas: "1:0.5:2.25:⭐|2:0.5:7:🔖".into(),
+            de_antes: false,
         };
         let vuelta = de_texto(&a_texto(&a));
         assert_eq!(vuelta, a);
@@ -352,8 +402,32 @@ mod pruebas {
     }
 
     #[test]
+    fn un_fichero_del_pc_de_antes_traduce_su_letra_a_la_del_movil_y_avisa_de_su_tinta() {
+        // Segoe UI gruesa en la version 1: la sans del movil, gruesa.
+        let a = de_texto("pixpin-lectura 1\ntamano 230\ntipo 0\ngrosor 1\ncolumna 860\n");
+        assert_eq!((a.tipo, a.grosor), (1, 2));
+        assert!(a.de_antes, "su tinta es de la maqueta vieja del PC");
+        // Consolas normal: la de ancho fijo, normal.
+        let a = de_texto("pixpin-lectura 1\ntipo 1\ngrosor 0\n");
+        assert_eq!((a.tipo, a.grosor), (2, 1));
+        // Sin decir letra, la de antes (Segoe UI normal), no la de fabrica.
+        let a = de_texto("pixpin-lectura 1\ntamano 100\n");
+        assert_eq!((a.tipo, a.grosor), (1, 1));
+        // Caso negativo: lo que ya es de la version 2 se lee tal cual, y al
+        // guardarlo deja de ser «de antes».
+        let b = de_texto("pixpin-lectura 2\ntipo 0\ngrosor 3\n");
+        assert_eq!((b.tipo, b.grosor, b.de_antes), (0, 3, false));
+        let vuelta = de_texto(&a_texto(&a));
+        assert!(!vuelta.de_antes);
+        assert_eq!((vuelta.tipo, vuelta.grosor), (1, 1));
+        // Y sin fichero, la letra de fabrica del movil: serif normal.
+        assert_eq!((Ajustes::default().tipo, Ajustes::default().grosor), (0, 1));
+        assert_eq!(PESOS[Ajustes::default().grosor as usize], 400);
+    }
+
+    #[test]
     fn valores_imposibles_de_lo_nuevo_no_rompen_nada() {
-        let a = de_texto("tipo 9\ngrosor 7\ncolumna 999999\nzoom NaN\nespacios 255\npagina -3\n");
+        let a = de_texto("pixpin-lectura 2\ntipo 9\ngrosor 7\ncolumna 999999\nzoom NaN\nespacios 255\npagina -3\n");
         assert_eq!(a.tipo, (TIPOS - 1) as u8);
         assert_eq!(a.grosor, (GROSORES - 1) as u8);
         assert_eq!(a.columna, 20_000);

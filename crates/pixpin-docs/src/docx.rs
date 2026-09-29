@@ -12,6 +12,7 @@
 
 use crate::documento::{Alineacion, Bloque, Clase, Documento, Estilo, Imagen, Trozo};
 use crate::documento::{MARCA_IMAGEN, SEPARADOR_DE_CELDA};
+use crate::tabla::{Celda, FilaDeTabla};
 use crate::xml::Nodo;
 use crate::{ErrorDocs, Paquete};
 use std::collections::BTreeMap;
@@ -66,9 +67,12 @@ pub fn de_paquete(paquete: &mut Paquete, titulo: &str) -> Result<Documento, Erro
     };
     let relaciones = relaciones(paquete);
     let cuerpo = raiz.hijo("body").cloned().unwrap_or(raiz);
+    let pagina = ancho_de_texto(&cuerpo);
     let mut lector = Lector {
         paquete,
         relaciones,
+        tablas: 0,
+        pagina,
         doc: Documento {
             titulo: titulo.to_string(),
             ..Default::default()
@@ -108,6 +112,11 @@ struct Lector<'a, 'z> {
     paquete: &'a mut Paquete<'z>,
     relaciones: BTreeMap<String, String>,
     doc: Documento,
+    /// Cuantas tablas van leidas: numera la siguiente.
+    tablas: u32,
+    /// El ancho de texto de la pagina (`w:sectPr`), en veintavos de punto;
+    /// 0 si el documento no lo dice.
+    pagina: u32,
 }
 
 impl Lector<'_, '_> {
@@ -175,6 +184,7 @@ impl Lector<'_, '_> {
             clase,
             alineacion,
             trozos,
+            fila: None,
         });
     }
 
@@ -259,15 +269,29 @@ impl Lector<'_, '_> {
     }
 
     fn tabla(&mut self, t: &Nodo) {
+        // La rejilla de Word: el reparto de columnas que el usuario ve en
+        // Word. El lector la aplica en proporcion a la pagina.
+        let rejilla: Vec<u32> = t
+            .hijo("tblGrid")
+            .map(|g| {
+                g.elementos()
+                    .filter(|c| c.nombre == "gridCol")
+                    .map(|c| c.atributo("w").parse::<u32>().unwrap_or(0))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let numero = self.tablas;
+        self.tablas += 1;
         for fila in t.elementos() {
             if fila.nombre != "tr" {
                 continue;
             }
             let mut trozos: Vec<Trozo> = Vec::new();
+            let mut celdas: Vec<Celda> = Vec::new();
             for hijo in fila.elementos() {
                 // Una fila tambien puede traer sus celdas dentro de un
                 // control de contenido.
-                let celdas: Vec<&Nodo> = match hijo.nombre.as_str() {
+                let de_la_fila: Vec<&Nodo> = match hijo.nombre.as_str() {
                     "tc" => vec![hijo],
                     "sdt" => hijo
                         .hijo("sdtContent")
@@ -275,51 +299,102 @@ impl Lector<'_, '_> {
                         .unwrap_or_default(),
                     _ => continue,
                 };
-                for c in celdas {
+                for c in de_la_fila {
                     if !trozos.is_empty() {
                         trozos.push(Trozo::llano(SEPARADOR_DE_CELDA));
                     }
+                    let pr = c.hijo("tcPr");
+                    let columnas = pr
+                        .and_then(|pr| pr.hijo("gridSpan"))
+                        .and_then(|g| g.valor().parse::<u16>().ok())
+                        .unwrap_or(1)
+                        .clamp(1, 64);
                     // La continuacion de una celda unida hacia abajo no
-                    // trae nada suyo.
-                    let unida = c
-                        .hijo("tcPr")
+                    // trae nada suyo (el movil la deja vacia).
+                    let sigue = pr
                         .and_then(|pr| pr.hijo("vMerge"))
                         .is_some_and(|v| v.valor() != "restart");
-                    if unida {
-                        continue;
+                    let relleno = pr.and_then(|pr| pr.hijo("shd")).is_some_and(|s| {
+                        let fondo = s.atributo("fill").to_ascii_lowercase();
+                        !matches!(fondo.as_str(), "" | "auto" | "ffffff")
+                    });
+                    let mut propia: Vec<Trozo> = Vec::new();
+                    if !sigue {
+                        self.parrafos_de_celda(c, &mut propia, &mut true);
+                        // En la fila de una linea (buscar, exportar) los
+                        // parrafos de la celda con algo van separados por un
+                        // espacio; los vacios no dejan hueco.
+                        let (mut hay, mut hueco) = (false, false);
+                        for t in &propia {
+                            if t.texto == "\n" {
+                                hueco |= hay;
+                                continue;
+                            }
+                            if hueco {
+                                trozos.push(Trozo::llano(" "));
+                                hueco = false;
+                            }
+                            trozos.push(t.clone());
+                            hay = true;
+                        }
                     }
-                    let inicio = trozos.len();
-                    self.celda(c, inicio, &mut trozos);
+                    celdas.push(Celda {
+                        trozos: propia,
+                        columnas,
+                        sigue,
+                        relleno,
+                    });
                 }
             }
-            if !trozos.is_empty() {
-                self.doc.bloques.push(Bloque::nuevo(Clase::Fila, trozos));
+            if !trozos.is_empty() || !celdas.is_empty() {
+                let mut b = Bloque::nuevo(Clase::Fila, trozos);
+                b.fila = Some(FilaDeTabla {
+                    tabla: numero,
+                    rejilla: rejilla.clone(),
+                    pagina: self.pagina,
+                    celdas,
+                });
+                self.doc.bloques.push(b);
             }
         }
     }
 
-    /// El texto de una celda, con sus parrafos separados por un espacio: en
-    /// una fila de una linea no cabe mas, y partirla en varias romperia la
-    /// tabla.
-    ///
-    /// `inicio` es por donde empezaba esta celda dentro de la fila: el
-    /// espacio solo se mete entre dos parrafos **de la misma celda**, nunca
-    /// pegado al separador de celdas.
-    fn celda(&mut self, c: &Nodo, inicio: usize, salida: &mut Vec<Trozo>) {
+    /// El texto de una celda para pintarla en su sitio: cada parrafo en su
+    /// linea (`td p` del movil), y una tabla metida dentro, aplanada.
+    fn parrafos_de_celda(&mut self, c: &Nodo, salida: &mut Vec<Trozo>, primero: &mut bool) {
         for h in c.elementos() {
             match h.nombre.as_str() {
                 "p" => {
-                    let antes = salida.len();
-                    self.en_linea(h, Estilo::default(), salida);
-                    if salida.len() > antes && antes > inicio {
-                        salida.insert(antes, Trozo::llano(" "));
+                    // Cada parrafo tras el primero empieza con un salto,
+                    // tambien el vacio: el movil pone cada uno en su `<p>`
+                    // (el vacio, `<p>&nbsp;</p>`, con su renglon) y la fila
+                    // mide lo mismo aqui que alli (K16).
+                    if *primero {
+                        *primero = false;
+                    } else {
+                        salida.push(Trozo::llano("\n"));
                     }
+                    self.en_linea(h, Estilo::default(), salida);
                 }
-                "tbl" | "sdt" | "sdtContent" => self.celda(h, inicio, salida),
+                "tbl" | "tr" | "tc" | "sdt" | "sdtContent" => self.parrafos_de_celda(h, salida, primero),
                 _ => {}
             }
         }
     }
+}
+
+/// **El ancho de texto de la pagina**: el papel menos los dos margenes, de
+/// la seccion del final del cuerpo (la de todo el documento si solo hay una).
+/// Es contra lo que Word dibuja la rejilla de una tabla; 0 si no lo dice.
+fn ancho_de_texto(cuerpo: &Nodo) -> u32 {
+    let Some(s) = cuerpo.elementos().filter(|e| e.nombre == "sectPr").last() else {
+        return 0;
+    };
+    let numero = |e: Option<&Nodo>, a: &str| e.and_then(|e| e.atributo(a).parse::<i64>().ok()).unwrap_or(0);
+    let papel = numero(s.hijo("pgSz"), "w");
+    let margenes = s.hijo("pgMar");
+    let texto = papel - numero(margenes, "left") - numero(margenes, "right");
+    if papel > 0 && texto > 0 { texto as u32 } else { 0 }
 }
 
 /// «Heading1», «Ttulo1» (asi escribe Word «Titulo 1» en espanol), «Title»…
@@ -460,6 +535,62 @@ mod pruebas {
         assert!(d.bloques.iter().all(|b| b.clase == Clase::Fila));
         assert_eq!(d.bloques[0].texto(), format!("a{SEPARADOR_DE_CELDA}b"));
         assert_eq!(d.bloques[1].texto(), format!("c{SEPARADOR_DE_CELDA}d"));
+    }
+
+    /// Una tabla como las del Word del usuario: rejilla, cabecera con fondo,
+    /// una celda que ocupa dos columnas y otra unida hacia abajo.
+    const TABLA_COMPLETA: &str = r#"<w:tbl><w:tblGrid><w:gridCol w:w="500"/><w:gridCol w:w="6000"/><w:gridCol w:w="2000"/></w:tblGrid>
+        <w:tr><w:tc><w:tcPr><w:shd w:fill="D9D9D6"/></w:tcPr><w:p><w:r><w:t>N</w:t></w:r></w:p></w:tc>
+              <w:tc><w:tcPr><w:gridSpan w:val="2"/><w:shd w:fill="auto"/></w:tcPr><w:p><w:r><w:t>Referencia</w:t></w:r></w:p><w:p><w:r><w:t>y enlace</w:t></w:r></w:p><w:p/></w:tc></w:tr>
+        <w:tr><w:tc><w:tcPr><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>1</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>Love</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Cerrado</w:t></w:r></w:p></w:tc></w:tr>
+        <w:tr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p><w:r><w:t>oculto</w:t></w:r></w:p></w:tc>
+              <w:tc><w:p><w:r><w:t>Li</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Abierto</w:t></w:r></w:p></w:tc></w:tr>
+      </w:tbl>
+      <w:sectPr><w:pgSz w:w="11906"/><w:pgMar w:left="720" w:right="720"/></w:sectPr>"#;
+
+    #[test]
+    fn una_tabla_de_word_guarda_sus_celdas_con_rejilla_uniones_y_fondo() {
+        let d = leer_cuerpo(TABLA_COMPLETA);
+        assert_eq!(d.bloques.len(), 3);
+        let filas: Vec<&FilaDeTabla> = d.bloques.iter().map(|b| b.fila.as_ref().expect("fila de Word")).collect();
+        assert!(filas.iter().all(|f| f.tabla == 0 && f.rejilla == vec![500, 6000, 2000]));
+        assert_eq!(filas[0].pagina, 11906 - 1440, "papel menos margenes");
+        let cab = &filas[0].celdas;
+        assert_eq!(cab.len(), 2);
+        assert!(cab[0].relleno, "D9D9D6 es fondo");
+        assert!(!cab[1].relleno, "auto no es fondo");
+        assert_eq!(cab[1].columnas, 2);
+        // Cada parrafo en su linea, tambien el vacio del final: el movil lo
+        // pinta como `<p>&nbsp;</p>` y la fila mide un renglon mas (K16).
+        assert_eq!(cab[1].texto(), "Referencia
+y enlace
+");
+        assert!(!filas[1].celdas[0].sigue);
+        assert!(filas[2].celdas[0].sigue, "la continuacion de la union");
+        assert_eq!(filas[2].celdas[0].texto(), "", "no trae nada suyo");
+        // La fila en una linea (buscar, exportar) sigue como antes.
+        assert_eq!(d.bloques[0].texto(), format!("N{SEPARADOR_DE_CELDA}Referencia y enlace"));
+        assert_eq!(d.bloques[2].texto(), format!("Li{SEPARADOR_DE_CELDA}Abierto"), "sin nada delante, sin raya delante");
+    }
+
+    #[test]
+    fn dos_tablas_seguidas_llevan_numeros_distintos_y_sin_seccion_la_pagina_es_cero() {
+        let t = r#"<w:tbl><w:tr><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"#;
+        let d = leer_cuerpo(&format!("{t}{t}"));
+        let n: Vec<u32> = d.bloques.iter().map(|b| b.fila.as_ref().unwrap().tabla).collect();
+        assert_eq!(n, vec![0, 1]);
+        assert_eq!(d.bloques[0].fila.as_ref().unwrap().pagina, 0);
+        assert!(d.bloques[0].fila.as_ref().unwrap().rejilla.is_empty());
+    }
+
+    #[test]
+    fn una_imagen_dentro_de_una_celda_se_guarda_una_sola_vez() {
+        let cuerpo = r#"<w:tbl><w:tr><w:tc><w:p><w:r><w:drawing><a:blip r:embed="rId5"/></w:drawing></w:r></w:p></w:tc></w:tr></w:tbl>"#;
+        let bytes = docx_de(cuerpo, &[("word/media/foto.png", b"foo")]);
+        let mut p = Paquete::de_bytes(&bytes).unwrap();
+        let d = de_paquete(&mut p, "t").unwrap();
+        assert_eq!(d.imagenes.len(), 1);
     }
 
     #[test]

@@ -362,6 +362,69 @@ fn contenido(
                 }
                 c.push_str("ET Q\n");
             }
+            // El numero de una cota: girado con su raya alrededor de su
+            // centro y con halo. El halo es el mismo renglon trazado (modo de
+            // texto 1) con el grosor del halo y las juntas redondas, y encima
+            // el relleno (modo 0): primero el halo, como el movil, o se
+            // comeria los perfiles de las letras.
+            Orden::Rotulo {
+                texto,
+                x,
+                y,
+                tam,
+                familia,
+                color,
+                halo,
+                grosor_halo,
+                centro,
+                angulo,
+            } => {
+                let linea_base = pixpin_motor2d::texto::fuente_por_nombre(familia)
+                    .map_or(exportar::LINEA_BASE, |f| f.linea_base());
+                c.push_str("q ");
+                r.alfa(color.a, &mut c);
+                if *angulo != 0.0 {
+                    let (s, co) = angulo.sin_cos();
+                    let (cx, cy) = (centro.x, centro.y);
+                    let _ = write!(
+                        c,
+                        "{:.5} {:.5} {:.5} {:.5} {} {} cm ",
+                        co,
+                        s,
+                        -s,
+                        co,
+                        n(cx - cx * co + cy * s),
+                        n(cy - cx * s - cy * co)
+                    );
+                }
+                let fuente = if letra_propia.is_some() { "F2" } else { "F1" };
+                let mut renglon = String::new();
+                match letra_propia {
+                    Some(l) => {
+                        renglon.push('<');
+                        for ch in texto.chars() {
+                            let g = l.glifo(ch).unwrap_or(0);
+                            r.glifos.entry(g).or_insert(ch);
+                            let _ = write!(renglon, "{g:04X}");
+                        }
+                        renglon.push('>');
+                    }
+                    None => {
+                        let _ = write!(renglon, "({})", texto_pdf(texto));
+                    }
+                }
+                let base = y + tam * linea_base;
+                for (modo, tinta) in [("1 Tr", format!("{} RG {} w 1 j 1 J", rgb(*halo), n(*grosor_halo))), ("0 Tr", format!("{} rg", rgb(*color)))] {
+                    let _ = write!(
+                        c,
+                        "{tinta} BT /{fuente} {} Tf {modo} 1 0 0 -1 {} {} Tm {renglon} Tj ET ",
+                        n(*tam),
+                        n(*x),
+                        n(base)
+                    );
+                }
+                c.push_str("Q\n");
+            }
             Orden::Imagen {
                 id_objeto,
                 x,
@@ -370,6 +433,7 @@ fn contenido(
                 alto,
                 opacidad,
                 recorte,
+                angulo,
             } => {
                 // Sin pixeles, su hueco: una imagen que no se encuentra no
                 // rompe la pagina.
@@ -379,6 +443,22 @@ fn contenido(
                 r.imagenes.insert(*id_objeto);
                 c.push_str("q ");
                 r.alfa(*opacidad, &mut c);
+                // Girada alrededor del centro de su caja, con la misma cuenta
+                // que el grafito: una foto girada en el movil sale girada.
+                if *angulo != 0.0 {
+                    let (s, co) = angulo.sin_cos();
+                    let (cx, cy) = (*x + *ancho / 2.0, *y + *alto / 2.0);
+                    let _ = write!(
+                        c,
+                        "{:.5} {:.5} {:.5} {:.5} {} {} cm ",
+                        co,
+                        s,
+                        -s,
+                        co,
+                        n(cx - cx * co + cy * s),
+                        n(cy - cx * s - cy * co)
+                    );
+                }
                 // **Recortada**, la imagen entera estirada y corrida para que
                 // su trozo caiga en la caja, y la caja como recorte: el PDF no
                 // sabe pintar un trozo de una imagen, pero si recortar. Asi el

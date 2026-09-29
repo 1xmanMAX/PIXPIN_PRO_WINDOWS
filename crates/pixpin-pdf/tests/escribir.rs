@@ -72,6 +72,7 @@ fn el_pdf_escrito_abre_con_windows_y_pinta_cada_hoja_en_su_pagina() {
             alto: 100.0,
             opacidad: 1.0,
             recorte: None,
+            angulo: 0.0,
         }]),
     ];
     let bytes = de_hojas(&hojas, Some(ColorRgba::opaco(1.0, 1.0, 1.0)), &|id| {
@@ -234,6 +235,7 @@ fn una_imagen_recortada_sale_en_el_pdf_con_solo_su_trozo() {
         alto: 100.0,
         opacidad: 1.0,
         recorte,
+        angulo: 0.0,
     };
     let verde = Some(pixpin_motor2d::RecorteImagen {
         x: 20.0,

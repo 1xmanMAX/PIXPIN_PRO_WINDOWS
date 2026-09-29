@@ -233,6 +233,7 @@ impl Estado {
             clase,
             alineacion,
             trozos,
+            fila: None,
         });
     }
 

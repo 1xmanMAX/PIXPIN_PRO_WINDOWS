@@ -17,6 +17,7 @@
 #![deny(clippy::undocumented_unsafe_blocks)]
 
 pub mod aligerar;
+pub mod cocido;
 pub mod escribir;
 pub mod letra;
 pub mod plano;

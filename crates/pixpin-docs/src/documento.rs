@@ -76,6 +76,12 @@ pub struct Bloque {
     pub clase: Clase,
     pub alineacion: Alineacion,
     pub trozos: Vec<Trozo>,
+    /// En una fila de tabla de un Word, sus celdas contadas (columnas que
+    /// ocupa, uniones, rejilla). `trozos` sigue siendo la fila en una linea
+    /// con [`SEPARADOR_DE_CELDA`]: es lo que buscan, exportan y guardan los
+    /// demas. Un libro o una pagina no la traen y se parte por el separador
+    /// (`tabla::celdas_de`).
+    pub fila: Option<crate::tabla::FilaDeTabla>,
 }
 
 impl Bloque {
@@ -84,6 +90,7 @@ impl Bloque {
             clase,
             alineacion: Alineacion::default(),
             trozos,
+            fila: None,
         }
     }
 
