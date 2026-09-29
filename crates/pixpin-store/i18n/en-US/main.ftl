@@ -1251,6 +1251,8 @@ zona-nombre-pagina = Zone of page { $pagina }
 zona-nombre-lienzo = Zone of { $nombre }
 zona-lienzo = canvas
 zona-hoja-lienzo = Canvas
+# Linked zone that leads to no canvas (salto_por_enlace).
+zona-enlace-roto = This zone does not lead to any canvas in this project
 
 ## The canvas toolbar grouped like the phone's (GRUPOS_DE_FABRICA)
 herramientas-mano = Select and move
@@ -1272,3 +1274,23 @@ barra-pista-deshacer = Undo (Ctrl+Z)
 barra-pista-rehacer = Redo (Ctrl+Y)
 barra-pista-salir = Exit (Esc)
 ajustes-herramientas-sueltas = Always visible
+
+## PDF reader: «To project» (the notes move to a project's sheets and travel when syncing)
+lector-al-proyecto = To project
+lector-al-proyecto-hecho = It's in projects now, with your notes
+lector-al-proyecto-fallo = The project could not be created
+
+## Word and book reader: the four types and four weights of the phone (K16)
+lector-letra-serif = Serif
+lector-letra-sans = Sans
+lector-letra-cursiva = Cursive
+lector-grosor-fina = Light
+lector-grosor-negra = Black
+
+## Screen annotator: its pill (CapaPantalla.kt on the phone) and saving to «Saved messages»
+anotador-rotulo-dibujando = Alt + double middle click: click through
+anotador-rotulo-atravesando = Alt + double middle click: draw again
+anotador-globo-titulo = Annotated screen
+anotador-globo-guardado = Saved to Saved messages
+anotador-globo-fallo = Could not save to Saved messages
+anotador-globo-copiado = Copied to the clipboard

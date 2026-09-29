@@ -1252,6 +1252,8 @@ zona-nombre-pagina = Zona de la página { $pagina }
 zona-nombre-lienzo = Zona de { $nombre }
 zona-lienzo = lienzo
 zona-hoja-lienzo = Lienzo
+# Zona vinculada que no lleva a ningun lienzo (salto_por_enlace).
+zona-enlace-roto = Esta zona no lleva a ningún lienzo de este proyecto
 
 ## La barra del lienzo agrupada como la del movil (GRUPOS_DE_FABRICA)
 herramientas-mano = Elegir y mover
@@ -1273,3 +1275,23 @@ barra-pista-deshacer = Deshacer (Ctrl+Z)
 barra-pista-rehacer = Rehacer (Ctrl+Y)
 barra-pista-salir = Salir (Esc)
 ajustes-herramientas-sueltas = Siempre a la vista
+
+## Lector de PDF: «Al proyecto» (lo anotado pasa a las hojas de un proyecto y viaja al sincronizar)
+lector-al-proyecto = Al proyecto
+lector-al-proyecto-hecho = Ya está en proyectos, con lo anotado
+lector-al-proyecto-fallo = No se pudo crear el proyecto
+
+## Lector de Word y libros: las cuatro letras y los cuatro grosores del movil (K16)
+lector-letra-serif = Serif
+lector-letra-sans = Sans
+lector-letra-cursiva = Cursiva
+lector-grosor-fina = Fina
+lector-grosor-negra = Negra
+
+## Anotador de pantalla: su pastilla (CapaPantalla.kt del movil) y guardar en «Mensajes guardados»
+anotador-rotulo-dibujando = Alt + doble clic central: clic a través
+anotador-rotulo-atravesando = Alt + doble clic central: volver a dibujar
+anotador-globo-titulo = Pantalla anotada
+anotador-globo-guardado = Guardado en Mensajes guardados
+anotador-globo-fallo = No se pudo guardar en Mensajes guardados
+anotador-globo-copiado = Copiada al portapapeles

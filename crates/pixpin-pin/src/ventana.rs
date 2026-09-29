@@ -2346,6 +2346,39 @@ fn pintar_anotaciones(p: &pixpin_render::Pintor, i: &PinInterno, margen: f32) {
                 },
                 color(*c),
             ),
+            // El numero de una cota: girado con su raya y con halo, como en
+            // el lienzo (`dibujo::pintar`).
+            Orden::Rotulo {
+                texto,
+                x,
+                y,
+                tam,
+                familia,
+                color: c,
+                halo,
+                grosor_halo,
+                centro,
+                angulo,
+            } => {
+                let k = (fx + fy) / 2.0;
+                p.girado((centro.x * fx + margen, centro.y * fy + margen), *angulo, |p| {
+                    p.texto_con_halo(
+                        texto,
+                        x * fx + margen,
+                        y * fy + margen,
+                        *tam * k,
+                        &pixpin_render::letras::Letra {
+                            familia,
+                            negrita: false,
+                            cursiva: false,
+                            interlineado: pixpin_motor2d::texto::interlineado_de(familia),
+                        },
+                        color(*c),
+                        color(*halo),
+                        *grosor_halo * k,
+                    )
+                });
+            }
             // El velo del foco (D51) cubre el CONTENIDO del pin, no la
             // ventana entera: la sombra queda fuera del oscurecido.
             Orden::Velo { hueco, color: c } => {

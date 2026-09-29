@@ -55,6 +55,9 @@ pub enum BotonGesto {
     Derecho,
     /// Alt + central: seleccionar y dejar un pin en vivo (D140).
     Central,
+    /// Alt + doble clic central: abrir el anotador de pantalla (2026-09-28).
+    /// No es un arrastre: el punto es donde se hizo el segundo clic.
+    DobleCentral,
 }
 
 /// Primer identificador de la seccion «Grupos ocultos»: al elegir uno, el
@@ -293,6 +296,7 @@ extern "system" fn procedimiento(
             let boton = match wparam.0 {
                 0 => BotonGesto::Izquierdo,
                 1 => BotonGesto::Derecho,
+                crate::gestos::GESTO_DOBLE_CENTRAL => BotonGesto::DobleCentral,
                 _ => BotonGesto::Central,
             };
             // Las coordenadas van en dos palabras de 16 bits con signo: un

@@ -437,6 +437,23 @@ impl VentanaOverlay {
         }
     }
 
+    /// Que pulsarla NO la active (`WS_EX_NOACTIVATE`): los clics le llegan,
+    /// pero el foco y el teclado se quedan en la aplicacion donde estaban.
+    /// Es lo que necesita la pastilla del anotador de pantalla con el clic a
+    /// traves puesto (el `FLAG_NOT_FOCUSABLE` de la barra de
+    /// `CapaPantalla.kt` del movil): se pulsa para volver a dibujar sin
+    /// quitarle el teclado a nadie.
+    pub fn poner_sin_activar(&self) {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GWL_EXSTYLE, GetWindowLongPtrW, SetWindowLongPtrW, WS_EX_NOACTIVATE,
+        };
+        // SAFETY: lee y escribe el estilo extendido de una ventana propia.
+        unsafe {
+            let actual = GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) as u32;
+            SetWindowLongPtrW(self.hwnd, GWL_EXSTYLE, (actual | WS_EX_NOACTIVATE.0) as isize);
+        }
+    }
+
     /// Coloca la ventana de composicion del IME donde se escribe (D57):
     /// sin esto el japones o el chino se componen en la esquina de la
     /// pantalla, lejos de donde mira el usuario. `p` es local a la ventana.

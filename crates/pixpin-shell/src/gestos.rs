@@ -23,6 +23,12 @@
 //!
 //! Mientras un overlay esta abierto el gancho se suspende: un Alt+clic
 //! dentro del overlay es del overlay, no un gesto nuevo.
+//!
+//! El cuarto gesto, **Alt + doble clic central** (2026-09-28), abre el
+//! anotador de pantalla; con el anotador abierto, alterna su clic a traves
+//! (`DobleCentral`, `EscuchaAnotador`). El primer clic del par es un clic
+//! corriente (se devuelve como cualquier Alt+clic sin arrastre); solo el
+//! segundo, pulsacion y soltada, se lo traga el gancho.
 
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, AtomicUsize, Ordering};
 
@@ -59,6 +65,9 @@ static EN_CURSO: AtomicBool = AtomicBool::new(false);
 pub const UMBRAL_ARRASTRE: i32 = 8;
 /// Sin boton a la espera.
 const NINGUNO: usize = usize::MAX;
+/// El `wParam` de `WM_GESTO` para Alt + doble clic central (0, 1 y 2 son
+/// los arrastres con cada boton).
+pub const GESTO_DOBLE_CENTRAL: usize = 3;
 /// El boton tragado que todavia no se sabe si es clic o arrastre (0, 1 o 2),
 /// o `NINGUNO`.
 static PENDIENTE: AtomicUsize = AtomicUsize::new(NINGUNO);
@@ -90,6 +99,115 @@ impl PausaGestos {
 impl Drop for PausaGestos {
     fn drop(&mut self) {
         EDITORES.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+// ------------------------------------------------ Alt + doble clic central
+
+/// **Reconoce Alt + doble clic central** (el cuarto gesto, 2026-09-28: abre
+/// el anotador de pantalla, y con el anotador abierto alterna el «clic a
+/// traves»). Puro: el gancho le da la hora (`MSLLHOOKSTRUCT::time`, en ms) y
+/// el sitio de cada pulsacion central.
+///
+/// Las reglas son las de Windows para un doble clic, para que se sienta
+/// igual que cualquier otro: el segundo clic dentro de `GetDoubleClickTime`
+/// y dentro del rectangulo `SM_CXDOUBLECLK x SM_CYDOUBLECLK` centrado en el
+/// primero. Y los dos con Alt solo: un doble clic central sin Alt es de la
+/// aplicacion de debajo y pasa tal cual.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct DobleCentral {
+    /// La pulsacion anterior con Alt que todavia puede ser la primera.
+    primera: Option<(u32, i32, i32)>,
+}
+
+impl DobleCentral {
+    /// Una pulsacion central. `true` si completa el doble clic; entonces se
+    /// olvida, y un tercer clic empieza otro (como hace Windows).
+    pub fn pulsacion(
+        &mut self,
+        t: u32,
+        (x, y): (i32, i32),
+        con_alt: bool,
+        tiempo_doble: u32,
+        (hx, hy): (i32, i32),
+    ) -> bool {
+        if !con_alt {
+            self.primera = None;
+            return false;
+        }
+        if let Some((t0, x0, y0)) = self.primera
+            // `wrapping_sub`: el reloj de milisegundos da la vuelta.
+            && t.wrapping_sub(t0) <= tiempo_doble
+            && (x - x0).abs() * 2 <= hx
+            && (y - y0).abs() * 2 <= hy
+        {
+            self.primera = None;
+            return true;
+        }
+        self.primera = Some((t, x, y));
+        false
+    }
+
+    /// Otro boton en medio: ya no es un doble clic.
+    pub fn olvidar(&mut self) {
+        self.primera = None;
+    }
+}
+
+thread_local! {
+    /// El reconocedor vive en el hilo del gancho, el unico que lo toca.
+    static DOBLE: std::cell::Cell<DobleCentral> = const { std::cell::Cell::new(DobleCentral { primera: None }) };
+}
+/// La soltada del segundo clic central tambien se traga: la pulsacion ya se
+/// la trago el gancho, y dejar pasar solo la soltada entregaria medio clic.
+static TRAGAR_SOLTADA_CENTRAL: AtomicBool = AtomicBool::new(false);
+/// El anotador de pantalla abierto que escucha Alt + doble clic central
+/// (su ventana), o 0. Mientras haya uno el gesto es SUYO, este el gancho
+/// suspendido o no: con el clic a traves puesto, el raton es de la
+/// aplicacion de debajo y el gesto es la unica manera de volver a dibujar
+/// sin buscar la pastilla.
+static ANOTADOR: AtomicIsize = AtomicIsize::new(0);
+/// El mensaje con que se despierta a esa ventana.
+static MENSAJE_ANOTADOR: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// El anotador tiene un Alt + doble clic central sin leer.
+static PEDIDO_ANOTADOR: AtomicBool = AtomicBool::new(false);
+
+/// Mientras viva, Alt + doble clic central va al anotador de pantalla
+/// `hwnd` (despertandolo con `mensaje`) en vez de abrir otro.
+pub struct EscuchaAnotador(());
+
+impl EscuchaAnotador {
+    pub fn tomar(hwnd: HWND, mensaje: u32) -> Self {
+        PEDIDO_ANOTADOR.store(false, Ordering::SeqCst);
+        MENSAJE_ANOTADOR.store(mensaje, Ordering::SeqCst);
+        ANOTADOR.store(hwnd.0 as isize, Ordering::SeqCst);
+        EscuchaAnotador(())
+    }
+}
+
+impl Drop for EscuchaAnotador {
+    fn drop(&mut self) {
+        ANOTADOR.store(0, Ordering::SeqCst);
+        PEDIDO_ANOTADOR.store(false, Ordering::SeqCst);
+    }
+}
+
+/// Si llego un Alt + doble clic central para el anotador. Se lee una vez.
+pub fn tomar_doble_central_del_anotador() -> bool {
+    PEDIDO_ANOTADOR.swap(false, Ordering::SeqCst)
+}
+
+/// El tiempo y la holgura de doble clic de Windows, como los tenga puestos
+/// el usuario (Panel de control > Mouse).
+fn reglas_de_doble_clic() -> (u32, (i32, i32)) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime;
+    use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXDOUBLECLK, SM_CYDOUBLECLK};
+    // SAFETY: consultas de configuracion del sistema, sin precondiciones.
+    unsafe {
+        (
+            GetDoubleClickTime(),
+            (GetSystemMetrics(SM_CXDOUBLECLK), GetSystemMetrics(SM_CYDOUBLECLK)),
+        )
     }
 }
 
@@ -262,6 +380,69 @@ extern "system" fn procedimiento(codigo: i32, wparam: WPARAM, lparam: LPARAM) ->
         return unsafe { CallNextHookEx(None, codigo, wparam, lparam) };
     }
 
+    // **Alt + doble clic central** (ver `DobleCentral`). Va antes que lo
+    // demas: su segunda pulsacion no es un clic pendiente ni un arrastre.
+    if mensaje == WM_MBUTTONUP && TRAGAR_SOLTADA_CENTRAL.swap(false, Ordering::SeqCst) {
+        return LRESULT(1);
+    }
+    if matches!(mensaje, WM_LBUTTONDOWN | WM_RBUTTONDOWN) {
+        DOBLE.with(|d| {
+            let mut v = d.get();
+            v.olvidar();
+            d.set(v);
+        });
+    }
+    if mensaje == WM_MBUTTONDOWN {
+        let (tiempo, holgura) = reglas_de_doble_clic();
+        let con_alt = solo_alt();
+        let doble = DOBLE.with(|d| {
+            let mut v = d.get();
+            let doble = v.pulsacion(info.time, (info.pt.x, info.pt.y), con_alt, tiempo, holgura);
+            d.set(v);
+            doble
+        });
+        if doble {
+            let anotador = ANOTADOR.load(Ordering::SeqCst);
+            let destino = DESTINO.load(Ordering::SeqCst);
+            if anotador != 0 {
+                // El anotador ya esta abierto: alterna su clic a traves. Da
+                // igual que el gancho este suspendido (lo esta, con el
+                // anotador delante): el gesto es suyo.
+                PEDIDO_ANOTADOR.store(true, Ordering::SeqCst);
+                TRAGAR_SOLTADA_CENTRAL.store(true, Ordering::SeqCst);
+                tracing::info!("gesto: Alt + doble clic central, al anotador abierto");
+                // SAFETY: publicar un mensaje propio en una ventana propia.
+                unsafe {
+                    let _ = PostMessageW(
+                        Some(HWND(anotador as *mut _)),
+                        MENSAJE_ANOTADOR.load(Ordering::SeqCst),
+                        WPARAM(0),
+                        LPARAM(0),
+                    );
+                }
+                return LRESULT(1);
+            }
+            if !SUSPENDIDO.load(Ordering::SeqCst) && EDITORES.load(Ordering::SeqCst) == 0 && destino != 0 {
+                // El primer clic ya se devolvio (se solto sin arrastrar); este
+                // segundo no es un clic pendiente: es el gesto.
+                PENDIENTE.store(NINGUNO, Ordering::SeqCst);
+                EN_CURSO.store(false, Ordering::SeqCst);
+                TRAGAR_SOLTADA_CENTRAL.store(true, Ordering::SeqCst);
+                tracing::info!(x = info.pt.x, y = info.pt.y, "gesto: Alt + doble clic central");
+                // SAFETY: publicar un mensaje propio en una ventana propia.
+                unsafe {
+                    let _ = PostMessageW(
+                        Some(HWND(destino as *mut _)),
+                        WM_GESTO,
+                        WPARAM(GESTO_DOBLE_CENTRAL),
+                        empaquetar_punto(info.pt.x, info.pt.y),
+                    );
+                }
+                return LRESULT(1);
+            }
+        }
+    }
+
     let soltado = match mensaje {
         WM_LBUTTONUP => Some(0usize),
         WM_RBUTTONUP => Some(1usize),
@@ -304,6 +485,12 @@ extern "system" fn procedimiento(codigo: i32, wparam: WPARAM, lparam: LPARAM) ->
             && es_arrastre(origen, (info.pt.x, info.pt.y))
         {
             ANUNCIADO.store(true, Ordering::SeqCst);
+            // Un arrastre no es la primera mitad de un doble clic.
+            DOBLE.with(|d| {
+                let mut v = d.get();
+                v.olvidar();
+                d.set(v);
+            });
             tracing::info!(boton, "gesto: arrastre, se anuncia");
             // SAFETY: publicar un mensaje propio en una ventana propia.
             unsafe {
@@ -378,6 +565,72 @@ extern "system" fn procedimiento(codigo: i32, wparam: WPARAM, lparam: LPARAM) ->
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    /// El tiempo y la holgura de fabrica de Windows: 500 ms y 4x4 pixeles.
+    const T: u32 = 500;
+    const H: (i32, i32) = (4, 4);
+
+    #[test]
+    fn dos_clics_centrales_con_alt_juntos_y_a_tiempo_abren_el_anotador() {
+        let mut d = DobleCentral::default();
+        assert!(!d.pulsacion(1000, (300, 300), true, T, H), "el primero solo espera");
+        assert!(d.pulsacion(1300, (301, 299), true, T, H), "el segundo lo completa");
+        // Justo en el borde del tiempo y de la holgura tambien vale.
+        let mut d = DobleCentral::default();
+        d.pulsacion(0, (-1900, 40), true, T, H);
+        assert!(d.pulsacion(500, (-1898, 42), true, T, H), "monitor de la izquierda");
+    }
+
+    #[test]
+    fn sin_alt_lentos_o_lejos_no_es_el_gesto() {
+        // Sin Alt: el doble clic central de siempre, que pasa tal cual.
+        let mut d = DobleCentral::default();
+        d.pulsacion(1000, (300, 300), false, T, H);
+        assert!(!d.pulsacion(1200, (300, 300), false, T, H));
+        // El primero con Alt y el segundo sin el tampoco.
+        let mut d = DobleCentral::default();
+        d.pulsacion(1000, (300, 300), true, T, H);
+        assert!(!d.pulsacion(1200, (300, 300), false, T, H));
+        // Lentos: dos clics sueltos.
+        let mut d = DobleCentral::default();
+        d.pulsacion(1000, (300, 300), true, T, H);
+        assert!(!d.pulsacion(1501, (300, 300), true, T, H));
+        // Lejos: fuera del rectangulo de doble clic.
+        let mut d = DobleCentral::default();
+        d.pulsacion(1000, (300, 300), true, T, H);
+        assert!(!d.pulsacion(1100, (303, 300), true, T, H));
+        let mut d = DobleCentral::default();
+        d.pulsacion(1000, (300, 300), true, T, H);
+        assert!(!d.pulsacion(1100, (300, 297), true, T, H));
+    }
+
+    #[test]
+    fn un_tercer_clic_no_vuelve_a_disparar_y_otro_boton_en_medio_lo_corta() {
+        let mut d = DobleCentral::default();
+        d.pulsacion(0, (10, 10), true, T, H);
+        assert!(d.pulsacion(100, (10, 10), true, T, H));
+        assert!(!d.pulsacion(200, (10, 10), true, T, H), "el tercero empieza otro");
+        assert!(d.pulsacion(300, (10, 10), true, T, H), "y el cuarto lo cierra");
+        // Un clic izquierdo entre los dos centrales ya no es un doble clic.
+        let mut d = DobleCentral::default();
+        d.pulsacion(0, (10, 10), true, T, H);
+        d.olvidar();
+        assert!(!d.pulsacion(100, (10, 10), true, T, H));
+        // El reloj de Windows da la vuelta cada 49 dias: un doble clic justo
+        // en ese momento sigue valiendo (y no da una resta negativa).
+        let mut d = DobleCentral::default();
+        d.pulsacion(u32::MAX - 100, (10, 10), true, T, H);
+        assert!(d.pulsacion(100, (10, 10), true, T, H), "a traves de la vuelta, 201 ms");
+    }
+
+    #[test]
+    fn la_peticion_del_anotador_se_entrega_una_sola_vez() {
+        let _ = tomar_doble_central_del_anotador();
+        assert!(!tomar_doble_central_del_anotador());
+        PEDIDO_ANOTADOR.store(true, Ordering::SeqCst);
+        assert!(tomar_doble_central_del_anotador());
+        assert!(!tomar_doble_central_del_anotador(), "leida, se borra");
+    }
 
     #[test]
     fn la_pausa_del_editor_se_suelta_al_cerrarlo() {
