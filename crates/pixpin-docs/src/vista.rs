@@ -79,6 +79,29 @@ pub fn espacios_del_pdf(espacios: u8) -> (f32, f32) {
     )
 }
 
+/// **En que unidades guarda el lector del movil la tinta de una hoja**
+/// (`vistaDeLaCapa` de `LectorPdfActivity`): `(k, dx)` con
+/// `movil = hoja * k + dx` a lo ancho y `movil = hoja * k` a lo alto.
+///
+/// El movil pone su capa sobre la hoja **y los espacios que haya puestos**,
+/// pero la vista de la capa siempre reparte `1400 * 2,5 = 3500` unidades a lo
+/// ancho con el cero a 1050 del borde: da por hecho que estan los dos
+/// espacios. Con los dos, la hoja cae en `[0, 1400]` (k = 1); sin ninguno la
+/// capa mide solo la hoja y cada unidad de ella son 2,5 del fichero (lo que
+/// el usuario vio en el PC: «lo mando como 1 y llega como 10», con la letra
+/// fuera de la hoja); con uno solo, 2,5 / 1,75. Asi es como lo pinta el
+/// movil con los espacios de ahora (`anot-<uid>.espacios`), y el PC lo lee y
+/// lo escribe con esta misma cuenta para que caiga en el mismo sitio.
+pub fn capa_del_movil(espacios: u8) -> (f32, f32) {
+    let lados = |bit: u8| if espacios & bit != 0 { 1.0 } else { 0.0 };
+    let (izq, der) = (lados(ESPACIO_IZQUIERDA), lados(ESPACIO_DERECHA));
+    let unidades = 1.0 + 2.0 * MARGEN_DEL_PDF;
+    let capa = 1.0 + MARGEN_DEL_PDF * (izq + der);
+    let k = unidades / capa;
+    let margen = ANCHO_HOJA * MARGEN_DEL_PDF;
+    (k, margen * izq * k - margen)
+}
+
 /// Donde puede estar la vista sin salirse del documento
 /// (`Lectura.dentroDelDocumento`), con dos cambios de escritorio:
 ///
@@ -405,5 +428,37 @@ mod pruebas {
         assert_eq!(h.y_de(99.0), h.arriba[2] + h.altos[2], "una hoja que ya no esta cae en la ultima");
         assert_eq!(h.y_de(f64::NAN), 0.0);
         assert_eq!(Hojas::default().sitio(100.0), 0.0);
+    }
+
+    #[test]
+    fn la_capa_del_movil_con_los_dos_espacios_es_la_hoja_tal_cual() {
+        // `vistaDeLaCapa`: 3500 unidades a lo ancho de la capa, con el cero
+        // 1050 mas alla de su borde. Con los dos espacios la capa mide
+        // 2,5 hojas y la hoja cae justo en [0, 1400].
+        assert_eq!(capa_del_movil(3), (1.0, 0.0));
+    }
+
+    #[test]
+    fn sin_espacios_el_movil_guarda_la_tinta_dos_veces_y_media_mas_grande() {
+        // Medido con `anot-VRQH2DA7AB-p0` (Bastidas_CJ_.pdf, sin `.espacios`):
+        // la letra escrita en la mitad de abajo de la hoja 0 llega en
+        // x -766..1994, y 2542..4887, fuera de una hoja de 1400 x 1980.
+        let (k, dx) = capa_del_movil(0);
+        assert!((k - 2.5).abs() < 1e-6 && (dx + 1050.0).abs() < 1e-3, "{k} {dx}");
+        let en_la_hoja = |x: f32, y: f32| ((x - dx) / k, y / k);
+        let (x0, y0) = en_la_hoja(-766.0, 2542.0);
+        let (x1, y1) = en_la_hoja(1994.0, 4887.0);
+        assert!(x0 > 0.0 && x1 < ANCHO_HOJA && y0 > 990.0 && y1 < 1980.0, "{x0} {y0} {x1} {y1}");
+    }
+
+    #[test]
+    fn con_un_solo_espacio_la_hoja_queda_a_un_lado_de_la_capa() {
+        let (k, dx) = capa_del_movil(ESPACIO_DERECHA);
+        assert!((k - 2.5 / 1.75).abs() < 1e-5 && (dx + 1050.0).abs() < 1e-3, "{k} {dx}");
+        let (k, dx) = capa_del_movil(ESPACIO_IZQUIERDA);
+        assert!((k - 2.5 / 1.75).abs() < 1e-5 && (dx - 450.0).abs() < 1e-3, "{k} {dx}");
+        // Caso negativo: los bits que no son espacios no cuentan.
+        assert_eq!(capa_del_movil(3 | 8), (1.0, 0.0));
+        assert_eq!(capa_del_movil(4), capa_del_movil(0));
     }
 }
