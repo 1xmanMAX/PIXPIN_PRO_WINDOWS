@@ -1195,6 +1195,65 @@ fn borrar_el_mensaje_se_lleva_lo_anotado_en_los_dos_aparatos() {
     assert_eq!(leer_movil(&p, &format!("pins/draw/anot-{u_queda}.espacios")), None);
 }
 
+/// **El marco de la tinta** (`anot-<uid>-p<n>.hoja`, `anot-<uid>.hoja`,
+/// 29-sep) viaja con su tinta en los dos sentidos, tal cual, y se va con su
+/// mensaje. Lo lee el lector del PC para encajar la tinta en su hoja.
+#[test]
+fn el_marco_de_la_tinta_viaja_con_ella_y_se_va_con_su_mensaje() {
+    use pixpin_proyecto::anotado;
+    let p = montar("anotado-marco");
+    let u = adjunto_movil(&p, "p", "7_plano.pdf", b"%PDF");
+    let u_w = adjunto_movil(&p, "w", "8_acta.docx", b"PK");
+    dibujo_movil(&p, &format!("anot-{u}-p1"), &["t"]);
+    escribir_movil(&p, &format!("pins/draw/anot-{u}-p1.hoja"), "-1050.0,0.0,2450.0,4950.0
+v1
+");
+    dibujo_movil(&p, &format!("anot-{u_w}"), &["w"]);
+    escribir_movil(&p, &format!("pins/draw/anot-{u_w}.hoja"), "280,0,700,420
+");
+    // Un temporal a medias no viaja.
+    escribir_movil(&p, &format!("pins/draw/anot-{u}-p1.hoja.tmp"), "?");
+    p.vuelta_desde_pc();
+
+    let raiz = p.raiz();
+    let pdf = doc_en_pc(&p, "p");
+    let marco = anotado::marco_del_pdf(&raiz, &pdf, 1).unwrap();
+    assert_eq!(anotado::leer(&marco).as_deref(), Some("-1050.0,0.0,2450.0,4950.0
+v1
+"), "llega tal cual");
+    assert!(!marco.with_extension("hoja.tmp").exists(), "el temporal no viaja");
+    let b_w = anotado::base_del_documento(&raiz, &doc_en_pc(&p, "w")).unwrap();
+    assert_eq!(anotado::leer(&b_w.fichero(".hoja")).as_deref(), Some("280,0,700,420
+"));
+
+    // De vuelta: el que escribe el PC llega con el mismo nombre y texto.
+    p.reloj.saltar(10_000);
+    anotado::escribir(&marco, "-1050,0,2450,4950
+v1
+").unwrap();
+    adelantar(&marco);
+    p.vuelta_desde_pc();
+    assert_eq!(
+        leer_movil(&p, &format!("pins/draw/anot-{u}-p1.hoja")).as_deref(),
+        Some("-1050,0,2450,4950
+v1
+")
+    );
+
+    // Y se va con su mensaje; el del otro mensaje (caso negativo) se queda.
+    let (ido, quedan): (Vec<Json>, Vec<Json>) =
+        p.movil.leer_mensajes().into_iter().partition(|m| kotlin::cadena(m, "id") == Some("p"));
+    p.movil.escribir_mensajes(&quedan).unwrap();
+    p.movil
+        .anotar_borrados(&pixpin_sincro::disco::marcas_de(GENERAL, &ido, p.reloj.tic()))
+        .unwrap();
+    p.movil.borrar_anotado(GENERAL, &u);
+    assert_eq!(leer_movil(&p, &format!("pins/draw/anot-{u}-p1.hoja")), None, "en el movil se va");
+    p.vuelta_desde_pc();
+    assert!(!marco.exists(), "y en el PC tambien");
+    assert!(b_w.fichero(".hoja").is_file());
+}
+
 // ------------------------------- lo que el PC anota llega al movil (28-sep)
 
 /// Lo que hace el lector del PC al soltar un trazo (`lector_tinta::Capa::guardar`):

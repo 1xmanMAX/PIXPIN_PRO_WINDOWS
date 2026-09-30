@@ -160,6 +160,49 @@ pub fn con_dibujo(
     Ok(hecho)
 }
 
+/// **La misma pantalla anotada, con la tinta de ahora** (2026-09-29): el
+/// anotador de pantalla guarda solo al salir, y si ya se guardo en esa
+/// sesion (con el boton) y luego se siguio dibujando, lo que toca es poner
+/// al dia EL MISMO lienzo, no mandar otro mensaje con otra captura.
+///
+/// Se queda la foto (la primera imagen bloqueada, la que puso
+/// [`con_dibujo`]) y lo demas se cambia por `dibujados` (en pixeles de la
+/// captura, `medidas`), llevado a unidades del lienzo como alli. Lo de antes
+/// no se quita del fichero: se marca `isDeleted` (`con_escena`), que es lo
+/// que le dice al movil «esto se borro» al sincronizar. Devuelve cuantos
+/// trazos quedaron encima. Sin el lienzo, error: no se inventa uno sin foto.
+pub fn cambiar_dibujo(
+    raiz: &Path,
+    proyecto: &str,
+    id_lienzo: &str,
+    medidas: (u32, u32),
+    dibujados: &[Elemento],
+) -> io::Result<usize> {
+    let ruta = almacen::lienzo(raiz, proyecto, id_lienzo);
+    let texto = std::fs::read_to_string(&ruta)?;
+    let lienzo = pixpin_motor2d::excalidraw::leer(&texto).map_err(io::Error::other)?;
+    let mut destino = pixpin_motor2d::excalidraw::a_escena(&lienzo);
+    let la_foto = destino
+        .visibles()
+        .find(|e| e.bloqueado && matches!(e.figura, Figura::Imagen { .. }))
+        .map(|e| e.id);
+    let viejos: Vec<u64> = destino.visibles().map(|e| e.id).filter(|id| Some(*id) != la_foto).collect();
+    for id in viejos {
+        destino.borrar(id);
+    }
+    let visibles: Vec<Elemento> = dibujados
+        .iter()
+        .filter(|e| !e.borrado && !matches!(e.figura, Figura::Imagen { .. }))
+        .cloned()
+        .collect();
+    for e in a_unidades_del_lienzo(&lienzo.elementos(), &visibles, medidas) {
+        destino.anadir(e);
+    }
+    let nuevo = pixpin_motor2d::excalidraw::con_escena(&lienzo, &destino);
+    escribir_atomico(&ruta, &pixpin_motor2d::excalidraw::escribir(&nuevo))?;
+    Ok(visibles.len())
+}
+
 /// El lienzo nuevo, con la foto dentro y nada mas.
 fn crear(raiz: &Path, proyecto: &str, ruta: &Path, foto: &Path, medidas: (u32, u32), ahora: i64) -> io::Result<()> {
     let bytes = std::fs::read(foto)?;
@@ -514,6 +557,48 @@ mod pruebas {
         assert_eq!((h2.creado, h2.adoptados), (false, 0));
         let l = pixpin_motor2d::excalidraw::leer(&std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m7")).unwrap()).unwrap();
         assert_eq!(l.elementos().len(), 2);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn seguir_dibujando_tras_guardar_pone_al_dia_el_mismo_lienzo_sin_tocar_la_foto() {
+        let r = raiz("pantalla-al-dia");
+        let foto = poner_foto(&r, "pantalla.png");
+        let m = mensaje(&r, "m9", None);
+        let primera = vec![raya(&[(100.0, 100.0), (200.0, 200.0)], 4.0)];
+        con_dibujo(&r, "p1", &m, &foto, (1920, 1080), &primera, 20).unwrap();
+        // La sesion sigue: la raya de antes y dos mas.
+        let mut ahora = primera.clone();
+        ahora.push(raya(&[(300.0, 300.0), (400.0, 350.0)], 4.0));
+        ahora.push(raya(&[(10.0, 900.0), (900.0, 10.0)], 4.0));
+        assert_eq!(cambiar_dibujo(&r, "p1", "foto-m9", (1920, 1080), &ahora).unwrap(), 3);
+        let l = pixpin_motor2d::excalidraw::leer(&std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m9")).unwrap()).unwrap();
+        let els = l.elementos();
+        assert_eq!(els.len(), 4, "la foto y las tres rayas, sin duplicar la primera");
+        assert!(matches!(els[0].figura, Figura::Imagen { .. }) && els[0].bloqueado);
+        assert!(els[1..].iter().all(|e| !e.bloqueado && matches!(e.figura, Figura::Lapiz { .. })));
+        // Lo de antes queda en el fichero marcado como borrado (para el movil).
+        let json = json_del_lienzo(&r, "foto-m9");
+        let borrados = json["elements"].as_array().unwrap().iter().filter(|e| e["isDeleted"] == true).count();
+        assert_eq!(borrados, 1);
+        // Y la foto es la misma de antes: mismo fichero.
+        assert_eq!(json["elements"][0]["fileId"], json_del_lienzo(&r, "foto-m9")["elements"][0]["fileId"]);
+        assert_eq!(json["files"].as_object().unwrap().len(), 1);
+        // Limpiar todo y salir deja la foto sola.
+        assert_eq!(cambiar_dibujo(&r, "p1", "foto-m9", (1920, 1080), &[]).unwrap(), 0);
+        let l = pixpin_motor2d::excalidraw::leer(&std::fs::read_to_string(almacen::lienzo(&r, "p1", "foto-m9")).unwrap()).unwrap();
+        assert_eq!(l.elementos().len(), 1);
+        // Un solo mensaje en el cuaderno: poner al dia no manda otro.
+        assert_eq!(cuaderno_de(&r).len(), 1);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn poner_al_dia_un_lienzo_que_no_esta_falla_sin_crear_nada() {
+        let r = raiz("pantalla-sin-lienzo");
+        let tinta = vec![raya(&[(1.0, 1.0), (2.0, 2.0)], 1.0)];
+        assert!(cambiar_dibujo(&r, "p1", "foto-nada", (10, 10), &tinta).is_err());
+        assert!(!almacen::lienzo(&r, "p1", "foto-nada").exists());
         let _ = std::fs::remove_dir_all(&r);
     }
 

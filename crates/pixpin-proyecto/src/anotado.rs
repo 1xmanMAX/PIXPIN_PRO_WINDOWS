@@ -156,6 +156,14 @@ pub fn hoja_del_pdf(raiz: &Path, pdf: &Path, i: u32) -> Option<PathBuf> {
     )
 }
 
+/// **El marco de la tinta de la hoja `i`** de un PDF suelto del chat
+/// (`anot-<uid>-p<i>.hoja`, `pixpin_sincro::anotado::MarcoDeLaHoja`), junto
+/// a lo demas del mensaje; `None` si no es un adjunto.
+pub fn marco_del_pdf(raiz: &Path, pdf: &Path, i: u32) -> Option<PathBuf> {
+    let x = adjunto_de(raiz, pdf)?;
+    Some(DiscoPc::nuevo(raiz).ruta(&x.chat, &a::rel(&a::de_pagina(&x.uid, i), a::HOJA)))
+}
+
 /// **Los marcadores de un lienzo del almacen, junto a su dibujo**
 /// (`AnotacionesDelAdjunto.delLienzo`): para `…/<ficha>/lienzos/<d>.excalidraw`
 /// es `pins/draw/<d>.marcas` de ese chat. `None` si el lienzo no es de un
