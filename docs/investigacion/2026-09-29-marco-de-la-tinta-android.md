@@ -176,3 +176,11 @@ Los números de 3, 4 y 5 son los mismos que usan las pruebas del PC (`crates/pix
 **Prioridad cuando estén las dos:** 1) marco válido de `v1` → manda; 2) si no hay marco o no se entiende → la regla vieja (`capa_del_movil(espacios)` en un PDF del chat, `izq` de la maqueta en un Word); 3) PDF de proyecto y lo de junto al PDF → unidades fijas (sin marco). Quien guarda **siempre** escribe el marco, también cuando leyó con la regla vieja.
 
 **Cuándo retirar la regla vieja:** cuando (a) las dos apps escriban el marco (PC ya, Android con esta nota) y (b) ya no queden tintas sin marco: basta con una migración de una vez en cada aparato que, al abrir un documento, escriba el marco de las tintas que no lo tengan (con la regla vieja, sin tocar la tinta). Hasta entonces se queda como respaldo de lectura; nunca debe volver a usarse para **escribir** otras unidades que las que dice el marco. Después de retirarla, Android puede arreglar `vistaDeLaCapa` (unidades = 1400·(1+0,75·lados), `scrollX` = 1050·izq) sin migrar dibujos ni avisar al PC: el marco nuevo dirá las unidades nuevas.
+
+## 30-sep: la tinta sin marco se corría al ampliar la hoja en el PC
+
+**Síntoma (usuario):** Android → PC bien; anotar en el PC, ampliar la hoja (espacios) y sincronizar: en el móvil «todo movido».
+
+**Causa:** la tinta que aún no tenía marco (la de antes de v0.98 del móvil) se sigue leyendo con la regla vieja y los espacios **de cada momento**. Al poner un espacio en el PC, `alternar_espacio` solo guardaba (con marco) las hojas tocadas; las demás seguían sin marco, el `.espacios` nuevo viajaba, y el móvil (y el PC) las leían con otros espacios. La prueba `un_espacio_puesto_en_un_adjunto_vuelve_a_leer_su_tinta_como_el_movil` pedía justo ese movimiento.
+
+**Arreglo (los dos lados):** antes de cambiar los espacios, cada tinta sin marco recibe el de los espacios de ahora, sin tocar la tinta: PC `DondeVa::fijar_marco` (desde `alternar_espacio`, todas las hojas) y al leer una hoja (`leer_capa`); Android `CapasDelPdf.fijarLoViejo` al tocar un espacio y **al abrir** el lector (v0.98.5). La prueba pasó a `un_espacio_puesto_en_un_adjunto_no_mueve_su_tinta`. Además, Android ya no depende de los espacios (su hoja va siempre de 0 a 1400 y escribe su marco `0,0,1400,1400/proporción`).

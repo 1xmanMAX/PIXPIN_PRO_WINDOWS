@@ -1556,12 +1556,18 @@ fn alternar_anotar(e: &mut Estado, ruta: &Path) {
 
 fn alternar_espacio(e: &mut Estado, lado: u8, ruta: &Path) {
     let antes = e.donde.unidades(e.ajustes.espacios);
+    // **Primero, el marco a toda la tinta que aun no lo tiene**, con los
+    // espacios de ahora (30-sep): sin el, esa tinta se leeria aqui y en el
+    // movil con los nuevos y se correria de la hoja. Con el, se queda quieta.
+    // Ver [`DondeVa::fijar_marco`] (el movil hace lo mismo: `fijarLoViejo`).
+    let espacios = e.ajustes.espacios;
+    for (i, alto) in e.hojas.altos.iter().enumerate() {
+        e.donde.fijar_marco(ruta, i, espacios, *alto);
+    }
     e.ajustes.espacios = vista::con_espacio(e.ajustes.espacios, lado);
     guardar_ajustes(e, ruta);
-    // **Como en el movil**: su capa cuenta con los espacios de ahora, asi
-    // que al ponerlos o quitarlos la tinta de un adjunto se queda con sus
-    // numeros y se ve en otro sitio de la hoja. Lo abierto se guarda en las
-    // unidades en que se leyo y se vuelve a leer en las nuevas.
+    // Lo abierto se guarda en las unidades en que se leyo y se vuelve a leer:
+    // con su marco, cae en el mismo sitio de la hoja.
     if e.donde.unidades(e.ajustes.espacios) != antes {
         guardar_capas(e, ruta);
         e.capas.clear();
@@ -2286,30 +2292,42 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// **Poner o quitar un espacio en un adjunto mueve su tinta, como en el
-    /// movil**: su capa cuenta con los espacios de ahora, asi que lo abierto
-    /// se guarda en las unidades en que se leyo y se vuelve a leer en las
-    /// nuevas. En un PDF suelto (caso negativo) no cambia nada.
+    /// **Poner o quitar un espacio no mueve la tinta de un adjunto** (30-sep).
+    /// Antes se movia «como en el movil»: sin marco, la tinta se leia con los
+    /// espacios de cada momento, y al ampliar la hoja aqui el movil la veia
+    /// corrida. Ahora, antes de cambiarlos, cada tinta sin marco recibe el de
+    /// los espacios de ahora: la abierta y la que no se llego a abrir.
     #[test]
-    fn un_espacio_puesto_en_un_adjunto_vuelve_a_leer_su_tinta_como_el_movil() {
+    fn un_espacio_puesto_en_un_adjunto_no_mueve_su_tinta() {
         let r = crate::anotado_del_adjunto::pruebas::raiz("espacio-adjunto");
         let pdf = crate::anotado_del_adjunto::pruebas::con_adjunto(&r, "tesis.pdf", b"%PDF-1.4");
-        let mut e = estado(1);
+        let mut e = estado(2);
         e.donde = crate::lector_pdf_proyecto::DondeVa::de(&r, &pdf, 1);
-        let h = e.donde.para_escribir(&pdf, 0);
-        std::fs::create_dir_all(h.parent().unwrap()).unwrap();
-        std::fs::write(&h, r#"{"elements":[{"id":"jDNyxAFkaxm2qZ-KsluKG","type":"freedraw","x":-800,"y":1000,"width":250,"height":0,"strokeWidth":1,"points":[{"x":0.0,"y":0.0},{"x":250.0,"y":0.0}]}]}"#).unwrap();
-        let x = |e: &mut Estado| {
-            let (donde, espacios, alto) = (&e.donde, e.ajustes.espacios, alto_de(&e.hojas, 0));
-            e.capas.entry(0).or_insert_with(|| donde.leer_capa(&pdf, 0, espacios, alto)).escena.caja().unwrap().0
+        let tinta = r#"{"elements":[{"id":"jDNyxAFkaxm2qZ-KsluKG","type":"freedraw","x":-800,"y":1000,"width":250,"height":0,"strokeWidth":1,"points":[{"x":0.0,"y":0.0},{"x":250.0,"y":0.0}]}]}"#;
+        // La hoja 1 se abre; la 2 (indice 1) no se llega a abrir.
+        for i in 0..2 {
+            let h = e.donde.para_escribir(&pdf, i);
+            std::fs::create_dir_all(h.parent().unwrap()).unwrap();
+            std::fs::write(&h, tinta).unwrap();
+        }
+        let x = |e: &mut Estado, i: usize| {
+            let (donde, espacios, alto) = (&e.donde, e.ajustes.espacios, alto_de(&e.hojas, i));
+            e.capas.entry(i).or_insert_with(|| donde.leer_capa(&pdf, i, espacios, alto)).escena.caja().unwrap().0
         };
-        assert!((x(&mut e) - 99.2).abs() < 1.0, "sin espacios: {}", x(&mut e));
+        assert!((x(&mut e, 0) - 99.2).abs() < 1.0, "sin espacios: {}", x(&mut e, 0));
+        e.capas.remove(&1);
         alternar_espacio(&mut e, vista::ESPACIO_IZQUIERDA, &pdf);
         alternar_espacio(&mut e, vista::ESPACIO_DERECHA, &pdf);
-        assert!(e.capas.is_empty(), "lo abierto se vuelve a leer");
-        assert!((x(&mut e) + 800.0).abs() < 3.0, "con los dos, la hoja tal cual: {}", x(&mut e));
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&h).unwrap()).unwrap();
-        assert_eq!(v["elements"][0]["x"].as_f64(), Some(-800.0), "el fichero no cambia");
+        assert!((x(&mut e, 0) - 99.2).abs() < 1.0, "la abierta se queda en su sitio: {}", x(&mut e, 0));
+        assert!((x(&mut e, 1) - 99.2).abs() < 1.0, "la que no se abrio, tambien: {}", x(&mut e, 1));
+        for i in 0..2 {
+            let h = e.donde.para_leer(&pdf, i);
+            let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&h).unwrap()).unwrap();
+            assert_eq!(v["elements"][0]["x"].as_f64(), Some(-800.0), "la tinta no se reescribe");
+            let marco = crate::anotado_del_adjunto::marco_de_la_hoja_del_pdf(crate::anotado_del_adjunto::adjunto_del_pdf(&pdf).as_ref(), i).unwrap();
+            let m = crate::anotado_del_adjunto::leer_marco(&marco).expect("sin marco");
+            assert!((m.x0 + 1050.0).abs() < 0.5 && (m.x1 - 2450.0).abs() < 0.5, "el marco de los espacios de antes: {m:?}");
+        }
         // Caso negativo: un PDF suelto no depende de los espacios.
         let mut suelto = estado(1);
         suelto.capas.insert(0, Capa::default());
