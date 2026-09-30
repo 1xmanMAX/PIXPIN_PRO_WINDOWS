@@ -147,8 +147,43 @@ impl DondeVa {
         // en las unidades que dice, tambien lo nacido en otro PC.
         if self.escribe && self.adjunto.is_some() && self.proyecto.is_none() && !con_marco {
             crate::anotado_del_adjunto::lo_del_pc_a_la_capa_del_movil(pdf, i, &ruta, u);
+            // **Y se le apunta su marco**, con esas mismas unidades y sin tocar la
+            // tinta: desde ahora ya no depende de los espacios que se pongan despues.
+            self.apuntar_marco(i, &ruta, u, alto);
         }
         crate::lector_tinta::Capa::leer_en(&ruta, u)
+    }
+
+    /// **La tinta de la hoja `i` que aun no tiene marco, con el suyo** (30-sep).
+    ///
+    /// Sin marco, la tinta de un adjunto se lee con la regla de antes y los
+    /// espacios **de cada momento** ([`DondeVa::unidades`]): al ampliar la hoja
+    /// aqui, las hojas no tocadas se guardaban sin marco, su `.espacios` nuevo
+    /// viajaba al movil y alli (y aqui) se leian con otros espacios: la tinta
+    /// «se movia» (lo vio el usuario). Antes de cambiar los espacios se le
+    /// apunta a cada una el marco de los de ahora; la tinta no se toca.
+    pub fn fijar_marco(&self, pdf: &Path, i: usize, espacios: u8, alto: f32) {
+        if !self.escribe || self.adjunto.is_none() || self.proyecto.is_some() {
+            return;
+        }
+        if self.marco(i).is_none_or(|f| f.is_file()) {
+            return;
+        }
+        let ruta = self.para_leer(pdf, i);
+        let u = self.unidades(espacios);
+        crate::anotado_del_adjunto::lo_del_pc_a_la_capa_del_movil(pdf, i, &ruta, u);
+        self.apuntar_marco(i, &ruta, u, alto);
+    }
+
+    /// El marco de las unidades `u` junto a la tinta `ruta`, si la hay y aun no lo tiene.
+    fn apuntar_marco(&self, i: usize, ruta: &Path, u: crate::lector_tinta::Unidades, alto: f32) {
+        let Some(f) = self.marco(i) else { return };
+        if f.is_file() || !ruta.is_file() {
+            return;
+        }
+        if let Err(err) = crate::anotado_del_adjunto::escribir_marco(&f, u, &hoja_propia(alto)) {
+            tracing::warn!(?err, hoja = i, "no se pudo apuntar el marco de la tinta de antes");
+        }
     }
 
     /// **Guarda la capa de la hoja `i` y su marco**, si cambio: la tinta en
