@@ -68,6 +68,8 @@ fn icono(b: BotonCaja) -> &'static pixpin_render::icono::Icono {
         BotonCaja::Imprimir => &IMPRESORA,
         // El `IosShare` del movil: el cuadro con la flecha que sale.
         BotonCaja::Compartir => &i::SHARE_IOS,
+        // La mano, como el boton de atravesar de la pastilla del anotador.
+        BotonCaja::Atravesar => &i::HAND_ICON,
         BotonCaja::Deshacer => &i::UNDO_ICON,
         BotonCaja::Rehacer => &i::REDO_ICON,
         BotonCaja::Color => &i::PALETTE,
@@ -604,6 +606,36 @@ mod pruebas {
             }
         }
         assert_eq!(negros, 0);
+    }
+
+    /// **El clic a traves esta en la barra del anotador de pantalla viva**
+    /// (2026-09-29: el usuario no lo encontraba; en el movil va en la misma
+    /// barra que las herramientas, `CapaPantalla.kt`). Suelto, con su globo,
+    /// y solo alli: ni en la pantalla congelada (debajo solo hay una foto)
+    /// ni en el lienzo. Deja `barra-anotador-atravesar.png` para mirarla.
+    #[test]
+    fn el_clic_a_traves_sale_en_la_barra_del_anotador_vivo_y_solo_alli() {
+        use crate::dibujo::permitidas::{Anfitrion, botones_con, rotulo_de_boton};
+        let todas = pixpin_store::herramientas::Herramientas::default();
+        let viva = botones_con(Anfitrion::PantallaViva, &todas);
+        assert!(viva.contains(&BotonCaja::Atravesar));
+        for otro in [Anfitrion::PantallaCongelada, Anfitrion::Lienzo, Anfitrion::Lector, Anfitrion::Pin] {
+            assert!(!botones_con(otro, &todas).contains(&BotonCaja::Atravesar), "{otro:?}");
+        }
+        let zona = Rect {
+            x: 0,
+            y: 0,
+            ancho: 1920,
+            alto: 200,
+        };
+        let barra = CajaHerramientas::barra_superior(zona, 100, crate::dibujo::permitidas::botones(Anfitrion::PantallaViva));
+        let boton = barra.rect_de_boton(BotonCaja::Atravesar).expect("suelto en la barra, no en un grupo");
+        let t = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let pista = rotulo_de_boton(BotonCaja::Atravesar, &t).unwrap();
+        assert!(pista.starts_with("Clic a través"), "{pista}");
+        let img = pintar_fuera(&barra, Herramienta::Lapiz, 100, Some(centro(boton)), (1920, 120), false);
+        assert!(oscuros_bajo(&img, &barra) > 500, "sin globo");
+        guardar(&img, "barra-anotador-atravesar.png");
     }
 
     /// **Las muestras de la barra agrupada**: clara y oscura (papel de

@@ -1133,6 +1133,20 @@ fn abrir_hoja(v: &mut VistaProyectos, b: &mut Bucle, id: &str, indice: usize) ->
         }
         return true;
     }
+    // Una foto, en SU lienzo como al tocar su burbuja (K11): la foto
+    // bloqueada debajo y lo anotado encima editable (una pantalla anotada,
+    // una foto anotada en el movil). Abrirla plana con `abrir_foto_en_lienzo`
+    // ensenaba la captura sin la tinta guardada en su lienzo.
+    if m.clase == Some(Clase::Imagen) {
+        let mut mensajes: Vec<_> = d.hojas.iter().map(|h| h.mensaje.clone()).collect();
+        if crate::foto_anotada::abrir_en_su_lienzo(b.ubicacion.raiz(), id, &mut mensajes, indice, b.lienzo) {
+            v.olvidar(id);
+            if let Some(a) = b.abierto.as_mut().filter(|a| a.ficha.id == id) {
+                super::releer_lo_abierto(b.ubicacion, a);
+            }
+            return true;
+        }
+    }
     if m.clase == Some(Clase::Imagen)
         && let Some(ruta) = super::ruta_del_mensaje(b.ubicacion.raiz(), id, &m)
     {

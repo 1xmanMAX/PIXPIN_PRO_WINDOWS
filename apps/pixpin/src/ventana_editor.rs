@@ -711,7 +711,7 @@ fn abrir_en_modo(
     let mut pastilla = pantalla.as_deref().and_then(|p| {
         let t = exportar::textos();
         let rotulos = (t.t("anotador-rotulo-dibujando"), t.t("anotador-rotulo-atravesando"));
-        pastilla_pantalla::Pastilla::nueva(&motor, dispositivo.d3d(), &p.principal, rotulos)
+        pastilla_pantalla::Pastilla::nueva(&motor, dispositivo.d3d(), &p.principal, rotulos, ventana.handle())
             .inspect_err(|e| tracing::warn!(?e, "el anotador sin su pastilla"))
             .ok()
     });
@@ -722,9 +722,9 @@ fn abrir_en_modo(
         pixpin_shell::gestos::EscuchaAnotador::tomar(ventana.handle(), pixpin_shell::overlay::MSG_DESPIERTA)
     });
     let mut accion_pastilla: Option<pastilla_pantalla::Accion> = None;
-    // La tinta tal como se guardo en el chat por ultima vez: al salir sin
-    // haberla cambiado no se vuelve a preguntar por ella (D54).
-    let mut tinta_guardada: Option<Vec<Elemento>> = None;
+    // El guardado de esta sesion en «Mensajes guardados»: el boton lo lanza
+    // cuando se quiera y la salida siempre (`anotador_al_chat::EnElChat`).
+    let mut chat = crate::anotador_al_chat::EnElChat::default();
     // Rueda del raton = zoom al cursor; panel tactil: dos dedos desplazan y
     // el pellizco acerca (`navegacion::decidir_rueda`, DirectManipulation en
     // `pixpin_shell::gestos_tactiles`). El anotador de pantalla no se mueve
@@ -1771,6 +1771,12 @@ fn abrir_en_modo(
             if hecho.salir {
                 break 'bucle;
             }
+            // El clic a traves de la barra del anotador: lo mismo que el boton
+            // de la pastilla (y que Espacio), que es desde donde se vuelve.
+            if matches!(hecho.pedido, Some(crate::dibujo::mano::Pedido::Atravesar)) {
+                accion_pastilla = Some(pastilla_pantalla::Accion::Atravesar);
+                continue;
+            }
             // F11: imprimir de la barra va por donde Ctrl+P (`pedida`, abajo),
             // y compartir por donde Ctrl+Mayus+S.
             let de_la_barra = match hecho.pedido {
@@ -1805,7 +1811,9 @@ fn abrir_en_modo(
                     crate::dibujo::mano::Pedido::Figuras(p) => {
                         figuras::atender_figuras(ed, p, exportar::textos())
                     }
-                    crate::dibujo::mano::Pedido::Imprimir | crate::dibujo::mano::Pedido::Compartir => false,
+                    crate::dibujo::mano::Pedido::Imprimir
+                    | crate::dibujo::mano::Pedido::Compartir
+                    | crate::dibujo::mano::Pedido::Atravesar => false,
                 };
                 todo_sucio = true;
                 contenido_sucio = true;
@@ -2482,29 +2490,16 @@ fn abrir_en_modo(
                     capa.soltar();
                     contenido_sucio = true;
                 }
+                // «Guardar ahora»: lo mismo que al salir, sin salir. Lo que se
+                // dibuje despues pone al dia ESE lienzo (al salir o al volver
+                // a pulsarlo), no manda otro mensaje.
                 Accion::Guardar => {
                     let tinta = crate::anotador_al_chat::tinta_de(&escena);
-                    let foto = pantalla::foto_de_debajo(pa, fondo.as_ref(), &ventana, pastilla.as_ref(), !pasante_fijo);
-                    match (foto, pa.raiz.clone()) {
-                        (Some(foto), Some(raiz)) => {
-                            tracing::info!(trazos = tinta.len(), ancho = foto.ancho, alto = foto.alto, "anotador: a Mensajes guardados");
-                            crate::anotador_al_chat::guardar_en_segundo_plano(
-                                raiz,
-                                crate::anotador_al_chat::Sesion {
-                                    foto,
-                                    tinta: tinta.clone(),
-                                },
-                                pa.avisos,
-                                pantalla::globo(exportar::textos()),
-                            );
-                            tinta_guardada = Some(tinta);
-                        }
-                        (foto, raiz) => tracing::warn!(
-                            sin_foto = foto.is_none(),
-                            sin_almacen = raiz.is_none(),
-                            "la pantalla anotada no se pudo guardar"
-                        ),
-                    }
+                    let fondo_ref = fondo.as_ref();
+                    let ps = pastilla.as_ref();
+                    pantalla::guardar_en_el_chat(&mut chat, pa, tinta, pantalla::globo(exportar::textos()), |pa| {
+                        pantalla::foto_de_debajo(pa, fondo_ref, &ventana, ps, !pasante_fijo)
+                    });
                 }
                 Accion::Copiar => {
                     // Como la foto de al salir: la pantalla con lo anotado y
@@ -3333,24 +3328,36 @@ fn abrir_en_modo(
     if let Some(l) = lupa.as_mut() {
         l.cerrar();
     }
-    // **El anotador de pantalla sale con su foto**: el dibujo sobre lo que
-    // hay debajo, SIN barra ni panel ni marco de lo elegido (D59), y
-    // esperando a que el compositor lo haya puesto en pantalla. La ventana
-    // sigue viva hasta que se captura: la foto la recoge tal cual se ve. Sin
-    // nada dibujado no hay foto, y `main` no pregunta nada.
-    // Lo ya guardado en «Mensajes guardados» sin tocar despues no vuelve a
-    // preguntar ni a pinearse: ya esta a salvo.
-    let sin_guardar = tinta_guardada.as_ref() != Some(&crate::anotador_al_chat::tinta_de(&escena));
     // Ni la pastilla ni el gesto sobreviven al anotador.
     drop(pastilla.take());
     drop(_escucha);
+    // Un texto a medias es tinta: entra en lo que se guarda.
+    if pantalla.is_some() && gesto.esta_escribiendo() {
+        gesto.cerrar_texto(&mut escena);
+    }
+    // **El anotador de pantalla guarda solo al salir** (2026-09-29: «tiene
+    // que guardarse automaticamente en el canvas dentro de Mensajes
+    // guardados»): Escape, Salir o cerrar, con algo nuevo dibujado, lleva la
+    // captura de debajo y la tinta editable al chat, sin preguntar ni crear
+    // un pin; si ya se guardo en esta sesion, pone al dia ese lienzo. Asi
+    // Escape nunca tira lo dibujado, que era lo que protegia D54.
+    let con_almacen = pantalla.as_deref().is_some_and(|pa| pa.raiz.is_some());
     if let Some(pa) = pantalla.as_deref_mut()
-        && escena.cuantos_visibles() > 0
-        && sin_guardar
+        && con_almacen
     {
-        if gesto.esta_escribiendo() {
-            gesto.cerrar_texto(&mut escena);
-        }
+        let tinta = crate::anotador_al_chat::tinta_de(&escena);
+        let fondo_ref = fondo.as_ref();
+        pantalla::guardar_en_el_chat(&mut chat, pa, tinta, pantalla::globo(exportar::textos()), |pa| {
+            pantalla::foto_al_salir(pa, fondo_ref, &ventana)
+        });
+    }
+    // **Sin almacen** (no pasa desde `main`, que siempre lo da) queda la
+    // salida de antes: una foto de la pantalla con lo anotado, SIN barra ni
+    // panel ni marco de lo elegido (D59), que `main` ofrece pinear (D54).
+    if let Some(pa) = pantalla.as_deref_mut()
+        && !con_almacen
+        && escena.cuantos_visibles() > 0
+    {
         gesto.seleccion.limpiar();
         gesto.lazo = None;
         ventana.poner_pasante(false);

@@ -97,6 +97,7 @@ pub fn nombre_de_boton(b: BotonCaja) -> Option<&'static str> {
 pub fn nombre_visible(b: BotonCaja, textos: &pixpin_store::Catalogo) -> String {
     match b {
         BotonCaja::Elegir(Herramienta::Mano) => textos.t("herramientas-mano"),
+        BotonCaja::Atravesar => textos.t("anotador-boton-atravesar"),
         BotonCaja::Grupo(g) => textos.t(&format!("barra-grupo-{}", g.nombre())),
         otro => nombre_de_boton(otro)
             .map(|n| textos.t(&format!("herramientas-{n}")))
@@ -115,6 +116,7 @@ pub fn rotulo_de_boton(b: BotonCaja, textos: &pixpin_store::Catalogo) -> Option<
         // Las de imagen dicen ademas como se usan: la lupa es una varita
         // (no se arrastra), y pixelar y la zona se arrastran.
         BotonCaja::Compartir => Some(textos.t("lienzo-pista-compartir")),
+        BotonCaja::Atravesar => Some(textos.t("anotador-pista-atravesar")),
         BotonCaja::Elegir(Herramienta::Lupa) => Some(textos.t("lienzo-pista-lupa")),
         BotonCaja::Elegir(Herramienta::Mosaico) => Some(textos.t("lienzo-pista-mosaico")),
         BotonCaja::Elegir(Herramienta::Zona) => Some(textos.t("lienzo-pista-zona")),
@@ -239,6 +241,8 @@ impl Anfitrion {
             BotonCaja::Imagen | BotonCaja::Figuras | BotonCaja::Imprimir | BotonCaja::Compartir => {
                 self == Anfitrion::Lienzo
             }
+            // Solo con la pantalla VIVA debajo hay a quien dejar pasar el raton.
+            BotonCaja::Atravesar => self == Anfitrion::PantallaViva,
             _ => true,
         }
     }
@@ -276,9 +280,11 @@ pub fn permitida(anfitrion: Anfitrion, h: Herramienta) -> bool {
 /// Pura: los botones de la barra de `anfitrion` con esos ajustes. Las
 /// acciones (deshacer, rehacer, salir) siempre.
 pub fn botones_con(anfitrion: Anfitrion, ajustes: &Herramientas) -> Vec<BotonCaja> {
+    // El clic a traves no es del lienzo: solo lo admite la pantalla viva.
     BOTONES_EDITOR
         .iter()
         .copied()
+        .chain([BotonCaja::Atravesar])
         .filter(|b| boton_permitido_con(anfitrion, *b, ajustes))
         .collect()
 }

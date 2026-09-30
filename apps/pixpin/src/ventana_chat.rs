@@ -11615,6 +11615,26 @@ fn guardar_hoja_dibujada(
     }
 }
 
+/// **Para las pruebas de otros modulos** (`anotador_al_chat`): abre una hoja
+/// como `abrir_una_hoja` pero sin ventana (la escena y las fotos que recibe
+/// el editor), deja que `editar` haga lo que haria el usuario y la guarda
+/// como al cerrar. Devuelve la escena tal como se abrio, sus fotos y si se
+/// guardo algo.
+#[cfg(test)]
+pub(crate) fn hoja_abierta_y_guardada(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    m: &pixpin_proyecto::cuaderno::Mensaje,
+    editar: impl FnOnce(&mut pixpin_motor2d::Escena),
+) -> Option<(pixpin_motor2d::Escena, Vec<(u64, std::path::PathBuf)>, bool)> {
+    let h = preparar_hoja(raiz, proyecto, m, 0)?;
+    let abierta = h.escena.clone();
+    let mut escena = h.escena;
+    editar(&mut escena);
+    let guardada = guardar_hoja_dibujada(&h.ruta, &h.lienzo, &escena);
+    Some((abierta, h.fotos, guardada))
+}
+
 /// La vista de una pagina del documento del proyecto, o `None` mientras se
 /// pinta. Devuelve la ruta del PNG y lo que mide la pagina en unidades de
 /// lienzo (`ANCHO_PAPEL_PDF`, 1400 de ancho, el del movil), que es donde

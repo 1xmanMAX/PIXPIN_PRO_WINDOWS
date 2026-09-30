@@ -1070,7 +1070,7 @@ fn anadir_pdf(p: &mut Preparado, ruta: &Path, clave: &str, t: &Catalogo) -> bool
     for i in 0..hojas.cuantas() {
         let capa = donde.para_leer(ruta, i);
         let tinta = capa.is_file().then(|| {
-            pixpin_motor2d::pintado::ordenes_de_escena(&crate::lector_tinta::Capa::leer(&capa).escena)
+            pixpin_motor2d::pintado::ordenes_de_escena(&donde.leer_capa(ruta, i, ajustes.espacios, hojas.altos[i]).escena)
         });
         if tinta.as_ref().is_some_and(|v| !v.is_empty()) {
             anotadas += 1;

@@ -40,9 +40,9 @@ use std::path::{Path, PathBuf};
 
 use pixpin_docs::lectura::{self, Ajustes};
 use pixpin_proyecto::anotado::{self as an, Base};
-use pixpin_sincro::anotado::{Maqueta, margen_de};
+use pixpin_sincro::anotado::{HOJA, MarcoDeLaHoja, Maqueta, margen_de};
 
-use crate::lector_tinta::{self, Capa};
+use crate::lector_tinta::{self, Capa, Unidades};
 
 fn es_pdf(doc: &Path) -> bool {
     doc.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
@@ -245,6 +245,24 @@ fn corrida(b: &Base, a: &Ajustes) -> f32 {
         .unwrap_or_else(|| margen_de(a.columna as i32)) as f32
 }
 
+/// **La columna del PC como marco** (`MarcoDeLaHoja`): la banda de la
+/// columna desde lo alto del documento, tan alta como ancha, en unidades
+/// del lector (que cuentan desde el borde de la columna). `None` sin
+/// columna fijada: sin ella no hay hoja con que encajar.
+fn columna_propia(a: &Ajustes) -> Option<MarcoDeLaHoja> {
+    let c = a.columna as f32;
+    (c > 0.0).then(|| MarcoDeLaHoja::nuevo(0.0, 0.0, c, c))
+}
+
+/// **En que unidades esta la tinta del mensaje de un Word o un libro**: las
+/// de su marco (`anot-<uid>.hoja`) si lo trae; si no, la regla de antes, la
+/// columna corrida su `izq` ([`corrida`]).
+fn unidades_del_documento(b: &Base, a: &Ajustes) -> Unidades {
+    columna_propia(a)
+        .and_then(|p| unidades_del_marco(&b.fichero(HOJA), &p))
+        .unwrap_or_else(|| Unidades::corridas(corrida(b, a)))
+}
+
 /// **La capa de tinta de un Word o un libro.** De un adjunto del chat, la de
 /// su mensaje (con lo de antes pasado la primera vez); si no, la de junto al
 /// documento.
@@ -254,33 +272,99 @@ pub fn leer_capa(doc: &Path) -> Capa {
         return Capa::leer(&vieja);
     };
     let a = leer(doc);
-    let dx = corrida(&b, &a);
+    let u = unidades_del_documento(&b, &a);
     let nueva = b.tinta();
     if !nueva.exists() && vieja.is_file() {
-        // La de antes esta en las unidades del PC: se escribe corrida.
+        // La de antes esta en las unidades del PC: se escribe corrida, con
+        // su marco al lado.
         let mut c = Capa::leer(&vieja);
         c.sucia = true;
-        match c.guardar_corrida(&nueva, dx) {
-            Ok(()) => an::marcar_tinta_pasada(&vieja),
+        match c.guardar_en(&nueva, u) {
+            Ok(()) => {
+                an::marcar_tinta_pasada(&vieja);
+                if let Some(p) = columna_propia(&a)
+                    && let Err(e) = escribir_marco(&b.fichero(HOJA), u, &p)
+                {
+                    tracing::warn!(?e, "no se pudo escribir el marco de la tinta pasada");
+                }
+            }
             Err(e) => tracing::warn!(?e, "no se pudo pasar la tinta de antes al mensaje"),
         }
     } else {
         // Si el movil ya mando la suya, la de aqui se junta (una vez): con
         // solo copiar si falta, lo anotado aqui antes no viajaba nunca.
-        an::pasar_tinta_de_antes(&vieja, &nueva, dx as f64);
+        an::pasar_tinta_de_antes(&vieja, &nueva, u.dx as f64);
     }
-    Capa::leer_corrida(&nueva, dx)
+    Capa::leer_en(&nueva, u)
 }
 
-/// Guarda la capa donde [leer_capa] la leyo.
+/// Guarda la capa donde [leer_capa] la leyo y, si cambio, su marco al
+/// lado (`anot-<uid>.hoja`): primero la tinta, luego el marco, cada uno por
+/// un temporal (ver `DondeVa::guardar_capa`).
 pub fn guardar_capa(doc: &Path, capa: &mut Capa) -> std::io::Result<()> {
     match base_de(doc).filter(|_| !es_pdf(doc)) {
         Some(b) => {
+            let sucia = capa.sucia;
             let a = leer(doc);
-            capa.guardar_corrida(&b.tinta(), corrida(&b, &a))
+            let u = unidades_del_documento(&b, &a);
+            capa.guardar_en(&b.tinta(), u)?;
+            match columna_propia(&a) {
+                Some(p) if sucia => escribir_marco(&b.fichero(HOJA), u, &p),
+                _ => Ok(()),
+            }
         }
         None => capa.guardar(&lector_tinta::ruta_de_capa(doc)),
     }
+}
+
+// ------------------------------------------------------- el marco de la tinta
+
+/// **El marco de la tinta de la hoja `i` de un PDF suelto del chat**
+/// (`anot-<uid>-p<i>.hoja`), junto a lo demas de su mensaje; `None` si no
+/// es un adjunto.
+pub fn marco_de_la_hoja_del_pdf(
+    adjunto: Option<&(PathBuf, pixpin_proyecto::anotado::Adjunto)>,
+    i: usize,
+) -> Option<PathBuf> {
+    use pixpin_sincro::disco::Disco;
+    let (raiz, x) = adjunto?;
+    let pagina = u32::try_from(i).ok()?;
+    let rel = pixpin_sincro::anotado::rel(&pixpin_sincro::anotado::de_pagina(&x.uid, pagina), HOJA);
+    Some(pixpin_proyecto::vista::DiscoPc::nuevo(raiz).ruta(&x.chat, &rel))
+}
+
+/// El marco de un fichero `.hoja`, si esta y se entiende. Uno que esta y no
+/// se entiende se ignora (se lee con la regla de antes) y se dice.
+pub fn leer_marco(f: &Path) -> Option<MarcoDeLaHoja> {
+    let texto = an::leer(f)?;
+    let m = MarcoDeLaHoja::de_texto(&texto);
+    if m.is_none() {
+        tracing::warn!(fichero = %f.display(), texto = %texto.trim(), "marco de la tinta que no se entiende: se ignora");
+    }
+    m
+}
+
+/// Las unidades que dice el marco `f` para una hoja que en el lector es
+/// `propia` (ver `Unidades::del_marco`); `None` sin marco que valga.
+pub fn unidades_del_marco(f: &Path, propia: &MarcoDeLaHoja) -> Option<Unidades> {
+    Unidades::del_marco(propia, &leer_marco(f)?)
+}
+
+/// **Escribe el marco de una tinta guardada en las unidades `u`**: donde
+/// cae en ellas la hoja `propia`. Si el que hay ya dice eso mismo (el del
+/// otro aparato con el que se leyo, escrito con sus decimales) **se deja
+/// tal cual**: una ida y vuelta sin cambios no reescribe nada, y no viaja
+/// de vuelta un fichero que solo cambio en el ultimo decimal.
+pub fn escribir_marco(f: &Path, u: Unidades, propia: &MarcoDeLaHoja) -> std::io::Result<()> {
+    if !propia.valido() {
+        return Ok(());
+    }
+    if let Some(ya) = an::leer(f).and_then(|t| MarcoDeLaHoja::de_texto(&t))
+        && Unidades::del_marco(propia, &ya).is_some_and(|v| v.casi_iguales(&u))
+    {
+        return Ok(());
+    }
+    an::escribir(f, &u.marco_de(propia).a_texto())
 }
 
 /// **La tinta de la hoja `i` de un PDF suelto** que es un adjunto del chat
@@ -300,6 +384,44 @@ pub fn hoja_del_pdf(adjunto: Option<&(PathBuf, pixpin_proyecto::anotado::Adjunto
         an::pasar_tinta_de_antes(&vieja, &nueva, 0.0);
     }
     Some(nueva)
+}
+
+/// Si un id de fichero es de los que nacen en el PC (`enlace::id_de_texto`:
+/// `pc` y el numero en hexadecimal). Los del movil son de 21 letras al azar
+/// con mayusculas, `_` y `-`: que uno sea `pc` y solo hexadecimal no pasa.
+fn nacido_en_el_pc(id: &str) -> bool {
+    id.strip_prefix("pc")
+        .is_some_and(|h| (1..=16).contains(&h.len()) && h.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)))
+}
+
+/// **Lo que el PC escribio en la hoja del movil antes de saber sus
+/// unidades, a ellas** (una vez por hoja y por PC). Hasta el 29-sep el PC
+/// leia y escribia `anot-<uid>-p<n>` como si fuera la hoja a 1400 de ancho;
+/// el movil la guarda en las de su capa (ver
+/// `pixpin_docs::vista::capa_del_movil`), asi que lo dibujado aqui salia
+/// alli encogido y, leyendolo ya bien, saldria encogido tambien aqui. Lo
+/// nacido en el PC que ya esta en el fichero se pasa a las unidades del
+/// movil; lo del movil no se toca. La marca (junto al PDF, que no viaja) se
+/// pone antes de escribir: correrlo dos veces lo estropearia, y no hacerlo
+/// solo lo deja como estaba.
+pub fn lo_del_pc_a_la_capa_del_movil(pdf: &Path, i: usize, hoja: &Path, u: lector_tinta::Unidades) {
+    let marca = lector_tinta::carpeta_de(pdf).join(format!("hoja-{}.unidades-del-movil", i + 1));
+    if marca.exists() {
+        return;
+    }
+    let puesta = std::fs::create_dir_all(marca.parent().unwrap_or(Path::new(".")))
+        .and_then(|()| std::fs::write(&marca, b""));
+    if puesta.is_err() || !hoja.is_file() || u == lector_tinta::Unidades::DEL_PC {
+        return;
+    }
+    let mut c = Capa::leer(hoja);
+    let movidos = c.pasar_a(u, |e| e.extras.id_de_fichero.as_deref().is_some_and(nacido_en_el_pc));
+    if movidos > 0 {
+        match c.guardar(hoja) {
+            Ok(()) => tracing::info!(movidos, hoja = %hoja.display(), "tinta del PC llevada a las unidades del movil"),
+            Err(e) => tracing::warn!(?e, "no se pudo llevar la tinta del PC a las unidades del movil"),
+        }
+    }
 }
 
 /// El adjunto del chat que es este PDF, una vez por lector abierto.
@@ -323,12 +445,12 @@ pub fn marcas_del_lienzo(lienzo: &Path, de_siempre: PathBuf) -> PathBuf {
 }
 
 #[cfg(test)]
-mod pruebas {
+pub(crate) mod pruebas {
     use super::*;
     use pixpin_proyecto::almacen::{self, Ficha, Indice};
     use pixpin_proyecto::cuaderno::{self, Clase, Mensaje, Sello};
 
-    fn raiz(etiqueta: &str) -> PathBuf {
+    pub(crate) fn raiz(etiqueta: &str) -> PathBuf {
         let r = std::env::temp_dir().join(format!("pixpin-anotado-app-{etiqueta}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&r);
         std::fs::create_dir_all(&r).unwrap();
@@ -336,7 +458,7 @@ mod pruebas {
     }
 
     /// Un almacen con un adjunto `nombre` en el chat de «Tesis».
-    fn con_adjunto(r: &Path, nombre: &str, bytes: &[u8]) -> PathBuf {
+    pub(crate) fn con_adjunto(r: &Path, nombre: &str, bytes: &[u8]) -> PathBuf {
         let ficha = Ficha::nueva("Tesis", 5, "PC01");
         let mut i = Indice::default();
         i.proyectos.push(ficha.clone());
@@ -571,6 +693,58 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&r);
     }
 
+    /// El caso del usuario (Bastidas_CJ_.pdf, sin espacios en el movil): lo
+    /// del movil se lee a la escala de la hoja, y lo que el PC dibujo antes
+    /// de saberlo (en la hoja a 1400) pasa una vez a las unidades del movil,
+    /// para que alli se vea donde se dibujo y aqui no encoja.
+    #[test]
+    fn la_hoja_de_un_pdf_del_chat_se_lee_en_las_unidades_del_lector_del_movil() {
+        use crate::lector_pdf_proyecto::DondeVa;
+        use lector_tinta::Unidades;
+        let r = raiz("unidades-pdf");
+        let pdf = con_adjunto(&r, "tesis.pdf", b"%PDF-1.4");
+        let d = DondeVa::de(&r, &pdf, 1);
+        assert_eq!(d.unidades(0), Unidades::de_la_capa_del_movil(0));
+        assert_eq!(d.unidades(3), Unidades::DEL_PC, "con los dos espacios el movil guarda la hoja tal cual");
+        let h = d.para_leer(&pdf, 0);
+        std::fs::create_dir_all(h.parent().unwrap()).unwrap();
+        let fichero = r#"{"elements":[
+            {"id":"jDNyxAFkaxm2qZ-KsluKG","type":"freedraw","x":-800,"y":1000,"width":250,"height":0,"strokeWidth":1,"version":1,"points":[{"x":0.0,"y":0.0},{"x":250.0,"y":0.0}]},
+            {"id":"pc1f","type":"freedraw","x":100,"y":400,"width":100,"height":0,"strokeWidth":1,"version":2,"points":[[0,0],[100,0]]}]}"#;
+        std::fs::write(&h, fichero).unwrap();
+        let caja = |c: &Capa, n: usize| c.escena.visibles().nth(n).unwrap().caja();
+        let c = d.leer_capa(&pdf, 0, 0, 1980.0);
+        let (movil, pc) = (caja(&c, 0), caja(&c, 1));
+        assert!((movil.0 - 100.0).abs() < 3.0 && (movil.2 - movil.0 - 100.0).abs() < 5.0, "{movil:?}");
+        assert!((pc.0 - 100.0).abs() < 3.0 && (pc.2 - pc.0 - 100.0).abs() < 5.0, "lo del PC donde se dibujo: {pc:?}");
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&h).unwrap()).unwrap();
+        assert_eq!(v["elements"][0]["x"].as_f64(), Some(-800.0), "lo del movil no se toca");
+        let x = v["elements"][1]["x"].as_f64().unwrap();
+        assert!((x + 800.0).abs() < 1.0, "lo del PC, en las unidades del movil: {x}");
+        assert!(v["elements"][1]["version"].as_u64() > Some(2), "y como un cambio, para que el movil lo tome");
+        // Una sola vez: abrirlo otra vez no lo vuelve a encoger.
+        let otra = d.leer_capa(&pdf, 0, 0, 1980.0);
+        assert!((caja(&otra, 1).0 - 100.0).abs() < 3.0, "{:?}", caja(&otra, 1));
+        // Caso negativo: compartir solo lee, no escribe nada.
+        let h2 = d.para_leer(&pdf, 1);
+        std::fs::write(&h2, fichero).unwrap();
+        let _ = DondeVa::solo_leer(&pdf).leer_capa(&pdf, 1, 0, 1980.0);
+        assert_eq!(std::fs::read_to_string(&h2).unwrap(), fichero);
+        // Caso negativo: un PDF que no es del chat sigue en las unidades del PC.
+        let suelto = r.join("suelto.pdf");
+        std::fs::write(&suelto, b"%PDF-1.4").unwrap();
+        assert_eq!(DondeVa::de(&r, &suelto, 1).unidades(0), Unidades::DEL_PC);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn un_id_nacido_en_el_pc_se_reconoce_y_uno_del_movil_no() {
+        assert!(nacido_en_el_pc("pc1f") && nacido_en_el_pc("pcc") && nacido_en_el_pc("pc0123456789abcdef"));
+        assert!(!nacido_en_el_pc("jDNyxAFkaxm2qZ-KsluKG"));
+        assert!(!nacido_en_el_pc("pcZ") && !nacido_en_el_pc("pc") && !nacido_en_el_pc("pc0123456789abcdef0"));
+        assert!(!nacido_en_el_pc("PC1"));
+    }
+
     #[test]
     fn un_pdf_que_no_es_del_chat_no_crea_nada_que_viaje() {
         let r = raiz("pdf-fuera");
@@ -645,5 +819,185 @@ mod con_datos_reales {
         println!("lienzo: {} -> {:?}", m.display(), std::fs::read_to_string(&m).ok());
         assert_eq!(base_de(&docx).unwrap().base, "anot-9KKUS3XF5W");
         assert_eq!(base_de(&pdf).unwrap().base, "anot-34FJGS8TT2");
+    }
+}
+
+/// **El marco de la tinta** (`anot-….hoja`, 29-sep): con el, la tinta cae
+/// sobre la hoja en cualquier escala en que la escribiera el otro aparato.
+#[cfg(test)]
+mod pruebas_del_marco {
+    use super::pruebas::{con_adjunto, raiz};
+    use super::*;
+    use crate::lector_pdf_proyecto::DondeVa;
+    use pixpin_motor2d::elemento::Figura;
+
+    /// Los puntos de cada trazo vivo, en unidades del lector.
+    fn puntos(c: &Capa) -> Vec<Vec<(f32, f32)>> {
+        c.escena
+            .visibles()
+            .map(|e| match &e.figura {
+                Figura::Lapiz { puntos, .. } => puntos.iter().map(|p| (p.x, p.y)).collect(),
+                otra => panic!("{otra:?}"),
+            })
+            .collect()
+    }
+
+    fn cerca(a: (f32, f32), b: (f32, f32)) -> bool {
+        (a.0 - b.0).abs() < 0.01 && (a.1 - b.1).abs() < 0.01
+    }
+
+    /// Una hoja de 1400 x 1980 escrita por otro aparato con el cero en
+    /// (500, 300) y tres veces mas grande: un trazo en las esquinas de la
+    /// hoja y otro de (100, 200) a (400, 200), de grosor 6.
+    const TINTA_A_OTRA_ESCALA: &str = r#"{"elements":[
+        {"id":"esquinas","type":"freedraw","x":500,"y":300,"width":4200,"height":5940,"strokeWidth":3,"version":1,"points":[{"x":0.0,"y":0.0},{"x":4200.0,"y":5940.0}]},
+        {"id":"raya","type":"freedraw","x":800,"y":900,"width":900,"height":0,"strokeWidth":6,"version":1,"points":[{"x":0.0,"y":0.0},{"x":900.0,"y":0.0}]}]}"#;
+    /// Su marco, como lo escribiria Kotlin (`1400.0`): se conserva tal cual.
+    const SU_MARCO: &str = "500.0,300.0,4700.0,6240.0\nv1\n";
+
+    fn pdf_con_tinta(etiqueta: &str, marco: Option<&str>) -> (PathBuf, PathBuf, DondeVa, PathBuf, PathBuf) {
+        let r = raiz(etiqueta);
+        let pdf = con_adjunto(&r, "plano.pdf", b"%PDF-1.4");
+        let d = DondeVa::de(&r, &pdf, 1);
+        let tinta = d.para_escribir(&pdf, 0);
+        std::fs::create_dir_all(tinta.parent().unwrap()).unwrap();
+        std::fs::write(&tinta, TINTA_A_OTRA_ESCALA).unwrap();
+        let (raiz_almacen, x) = adjunto_del_pdf(&pdf).unwrap();
+        let f = marco_de_la_hoja_del_pdf(Some(&(raiz_almacen, x)), 0).unwrap();
+        if let Some(m) = marco {
+            an::escribir(&f, m).unwrap();
+        }
+        (r, pdf, d, tinta, f)
+    }
+
+    #[test]
+    fn la_tinta_escrita_con_su_marco_en_otra_escala_cae_exactamente_sobre_la_hoja() {
+        let (r, pdf, d, _, f) = pdf_con_tinta("marco-escala", Some(SU_MARCO));
+        assert_eq!(f.file_name().unwrap().to_string_lossy(), format!("{}-p0.hoja", base_de(&pdf).unwrap().base));
+        // Sin espacios la regla vieja lo leeria dos veces y media: el marco manda.
+        let c = d.leer_capa(&pdf, 0, 0, 1980.0);
+        let p = puntos(&c);
+        assert!(cerca(p[0][0], (0.0, 0.0)) && cerca(p[0][1], (1400.0, 1980.0)), "{:?}", p[0]);
+        assert!(cerca(p[1][0], (100.0, 200.0)) && cerca(p[1][1], (400.0, 200.0)), "{:?}", p[1]);
+        let raya = c.escena.visibles().nth(1).unwrap();
+        assert!((raya.grosor - 2.0).abs() < 1e-4, "el grosor, a la misma escala: {}", raya.grosor);
+        // Con cualquier espacio puesto, lo mismo: ya no depende de ellos.
+        assert_eq!(puntos(&d.leer_capa(&pdf, 0, 3, 1980.0)), p);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn con_otra_proporcion_se_encaja_eje_por_eje_al_marco() {
+        // El otro aparato midio la hoja un 10 % mas alta: la esquina de
+        // abajo cae igual en la esquina de abajo de la hoja de aqui.
+        let (r, pdf, d, _, _) = pdf_con_tinta("marco-proporcion", Some("500,300,4700,5940\n"));
+        let p = puntos(&d.leer_capa(&pdf, 0, 0, 1800.0));
+        assert!(cerca(p[0][0], (0.0, 0.0)), "{:?}", p[0]);
+        assert!((p[0][1].0 - 1400.0).abs() < 0.01, "{:?}", p[0]);
+        assert!((p[0][1].1 - 1800.0 * 5940.0 / 5640.0).abs() < 0.05, "{:?}", p[0]);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn ida_y_vuelta_sin_cambios_deja_la_tinta_y_el_marco_identicos() {
+        let (r, pdf, d, tinta, f) = pdf_con_tinta("marco-ida-y-vuelta", Some(SU_MARCO));
+        let (antes_t, antes_m) = (std::fs::read(&tinta).unwrap(), std::fs::read(&f).unwrap());
+        let mut c = d.leer_capa(&pdf, 0, 0, 1980.0);
+        d.guardar_capa(&pdf, 0, &mut c, 1980.0).unwrap();
+        assert_eq!(std::fs::read(&tinta).unwrap(), antes_t, "sin cambios no se escribe");
+        assert_eq!(std::fs::read(&f).unwrap(), antes_m);
+        // Y guardada aunque nada cambiara: cada numero vuelve tal cual y el
+        // marco del otro se queda con sus decimales.
+        c.sucia = true;
+        d.guardar_capa(&pdf, 0, &mut c, 1980.0).unwrap();
+        assert_eq!(std::fs::read(&f).unwrap(), antes_m, "el marco del otro se conserva");
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&tinta).unwrap()).unwrap();
+        assert_eq!(v["elements"][1]["x"].as_f64(), Some(800.0));
+        assert_eq!(v["elements"][1]["y"].as_f64(), Some(900.0));
+        assert_eq!(v["elements"][1]["strokeWidth"].as_f64(), Some(6.0));
+        let fin = &v["elements"][0]["points"][1];
+        assert_eq!(fin["x"].as_f64().or(fin[0].as_f64()), Some(4200.0), "{fin}");
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn sin_marco_se_lee_con_la_regla_de_antes_y_al_guardar_se_escribe_el_suyo() {
+        let (r, pdf, d, _, f) = pdf_con_tinta("marco-sin", None);
+        // La regla vieja, sin espacios (`capa_del_movil(0)`): x2,5 y -1050.
+        let mut c = d.leer_capa(&pdf, 0, 0, 1980.0);
+        let p = puntos(&c);
+        assert!(cerca(p[1][0], (1850.0 / 2.5, 900.0 / 2.5)), "{:?}", p[1]);
+        assert!(!f.exists(), "leer no escribe ningun marco");
+        c.sucia = true;
+        d.guardar_capa(&pdf, 0, &mut c, 1980.0).unwrap();
+        // El marco dice las unidades en que se escribio: las del movil sin espacios.
+        assert_eq!(an::leer(&f).as_deref(), Some("-1050,0,2450,4950\nv1\n"));
+        // Y leida con el, cae en el mismo sitio que con la regla vieja.
+        assert_eq!(puntos(&d.leer_capa(&pdf, 0, 3, 1980.0)), p);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn un_marco_mal_formado_se_ignora_y_se_lee_con_la_regla_de_antes() {
+        for malo in ["500,300,4700", "a,b,c,d", "0,0,0,0", "500,300,4700,6240\nv9\n", ""] {
+            let (r, pdf, d, _, f) = pdf_con_tinta("marco-malo", Some(malo));
+            let p = puntos(&d.leer_capa(&pdf, 0, 0, 1980.0));
+            assert!(cerca(p[1][0], (1850.0 / 2.5, 900.0 / 2.5)), "{malo:?}: {:?}", p[1]);
+            assert_eq!(an::leer(&f).as_deref(), Some(malo), "leer no lo toca");
+            let _ = std::fs::remove_dir_all(&r);
+        }
+    }
+
+    #[test]
+    fn el_pdf_suelto_no_tiene_marco() {
+        // Caso negativo: lo de junto al PDF solo lo lee el PC, no viaja.
+        let r = raiz("marco-suelto");
+        let suelto = r.join("suelto.pdf");
+        std::fs::write(&suelto, b"%PDF-1.4").unwrap();
+        let d = DondeVa::de(&r, &suelto, 1);
+        assert_eq!(d.unidades_de(0, 0, 1980.0), Unidades::DEL_PC);
+        let mut c = d.leer_capa(&suelto, 0, 0, 1980.0);
+        c.sucia = true;
+        d.guardar_capa(&suelto, 0, &mut c, 1980.0).unwrap();
+        let nombres: Vec<String> = std::fs::read_dir(lector_tinta::carpeta_de(&suelto))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        assert!(nombres.iter().all(|n| !n.ends_with(".hoja")), "{nombres:?}");
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn la_tinta_de_un_word_con_su_marco_cae_en_la_columna_aunque_la_maqueta_diga_otro_margen() {
+        let r = raiz("marco-word");
+        let doc = con_adjunto(&r, "acta.docx", b"PK");
+        let b = base_de(&doc).unwrap();
+        // La maqueta dice columna 420 con 280 de margen; el marco, que la
+        // columna esta a 560 y al doble (otra escala de la capa).
+        an::escribir(&b.fichero(".maqueta"), "420,280,280,100,1,0").unwrap();
+        an::escribir(&b.fichero(HOJA), "560,0,1400,840\nv1\n").unwrap();
+        std::fs::create_dir_all(b.tinta().parent().unwrap()).unwrap();
+        let tinta = r#"{"elements":[{"id":"w1","type":"freedraw","x":580,"y":100,"width":200,"height":0,"strokeWidth":2,"version":1,"points":[{"x":0.0,"y":0.0},{"x":200.0,"y":0.0}]}],"files":{}}"#;
+        std::fs::write(b.tinta(), tinta).unwrap();
+        let mut c = leer_capa(&doc);
+        let p = puntos(&c);
+        assert!(cerca(p[0][0], (10.0, 50.0)) && cerca(p[0][1], (110.0, 50.0)), "{p:?}");
+        // Ida y vuelta: sin cambios, nada; guardada, el marco del otro se queda.
+        guardar_capa(&doc, &mut c).unwrap();
+        assert_eq!(std::fs::read_to_string(b.tinta()).unwrap(), tinta);
+        c.sucia = true;
+        guardar_capa(&doc, &mut c).unwrap();
+        assert_eq!(an::leer(&b.fichero(HOJA)).as_deref(), Some("560,0,1400,840\nv1\n"));
+        // Caso negativo: sin marco, la regla de antes (la columna corrida `izq`).
+        std::fs::remove_file(b.fichero(HOJA)).unwrap();
+        std::fs::write(b.tinta(), tinta).unwrap();
+        let mut c = leer_capa(&doc);
+        assert!(cerca(puntos(&c)[0][0], (300.0, 100.0)), "{:?}", puntos(&c));
+        // Y al guardar un cambio escribe el suyo: la columna a 280, a escala 1.
+        c.sucia = true;
+        guardar_capa(&doc, &mut c).unwrap();
+        assert_eq!(an::leer(&b.fichero(HOJA)).as_deref(), Some("280,0,700,420\nv1\n"));
+        let _ = std::fs::remove_dir_all(&r);
     }
 }

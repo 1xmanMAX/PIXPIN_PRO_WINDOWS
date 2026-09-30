@@ -631,6 +631,7 @@ pub(crate) fn web_de_pdf(ruta: &Path, paginas: Option<&[usize]>) -> Result<Strin
         .unwrap_or_else(|_| vec![None; cuales.len()]);
     // La tinta de un PDF de proyecto esta en sus hojas (`lector_pdf_proyecto`).
     let donde = crate::lector_pdf_proyecto::DondeVa::solo_leer(ruta);
+    let espacios = crate::anotado_del_adjunto::leer(ruta).espacios;
     let hojas: Vec<HojaPdf> = cuales
         .iter()
         .zip(planos)
@@ -645,7 +646,7 @@ pub(crate) fn web_de_pdf(ruta: &Path, paginas: Option<&[usize]>) -> Result<Strin
             };
             let capa = donde.para_leer(ruta, i);
             let tinta = if capa.is_file() {
-                crate::lector_tinta::Capa::leer(&capa).escena
+                donde.leer_capa(ruta, i, espacios, colocadas.altos[i]).escena
             } else {
                 Escena::nueva()
             };

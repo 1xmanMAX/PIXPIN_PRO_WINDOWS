@@ -1470,6 +1470,7 @@ impl Pines {
             | BotonCaja::Figuras
             | BotonCaja::Imprimir
             | BotonCaja::Compartir
+            | BotonCaja::Atravesar
             | BotonCaja::Grupo(_) => {}
         }
         if habia.is_some() && !matches!(boton, BotonCaja::Elegir(_) | BotonCaja::Salir) {

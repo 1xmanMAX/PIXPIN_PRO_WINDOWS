@@ -222,6 +222,8 @@ pub(crate) fn pulsar_boton(boton: BotonCaja, gesto: &mut Gesto, escena: &mut Esc
         // Las dos las atiende el anfitrion, que es quien sabe abrir un
         // selector de ficheros o un menu (`mano::Atendido::pedido`).
         BotonCaja::Imagen | BotonCaja::Figuras | BotonCaja::Imprimir | BotonCaja::Compartir => true,
+        // El clic a traves lo cambia el anotador de pantalla (`Pedido::Atravesar`).
+        BotonCaja::Atravesar => true,
         // Desplegar un grupo lo decide la mano (`dibujo::grupos::pulsar`).
         BotonCaja::Grupo(_) => true,
     }

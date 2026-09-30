@@ -888,10 +888,10 @@ fn pedir_hojas(e: &mut Estado, tx: &mpsc::Sender<Pedido>, m: Marco) {
 /// Lee del disco lo anotado de las hojas que se ven (una vez cada una).
 fn cargar_capas_visibles(e: &mut Estado, ruta: &Path, m: Marco) {
     for i in visibles(e, m) {
-        let donde = &e.donde;
+        let (donde, espacios, alto) = (&e.donde, e.ajustes.espacios, alto_de(&e.hojas, i));
         e.capas
             .entry(i)
-            .or_insert_with(|| Capa::leer(&donde.para_leer(ruta, i)));
+            .or_insert_with(|| donde.leer_capa(ruta, i, espacios, alto));
     }
 }
 
@@ -920,11 +920,11 @@ fn a_la_tinta(e: &mut Estado, ev: &EventoOverlay, ruta: &Path, m: Marco) -> lect
     };
     e.tinta.hoja = Some(i);
     let camara = camara_de_la_hoja(e, i, m);
-    let donde = &e.donde;
+    let (donde, espacios, alto) = (&e.donde, e.ajustes.espacios, alto_de(&e.hojas, i));
     let capa = e
         .capas
         .entry(i)
-        .or_insert_with(|| Capa::leer(&donde.para_leer(ruta, i)));
+        .or_insert_with(|| donde.leer_capa(ruta, i, espacios, alto));
     e.tinta.evento(ev, capa, &camara, m.area, m.escala_por_cien)
 }
 
@@ -1555,8 +1555,21 @@ fn alternar_anotar(e: &mut Estado, ruta: &Path) {
 }
 
 fn alternar_espacio(e: &mut Estado, lado: u8, ruta: &Path) {
+    let antes = e.donde.unidades(e.ajustes.espacios);
     e.ajustes.espacios = vista::con_espacio(e.ajustes.espacios, lado);
     guardar_ajustes(e, ruta);
+    // **Como en el movil**: su capa cuenta con los espacios de ahora, asi
+    // que al ponerlos o quitarlos la tinta de un adjunto se queda con sus
+    // numeros y se ve en otro sitio de la hoja. Lo abierto se guarda en las
+    // unidades en que se leyo y se vuelve a leer en las nuevas.
+    if e.donde.unidades(e.ajustes.espacios) != antes {
+        guardar_capas(e, ruta);
+        e.capas.clear();
+        e.hechos.clear();
+        e.deshechos.clear();
+        e.tinta.hoja = None;
+        e.tinta.olvidar_lo_calculado();
+    }
 }
 
 /// Una marca donde se esta leyendo: la hoja de arriba y la fraccion de ella
@@ -1667,7 +1680,8 @@ fn hacer(
             for i in 0..e.hojas.cuantas() {
                 let de_aqui = e.donde.para_leer(ruta, i);
                 if de_aqui.is_file() || e.capas.contains_key(&i) {
-                    let capa = e.capas.entry(i).or_insert_with(|| Capa::leer(&de_aqui));
+                    let (donde, espacios, alto) = (&e.donde, e.ajustes.espacios, alto_de(&e.hojas, i));
+                    let capa = e.capas.entry(i).or_insert_with(|| donde.leer_capa(ruta, i, espacios, alto));
                     capa.vaciar();
                     e.hechos.push(i);
                 }
@@ -1704,6 +1718,7 @@ fn al_proyecto(e: &mut Estado, textos: &Catalogo, ruta: &Path, ubicacion: &Ubica
             e.capas.clear();
             e.hechos.clear();
             e.deshechos.clear();
+            e.tinta.olvidar_lo_calculado();
             e.panel = false;
             crate::ventana_chat::refrescar();
             textos.t("lector-al-proyecto-hecho")
@@ -1728,7 +1743,7 @@ fn tinta_de_todas(e: &mut Estado, ruta: &Path) -> HashMap<usize, Vec<Orden>> {
                 if !r.is_file() {
                     continue;
                 }
-                pintado::ordenes_de_escena(&Capa::leer(&r).escena)
+                pintado::ordenes_de_escena(&e.donde.leer_capa(ruta, i, e.ajustes.espacios, alto_de(&e.hojas, i)).escena)
             }
         };
         if !ordenes.is_empty() {
@@ -1745,6 +1760,12 @@ fn guardar_ajustes(e: &mut Estado, ruta: &Path) {
     }
 }
 
+/// El alto de la hoja `i` en unidades del lector (0 si no existe: sin alto
+/// no hay marco que leer ni que escribir).
+fn alto_de(hojas: &vista::Hojas, i: usize) -> f32 {
+    hojas.altos.get(i).copied().unwrap_or(0.0)
+}
+
 fn guardar_capas(e: &mut Estado, ruta: &Path) {
     let donde = &e.donde;
     for (i, c) in e.capas.iter_mut() {
@@ -1753,7 +1774,8 @@ fn guardar_capas(e: &mut Estado, ruta: &Path) {
         if !c.sucia {
             continue;
         }
-        if let Err(err) = c.guardar(&donde.para_escribir(ruta, *i)) {
+        // La tinta y, al lado, su marco (`anot-<uid>-p<i>.hoja`).
+        if let Err(err) = donde.guardar_capa(ruta, *i, c, alto_de(&e.hojas, *i)) {
             tracing::warn!(?err, hoja = i, "no se pudo guardar lo anotado en la hoja");
         }
     }
@@ -2264,6 +2286,38 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// **Poner o quitar un espacio en un adjunto mueve su tinta, como en el
+    /// movil**: su capa cuenta con los espacios de ahora, asi que lo abierto
+    /// se guarda en las unidades en que se leyo y se vuelve a leer en las
+    /// nuevas. En un PDF suelto (caso negativo) no cambia nada.
+    #[test]
+    fn un_espacio_puesto_en_un_adjunto_vuelve_a_leer_su_tinta_como_el_movil() {
+        let r = crate::anotado_del_adjunto::pruebas::raiz("espacio-adjunto");
+        let pdf = crate::anotado_del_adjunto::pruebas::con_adjunto(&r, "tesis.pdf", b"%PDF-1.4");
+        let mut e = estado(1);
+        e.donde = crate::lector_pdf_proyecto::DondeVa::de(&r, &pdf, 1);
+        let h = e.donde.para_escribir(&pdf, 0);
+        std::fs::create_dir_all(h.parent().unwrap()).unwrap();
+        std::fs::write(&h, r#"{"elements":[{"id":"jDNyxAFkaxm2qZ-KsluKG","type":"freedraw","x":-800,"y":1000,"width":250,"height":0,"strokeWidth":1,"points":[{"x":0.0,"y":0.0},{"x":250.0,"y":0.0}]}]}"#).unwrap();
+        let x = |e: &mut Estado| {
+            let (donde, espacios, alto) = (&e.donde, e.ajustes.espacios, alto_de(&e.hojas, 0));
+            e.capas.entry(0).or_insert_with(|| donde.leer_capa(&pdf, 0, espacios, alto)).escena.caja().unwrap().0
+        };
+        assert!((x(&mut e) - 99.2).abs() < 1.0, "sin espacios: {}", x(&mut e));
+        alternar_espacio(&mut e, vista::ESPACIO_IZQUIERDA, &pdf);
+        alternar_espacio(&mut e, vista::ESPACIO_DERECHA, &pdf);
+        assert!(e.capas.is_empty(), "lo abierto se vuelve a leer");
+        assert!((x(&mut e) + 800.0).abs() < 3.0, "con los dos, la hoja tal cual: {}", x(&mut e));
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&h).unwrap()).unwrap();
+        assert_eq!(v["elements"][0]["x"].as_f64(), Some(-800.0), "el fichero no cambia");
+        // Caso negativo: un PDF suelto no depende de los espacios.
+        let mut suelto = estado(1);
+        suelto.capas.insert(0, Capa::default());
+        alternar_espacio(&mut suelto, vista::ESPACIO_DERECHA, &r.join("suelto.pdf"));
+        assert!(suelto.capas.contains_key(&0));
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
     /// Un PDF de verdad para las muestras: el de un documento de texto, que
     /// `pixpin_docs::pdf` sabe escribir sin traer nada.
     fn pdf_de_muestra(ruta: &Path) {
@@ -2296,9 +2350,10 @@ mod pruebas {
     /// **La tinta del movil sobre un PDF del usuario, en el PC** (K16): una
     /// copia del PDF (`PIXPIN_PDF`) y la tinta de una hoja tal como la mando
     /// el movil (`PIXPIN_HOJA_TINTA`, `anot-<uid>-p<n>`, de la hoja
-    /// `PIXPIN_HOJA`), con los dos espacios abiertos y a dos aumentos. La
-    /// hoja mide 1400 de ancho en los dos aparatos (`PAGE_WIDTH`) y la tinta
-    /// va en esas unidades, sin correr nada. Necesita GPU:
+    /// `PIXPIN_HOJA`), la hoja entera con los dos espacios abiertos: leida
+    /// tal cual (como la leia el PC hasta el 29-sep, dos veces y media mas
+    /// grande sin espacios) y en las unidades de la capa del movil con sus
+    /// espacios (`PIXPIN_ESPACIOS`, 0 si no hay `.espacios`). Necesita GPU:
     /// `cargo test -p pixpin --bin pixpinmax muestra_de_la_tinta_del_movil_en_un_pdf -- --ignored --nocapture`.
     #[test]
     #[ignore = "necesita GPU y una copia de los datos del usuario"]
@@ -2319,11 +2374,27 @@ mod pruebas {
         e.hojas = vista::Hojas::colocar(&e.medidas);
         let (w, h) = e.medidas[hoja];
         println!("hoja {hoja}: {w}x{h} puntos -> {} de alto en unidades (1400 * {h}/{w} = {})", e.hojas.altos[hoja], 1400.0 * h / w);
+        // Los espacios del movil para este PDF (`anot-<uid>.espacios`, sin
+        // fichero 0): con ellos se leen sus unidades (`capa_del_movil`).
+        let espacios: u8 = std::env::var("PIXPIN_ESPACIOS").ok().and_then(|h| h.parse().ok()).unwrap_or(0);
         e.ajustes.espacios = 3;
-        e.capas.insert(hoja, Capa::leer(&tinta));
-        let caja = e.capas[&hoja].escena.caja().expect("hay tinta");
-        println!("tinta (unidades de la hoja): {caja:?}");
-        for (nombre, ancho, alto, zoom) in [("pdf-1400", 1400u32, 900u32, 0.45f32), ("pdf-900-cerca", 900, 700, 1.0)] {
+        let u = lector_tinta::Unidades::de_la_capa_del_movil(espacios);
+        // Y con lo dibujado antes en el PC pasado a esas unidades (una copia).
+        let copia = carpeta.join(format!("k16-hoja{hoja}.excalidraw"));
+        std::fs::copy(&tinta, &copia).expect("copia de la tinta");
+        let _ = std::fs::remove_dir_all(lector_tinta::carpeta_de(&copia.with_extension("pdf")));
+        crate::anotado_del_adjunto::lo_del_pc_a_la_capa_del_movil(&copia.with_extension("pdf"), hoja, &copia, u);
+        for (como, capa) in [
+            ("tal-cual", Capa::leer(&tinta)),
+            ("unidades-del-movil", Capa::leer_en(&tinta, u)),
+            ("con-lo-del-pc-pasado", Capa::leer_en(&copia, u)),
+        ] {
+            e.capas.insert(hoja, capa);
+            e.tinta.olvidar_lo_calculado();
+            let caja = e.capas[&hoja].escena.caja().expect("hay tinta");
+            println!("{como}: tinta (unidades de la hoja): {caja:?}");
+            // La hoja entera en la ventana, con sus dos margenes.
+            let (ancho, alto) = (1400u32, 1000u32);
             let m = Marco {
                 ancho: ancho as f32,
                 alto: alto as f32,
@@ -2332,13 +2403,12 @@ mod pruebas {
                 area: pixpin_geom::Rect { x: 0, y: 0, ancho, alto },
             };
             let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), ancho, alto).expect("superficie");
-            e.zoom = zoom;
-            acotar(&mut e, m);
+            e.zoom = 1.0;
+            let meta = m.alto / (e.hojas.altos[hoja] * 1.04);
+            e.zoom *= meta / px(&e, m);
             let s = px(&e, m);
-            // La tinta en medio de la ventana.
-            e.x = (caja.0 + caja.2) / 2.0 - m.ancho / s / 2.0;
-            e.y = e.hojas.arriba[hoja] + (caja.1 + caja.3) / 2.0 - m.alto / s / 2.0;
-            acotar(&mut e, m);
+            e.x = vista::ANCHO_HOJA / 2.0 - m.ancho / s / 2.0;
+            e.y = e.hojas.arriba[hoja] + e.hojas.altos[hoja] / 2.0 - m.alto / s / 2.0;
             e.pintadas.clear();
             for i in visibles(&e, m) {
                 let img = documento.renderizar(i as u32, ancho_para(&e, i, m)).expect("hoja");
@@ -2349,10 +2419,112 @@ mod pruebas {
             fuera.esperar_gpu().expect("esperar");
             let (a, b, pixeles) = fuera.leer_rgba().expect("leer");
             let png = pixpin_codec::imagen::codificar_png(&ImagenRgba { ancho: a, alto: b, pixeles }).expect("png");
-            let salida = carpeta.join(format!("k16-{nombre}.png"));
+            let salida = carpeta.join(format!("k16-hoja{hoja}-{como}.png"));
             std::fs::write(&salida, png).expect("guardar");
-            println!("{nombre}: {}", salida.display());
+            println!("{como}: {}", salida.display());
         }
+    }
+
+    /// **El marco de la tinta sobre un PDF del usuario** (K21): la misma
+    /// copia de datos que [`muestra_de_la_tinta_del_movil_en_un_pdf`]. Se
+    /// pinta leida con la regla vieja, con el marco calculado para su escala
+    /// (`anot-<uid>-p<n>.hoja`, que se escribe al lado para mirarlo), y
+    /// reescrita en otra escala y otro origen con su marco: tiene que caer
+    /// en el mismo sitio. Y, como caso negativo, esa ultima sin marco.
+    /// Necesita GPU:
+    /// `cargo test -p pixpin --bin pixpinmax muestra_del_marco_de_la_tinta -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "necesita GPU y una copia de los datos del usuario"]
+    fn muestra_del_marco_de_la_tinta() {
+        use crate::lector_pdf_proyecto::hoja_propia;
+        use lector_tinta::Unidades;
+        use pixpin_render::MotorRender;
+        use pixpin_render::fuera_de_pantalla::FueraDePantalla;
+        use pixpin_sincro::anotado::MarcoDeLaHoja;
+
+        let ruta = PathBuf::from(std::env::var("PIXPIN_PDF").expect("PIXPIN_PDF"));
+        let tinta = PathBuf::from(std::env::var("PIXPIN_HOJA_TINTA").expect("PIXPIN_HOJA_TINTA"));
+        let hoja: usize = std::env::var("PIXPIN_HOJA").ok().and_then(|h| h.parse().ok()).unwrap_or(0);
+        let espacios: u8 = std::env::var("PIXPIN_ESPACIOS").ok().and_then(|h| h.parse().ok()).unwrap_or(0);
+        let carpeta = std::env::var_os("PIXPIN_MUESTRAS").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let d = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
+        let motor = MotorRender::nuevo(d.d3d()).expect("motor");
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let documento = pixpin_pdf::Documento::abrir(&ruta).expect("abre");
+        let mut e = estado(0);
+        e.medidas = documento.medidas();
+        e.hojas = vista::Hojas::colocar(&e.medidas);
+        let propia = hoja_propia(e.hojas.altos[hoja]);
+
+        // El marco para la escala en que esta escrita (la de la capa del
+        // movil con sus espacios), escrito al lado como lo escribiria el PC.
+        let vieja = Unidades::de_la_capa_del_movil(espacios);
+        let marco = vieja.marco_de(&propia);
+        let fichero_marco = carpeta.join(format!("k21-hoja{hoja}.hoja"));
+        std::fs::write(&fichero_marco, marco.a_texto()).expect("marco");
+        println!("marco ({}): {}", fichero_marco.display(), marco.a_texto().trim());
+        let leido = MarcoDeLaHoja::de_texto(&std::fs::read_to_string(&fichero_marco).unwrap()).expect("se entiende");
+        let con_marco = Unidades::del_marco(&propia, &leido).expect("marco valido");
+
+        // La misma tinta reescrita en otras unidades (0,6 a lo ancho y 0,7 a
+        // lo alto, el cero en (200, -150)) con su marco.
+        let otra = Unidades { ex: 0.6, ey: 0.7, dx: 200.0, dy: -150.0 };
+        let copia = carpeta.join(format!("k21-hoja{hoja}-otra-escala.excalidraw"));
+        let mut c = Capa::leer_en(&tinta, vieja);
+        c.sucia = true;
+        c.guardar_en(&copia, otra).expect("copia en otra escala");
+        let marco_otra = otra.marco_de(&propia);
+        println!("marco de la otra escala: {}", marco_otra.a_texto().trim());
+        let con_marco_otra = Unidades::del_marco(&propia, &MarcoDeLaHoja::de_texto(&marco_otra.a_texto()).unwrap()).unwrap();
+
+        let mut cajas = Vec::new();
+        for (como, capa) in [
+            ("regla-vieja", Capa::leer_en(&tinta, vieja)),
+            ("con-su-marco", Capa::leer_en(&tinta, con_marco)),
+            ("otra-escala-con-marco", Capa::leer_en(&copia, con_marco_otra)),
+            ("otra-escala-sin-marco", Capa::leer_en(&copia, vieja)),
+        ] {
+            e.capas.insert(hoja, capa);
+            e.tinta.olvidar_lo_calculado();
+            let caja = e.capas[&hoja].escena.caja().expect("hay tinta");
+            println!("{como}: tinta (unidades de la hoja): {caja:?}");
+            cajas.push(caja);
+            let (ancho, alto) = (1400u32, 1000u32);
+            let m = Marco {
+                ancho: ancho as f32,
+                alto: alto as f32,
+                e: 1.0,
+                escala_por_cien: 100,
+                area: pixpin_geom::Rect { x: 0, y: 0, ancho, alto },
+            };
+            let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), ancho, alto).expect("superficie");
+            e.ajustes.espacios = 3;
+            e.zoom = 1.0;
+            let meta = m.alto / (e.hojas.altos[hoja] * 1.04);
+            e.zoom *= meta / px(&e, m);
+            let s = px(&e, m);
+            e.x = vista::ANCHO_HOJA / 2.0 - m.ancho / s / 2.0;
+            e.y = e.hojas.arriba[hoja] + e.hojas.altos[hoja] / 2.0 - m.alto / s / 2.0;
+            e.pintadas.clear();
+            for i in visibles(&e, m) {
+                let img = documento.renderizar(i as u32, ancho_para(&e, i, m)).expect("hoja");
+                let b = motor.bitmap_desde_pixeles(img.ancho, img.alto, &img.pixeles).expect("bitmap");
+                e.pintadas.insert(i, (img.ancho, b));
+            }
+            motor.dibujar(&fuera.destino, |p| pintar(&mut e, p, m, &textos)).expect("pintar");
+            fuera.esperar_gpu().expect("esperar");
+            let (a, b, pixeles) = fuera.leer_rgba().expect("leer");
+            let png = pixpin_codec::imagen::codificar_png(&ImagenRgba { ancho: a, alto: b, pixeles }).expect("png");
+            let salida = carpeta.join(format!("k21-hoja{hoja}-{como}.png"));
+            std::fs::write(&salida, png).expect("guardar");
+            println!("{como}: {}", salida.display());
+        }
+        let igual = |a: (f32, f32, f32, f32), b: (f32, f32, f32, f32)| {
+            [(a.0, b.0), (a.1, b.1), (a.2, b.2), (a.3, b.3)].iter().all(|(x, y)| (x - y).abs() < 0.5)
+        };
+        assert!(igual(cajas[0], cajas[1]), "con su marco, donde la regla vieja");
+        assert!(igual(cajas[1], cajas[2]), "en otra escala con su marco, en el mismo sitio");
+        assert!(!igual(cajas[1], cajas[3]), "sin marco, en otro sitio");
     }
 
     fn muestra_del_lector_de_pdf_inventado() {

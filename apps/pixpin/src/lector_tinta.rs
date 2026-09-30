@@ -43,6 +43,7 @@ use crate::dibujo::mano::{Atendido, Mano, Vista};
 use crate::dibujo::permitidas::{self, Anfitrion};
 use crate::imagenes_lienzo::ImagenesLienzo;
 use pixpin_geom::{Punto, Rect};
+use pixpin_sincro::anotado::MarcoDeLaHoja;
 use pixpin_motor2d::cache::Cache;
 use pixpin_motor2d::camara::Camara;
 use pixpin_motor2d::elemento::{Elemento, Figura};
@@ -73,12 +74,12 @@ pub struct Capa {
     lienzo: excalidraw::Lienzo,
     /// Hay cambios sin escribir.
     pub sucia: bool,
-    /// **Lo que se corrio al leer** (ver [`Capa::leer_corrida`]): cuanto se
-    /// resto a lo ancho y, de cada elemento, como quedo en memoria y como
-    /// estaba en el fichero. Lo que no se toco vuelve tal cual del fichero:
-    /// restar y sumar en `f32` no siempre deja el mismo numero, y un numero
-    /// cambiado es un elemento cambiado que viajaria sin que nadie lo tocara.
-    corrida: (f32, Vec<(Elemento, Elemento)>),
+    /// **En que unidades se leyo** (ver [`Capa::leer_en`]) y, de cada
+    /// elemento, como quedo en memoria y como estaba en el fichero. Lo que no
+    /// se toco vuelve tal cual del fichero: dividir y multiplicar en `f32` no
+    /// siempre deja el mismo numero, y un numero cambiado es un elemento
+    /// cambiado que viajaria sin que nadie lo tocara.
+    corrida: (Unidades, Vec<(Elemento, Elemento)>),
 }
 
 impl Default for Capa {
@@ -87,8 +88,112 @@ impl Default for Capa {
             escena: Escena::nueva(),
             lienzo: excalidraw::Lienzo::vacio(),
             sucia: false,
-            corrida: (0.0, Vec::new()),
+            corrida: (Unidades::DEL_PC, Vec::new()),
         }
+    }
+}
+
+/// **Las unidades del fichero de una capa respecto de las del lector**:
+/// `fichero = lector * ex + dx` a lo ancho y `fichero = lector * ey + dy`
+/// a lo alto. El lector del PC cuenta desde el borde de la columna de un
+/// Word y desde el de la hoja de un PDF, en sus unidades; el movil no
+/// siempre (ver [`Unidades::corridas`], [`Unidades::de_la_capa_del_movil`]
+/// y, cuando el fichero trae su marco, [`Unidades::del_marco`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Unidades {
+    pub ex: f32,
+    pub ey: f32,
+    pub dx: f32,
+    pub dy: f32,
+}
+
+/// Cuanto pueden diferir las proporciones de las dos hojas sin avisar: un
+/// uno por ciento es redondeo de medidas (la hoja del movil sale de un mapa
+/// de bits); mas es que cada aparato mide otra hoja.
+const PROPORCION_TOLERADA: f32 = 0.01;
+
+impl Unidades {
+    /// Las mismas: lo que solo escribe y lee el PC.
+    pub const DEL_PC: Unidades = Unidades { ex: 1.0, ey: 1.0, dx: 0.0, dy: 0.0 };
+
+    /// La misma escala en los dos ejes y el cero corrido solo a lo ancho: la
+    /// regla de antes del marco.
+    pub fn uniformes(escala: f32, dx: f32) -> Unidades {
+        Unidades { ex: escala, ey: escala, dx, dy: 0.0 }
+    }
+
+    /// La tinta de un Word del movil cuenta desde el borde de su pagina: la
+    /// columna empieza `dx` mas alla (`Maqueta.izq`).
+    pub fn corridas(dx: f32) -> Unidades {
+        Unidades::uniformes(1.0, dx)
+    }
+
+    /// La de una hoja de PDF del movil, con los espacios que tenga puestos
+    /// (`pixpin_docs::vista::capa_del_movil`): sin ellos, dos veces y media.
+    pub fn de_la_capa_del_movil(espacios: u8) -> Unidades {
+        let (escala, dx) = pixpin_docs::vista::capa_del_movil(espacios);
+        Unidades::uniformes(escala, dx)
+    }
+
+    /// **Las que dice el marco del fichero** (`anot-….hoja`,
+    /// `pixpin_sincro::anotado::MarcoDeLaHoja`): las que llevan `propia` —la
+    /// hoja en unidades del lector— a `del_fichero` —la misma hoja en las
+    /// del fichero—. Si las proporciones no coinciden se encaja eje por eje:
+    /// el marco manda, y cada trazo queda en el mismo sitio relativo de la
+    /// hoja; el grosor y la letra, a la media (ver [`Unidades::media`]).
+    /// `None` si alguno de los dos no sirve.
+    pub fn del_marco(propia: &MarcoDeLaHoja, del_fichero: &MarcoDeLaHoja) -> Option<Unidades> {
+        if !propia.valido() || !del_fichero.valido() {
+            return None;
+        }
+        let (ex, ey, dx, dy) = del_fichero.desde(propia);
+        let u = Unidades { ex, ey, dx, dy };
+        if (ex / ey - 1.0).abs() > PROPORCION_TOLERADA {
+            tracing::warn!(
+                ?propia,
+                ?del_fichero,
+                ex,
+                ey,
+                "el marco de la tinta tiene otra proporcion que la hoja: se encaja eje por eje"
+            );
+        }
+        Some(u)
+    }
+
+    /// Donde cae la hoja `propia` (unidades del lector) en estas unidades:
+    /// el marco que hay que escribir junto a la tinta.
+    pub fn marco_de(&self, propia: &MarcoDeLaHoja) -> MarcoDeLaHoja {
+        MarcoDeLaHoja::nuevo(
+            propia.x0 * self.ex + self.dx,
+            propia.y0 * self.ey + self.dy,
+            propia.x1 * self.ex + self.dx,
+            propia.y1 * self.ey + self.dy,
+        )
+    }
+
+    /// La escala de lo que no tiene eje (el grosor de un trazo, la letra):
+    /// la media geometrica, que con la misma escala en los dos es esa.
+    pub fn media(&self) -> f32 {
+        (self.ex * self.ey).abs().sqrt()
+    }
+
+    /// Las que deshacen estas: `lector = fichero * (1/e) - d/e`.
+    pub fn inversas(&self) -> Unidades {
+        Unidades { ex: 1.0 / self.ex, ey: 1.0 / self.ey, dx: -self.dx / self.ex, dy: -self.dy / self.ey }
+    }
+
+    /// Casi las mismas: la que sale de un marco escrito con tres decimales
+    /// no es identica bit a bit a la que lo escribio.
+    pub fn casi_iguales(&self, otra: &Unidades) -> bool {
+        let cerca = |a: f32, b: f32, tope: f32| (a - b).abs() <= tope;
+        cerca(self.ex, otra.ex, 1e-4)
+            && cerca(self.ey, otra.ey, 1e-4)
+            && cerca(self.dx, otra.dx, 1e-2)
+            && cerca(self.dy, otra.dy, 1e-2)
+    }
+
+    fn son_las_del_pc(&self) -> bool {
+        *self == Unidades::DEL_PC
     }
 }
 
@@ -127,9 +232,50 @@ fn con_resaltadores(mut escena: Escena) -> Escena {
 /// donde estaba. Asi la tinta del movil, que cuenta desde el borde de su
 /// pagina, cae en el PC sobre su palabra y no `izq` mas a la derecha (K16).
 /// Sin subir la version: correrlo al leer o al guardar no es cambiarlo.
-fn correr(e: &mut Elemento, dx: f32) {
+fn correr(e: &mut Elemento, dx: f32, dy: f32) {
     let version = e.version;
-    e.mover(dx, 0.0);
+    e.mover(dx, dy);
+    e.version = version;
+}
+
+/// **Lleva un elemento a otras unidades** `u`: `q -> (q.x * ex + dx,
+/// q.y * ey + dy)`, y con el su grosor y su letra, que tambien son medidas
+/// del dibujo (el movil pinta el `strokeWidth` y el `fontSize` a la escala
+/// de su capa: un trazo de grosor 1 sin espacios se ve alli como uno de 0,4
+/// de la hoja); esos, a la escala media (`Unidades::media`). Sin subir la
+/// version, como [`correr`]. Sin escala es exactamente `correr`.
+fn llevar(e: &mut Elemento, u: Unidades) {
+    let Unidades { ex, ey, dx, dy } = u;
+    if ex == 1.0 && ey == 1.0 {
+        correr(e, dx, dy);
+        return;
+    }
+    let k = u.media();
+    let version = e.version;
+    let mapa = |q: &mut Punto2| {
+        q.x = q.x * ex + dx;
+        q.y = q.y * ey + dy;
+    };
+    match &mut e.figura {
+        Figura::Lapiz { puntos, .. }
+        | Figura::Resaltador { puntos }
+        | Figura::Linea { puntos }
+        | Figura::Flecha { puntos, .. }
+        | Figura::Cota { puntos } => puntos.iter_mut().for_each(mapa),
+        Figura::Region { contorno, huecos } => {
+            contorno.iter_mut().chain(huecos.iter_mut().flatten()).for_each(mapa)
+        }
+        Figura::Texto { tam, .. } => *tam *= k,
+        _ => {}
+    }
+    e.x = e.x * ex + dx;
+    e.y = e.y * ey + dy;
+    e.ancho *= ex;
+    e.alto *= ey;
+    e.grosor *= k;
+    if let Some(t) = e.extras.tam_letra.as_mut() {
+        *t *= k;
+    }
     e.version = version;
 }
 
@@ -181,29 +327,63 @@ impl Capa {
     /// borde de la columna, asi que al leer todo se corre `dx` a la izquierda
     /// y al guardar ([`Capa::guardar_corrida`]) se devuelve.
     pub fn leer_corrida(ruta: &Path, dx: f32) -> Capa {
+        Capa::leer_en(ruta, Unidades::corridas(dx))
+    }
+
+    /// **Una capa guardada en otras unidades** (ver [`Unidades`]), traida a
+    /// las del lector. Se apunta como estaba cada elemento en el fichero
+    /// para devolverlo tal cual si no se toca.
+    pub fn leer_en(ruta: &Path, u: Unidades) -> Capa {
         let mut c = Capa::leer(ruta);
-        if dx != 0.0 {
+        if !u.son_las_del_pc() {
             let mut apuntes = Vec::with_capacity(c.escena.elementos.len());
             for e in c.escena.elementos.iter_mut() {
                 let disco = e.clone();
-                correr(e, -dx);
+                llevar(e, u.inversas());
                 apuntes.push((e.clone(), disco));
             }
-            c.corrida = (dx, apuntes);
+            c.corrida = (u, apuntes);
         }
         c
     }
 
-    /// Escribe la capa si hay cambios. Una capa que se queda vacia se
-    /// escribe igual (vacia): borrar el fichero perderia lo ajeno que
-    /// trajera del movil.
+    /// Escribe la capa si hay cambios, **en las unidades en que se leyo**
+    /// ([`Capa::leer_en`]). Una capa que se queda vacia se escribe igual
+    /// (vacia): borrar el fichero perderia lo ajeno que trajera del movil.
     pub fn guardar(&mut self, ruta: &Path) -> std::io::Result<()> {
-        self.guardar_corrida(ruta, 0.0)
+        let u = self.corrida.0;
+        self.guardar_en(ruta, u)
+    }
+
+    /// En que unidades esta el fichero (las de la ultima lectura o
+    /// escritura): con ellas se escribe su marco (`anot-….hoja`).
+    pub fn unidades(&self) -> Unidades {
+        self.corrida.0
     }
 
     /// Lo mismo, devolviendo lo corrido: en el fichero la columna empieza
     /// `dx` mas alla (ver [`Capa::leer_corrida`]).
     pub fn guardar_corrida(&mut self, ruta: &Path, dx: f32) -> std::io::Result<()> {
+        self.guardar_en(ruta, Unidades::corridas(dx))
+    }
+
+    /// Lleva a las unidades `u` los elementos que cumplan `cuales`, como un
+    /// cambio de verdad (sube su version, para que el otro aparato lo tome
+    /// por nuevo), y dice cuantos. Ver
+    /// `anotado_del_adjunto::lo_del_pc_a_la_capa_del_movil`.
+    pub fn pasar_a(&mut self, u: Unidades, cuales: impl Fn(&Elemento) -> bool) -> usize {
+        let mut n = 0;
+        for e in self.escena.elementos.iter_mut().filter(|e| cuales(e)) {
+            llevar(e, u);
+            e.tocar();
+            n += 1;
+        }
+        self.sucia |= n > 0;
+        n
+    }
+
+    /// Escribe la capa en las unidades `u` del fichero.
+    pub fn guardar_en(&mut self, ruta: &Path, u: Unidades) -> std::io::Result<()> {
         if !self.sucia {
             return Ok(());
         }
@@ -212,14 +392,14 @@ impl Capa {
         }
         let mut en_disco = para_el_disco(&self.escena);
         let (antes, apuntes) = &self.corrida;
-        if dx != 0.0 || !apuntes.is_empty() {
-            let mismo = *antes == dx;
+        if !u.son_las_del_pc() || !apuntes.is_empty() {
+            let mismo = *antes == u;
             for e in en_disco.elementos.iter_mut() {
                 // Lo que sigue como se leyo, tal cual del fichero; lo nuevo
                 // o tocado, corrido.
                 match apuntes.iter().find(|(m, _)| m.id == e.id) {
                     Some((memoria, disco)) if mismo && memoria == e => *e = disco.clone(),
-                    _ => correr(e, dx),
+                    _ => llevar(e, u),
                 }
             }
         }
@@ -232,7 +412,7 @@ impl Capa {
         self.lienzo = lienzo;
         self.sucia = false;
         // Lo escrito es ahora lo del fichero: la proxima vez se compara con esto.
-        if dx != 0.0 {
+        if !u.son_las_del_pc() {
             let apuntes = self
                 .escena
                 .elementos
@@ -240,9 +420,9 @@ impl Capa {
                 .zip(en_disco.elementos.iter())
                 .map(|(m, d)| (m.clone(), d.clone()))
                 .collect();
-            self.corrida = (dx, apuntes);
+            self.corrida = (u, apuntes);
         } else {
-            self.corrida = (0.0, Vec::new());
+            self.corrida = (Unidades::DEL_PC, Vec::new());
         }
         Ok(())
     }
@@ -620,6 +800,15 @@ impl Tinta {
         self.calculado.values().map(|c| c.tinta.grano.grafito.subidas()).sum()
     }
 
+    /// **Suelta lo calculado de todas las hojas.** Las caches validan con la
+    /// version, y una capa vuelta a leer en otras unidades (el lector de PDF
+    /// al poner o quitar un espacio en un adjunto, o al pasar a proyecto)
+    /// tiene los mismos ids y versiones con otra geometria: sin esto se
+    /// pintaria la de antes.
+    pub fn olvidar_lo_calculado(&mut self) {
+        self.calculado.clear();
+    }
+
     /// La cache de geometria de `hoja`, la misma que usa `pintar_capa`.
     #[cfg(test)]
     fn geometria_de(&mut self, hoja: usize) -> &mut Cache {
@@ -825,6 +1014,103 @@ mod pruebas {
         // Caso negativo: sin corrida (un documento suelto) nada se mueve.
         let quieta = Capa::leer_corrida(&ruta, 0.0);
         assert!((quieta.escena.visibles().next().unwrap().caja().0 - sin.0).abs() < 1e-3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **Una hoja de PDF tal como la manda el movil** (forma exacta de
+    /// `anot-<uid>-p<n>`, v0.97: puntos `{x,y}` relativos a su x/y, presiones,
+    /// `strokeWidth` 1, un texto con su `fontSize`, y la vista de la capa sin
+    /// espacios). Los numeros son los de `anot-VRQH2DA7AB-p1` del usuario: la
+    /// «upc» escrita encima del logo, a 139 de letra en unidades del movil.
+    const HOJA_DEL_MOVIL: &str = r##"{"alfileres":[],"backgroundColor":"#ffffff","elements":[{"angle":0.0,"backgroundColor":"transparent","fillStyle":"solid","groupIds":[],"height":151.4812893337671,"id":"jDNyxAFkaxm2qZ-KsluKG","isDeleted":false,"locked":false,"material":"lisa","opacity":100,"points":[{"x":0.0,"y":0.0},{"x":-3.574230052806797,"y":-8.85823567708303},{"x":17.0,"y":142.6}],"presionFirme":false,"pressures":[0.5,0.6,0.7],"roughness":0,"scale":[1.0,1.0],"seed":656548593,"simulatePressure":true,"strokeColor":"#f08c00","strokeStyle":"solid","strokeWidth":1.0,"type":"freedraw","updated":1790717124003,"version":1,"versionNonce":-1460576999,"width":20.561416060836336,"x":844.1965456362125,"y":3080.10412145544},{"angle":0.0,"backgroundColor":"transparent","fillStyle":"solid","fontFamily":5,"fontSize":138.863841869213,"groupIds":[],"height":173.57980233651622,"id":"feE_wn2xlXlpKLQ278O5D","isDeleted":false,"locked":false,"opacity":100,"roughness":0,"seed":716826725,"strokeColor":"#f08c00","strokeStyle":"solid","strokeWidth":2.0,"text":"upc","textAlign":"left","type":"text","updated":1790717160057,"version":6,"versionNonce":1013548572,"verticalAlign":"top","width":231.41507749204288,"x":648.0419300220633,"y":167.14183666087965}],"files":{},"viewport":{"scrollX":1050.0,"scrollY":0.0,"zoom":0.30857142857142855},"vista":"cero"}"##;
+
+    fn hoja_del_movil_en(etiqueta: &str) -> (PathBuf, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("pixpin-unidades-{etiqueta}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let ruta = dir.join("anot-VRQH2DA7AB-p1.excalidraw");
+        std::fs::write(&ruta, HOJA_DEL_MOVIL).unwrap();
+        (dir, ruta)
+    }
+
+    fn elementos(ruta: &Path) -> Vec<serde_json::Value> {
+        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(ruta).unwrap()).unwrap();
+        v["elements"].as_array().unwrap().clone()
+    }
+
+    /// Lo que el usuario vio: «lo mando como 1 y aqui llega como 10». Sin
+    /// espacios en el movil, cada unidad de la hoja son 2,5 del fichero y la
+    /// hoja empieza en -1050: leida tal cual, la letra salia dos veces y media
+    /// mas grande (y mas gorda) y fuera de su sitio.
+    #[test]
+    fn la_tinta_del_movil_sin_espacios_se_lee_al_tamano_de_la_hoja() {
+        let (dir, ruta) = hoja_del_movil_en("leer");
+        let tal_cual = Capa::leer(&ruta);
+        let c = Capa::leer_en(&ruta, Unidades::de_la_capa_del_movil(0));
+        let trazo = |c: &Capa| c.escena.visibles().find(|e| matches!(e.figura, Figura::Lapiz { .. })).unwrap().clone();
+        let (a, b) = (trazo(&tal_cual), trazo(&c));
+        let (ca, cb) = (a.caja(), b.caja());
+        assert!(((ca.0 + 1050.0) / 2.5 - cb.0).abs() < 0.01, "a lo ancho: {ca:?} {cb:?}");
+        assert!((ca.1 / 2.5 - cb.1).abs() < 0.01, "a lo alto: {ca:?} {cb:?}");
+        let alto = |c: (f32, f32, f32, f32)| c.3 - c.1;
+        assert!((alto(ca) / alto(cb) - 2.5).abs() < 0.01, "el trazo, a su tamano: {} {}", alto(ca), alto(cb));
+        assert!((b.grosor * 2.5 - a.grosor).abs() < 1e-4, "y a su grosor: {} {}", a.grosor, b.grosor);
+        assert_eq!(b.version, a.version, "leer en otras unidades no es cambiar");
+        // La letra, igual: 139 del movil son 55,5 de la hoja.
+        let letra = |c: &Capa| {
+            c.escena
+                .visibles()
+                .find_map(|e| match &e.figura {
+                    Figura::Texto { tam, .. } => Some(*tam),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        assert!((letra(&c) - 138.863_84 / 2.5).abs() < 0.01, "{}", letra(&c));
+        // Y cae dentro de la hoja (1400 de ancho, 1980 de alto), no en x 844.
+        assert!(cb.0 > 700.0 && cb.2 < 800.0 && cb.3 < 1300.0, "{cb:?}");
+        // Caso negativo: con los dos espacios el movil ya guarda en la hoja.
+        let igual = Capa::leer_en(&ruta, Unidades::de_la_capa_del_movil(3));
+        assert_eq!(trazo(&igual).caja(), ca);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Ida y vuelta: lo del movil que no se toca vuelve al fichero identico
+    /// (ni un decimal cambiado, que viajaria), y lo que se dibuja en el PC
+    /// va en las unidades del movil y al volver a leerlo queda igual, por
+    /// muchas veces que se guarde.
+    #[test]
+    fn la_ida_y_vuelta_con_el_movil_no_cambia_el_tamano_de_nada() {
+        let (dir, ruta) = hoja_del_movil_en("vuelta");
+        let u = Unidades::de_la_capa_del_movil(0);
+        let antes = elementos(&ruta);
+        let mut c = Capa::leer_en(&ruta, u);
+        let mut t = tinta_de_prueba(Herramienta::Lapiz);
+        t.trazar(&mut c, &[Punto2::nuevo(100.0, 500.0), Punto2::nuevo(200.0, 520.0), Punto2::nuevo(300.0, 500.0)]);
+        let dibujado = c.escena.visibles().last().unwrap().clone();
+        c.guardar(&ruta).unwrap();
+        let despues = elementos(&ruta);
+        for (a, d) in antes.iter().zip(despues.iter()) {
+            for k in ["x", "y", "width", "height", "strokeWidth", "fontSize", "version"] {
+                assert_eq!(a[k], d[k], "{k} del movil, tal cual");
+            }
+            assert_eq!(a["points"], d["points"], "los puntos del movil, tal cual");
+        }
+        // Lo del PC, en las unidades del movil: 100 de la hoja son -800.
+        let nuevo = &despues[2];
+        let x = nuevo["x"].as_f64().unwrap();
+        assert!((x - (100.0 * 2.5 - 1050.0)).abs() < 3.0, "{x}");
+        assert!((nuevo["strokeWidth"].as_f64().unwrap() - f64::from(dibujado.grosor) * 2.5).abs() < 1e-3);
+        // Y vuelve igual, guardando una y otra vez.
+        for _ in 0..4 {
+            let mut otra = Capa::leer_en(&ruta, u);
+            let e = otra.escena.visibles().last().unwrap().clone();
+            let (a, b) = (e.caja(), dibujado.caja());
+            assert!((a.0 - b.0).abs() < 0.01 && (a.3 - b.3).abs() < 0.01, "{a:?} {b:?}");
+            assert!((e.grosor - dibujado.grosor).abs() < 1e-4);
+            otra.sucia = true;
+            otra.guardar(&ruta).unwrap();
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -45,7 +45,9 @@ pub(crate) enum Accion {
     Limpiar,
     /// La pantalla con lo anotado, al portapapeles.
     Copiar,
-    /// La captura de debajo con la tinta editable, a «Mensajes guardados».
+    /// La captura de debajo con la tinta editable, a «Mensajes guardados»,
+    /// AHORA. Salir tambien guarda (2026-09-29); esto es para tenerlo ya en
+    /// el chat sin salir. Lo que se dibuje despues pone al dia ese lienzo.
     Guardar,
     /// Salir (lo mismo que Escape).
     Salir,
@@ -244,12 +246,15 @@ pub(crate) struct Pastilla {
 
 impl Pastilla {
     /// Crea la ventana (sin ensenarla) con el dispositivo y el motor del
-    /// anotador: no cuesta otro dispositivo de GPU.
+    /// anotador: no cuesta otro dispositivo de GPU. `dueno` es la ventana
+    /// del anotador: poseida por ella, Windows la deja siempre ENCIMA
+    /// (`VentanaOverlay::poner_dueno`), se active o se reordene el anotador.
     pub fn nueva(
         motor: &pixpin_render::MotorRender,
         d3d: &windows::Win32::Graphics::Direct3D11::ID3D11Device,
         principal: &Monitor,
         rotulos: (String, String),
+        dueno: windows::Win32::Foundation::HWND,
     ) -> anyhow::Result<Self> {
         let escala = principal.escala_por_cien;
         let k = escala as f32 / 100.0;
@@ -260,6 +265,7 @@ impl Pastilla {
         let medida = medida(escala, ancho_rotulo);
         let ventana = VentanaOverlay::nueva(marco(principal, medida))?;
         ventana.poner_sin_activar();
+        ventana.poner_dueno(dueno);
         let superficie =
             pixpin_render::Superficie::nueva(motor, d3d, ventana.handle(), medida.0, medida.1)?;
         Ok(Self {
@@ -497,6 +503,44 @@ mod pruebas {
         assert_eq!(pulsado, Some(Accion::Limpiar));
         let soltado_en = accion_en(centro(2).0, centro(2).1, 100, ancho);
         assert_ne!(pulsado, soltado_en, "soltar en otro no dispara ninguno");
+    }
+
+    /// **La pastilla no puede quedar debajo del anotador** (2026-09-29: el
+    /// usuario abrio con Alt + doble clic central y no veia el clic a
+    /// traves). Sin ensenar nada: se crean las dos ventanas OCULTAS, como las
+    /// crea el editor, y se mira lo que decide el orden Z: que la pastilla es
+    /// PROPIEDAD del anotador (Windows deja lo poseido siempre encima de su
+    /// dueno, aunque el dueno se active al primer clic), que es TOPMOST como
+    /// el, que no coge el foco y que el clic a traves del anotador no se la
+    /// lleva. Y que cae dentro del area de trabajo del monitor principal.
+    /// `cargo test -p pixpin --bin pixpinmax la_pastilla_es_de_la_ventana_del_anotador -- --ignored`.
+    #[test]
+    #[ignore = "necesita GPU y sesion de escritorio (crea ventanas ocultas)"]
+    fn la_pastilla_es_de_la_ventana_del_anotador_y_queda_siempre_encima_de_ella() {
+        use windows::Win32::UI::WindowsAndMessaging::{WS_EX_NOACTIVATE, WS_EX_TOPMOST, WS_EX_TRANSPARENT};
+        let d = pixpin_capture::enumerar_monitores().expect("monitores");
+        let principal = *d.principal().expect("principal");
+        let disp = pixpin_capture::Dispositivo::nuevo().expect("GPU real");
+        let motor = pixpin_render::MotorRender::nuevo(disp.d3d()).expect("motor");
+        let anotador = VentanaOverlay::nueva(d.escritorio_virtual()).expect("anotador");
+        let ps = Pastilla::nueva(&motor, disp.d3d(), &principal, ("a".into(), "b".into()), anotador.handle())
+            .expect("pastilla");
+        assert_eq!(ps.ventana.dueno(), Some(anotador.handle()), "poseida por el anotador");
+        let e = ps.ventana.estilo_extendido();
+        assert!(e & WS_EX_TOPMOST.0 != 0, "TOPMOST como el anotador");
+        assert!(e & WS_EX_NOACTIVATE.0 != 0, "no coge el foco");
+        // Con el clic a traves puesto el anotador deja pasar el raton; la
+        // pastilla no, que es desde donde se vuelve.
+        anotador.poner_pasante(true);
+        assert!(anotador.estilo_extendido() & WS_EX_TRANSPARENT.0 != 0);
+        assert!(ps.ventana.estilo_extendido() & WS_EX_TRANSPARENT.0 == 0);
+        // Dentro del area de trabajo del principal (no fuera de pantalla).
+        let r = ps.ventana.area();
+        let t = principal.area_trabajo;
+        assert!(r.x >= t.x && r.x + r.ancho as i32 <= t.x + t.ancho as i32, "{r:?} en {t:?}");
+        assert!(r.y >= t.y && r.abajo() <= t.abajo(), "{r:?} en {t:?}");
+        // Caso negativo: una ventana sin dueno no dice tenerlo.
+        assert_eq!(anotador.dueno(), None);
     }
 
     /// **La pastilla del anotador**, sobre un trozo de «pantalla»: dibujando

@@ -20,9 +20,12 @@
 //! - **congelada**: el fondo es la foto del escritorio tomada ANTES de abrir
 //!   la ventana (para que no salga en ella);
 //! - **Escape sale** (si no hay un texto abierto ni algo elegido: entonces
-//!   hace lo de siempre). Al salir con algo dibujado se hace lo de hoy: una
-//!   foto de la pantalla con lo anotado y SIN la interfaz, que `main` ofrece
-//!   guardar y pinea (D54). Asi Escape nunca tira lo dibujado sin avisar;
+//!   hace lo de siempre). Desde el 2026-09-29, al salir (Escape, Salir o
+//!   cerrar) con algo nuevo dibujado **se guarda solo en «Mensajes
+//!   guardados»**: la captura de debajo con la tinta editable encima
+//!   ([`guardar_en_el_chat`]), sin preguntar ni crear un pin. Asi Escape
+//!   nunca tira lo dibujado, que es lo que protegia D54 (su pregunta y su
+//!   pin quedan solo para un anotador sin almacen, que `main` no abre);
 //! - sin marcas, sin F11 y sin exportar: son del lienzo, y aqui lo que se
 //!   guarda es la foto.
 //!
@@ -118,6 +121,62 @@ pub fn foto_de_debajo(
     }
     ventana.invalidar();
     foto
+}
+
+/// **La foto de debajo al SALIR**: como [`foto_de_debajo`], pero la ventana
+/// se queda escondida (se esta cerrando: ensenarla otra vez seria un
+/// parpadeo de la tinta para nada). La pastilla ya no esta.
+pub fn foto_al_salir(
+    pa: &mut Pantalla<'_>,
+    fondo: Option<&crate::fondo_lienzo::FondoLienzo>,
+    ventana: &pixpin_shell::overlay::VentanaOverlay,
+) -> Option<pixpin_codec::ImagenRgba> {
+    if pa.modo == Modo::Congelada {
+        return fondo.and_then(|f| f.imagen()).cloned();
+    }
+    ventana.ocultar();
+    pixpin_shell::overlay::bombear_pendientes();
+    pixpin_shell::esperar_composicion();
+    (pa.capturar)()
+}
+
+/// **Guarda lo anotado en «Mensajes guardados»** segun la regla de
+/// `anotador_al_chat::que_hacer`: la primera vez con tinta, la captura de
+/// debajo (`foto`, que solo se pide entonces: en viva esconde las ventanas)
+/// con la tinta como elementos editables; si ya se guardo en esta sesion,
+/// el MISMO lienzo puesto al dia; sin nada nuevo, nada. Lo usan el boton
+/// de la pastilla y la salida (Escape, Salir o cerrar), que guarda sola.
+/// Devuelve lo que hizo; sin almacen (`raiz` = `None`), nada.
+pub fn guardar_en_el_chat(
+    chat: &mut crate::anotador_al_chat::EnElChat,
+    pa: &mut Pantalla<'_>,
+    tinta: Vec<pixpin_motor2d::Elemento>,
+    globo: crate::anotador_al_chat::Globo,
+    foto: impl FnOnce(&mut Pantalla<'_>) -> Option<pixpin_codec::ImagenRgba>,
+) -> crate::anotador_al_chat::Paso {
+    use crate::anotador_al_chat::{Paso, Sesion};
+    let Some(raiz) = pa.raiz.clone() else {
+        return Paso::Nada;
+    };
+    match chat.paso(&tinta) {
+        Paso::Nada => Paso::Nada,
+        Paso::Nuevo => match foto(pa) {
+            Some(foto) => {
+                tracing::info!(trazos = tinta.len(), ancho = foto.ancho, alto = foto.alto, "anotador: a Mensajes guardados");
+                chat.guardar_nuevo(raiz, Sesion { foto, tinta }, pa.avisos, globo);
+                Paso::Nuevo
+            }
+            None => {
+                tracing::warn!("sin foto de debajo: la pantalla anotada no se pudo guardar");
+                Paso::Nada
+            }
+        },
+        Paso::AlDia => {
+            tracing::info!(trazos = tinta.len(), "anotador: al dia en Mensajes guardados");
+            chat.poner_al_dia(raiz, tinta, pa.avisos, globo);
+            Paso::AlDia
+        }
+    }
 }
 
 impl Pantalla<'_> {
@@ -550,7 +609,7 @@ mod pruebas {
             )
             .expect("superficie");
             let t_sup = t0.elapsed();
-            let mut ps = super::super::pastilla_pantalla::Pastilla::nueva(&motor, disp.d3d(), &principal, rotulos.clone())
+            let mut ps = super::super::pastilla_pantalla::Pastilla::nueva(&motor, disp.d3d(), &principal, rotulos.clone(), ventana.handle())
                 .expect("pastilla");
             ps.al_dia(&motor);
             let t_pastilla = t0.elapsed();

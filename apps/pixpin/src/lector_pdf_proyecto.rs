@@ -19,6 +19,8 @@ pub struct DondeVa {
     /// Si es un adjunto del chat (y no de un proyecto): su tinta va con el
     /// codigo de su mensaje (`anot-<uid>-p<n>`, v0.96). Se busca una vez.
     adjunto: Option<(PathBuf, pixpin_proyecto::anotado::Adjunto)>,
+    /// Lo abre el lector, que escribe; compartir solo lee ([`DondeVa::solo_leer`]).
+    escribe: bool,
 }
 
 impl DondeVa {
@@ -32,6 +34,7 @@ impl DondeVa {
             huella: capas_del_pdf::huella(&pdf.to_string_lossy()),
             proyecto,
             adjunto,
+            escribe: true,
         };
         if let Some(p) = &d.proyecto {
             d.adoptar(&p.ficha, pdf, ahora);
@@ -57,6 +60,7 @@ impl DondeVa {
             raiz: raiz.unwrap_or_default(),
             huella: capas_del_pdf::huella(&pdf.to_string_lossy()),
             adjunto,
+            escribe: false,
         }
     }
 
@@ -98,6 +102,78 @@ impl DondeVa {
             .unwrap_or_else(|| pdf.to_path_buf())
     }
 
+    /// **En que unidades esta el fichero de cada hoja**, con los `espacios`
+    /// para anotar de ahora. La de un adjunto del chat es la del lector del
+    /// movil, que depende de ellos (`pixpin_docs::vista::capa_del_movil`);
+    /// la de un proyecto es la de su editor, la hoja a 1400 tal cual, y la
+    /// de junto al PDF solo la lee el PC.
+    pub fn unidades(&self, espacios: u8) -> crate::lector_tinta::Unidades {
+        match &self.adjunto {
+            Some(_) if self.proyecto.is_none() => crate::lector_tinta::Unidades::de_la_capa_del_movil(espacios),
+            _ => crate::lector_tinta::Unidades::DEL_PC,
+        }
+    }
+
+    /// **El marco de la tinta de la hoja `i`** (`anot-<uid>-p<i>.hoja`, ver
+    /// `pixpin_sincro::anotado::MarcoDeLaHoja`): solo lo tiene un adjunto del
+    /// chat. El PDF de un proyecto no: su hoja es el dibujo del editor del
+    /// proyecto, que la pone siempre a 1400 desde el cero (el marco es fijo
+    /// y va implicito), y lo de junto al PDF solo lo lee el PC.
+    fn marco(&self, i: usize) -> Option<PathBuf> {
+        if self.proyecto.is_some() {
+            return None;
+        }
+        crate::anotado_del_adjunto::marco_de_la_hoja_del_pdf(self.adjunto.as_ref(), i)
+    }
+
+    /// **En que unidades esta el fichero de la hoja `i`**: las que dice su
+    /// marco si lo trae (el que escribio la tinta sabia donde estaba la
+    /// hoja: no hay que adivinarlo) y si no, la regla de antes con los
+    /// `espacios` de ahora ([`DondeVa::unidades`]). `alto` es el de la hoja
+    /// en unidades del lector (`Hojas::altos`).
+    pub fn unidades_de(&self, i: usize, espacios: u8, alto: f32) -> crate::lector_tinta::Unidades {
+        self.marco(i)
+            .and_then(|f| crate::anotado_del_adjunto::unidades_del_marco(&f, &hoja_propia(alto)))
+            .unwrap_or_else(|| self.unidades(espacios))
+    }
+
+    /// **La capa de la hoja `i`, en las unidades de la hoja** (ver
+    /// [`DondeVa::unidades_de`]); guardarla la devuelve a las del fichero.
+    pub fn leer_capa(&self, pdf: &Path, i: usize, espacios: u8, alto: f32) -> crate::lector_tinta::Capa {
+        let ruta = self.para_leer(pdf, i);
+        let con_marco = self.marco(i).is_some_and(|f| f.is_file());
+        let u = self.unidades_de(i, espacios, alto);
+        // Con marco no se migra nada: quien lo escribio ya puso cada trazo
+        // en las unidades que dice, tambien lo nacido en otro PC.
+        if self.escribe && self.adjunto.is_some() && self.proyecto.is_none() && !con_marco {
+            crate::anotado_del_adjunto::lo_del_pc_a_la_capa_del_movil(pdf, i, &ruta, u);
+        }
+        crate::lector_tinta::Capa::leer_en(&ruta, u)
+    }
+
+    /// **Guarda la capa de la hoja `i` y su marco**, si cambio: la tinta en
+    /// las unidades en que se leyo y, al lado, donde cae la hoja en ellas.
+    /// Primero la tinta y luego el marco, cada uno por un temporal: como el
+    /// PC escribe siempre en las unidades en que leyo, el marco que hubiera
+    /// ya decia lo mismo (o no habia, y la regla vieja da esas mismas), asi
+    /// que un corte entre los dos no deja una tinta con un marco ajeno.
+    pub fn guardar_capa(
+        &self,
+        pdf: &Path,
+        i: usize,
+        capa: &mut crate::lector_tinta::Capa,
+        alto: f32,
+    ) -> std::io::Result<()> {
+        if !capa.sucia {
+            return Ok(());
+        }
+        capa.guardar(&self.para_escribir(pdf, i))?;
+        match self.marco(i) {
+            Some(f) => crate::anotado_del_adjunto::escribir_marco(&f, capa.unidades(), &hoja_propia(alto)),
+            None => Ok(()),
+        }
+    }
+
     /// De donde se lee la capa de la hoja `i` (desde 0). No cambia nada.
     pub fn para_leer(&self, pdf: &Path, i: usize) -> PathBuf {
         self.ruta(pdf, i, false)
@@ -127,6 +203,12 @@ impl DondeVa {
         crate::anotado_del_adjunto::hoja_del_pdf(self.adjunto.as_ref(), pdf, i)
             .unwrap_or_else(|| crate::lector_tinta::ruta_de_hoja(pdf, i))
     }
+}
+
+/// La hoja `i` en unidades del lector: 1400 de ancho desde su esquina y su
+/// alto (`pixpin_docs::vista::Hojas`).
+pub fn hoja_propia(alto: f32) -> pixpin_sincro::anotado::MarcoDeLaHoja {
+    pixpin_sincro::anotado::MarcoDeLaHoja::nuevo(0.0, 0.0, pixpin_docs::vista::ANCHO_HOJA, alto)
 }
 
 #[cfg(test)]

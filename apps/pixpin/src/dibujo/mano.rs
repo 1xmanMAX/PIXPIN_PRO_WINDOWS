@@ -148,6 +148,8 @@ pub enum Pedido {
     Imprimir,
     /// Se pulso «Compartir»: la hoja de compartir, como `Ctrl+Mayus+S`.
     Compartir,
+    /// Se pulso el clic a traves (solo en el anotador de pantalla viva).
+    Atravesar,
 }
 
 impl Atendido {
@@ -325,6 +327,7 @@ impl Mano {
                                 | BotonCaja::Figuras
                                 | BotonCaja::Imprimir
                                 | BotonCaja::Compartir
+                                | BotonCaja::Atravesar
                         ) {
                             let mut a = Atendido::suyo(sigue.repinte);
                             if permitidas::boton_permitido(self.anfitrion, boton) {
@@ -334,6 +337,7 @@ impl Mano {
                                     BotonCaja::Imagen => Pedido::Imagen,
                                     BotonCaja::Imprimir => Pedido::Imprimir,
                                     BotonCaja::Compartir => Pedido::Compartir,
+                                    BotonCaja::Atravesar => Pedido::Atravesar,
                                     _ => {
                                         // El menu de las figuras, colgado
                                         // del boton de su grupo: la fila de
