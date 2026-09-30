@@ -1295,3 +1295,6 @@ anotador-globo-titulo = Pantalla anotada
 anotador-globo-guardado = Guardado en Mensajes guardados
 anotador-globo-fallo = No se pudo guardar en Mensajes guardados
 anotador-globo-copiado = Copiada al portapapeles
+# Anotador de pantalla: el clic a traves en la barra (2026-09-29)
+anotador-boton-atravesar = Clic a través
+anotador-pista-atravesar = Clic a través (Espacio): el ratón pasa a lo de debajo y lo dibujado se sigue viendo. Se vuelve con la mano de la pastilla o con Alt + doble clic central

@@ -59,6 +59,14 @@ pub enum BotonCaja {
     /// (`DrawEditorActivity`: «Exportar, en la barra y con el icono de
     /// compartir»); aqui estaba solo en `Ctrl+Mayus+S` y en el clic derecho.
     Compartir,
+    /// **El clic a traves** del anotador de pantalla viva (el `TouchApp`
+    /// de la barra de `CapaPantalla.kt`): el raton pasa a lo de debajo y
+    /// la tinta se sigue viendo. Tambien esta en la pastilla de abajo, que
+    /// es desde donde se vuelve; aqui esta para que se encuentre en la
+    /// barra de siempre (2026-09-29: el usuario no lo veia).
+    /// No va en `BOTONES_EDITOR` (la barra del lienzo, la de las pruebas de
+    /// medidas): la anade `dibujo::permitidas` solo al anotador vivo.
+    Atravesar,
     /// **Un grupo de la barra** (`GRUPOS_DE_FABRICA` del movil): ensena la
     /// herramienta del grupo que este puesta o la ultima usada, y al pulsarlo
     /// la coge y despliega las demas. Solo en la barra agrupada.
@@ -292,8 +300,9 @@ pub fn grupo_de_boton(b: BotonCaja) -> Option<GrupoBarra> {
 /// **La barra agrupada**, en el orden de la del movil: elegir, lo que pinta,
 /// las formas, las flechas, lo que arregla, lo que nombra, lo que tapa, lo
 /// que mide, las laminas, el marco y la goma; y al final lo que saca el
-/// dibujo y las acciones. Diecisiete botones en vez de cuarenta.
-pub const BARRA_AGRUPADA: [BotonCaja; 17] = [
+/// dibujo, el clic a traves (solo en la pantalla viva) y las acciones.
+/// Dieciocho botones en vez de cuarenta y uno.
+pub const BARRA_AGRUPADA: [BotonCaja; 18] = [
     BotonCaja::Elegir(Herramienta::Mano),
     BotonCaja::Grupo(GrupoBarra::Elegir),
     BotonCaja::Elegir(Herramienta::Lapiz),
@@ -308,6 +317,8 @@ pub const BARRA_AGRUPADA: [BotonCaja; 17] = [
     BotonCaja::Grupo(GrupoBarra::Marco),
     // La goma al final de las herramientas, como en el movil.
     BotonCaja::Elegir(Herramienta::Borrador),
+    // Suelto y a la vista: es lo primero que se busca en la pantalla.
+    BotonCaja::Atravesar,
     BotonCaja::Grupo(GrupoBarra::Sacar),
     BotonCaja::Deshacer,
     BotonCaja::Rehacer,

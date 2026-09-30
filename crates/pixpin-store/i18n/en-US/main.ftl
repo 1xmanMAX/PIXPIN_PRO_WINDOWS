@@ -1294,3 +1294,6 @@ anotador-globo-titulo = Annotated screen
 anotador-globo-guardado = Saved to Saved messages
 anotador-globo-fallo = Could not save to Saved messages
 anotador-globo-copiado = Copied to the clipboard
+# Screen annotator: click-through in the toolbar (2026-09-29)
+anotador-boton-atravesar = Click through
+anotador-pista-atravesar = Click through (Space): the mouse goes to what is underneath and the drawing stays visible. Come back with the hand on the pill or with Alt + middle double-click

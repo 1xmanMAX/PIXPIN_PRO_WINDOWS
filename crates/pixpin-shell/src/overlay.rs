@@ -454,6 +454,34 @@ impl VentanaOverlay {
         }
     }
 
+    /// **La hace propiedad de `dueno`**: Windows mantiene SIEMPRE una ventana
+    /// poseida por encima de su dueno, aunque el dueno se active, se reordene
+    /// o se vuelva pasante. Es lo que necesita la pastilla del anotador de
+    /// pantalla (2026-09-29): las dos son TOPMOST y, sin dueno, activar el
+    /// anotador (el primer clic para dibujar cuando `enfocar` no pudo robar
+    /// el primer plano, que abriendo con el gesto pasa) lo subia al tope de
+    /// las TOPMOST y la pastilla quedaba DEBAJO de una ventana que cubre la
+    /// pantalla entera: el usuario no veia el clic a traves. `traer_encima`
+    /// una vez no basta; el dueno lo garantiza el sistema.
+    ///
+    /// `GWLP_HWNDPARENT` en una ventana sin `WS_CHILD` cambia el DUENO, no el
+    /// padre (es el camino conocido para ponerlo despues de crearla).
+    pub fn poner_dueno(&self, dueno: HWND) {
+        use windows::Win32::UI::WindowsAndMessaging::{GWLP_HWNDPARENT, SetWindowLongPtrW};
+        // SAFETY: cambia el dueno de una ventana propia y viva por otra ventana
+        // del mismo hilo, viva mientras lo este esta (la pastilla muere antes).
+        unsafe {
+            SetWindowLongPtrW(self.hwnd, GWLP_HWNDPARENT, dueno.0 as isize);
+        }
+    }
+
+    /// El dueno de la ventana, si tiene (ver [`Self::poner_dueno`]).
+    pub fn dueno(&self) -> Option<HWND> {
+        use windows::Win32::UI::WindowsAndMessaging::{GW_OWNER, GetWindow};
+        // SAFETY: consulta de solo lectura sobre una ventana propia.
+        unsafe { GetWindow(self.hwnd, GW_OWNER) }.ok().filter(|h| !h.is_invalid())
+    }
+
     /// Coloca la ventana de composicion del IME donde se escribe (D57):
     /// sin esto el japones o el chino se componen en la esquina de la
     /// pantalla, lejos de donde mira el usuario. `p` es local a la ventana.
@@ -495,6 +523,14 @@ impl VentanaOverlay {
                 lista.push((self.hwnd, r));
             }
         });
+    }
+
+    /// El estilo extendido de ahora (`WS_EX_*`), para comprobar sin ensenar
+    /// nada lo que decide el orden Z y el foco.
+    pub fn estilo_extendido(&self) -> u32 {
+        use windows::Win32::UI::WindowsAndMessaging::{GWL_EXSTYLE, GetWindowLongPtrW};
+        // SAFETY: consulta de solo lectura sobre ventana propia.
+        unsafe { GetWindowLongPtrW(self.hwnd, GWL_EXSTYLE) as u32 }
     }
 
     pub fn es_pasante(&self) -> bool {
