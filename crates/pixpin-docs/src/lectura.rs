@@ -116,6 +116,22 @@ pub struct Ajustes {
     /// guardan tal cual: quien las entiende es `pixpin_motor2d::marcas`, y
     /// este crate no depende del motor.
     pub marcas: String,
+    /// **Ya se recogieron los marcadores del indice del PDF** (`/Outlines`,
+    /// Android v0.98.2): el lector los recoge la primera vez que lo abre, y
+    /// despues no, o los quitados a mano volverian.
+    pub indice: bool,
+    /// **El espacio en blanco de cada lado de la columna de un Word o un
+    /// libro**, en pixeles de lectura (`espacioIzq`/`espacioDer` del movil,
+    /// los `izq`/`der` de la maqueta). `None`: los dos tercios de siempre.
+    /// Solo cuentan con la columna fijada.
+    pub lados: Option<(u32, u32)>,
+    /// **El marcador verde de la voz**: el parrafo y la fraccion donde se
+    /// dejo de escuchar (`pixpin_docs::voz_alta`). De un adjunto del chat va
+    /// en su `anot-<uid>.voz`; aqui, para lo que no lo es.
+    pub voz: Option<(usize, f32)>,
+    /// **El desplazamiento de lado, bloqueado** (el candado de los mandos
+    /// de abajo, `sinLado` del movil): la vista solo sube y baja.
+    pub sin_lado: bool,
     /// **Se leyo de un fichero de antes de K16** (version 1): la tinta que
     /// hubiera junto al documento se hizo sobre la maqueta vieja del PC y el
     /// lector la pasa una vez a la del movil. No se escribe: al guardar, el
@@ -136,6 +152,10 @@ impl Default for Ajustes {
             espacios: 0,
             pagina: 0.0,
             marcas: String::new(),
+            indice: false,
+            lados: None,
+            voz: None,
+            sin_lado: false,
             de_antes: false,
         }
     }
@@ -213,7 +233,7 @@ pub fn a_texto(a: &Ajustes) -> String {
         .join("|");
     // Las lineas nuevas van detras: un PixPin anterior las salta (lee por
     // clave e ignora lo que no conoce) y el fichero le sigue sirviendo.
-    format!(
+    let mut t = format!(
         "pixpin-lectura {VERSION}\ntamano {}\nsitio {}\nmarcadores {marcadores}\ntipo {}\ngrosor {}\ncolumna {}\nzoom {}\nespacios {}\npagina {}\nmarcas {}\n",
         a.tamano,
         a.sitio,
@@ -226,7 +246,21 @@ pub fn a_texto(a: &Ajustes) -> String {
         // Una linea por clave: un salto de linea colado en las marcas
         // partiria el fichero y lo de detras se leeria como otra clave.
         a.marcas.replace(['\n', '\r'], "")
-    )
+    );
+    // Solo si es verdad: los ficheros de siempre no cambian.
+    if a.indice {
+        t.push_str("indice 1\n");
+    }
+    if let Some((izq, der)) = a.lados {
+        t.push_str(&format!("lados {izq} {der}\n"));
+    }
+    if let Some((p, f)) = a.voz {
+        t.push_str(&format!("voz {}\n", crate::voz_alta::voz_a_texto(p, f)));
+    }
+    if a.sin_lado {
+        t.push_str("sinlado 1\n");
+    }
+    t
 }
 
 pub fn de_texto(texto: &str) -> Ajustes {
@@ -295,6 +329,15 @@ pub fn de_texto(texto: &str) -> Ajustes {
                     .unwrap_or(0.0)
             }
             "marcas" => a.marcas = valor.trim().to_string(),
+            "indice" => a.indice = valor.trim() == "1",
+            "lados" => {
+                let mut n = valor.split_whitespace().map(|x| x.parse::<u32>().ok());
+                if let (Some(Some(i)), Some(Some(d))) = (n.next(), n.next()) {
+                    a.lados = Some((i.min(20_000), d.min(20_000)));
+                }
+            }
+            "voz" => a.voz = crate::voz_alta::voz_de_texto(valor),
+            "sinlado" => a.sin_lado = valor.trim() == "1",
             _ => {}
         }
     }
@@ -382,6 +425,10 @@ mod pruebas {
             espacios: 3,
             pagina: 4.5,
             marcas: "1:0.5:2.25:⭐|2:0.5:7:🔖".into(),
+            indice: true,
+            lados: Some((0, 240)),
+            voz: Some((17, 0.5)),
+            sin_lado: true,
             de_antes: false,
         };
         let vuelta = de_texto(&a_texto(&a));
@@ -397,6 +444,10 @@ mod pruebas {
         assert_eq!(a.marcadores.len(), 1);
         assert_eq!(a.columna, 0);
         assert!(!a.letra_fijada());
+        // Sin la clave, el indice del PDF aun no se recogio; y no se escribe
+        // mientras no sea verdad.
+        assert!(!a.indice);
+        assert!(!a_texto(&Ajustes::default()).contains("indice"));
         assert_eq!(a.zoom, 1.0);
         assert_eq!(a.espacios, 0);
     }

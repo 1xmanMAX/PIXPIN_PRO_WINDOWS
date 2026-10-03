@@ -64,6 +64,35 @@ pub fn ancho_con_margenes(columna: f32) -> f32 {
     columna + 2.0 * margen_de(columna)
 }
 
+/// **Espacio a un lado, a gusto** (`Lectura.pasoDeEspacio`, 23-sep-2026:
+/// «un boton en cada lado para anadir espacio a la derecha o a la
+/// izquierda»): cada toque de un Word o un libro abre **un tercio de la
+/// columna** (al menos 40), en pixeles de lectura como la maqueta.
+pub fn paso_de_espacio(columna: u32) -> u32 {
+    (columna / 3).max(40)
+}
+
+/// Lo mas que se abre a un lado (`Lectura.espacioMaximo`): los dos tercios
+/// de siempre, que son dos pasos.
+pub fn espacio_maximo(columna: u32) -> u32 {
+    (columna * 2 / 3).max(paso_de_espacio(columna))
+}
+
+/// Un espacio dentro de lo que cabe (`Lectura.espacioValido`).
+pub fn espacio_valido(espacio: i64, columna: u32) -> u32 {
+    espacio.clamp(0, i64::from(espacio_maximo(columna))) as u32
+}
+
+/// Cuantos pasos hay puestos en un espacio (los `−`/`+` de cada lado) y
+/// cuantos caben (`pasosDe`/`topeDePasos` del visor del movil).
+pub fn pasos_de_espacio(espacio: u32, columna: u32) -> (u32, u32) {
+    let paso = paso_de_espacio(columna);
+    (
+        (espacio as f32 / paso as f32).round() as u32,
+        espacio_maximo(columna) / paso,
+    )
+}
+
 /// Pone o quita un espacio del PDF: el boton de cada lado es un
 /// interruptor. Solo hay dos bits; lo demas se tira.
 pub fn con_espacio(espacios: u8, lado: u8) -> u8 {
@@ -283,6 +312,20 @@ impl Hojas {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn cada_lado_se_abre_a_tercios_de_columna_y_como_mucho_dos() {
+        assert_eq!(paso_de_espacio(420), 140);
+        assert_eq!(espacio_maximo(420), 280, "los dos tercios de siempre");
+        assert_eq!(paso_de_espacio(60), 40, "al menos 40");
+        assert_eq!(espacio_valido(420, 420), 280);
+        assert_eq!(espacio_valido(-140, 420), 0);
+        assert_eq!(pasos_de_espacio(280, 420), (2, 2));
+        assert_eq!(pasos_de_espacio(140, 420), (1, 2));
+        assert_eq!(pasos_de_espacio(0, 420), (0, 2));
+        // El de siempre del movil (dos tercios en enteros) son dos pasos.
+        assert_eq!(pasos_de_espacio(384 * 2 / 3, 384), (2, 2));
+    }
 
     #[test]
     fn el_margen_de_un_word_son_dos_tercios_de_la_columna_a_cada_lado() {

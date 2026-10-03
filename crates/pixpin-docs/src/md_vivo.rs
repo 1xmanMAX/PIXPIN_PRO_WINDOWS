@@ -9,8 +9,8 @@
 //! `RichEdit` de Windows, y el camino barato y seguro es otro: **el texto del
 //! control ES el Markdown**, letra por letra, y el formato se le pone
 //! encima. Las marcas (`#`, `**`, `[`, `](url)`) se esconden con texto oculto
-//! en todos los renglones menos en el que tiene el cursor, que es donde hace
-//! falta verlas para no borrar a ciegas. Asi guardar es leer el texto y ya:
+//! **siempre**, tambien en el renglon del cursor (desde el 30-sep, como el
+//! editor de Claude; borrar sin romperlas es cosa de `md_edicion`). Asi guardar es leer el texto y ya:
 //! no hay traductor entre el dedo y el fichero, que es justo lo que el
 //! comentario de `MarkdownEditorActivity.kt` pide evitar.
 //!
@@ -20,10 +20,12 @@
 //!
 //! Este modulo es puro: se prueba sin ventanas.
 
+use crate::md_tabla;
+
 /// Lo que se le pone a un tramo del texto.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Estilo {
-    /// Una marca de Markdown: se esconde fuera del renglon del cursor.
+    /// Una marca de Markdown: el editor la esconde siempre.
     Marca,
     /// El texto de un titulo, nivel 1 a 6.
     Titulo(u8),
@@ -50,6 +52,12 @@ pub enum Estilo {
     Formula,
     /// Una raya (`---`): el renglon entero.
     Regla,
+    /// El texto de una imagen sola en su renglon (`![texto](foto.png)`):
+    /// fuera del renglon del cursor se esconde con sus marcas y el editor
+    /// pinta la foto. La ruta va en `Tramo::url`.
+    Imagen,
+    /// Una celda de la primera fila de una tabla (la cabecera).
+    Cabecera,
 }
 
 /// Un tramo con estilo, en posiciones UTF-16 del texto entero.
@@ -158,22 +166,94 @@ impl Renglon {
 pub fn analizar(texto: &str) -> Vec<Tramo> {
     let mut sal = Vec::new();
     let mut en_codigo = false;
+    // Cuantas filas de la tabla en curso van vistas (0: no hay tabla).
+    let mut filas = 0usize;
     let mut desde = 0;
     for (numero, trozo) in texto.split(['\n', '\r']).enumerate() {
         let r = Renglon::nuevo(trozo, desde, numero);
         desde = r.pos[r.len()] + 1;
+        if es_de_tabla(&r.letras) {
+            fila_de_tabla(&r, &mut filas, &mut sal);
+            continue;
+        }
+        filas = 0;
         bloque(&r, &mut en_codigo, &mut sal);
     }
     sal
 }
 
+/// Un renglon de una tabla de verdad del control (ver `md_tabla`): la marca
+/// que abre la fila, o la fila con sus celdas.
+pub(crate) fn es_de_tabla(l: &[char]) -> bool {
+    l.iter().any(|c| matches!(*c, md_tabla::FILA_ABRE | md_tabla::FILA_CIERRA | md_tabla::CELDA))
+}
+
+/// Dentro de una celda solo hay formato de letra: un `# ` o un `- ` al
+/// principio de una celda no la hace titulo ni lista (el movil lee cada
+/// celda con `parseInline`). La primera fila es la cabecera.
+fn fila_de_tabla(r: &Renglon, filas: &mut usize, sal: &mut Vec<Tramo>) {
+    let l = &r.letras;
+    if l.first() == Some(&md_tabla::FILA_ABRE) {
+        return;
+    }
+    *filas += 1;
+    let mut a = 0;
+    for (i, c) in l.iter().enumerate() {
+        if matches!(*c, md_tabla::CELDA | md_tabla::FILA_CIERRA) {
+            if *filas == 1 {
+                r.poner(sal, a, i, Estilo::Cabecera);
+            }
+            en_linea(r, a, i, sal);
+            a = i + 1;
+        }
+    }
+    if a < l.len() {
+        en_linea(r, a, l.len(), sal);
+    }
+}
+
+/// La imagen de un renglon que no tiene otra cosa: `![texto](ruta)` con una
+/// ruta de foto, como la reconoce el movil (`Markdown.medioDe`, clase
+/// IMAGEN). Devuelve el texto y la ruta.
+pub fn imagen_de(renglon: &str) -> Option<(String, String)> {
+    let t = renglon.trim();
+    let resto = t.strip_prefix("![")?;
+    let (alt, resto) = resto.split_once("](")?;
+    let ruta = resto.strip_suffix(')')?;
+    if alt.contains(']') || ruta.contains(')') || ruta.trim().is_empty() {
+        return None;
+    }
+    let ruta = ruta.trim();
+    let ext = ruta.rsplit_once('.').map(|(_, e)| e).unwrap_or("").to_ascii_lowercase();
+    let ext = ext.split('?').next().unwrap_or("");
+    matches!(ext, "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "heic" | "svg")
+        .then(|| (alt.to_string(), ruta.to_string()))
+}
+
+/// Las imagenes de la nota: el renglon (desde 0) y la ruta de cada una.
+pub fn imagenes(texto: &str) -> Vec<(usize, String)> {
+    let mut en_codigo = false;
+    let mut sal = Vec::new();
+    for (n, r) in texto.split(['\n', '\r']).enumerate() {
+        let l: Vec<char> = r.chars().collect();
+        if es_valla(&l) {
+            en_codigo = !en_codigo;
+            continue;
+        }
+        if !en_codigo && let Some((_, ruta)) = imagen_de(r) {
+            sal.push((n, ruta));
+        }
+    }
+    sal
+}
+
 /// Las vallas de un bloque de codigo: tres acentos graves o tres virgulillas.
-fn es_valla(l: &[char]) -> bool {
+pub(crate) fn es_valla(l: &[char]) -> bool {
     let t: String = l.iter().collect::<String>().trim_start().chars().take(3).collect();
     t == "```" || t == "~~~"
 }
 
-fn es_regla(l: &[char]) -> bool {
+pub(crate) fn es_regla(l: &[char]) -> bool {
     let sin: Vec<char> = l.iter().copied().filter(|c| !c.is_whitespace()).collect();
     sin.len() >= 3 && ['-', '*', '_'].iter().any(|m| sin.iter().all(|c| c == m))
 }
@@ -240,10 +320,14 @@ fn bloque(r: &Renglon, en_codigo: &mut bool, sal: &mut Vec<Tramo>) {
         en_linea(r, cuerpo, n, sal);
         return;
     }
+    // Las listas esconden tambien su sangria y el espacio de detras de la
+    // marca: el editor pone la vineta, el numero o la casilla y la sangria
+    // en el parrafo (lo de delante no se ve nunca, como en Claude).
     if let Some(k) = vineta(l) {
         if let Some(hecha) = casilla(l, k + 2) {
-            r.poner(sal, k, k + 2, Estilo::Marca);
+            r.poner(sal, 0, k + 2, Estilo::Marca);
             r.poner(sal, k + 2, k + 5, Estilo::Casilla { hecha });
+            r.poner(sal, k + 5, (k + 6).min(n), Estilo::Marca);
             let cuerpo = (k + 6).min(n);
             if hecha {
                 r.poner(sal, cuerpo, n, Estilo::Hecha);
@@ -251,14 +335,34 @@ fn bloque(r: &Renglon, en_codigo: &mut bool, sal: &mut Vec<Tramo>) {
             en_linea(r, cuerpo, n, sal);
         } else {
             r.poner(sal, 0, n, Estilo::Vineta);
-            r.poner(sal, k, k + 2, Estilo::Marca);
+            r.poner(sal, 0, k + 2, Estilo::Marca);
             en_linea(r, k + 2, n, sal);
         }
         return;
     }
     if let Some((k, fin)) = numero(l) {
+        r.poner(sal, 0, k, Estilo::Marca);
         r.poner(sal, k, fin, Estilo::Numero);
+        r.poner(sal, fin, fin + 1, Estilo::Marca);
         en_linea(r, fin + 1, n, sal);
+        return;
+    }
+    let texto: String = l.iter().collect();
+    if let Some((_, ruta)) = imagen_de(&texto) {
+        // Todo el renglon es la foto: las marcas y el texto se esconden
+        // fuera del cursor, y el texto lleva la ruta para el editor.
+        let k = l.iter().take_while(|c| c.is_whitespace()).count();
+        let j = (k + 2..n).find(|&j| l[j] == ']').unwrap_or(n);
+        // El ancho puesto a mano (`|320`, ver `md_imagen`) tambien es marca:
+        // el pie es solo el texto.
+        let pipe = (k + 2..j)
+            .rev()
+            .find(|&i| l[i] == '|')
+            .filter(|&i| i + 1 < j && l[i + 1..j].iter().all(|c| c.is_ascii_digit()))
+            .unwrap_or(j);
+        r.poner(sal, 0, k + 2, Estilo::Marca);
+        r.poner_url(sal, k + 2, pipe, Estilo::Imagen, Some(ruta));
+        r.poner(sal, pipe, n, Estilo::Marca);
         return;
     }
     en_linea(r, 0, n, sal);
@@ -448,7 +552,7 @@ pub fn continuar(renglon: &str) -> Continuar {
 
 /// Cuanto mide la marca de bloque de un renglon (titulo, cita, lista,
 /// casilla o numero), en letras. 0 si no tiene.
-fn marca_de_bloque(l: &[char]) -> usize {
+pub(crate) fn marca_de_bloque(l: &[char]) -> usize {
     let almohadillas = l.iter().take_while(|c| **c == '#').count();
     if (1..=6).contains(&almohadillas) && l.get(almohadillas) == Some(&' ') {
         return almohadillas + 1;
@@ -616,9 +720,51 @@ pub fn titulo(texto: &str) -> String {
     String::new()
 }
 
+/// **Cambia el titulo de la nota** desde la pastilla de la cabecera. El
+/// titulo es su primer renglon con algo (ver [`titulo`]), que es lo que el
+/// movil ensena como nombre: si ese renglon es ya un titulo (`# …`, de
+/// cualquier nivel) se le cambia el texto; si no, se pone un `# nuevo`
+/// encima. `None` si no hay nada que cambiar (vacio o el mismo).
+pub fn con_titulo(texto: &str, nuevo: &str) -> Option<String> {
+    let nuevo = nuevo.trim().replace(['\n', '\r'], " ");
+    if nuevo.is_empty() || nuevo == titulo(texto) {
+        return None;
+    }
+    let renglones: Vec<&str> = texto.split('\n').collect();
+    let primero = renglones.iter().position(|r| {
+        let l: Vec<char> = r.chars().collect();
+        !r.trim().is_empty() && !es_de_tabla(&l)
+    });
+    let primero_con_algo = renglones.iter().position(|r| !r.trim().is_empty());
+    if let Some(i) = primero.filter(|i| Some(*i) == primero_con_algo) {
+        let almohadillas = renglones[i].chars().take_while(|c| *c == '#').count();
+        if (1..=6).contains(&almohadillas) && renglones[i].chars().nth(almohadillas).is_none_or(|c| c == ' ') {
+            let mut v: Vec<String> = renglones.iter().map(|s| s.to_string()).collect();
+            v[i] = format!("{} {nuevo}", "#".repeat(almohadillas));
+            return Some(v.join("\n"));
+        }
+    }
+    Some(format!("# {nuevo}\n{texto}"))
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn cambiar_el_titulo_reescribe_el_primer_titulo_o_pone_uno() {
+        assert_eq!(con_titulo("\n## Obra\ntexto", "Casa Lima").as_deref(), Some("\n## Casa Lima\ntexto"));
+        assert_eq!(con_titulo("solo texto", "Plan").as_deref(), Some("# Plan\nsolo texto"));
+        assert_eq!(con_titulo("", "Plan").as_deref(), Some("# Plan\n"));
+        // Un titulo que no es el primer renglon no se toca: se pone otro encima.
+        assert_eq!(con_titulo("hola\n# Luego", "Plan").as_deref(), Some("# Plan\nhola\n# Luego"));
+    }
+
+    #[test]
+    fn un_titulo_vacio_o_igual_no_cambia_nada() {
+        assert_eq!(con_titulo("# Obra", "  "), None);
+        assert_eq!(con_titulo("# Obra", "Obra"), None);
+    }
 
     /// Los tramos como (texto que cubren, estilo): se leen mejor que numeros.
     fn vistos(texto: &str) -> Vec<(String, Estilo)> {
@@ -715,11 +861,18 @@ mod pruebas {
     }
 
     #[test]
-    fn una_vineta_esconde_el_guion_y_una_lista_numerada_no() {
+    fn una_vineta_esconde_el_guion_y_una_lista_numerada_su_numero_tambien() {
         assert!(tiene("- uno", "- uno", Estilo::Vineta));
         assert!(tiene("- uno", "- ", Estilo::Marca));
+        // El numero lo pinta el parrafo: el del texto va aparte y su espacio
+        // se esconde.
         assert!(tiene("12. doce", "12.", Estilo::Numero));
-        assert!(!vistos("12. doce").iter().any(|(_, e)| *e == Estilo::Marca));
+        assert!(tiene("12. doce", " ", Estilo::Marca));
+        // La sangria de una lista anidada tambien es marca.
+        assert!(tiene("  - dos", "  - ", Estilo::Marca));
+        assert!(tiene("  3. tres", "  ", Estilo::Marca));
+        // Caso negativo: el texto de la lista no se esconde.
+        assert!(!tiene("- uno", "uno", Estilo::Marca));
     }
 
     #[test]
@@ -839,6 +992,45 @@ mod pruebas {
         let (t, a, b) = bloque_de_codigo("", 0, 0);
         assert_eq!(t, "```\n\n```");
         assert_eq!((a, b), (4, 4));
+    }
+
+    #[test]
+    fn una_imagen_sola_en_su_renglon_esconde_todo_menos_su_texto() {
+        let t = "antes\n![planta baja](pixpin:files/guardados/pc/p1/notas/1-planta.png)\ndespues";
+        assert!(tiene(t, "![", Estilo::Marca));
+        assert!(tiene(t, "planta baja", Estilo::Imagen));
+        assert!(tiene(t, "](pixpin:files/guardados/pc/p1/notas/1-planta.png)", Estilo::Marca));
+        assert_eq!(imagenes(t), vec![(1, "pixpin:files/guardados/pc/p1/notas/1-planta.png".to_string())]);
+    }
+
+    #[test]
+    fn el_ancho_de_una_foto_no_se_ve_en_su_pie() {
+        assert!(tiene("![Planta|320](a.png)", "Planta", Estilo::Imagen));
+        assert!(tiene("![Planta|320](a.png)", "|320](a.png)", Estilo::Marca));
+        // Caso negativo: una barra con letras detras es del texto.
+        assert!(tiene("![a|b](a.png)", "a|b", Estilo::Imagen));
+    }
+
+    #[test]
+    fn una_imagen_en_mitad_de_una_frase_o_un_pdf_no_es_foto() {
+        assert!(imagenes("mira ![x](a.png) aqui").is_empty());
+        assert!(imagenes("![plano](plano.pdf)").is_empty());
+        assert!(imagenes("```\n![x](a.png)\n```").is_empty());
+        assert_eq!(imagen_de("![](a.JPG)"), Some((String::new(), "a.JPG".into())));
+        assert_eq!(imagen_de("![x]()"), None);
+    }
+
+    #[test]
+    fn en_una_tabla_cada_celda_lleva_solo_formato_de_letra() {
+        use crate::md_tabla::{CELDA, FILA_ABRE, FILA_CIERRA};
+        let t = format!(
+            "{FILA_ABRE}\r# Obra{CELDA}**sí**{CELDA}{FILA_CIERRA}\r{FILA_ABRE}\r- uno{CELDA}b{CELDA}{FILA_CIERRA}\rfin"
+        );
+        assert!(tiene(&t, "sí", Estilo::Negrita));
+        assert!(tiene(&t, "# Obra", Estilo::Cabecera));
+        assert!(tiene(&t, "**sí**", Estilo::Cabecera));
+        assert!(!vistos(&t).iter().any(|(_, e)| matches!(e, Estilo::Titulo(_) | Estilo::Vineta)));
+        assert!(!tiene(&t, "b", Estilo::Cabecera), "la segunda fila no es cabecera");
     }
 
     #[test]

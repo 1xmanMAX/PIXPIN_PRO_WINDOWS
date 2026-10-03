@@ -23,13 +23,23 @@ pub mod buscar;
 pub mod documento;
 pub mod docx;
 pub mod epub;
+/// Una nota Markdown exportada a Word (H12, 1-oct).
+pub mod exportar_docx;
 pub mod html;
 pub mod indice;
 pub mod lectura;
+pub mod md_bloques;
+pub mod md_comandos;
+pub mod md_edicion;
+pub mod md_imagen;
+pub mod md_comentarios;
+pub mod md_tabla;
+pub mod md_tabla_html;
 pub mod md_vivo;
 pub mod pdf;
 pub mod tabla;
 pub mod vista;
+pub mod voz_alta;
 pub mod xml;
 
 pub use documento::{Bloque, Clase, Documento, Estilo, Trozo};
