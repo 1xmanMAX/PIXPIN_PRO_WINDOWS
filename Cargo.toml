@@ -101,5 +101,9 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.zune-jpeg]
 opt-level = 3
+# Las hojas de un PDF como imagen en la pagina web van en WebP sin perdida
+# (Android v0.98.1): sin optimizar, cada hoja tarda segundos en las pruebas.
+[profile.dev.package.image-webp]
+opt-level = 3
 [profile.dev.package.lopdf]
 opt-level = 3

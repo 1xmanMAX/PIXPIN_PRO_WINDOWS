@@ -259,7 +259,7 @@ impl Recursos {
                         self.duplicadores.len() - 1
                     }
                     Err(e) => {
-                        tracing::debug!(?e, "sin duplicador; congelando por WGC");
+                        tracing::info!(?e, monitor = m.id, "sin duplicador; congelando por WGC (lento)");
                         break;
                     }
                 },
@@ -272,7 +272,7 @@ impl Recursos {
                     self.duplicadores.remove(indice);
                 }
                 Err(e) => {
-                    tracing::debug!(?e, "duplicador sin fotograma; congelando por WGC");
+                    tracing::info!(?e, monitor = m.id, "duplicador sin fotograma; congelando por WGC (lento)");
                     break;
                 }
             }
@@ -289,14 +289,27 @@ pub fn ejecutar_overlay(
     textos: &TextosBarra,
     formato_color: FormatoColorLupa,
     inicio: Option<Punto>,
+    desde_ms: u32,
 ) -> Result<AccionFinal> {
     let t0 = Instant::now();
+    // Lo que ya se habia ido entre el gesto o el atajo y llegar aqui: la cola
+    // del hilo principal. Si esto crece, el hilo estaba ocupado con otra cosa.
+    let espera_cola_ms =
+        pixpin_shell::gestos::ms_entre(desde_ms, pixpin_shell::gestos::reloj_ms());
 
     // 1. Congelar TODOS los monitores antes de ensenar ventana alguna.
     let disposicion = enumerar_monitores().context("sin monitores")?;
     let mut capturas: Vec<Instantanea> = Vec::new();
     for m in disposicion.monitores() {
+        let t = Instant::now();
         capturas.push(recursos.congelar(m)?);
+        let ms = t.elapsed().as_millis() as u64;
+        // Congelar va en milisegundos con el duplicador caliente; pasado esto
+        // ha caido a WGC o al primer fotograma de un duplicador frio, y es lo
+        // que se busca cuando «el overlay sale tarde».
+        if ms > 40 {
+            tracing::info!(monitor = m.id, ms, "congelar lento");
+        }
     }
     let t_captura = t0.elapsed().as_millis() as u64;
 
@@ -351,6 +364,10 @@ pub fn ejecutar_overlay(
     // de ms y no debe contaminar el intocable.
     tracing::info!(
         ms = t0.elapsed().as_millis() as u64,
+        // Del gesto o el atajo a visible: lo que siente la mano.
+        desde_el_usuario_ms = espera_cola_ms as u64 + t0.elapsed().as_millis() as u64,
+        espera_cola_ms,
+        origen = if inicio.is_some() { "gesto" } else { "atajo" },
         captura_ms = t_captura,
         prep_ms = t_a - t_motor,
         pintar_ms = t_b - t_a,
@@ -376,18 +393,33 @@ pub fn ejecutar_overlay(
     let gesto = inicio.is_some();
     let arrastrando =
         gesto && (pixpin_shell::gesto_en_curso() || pixpin_shell::boton_del_raton_pulsado());
-    if let Some(p) = inicio.filter(|_| arrastrando) {
+    // Si el arrastre ya acabo (el overlay tardo mas que la mano), el recorte
+    // va de la pulsacion a la soltada que vio el gancho: nunca del sitio
+    // donde estuviera el cursor al salir el overlay.
+    let soltada = pixpin_shell::gestos::soltada_del_gesto().map(|(x, y)| Punto { x, y });
+    let arranque = arranque_del_gesto(inicio, arrastrando, soltada);
+    if gesto {
+        tracing::info!(
+            ?arranque,
+            desde_pulsacion_ms = pixpin_shell::gestos::ms_entre(
+                desde_ms,
+                pixpin_shell::gestos::reloj_ms()
+            ),
+            "arranque del gesto"
+        );
+    }
+    let mut ya_decidido = false;
+    if let Some(p) = inicio.filter(|_| arranque != ArranqueGesto::Ninguno) {
         let pieza = piezas
             .iter()
             .position(|z| z.monitor().area.contiene(p))
             .unwrap_or(0);
         let hwnd0 = piezas[pieza].ventana().handle();
-        piezas[pieza].ventana().capturar_raton();
-        for evento in [
-            EventoOverlay::RatonMovido(p),
-            EventoOverlay::BotonPulsado(p),
-        ] {
-            procesar_evento(
+        if matches!(arranque, ArranqueGesto::Arrastrando(_)) {
+            piezas[pieza].ventana().capturar_raton();
+        }
+        for evento in eventos_de_arranque(arranque) {
+            let seguir = procesar_evento(
                 hwnd0,
                 evento,
                 &mut estado,
@@ -403,41 +435,48 @@ pub fn ejecutar_overlay(
                 formato_color,
                 gesto,
             );
+            if seguir == Continuar::No {
+                // La soltada reproducida ya confirmo: no hay nada que esperar.
+                ya_decidido = true;
+                break;
+            }
         }
     }
 
     // 4. El bucle modal. Las ventanas viven en `piezas`; el slice del
     //    contrato queda vacio porque el bombeo no filtra por ventana.
-    bucle_modal(&[], |hwnd, evento| {
-        // El gesto de Alt + central (D140) termina al soltar el central: para
-        // la seleccion es la misma soltada que la del izquierdo. Fuera de un
-        // gesto el central no significa nada aqui.
-        let evento = match evento {
-            EventoOverlay::BotonCentralSoltado(p) if gesto => {
-                if let Some(z) = piezas.first() {
-                    z.ventana().soltar_raton();
+    if !ya_decidido {
+        bucle_modal(&[], |hwnd, evento| {
+            // El gesto de Alt + central (D140) termina al soltar el central: para
+            // la seleccion es la misma soltada que la del izquierdo. Fuera de un
+            // gesto el central no significa nada aqui.
+            let evento = match evento {
+                EventoOverlay::BotonCentralSoltado(p) if gesto => {
+                    if let Some(z) = piezas.first() {
+                        z.ventana().soltar_raton();
+                    }
+                    EventoOverlay::BotonSoltado(p)
                 }
-                EventoOverlay::BotonSoltado(p)
-            }
-            otro => otro,
-        };
-        procesar_evento(
-            hwnd,
-            evento,
-            &mut estado,
-            &mut barra,
-            &mut muestra_color,
-            &mut piezas,
-            &uia,
-            dispositivo,
-            motor,
-            nivel,
-            modo,
-            textos,
-            formato_color,
-            gesto,
-        )
-    });
+                otro => otro,
+            };
+            procesar_evento(
+                hwnd,
+                evento,
+                &mut estado,
+                &mut barra,
+                &mut muestra_color,
+                &mut piezas,
+                &uia,
+                dispositivo,
+                motor,
+                nivel,
+                modo,
+                textos,
+                formato_color,
+                gesto,
+            )
+        });
+    }
 
     // 5. Desmontar: sesiones fuera, ventanas OCULTAS (no destruidas: son
     //    persistentes) y el hilo UIA parado.
@@ -516,6 +555,78 @@ impl Pendiente {
     }
 }
 
+/// Como arranca un overlay abierto por un gesto con Alt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArranqueGesto {
+    /// Sin gesto, o un gesto sin arrastre: el overlay abre en exploracion.
+    Ninguno,
+    /// El boton sigue abajo: se reproduce la pulsacion y se sigue trazando.
+    Arrastrando(Punto),
+    /// El arrastre acabo antes de que el overlay saliera: se reproduce
+    /// entero, de la pulsacion a la soltada, y se confirma solo.
+    YaSoltado { desde: Punto, hasta: Punto },
+}
+
+/// Decide el arranque. El punto de partida es SIEMPRE el de la pulsacion
+/// que vio el gancho (`inicio`), nunca donde este el cursor al salir.
+fn arranque_del_gesto(
+    inicio: Option<Punto>,
+    sigue_pulsado: bool,
+    soltada: Option<Punto>,
+) -> ArranqueGesto {
+    match (inicio, sigue_pulsado, soltada) {
+        (None, _, _) => ArranqueGesto::Ninguno,
+        (Some(p), true, _) => ArranqueGesto::Arrastrando(p),
+        (Some(desde), false, Some(hasta)) => ArranqueGesto::YaSoltado { desde, hasta },
+        (Some(_), false, None) => ArranqueGesto::Ninguno,
+    }
+}
+
+/// Los eventos que reproducen ese arranque, en orden.
+fn eventos_de_arranque(a: ArranqueGesto) -> Vec<EventoOverlay> {
+    match a {
+        ArranqueGesto::Ninguno => Vec::new(),
+        ArranqueGesto::Arrastrando(p) => {
+            vec![EventoOverlay::RatonMovido(p), EventoOverlay::BotonPulsado(p)]
+        }
+        ArranqueGesto::YaSoltado { desde, hasta } => vec![
+            EventoOverlay::RatonMovido(desde),
+            EventoOverlay::BotonPulsado(desde),
+            EventoOverlay::RatonMovido(hasta),
+            EventoOverlay::BotonSoltado(hasta),
+        ],
+    }
+}
+
+/// Cada cuanto se baja de la GPU el color bajo el cursor MIENTRAS se arrastra.
+/// Bajarlo es esperar a que la GPU acabe todo lo pendiente; hacerlo en cada
+/// movimiento del raton hacia que el recuadro fuera detras de la mano en un
+/// equipo con la grafica integrada. Treinta milisegundos no se notan en el
+/// numero de la lupa.
+const MUESTRA_COLOR_ARRASTRANDO_MS: u128 = 30;
+
+thread_local! {
+    static ULTIMA_MUESTRA: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
+}
+
+/// Si toca bajar el color ahora. Quieto o explorando, siempre; trazando, como
+/// mucho una vez cada `MUESTRA_COLOR_ARRASTRANDO_MS`.
+fn toca_muestrear(fase: Fase) -> bool {
+    if fase != Fase::Trazando {
+        ULTIMA_MUESTRA.with(|u| u.set(Some(Instant::now())));
+        return true;
+    }
+    ULTIMA_MUESTRA.with(|u| {
+        let toca = u
+            .get()
+            .is_none_or(|t| t.elapsed().as_millis() >= MUESTRA_COLOR_ARRASTRANDO_MS);
+        if toca {
+            u.set(Some(Instant::now()));
+        }
+        toca
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 fn procesar_evento(
     hwnd: HWND,
@@ -544,7 +655,11 @@ fn procesar_evento(
             uia.pedir(p);
             // El color bajo el cursor: un recorte de 1x1 y su bajada. Es
             // minusculo (4 bytes) y solo ocurre al mover el raton.
-            if let Some(pieza) = piezas.iter().find(|z| z.monitor().area.contiene(p)) {
+            if let Some(pieza) = piezas
+                .iter()
+                .find(|z| z.monitor().area.contiene(p))
+                .filter(|_| toca_muestrear(estado.fase()))
+            {
                 let uno = Rect {
                     x: p.x,
                     y: p.y,
@@ -1181,6 +1296,65 @@ fn pintar(
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn el_gesto_arranca_siempre_en_la_pulsacion_y_no_donde_esta_el_cursor() {
+        let p = Punto { x: -1887, y: 449 };
+        let r = Punto { x: -1500, y: 700 };
+        assert_eq!(
+            arranque_del_gesto(Some(p), true, None),
+            ArranqueGesto::Arrastrando(p)
+        );
+        // Lo que fallaba (2-oct): el overlay salia con el boton ya suelto y
+        // abria en exploracion; el clic siguiente empezaba en otro sitio.
+        assert_eq!(
+            arranque_del_gesto(Some(p), false, Some(r)),
+            ArranqueGesto::YaSoltado { desde: p, hasta: r }
+        );
+        // Una soltada vieja no gana a un boton que sigue abajo.
+        assert_eq!(
+            arranque_del_gesto(Some(p), true, Some(r)),
+            ArranqueGesto::Arrastrando(p)
+        );
+    }
+
+    #[test]
+    fn sin_gesto_o_sin_soltada_conocida_el_overlay_abre_en_exploracion() {
+        // Caso negativo: un atajo no reproduce nada aunque haya soltadas.
+        let r = Punto { x: 5, y: 5 };
+        assert_eq!(arranque_del_gesto(None, true, Some(r)), ArranqueGesto::Ninguno);
+        assert_eq!(
+            arranque_del_gesto(Some(Punto { x: 1, y: 1 }), false, None),
+            ArranqueGesto::Ninguno
+        );
+        assert!(eventos_de_arranque(ArranqueGesto::Ninguno).is_empty());
+    }
+
+    #[test]
+    fn un_arrastre_ya_soltado_se_reproduce_entero_y_en_orden() {
+        let desde = Punto { x: 10, y: 20 };
+        let hasta = Punto { x: 300, y: 200 };
+        let ev = eventos_de_arranque(ArranqueGesto::YaSoltado { desde, hasta });
+        assert_eq!(ev.len(), 4);
+        assert!(matches!(ev[0], EventoOverlay::RatonMovido(q) if q == desde));
+        assert!(matches!(ev[1], EventoOverlay::BotonPulsado(q) if q == desde));
+        assert!(matches!(ev[2], EventoOverlay::RatonMovido(q) if q == hasta));
+        assert!(matches!(ev[3], EventoOverlay::BotonSoltado(q) if q == hasta));
+    }
+
+    #[test]
+    fn arrastrando_el_color_se_muestrea_con_freno_y_quieto_siempre() {
+        assert!(toca_muestrear(Fase::Explorando));
+        assert!(toca_muestrear(Fase::Explorando), "explorando, cada vez");
+        assert!(
+            !toca_muestrear(Fase::Trazando),
+            "justo despues de una muestra, trazando no se repite"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(
+            MUESTRA_COLOR_ARRASTRANDO_MS as u64 + 5,
+        ));
+        assert!(toca_muestrear(Fase::Trazando), "pasado el freno, si");
+    }
 
     #[test]
     fn una_seleccion_que_cruza_dos_monitores_se_reparte_bien() {

@@ -11,13 +11,14 @@
 //! |---|---|---|---|
 //! | tinta | `anot-<uid>` (corrida `izq`) | `anot-<uid>-p<n>` | sus hojas (ya viajaban) |
 //! | marcadores | `.marcas` (`id:fraccion:emoji`) | `.marcas` (`id:x:y:emoji`) | `anot-<uid del proyecto>.marcas` |
-//! | espacios | — | `.espacios` | `anot-<uid del proyecto>.espacios` |
+//! | espacios | `.maqueta` (`izq`, `der`) | `.espacios` | `anot-<uid del proyecto>.espacios` |
 //! | columna y letra | `.maqueta` | — | — |
 //! | por donde iba | `.sitio` | — | — |
+//! | el verde de la voz | `.voz` (`parrafo:fraccion`) | el 🟢 de `.marcas` | el 🟢 de sus marcas |
 //!
 //! Lo demas (el aumento, la pagina del PDF) sigue en `<doc>.pixpin-lectura`,
 //! que es de esta pantalla, como en el movil siguen en sus preferencias. Lo
-//! que el PC no tiene (el verde de la voz, lo de un PDF leido como texto) no
+//! que el PC no tiene (lo de un PDF leido como texto) no
 //! se toca: se queda en su fichero y se vuelve a mandar tal cual.
 //!
 //! **La primera vez** lo de antes (junto al documento) pasa a los ficheros
@@ -39,8 +40,9 @@
 use std::path::{Path, PathBuf};
 
 use pixpin_docs::lectura::{self, Ajustes};
+use pixpin_docs::{vista, voz_alta};
 use pixpin_proyecto::anotado::{self as an, Base};
-use pixpin_sincro::anotado::{HOJA, MarcoDeLaHoja, Maqueta, margen_de};
+use pixpin_sincro::anotado::{CIFRAS_DE_LA_HUELLA, HOJA, MarcoDeLaHoja, Maqueta, huella_coincide, margen_de};
 
 use crate::lector_tinta::{self, Capa, Unidades};
 
@@ -102,11 +104,15 @@ pub fn maqueta_para(a: &Ajustes, actual: Option<Maqueta>) -> Option<Maqueta> {
         && lectura::tamano_valido(m.tamano.max(0) as u32) == a.tamano
         && grosor_del_movil(m.grosor) == a.grosor
         && tipo_del_movil(m.tipo) == a.tipo
+        && a.lados.is_none_or(|(i, d)| (i as i32, d as i32) == (m.izq, m.der))
     {
         return None;
     }
-    let (izq, der) = match actual {
-        Some(m) if m.columna == columna => (m.izq, m.der),
+    // Los espacios de cada lado: los puestos con los mandos de abajo; si no,
+    // los del movil con esta misma columna, o los dos tercios de siempre.
+    let (izq, der) = match (a.lados, actual) {
+        (Some((i, d)), _) => (i as i32, d as i32),
+        (None, Some(m)) if m.columna == columna => (m.izq, m.der),
         _ => (margen_de(columna), margen_de(columna)),
     };
     Some(Maqueta {
@@ -154,6 +160,7 @@ fn migrar(b: &Base, a: &Ajustes, pdf: bool) {
     let maqueta = (a.columna > 0).then(|| maqueta_para(a, None).map(|m| m.a_texto())).flatten();
     an::poner_si_falta(&b.fichero(".maqueta"), maqueta.as_deref());
     an::poner_si_falta(&b.fichero(".sitio"), (a.sitio > 0.0).then(|| a.sitio.to_string()).as_deref());
+    an::poner_si_falta(&b.fichero(".voz"), a.voz.map(|(p, f)| voz_alta::voz_a_texto(p, f)).as_deref());
 }
 
 fn poner_lo_del_mensaje(b: &Base, a: &mut Ajustes, pdf: bool) {
@@ -178,10 +185,23 @@ fn poner_lo_del_mensaje(b: &Base, a: &mut Ajustes, pdf: bool) {
                 a.tamano = lectura::tamano_valido(m.tamano.max(0) as u32);
                 a.grosor = grosor_del_movil(m.grosor);
                 a.tipo = tipo_del_movil(m.tipo);
+                // Los espacios de cada lado, dentro de lo que cabe
+                // (`Lectura.espacioValido` al leer la maqueta).
+                a.lados = Some((
+                    vista::espacio_valido(i64::from(m.izq), a.columna),
+                    vista::espacio_valido(i64::from(m.der), a.columna),
+                ));
             }
             // Vacia: la columna se solto (en el PC, al quitar toda la tinta).
-            None => a.columna = 0,
+            None => {
+                a.columna = 0;
+                a.lados = None;
+            }
         }
+    }
+    // El marcador verde de la voz (`anot-<uid>.voz`): vacio es sin verde.
+    if let Some(t) = leer(".voz") {
+        a.voz = voz_alta::voz_de_texto(&t);
     }
     if let Some(s) = leer(".sitio").and_then(|t| t.trim().parse::<f32>().ok()).filter(|s| s.is_finite()) {
         a.sitio = s.clamp(0.0, 1.0);
@@ -231,6 +251,12 @@ fn escribir_lo_del_mensaje(b: &Base, a: &Ajustes, pdf: bool) -> std::io::Result<
     if !igual {
         poner(".sitio", a.sitio.to_string(), a.sitio <= 0.0)?;
     }
+    // El verde: lo de ahora, o vacio si se quito (no se borra, como el movil).
+    let f = b.fichero(".voz");
+    let ahora = a.voz.map(|(p, fr)| voz_alta::voz_a_texto(p, fr)).unwrap_or_default();
+    if an::leer(&f).and_then(|t| voz_alta::voz_de_texto(&t)) != a.voz {
+        poner(".voz", ahora, a.voz.is_none())?;
+    }
     Ok(())
 }
 
@@ -259,8 +285,37 @@ fn columna_propia(a: &Ajustes) -> Option<MarcoDeLaHoja> {
 /// columna corrida su `izq` ([`corrida`]).
 fn unidades_del_documento(b: &Base, a: &Ajustes) -> Unidades {
     columna_propia(a)
-        .and_then(|p| unidades_del_marco(&b.fichero(HOJA), &p))
+        .and_then(|p| unidades_del_marco(b, &p))
         .unwrap_or_else(|| Unidades::corridas(corrida(b, a)))
+}
+
+/// **El marco que corresponde a como se lee hoy sin marco la tinta de un
+/// Word o un libro** (la regla vieja: la columna corrida su `izq`), para la
+/// pasada que se lo pone a lo ya anotado (`marco_de_la_tinta`). No escribe
+/// nada: lee lo de junto al documento y lo del mensaje sin pasar lo uno a
+/// lo otro. `None` sin columna fijada (sin ella no hay hoja con que encajar).
+pub fn marco_de_antes_del_documento(doc: &Path, b: &Base) -> Option<MarcoDeLaHoja> {
+    let mut a = lectura::leer(doc);
+    poner_lo_del_mensaje(b, &mut a, false);
+    let p = columna_propia(&a)?;
+    Some(Unidades::corridas(corrida(b, &a)).marco_de(&p))
+}
+
+/// Si el mensaje de este documento del chat ya tiene su `.marcas` (aunque
+/// vacio: se quitaron todas). Es el «ya se guardaron» de Android
+/// (`archivoDeMarcas.exists()`). `false` si no es un adjunto.
+pub fn hay_marcas_del_mensaje(doc: &Path) -> bool {
+    base_de(doc).is_some_and(|b| b.fichero(".marcas").exists())
+}
+
+/// Los espacios de un PDF del chat como los lee el lector (los del mensaje
+/// encima de los de aqui), sin escribir nada.
+pub fn espacios_de_ahora(pdf: &Path) -> u8 {
+    let mut a = lectura::leer(pdf);
+    if let Some(b) = base_de(pdf) {
+        poner_lo_del_mensaje(&b, &mut a, true);
+    }
+    a.espacios
 }
 
 /// **La capa de tinta de un Word o un libro.** De un adjunto del chat, la de
@@ -283,7 +338,7 @@ pub fn leer_capa(doc: &Path) -> Capa {
             Ok(()) => {
                 an::marcar_tinta_pasada(&vieja);
                 if let Some(p) = columna_propia(&a)
-                    && let Err(e) = escribir_marco(&b.fichero(HOJA), u, &p)
+                    && let Err(e) = escribir_marco(&b, u, &p)
                 {
                     tracing::warn!(?e, "no se pudo escribir el marco de la tinta pasada");
                 }
@@ -293,7 +348,14 @@ pub fn leer_capa(doc: &Path) -> Capa {
     } else {
         // Si el movil ya mando la suya, la de aqui se junta (una vez): con
         // solo copiar si falta, lo anotado aqui antes no viajaba nunca.
-        an::pasar_tinta_de_antes(&vieja, &nueva, u.dx as f64);
+        // Y quien escribe la tinta escribe su marco: sin el, la huella
+        // seria la de antes y el marco se ignoraria.
+        if an::pasar_tinta_de_antes(&vieja, &nueva, u.dx as f64)
+            && let Some(p) = columna_propia(&a)
+            && let Err(e) = escribir_marco(&b, u, &p)
+        {
+            tracing::warn!(?e, "no se pudo escribir el marco de la tinta juntada");
+        }
     }
     Capa::leer_en(&nueva, u)
 }
@@ -309,7 +371,7 @@ pub fn guardar_capa(doc: &Path, capa: &mut Capa) -> std::io::Result<()> {
             let u = unidades_del_documento(&b, &a);
             capa.guardar_en(&b.tinta(), u)?;
             match columna_propia(&a) {
-                Some(p) if sucia => escribir_marco(&b.fichero(HOJA), u, &p),
+                Some(p) if sucia => escribir_marco(&b, u, &p),
                 _ => Ok(()),
             }
         }
@@ -319,52 +381,65 @@ pub fn guardar_capa(doc: &Path, capa: &mut Capa) -> std::io::Result<()> {
 
 // ------------------------------------------------------- el marco de la tinta
 
-/// **El marco de la tinta de la hoja `i` de un PDF suelto del chat**
-/// (`anot-<uid>-p<i>.hoja`), junto a lo demas de su mensaje; `None` si no
-/// es un adjunto.
-pub fn marco_de_la_hoja_del_pdf(
-    adjunto: Option<&(PathBuf, pixpin_proyecto::anotado::Adjunto)>,
-    i: usize,
-) -> Option<PathBuf> {
-    use pixpin_sincro::disco::Disco;
+/// **La base de la tinta de la hoja `i` de un PDF suelto del chat**
+/// (`anot-<uid>-p<i>`: su marco es `Base::marco`), junto a lo demas de su
+/// mensaje; `None` si no es un adjunto.
+pub fn base_de_la_hoja_del_pdf(adjunto: Option<&(PathBuf, pixpin_proyecto::anotado::Adjunto)>, i: usize) -> Option<Base> {
     let (raiz, x) = adjunto?;
-    let pagina = u32::try_from(i).ok()?;
-    let rel = pixpin_sincro::anotado::rel(&pixpin_sincro::anotado::de_pagina(&x.uid, pagina), HOJA);
-    Some(pixpin_proyecto::vista::DiscoPc::nuevo(raiz).ruta(&x.chat, &rel))
+    Some(Base::de_pagina(raiz, x, u32::try_from(i).ok()?))
 }
 
-/// El marco de un fichero `.hoja`, si esta y se entiende. Uno que esta y no
-/// se entiende se ignora (se lee con la regla de antes) y se dice.
-pub fn leer_marco(f: &Path) -> Option<MarcoDeLaHoja> {
-    let texto = an::leer(f)?;
-    let m = MarcoDeLaHoja::de_texto(&texto);
-    if m.is_none() {
+/// **El marco de la tinta de `b`, si esta, se entiende y es de esta
+/// tinta.** Uno que no se entiende se ignora (se lee con la regla de antes)
+/// y se dice. Uno con la huella de otra tinta tambien: lo escribio quien
+/// escribio la tinta de entonces, y un movil que aun no sabe del marco
+/// (v0.97) puede haberla reescrito despues en otras unidades sin tocarlo.
+/// Uno sin huella (los del PC del 29-sep) vale como hasta ahora.
+pub fn leer_marco(b: &Base) -> Option<MarcoDeLaHoja> {
+    let f = b.marco();
+    let texto = an::leer(&f)?;
+    let Some((m, huella)) = MarcoDeLaHoja::de_texto_con_huella(&texto) else {
         tracing::warn!(fichero = %f.display(), texto = %texto.trim(), "marco de la tinta que no se entiende: se ignora");
+        return None;
+    };
+    if let Some(h) = huella {
+        let resumen = b.resumen_de_la_tinta();
+        if !resumen.as_deref().is_some_and(|r| huella_coincide(&h, r)) {
+            tracing::warn!(
+                fichero = %f.display(),
+                huella = %h,
+                tinta = ?resumen.as_deref().map(|r| &r[..CIFRAS_DE_LA_HUELLA]),
+                "marco de otra tinta (se reescribio sin el): se ignora y se lee con la regla de antes"
+            );
+            return None;
+        }
     }
-    m
+    Some(m)
 }
 
-/// Las unidades que dice el marco `f` para una hoja que en el lector es
+/// Las unidades que dice el marco de `b` para una hoja que en el lector es
 /// `propia` (ver `Unidades::del_marco`); `None` sin marco que valga.
-pub fn unidades_del_marco(f: &Path, propia: &MarcoDeLaHoja) -> Option<Unidades> {
-    Unidades::del_marco(propia, &leer_marco(f)?)
+pub fn unidades_del_marco(b: &Base, propia: &MarcoDeLaHoja) -> Option<Unidades> {
+    Unidades::del_marco(propia, &leer_marco(b)?)
 }
 
-/// **Escribe el marco de una tinta guardada en las unidades `u`**: donde
-/// cae en ellas la hoja `propia`. Si el que hay ya dice eso mismo (el del
-/// otro aparato con el que se leyo, escrito con sus decimales) **se deja
-/// tal cual**: una ida y vuelta sin cambios no reescribe nada, y no viaja
-/// de vuelta un fichero que solo cambio en el ultimo decimal.
-pub fn escribir_marco(f: &Path, u: Unidades, propia: &MarcoDeLaHoja) -> std::io::Result<()> {
+/// **Escribe el marco de una tinta recien guardada en las unidades `u`**:
+/// donde cae en ellas la hoja `propia`, en las dos lineas de Android. Si el
+/// que hay ya dice eso mismo (el del otro aparato con el que se leyo,
+/// escrito con sus decimales) no se toca —salvo quitarle la huella que le
+/// ponia el PC el 29-sep, que Android no entiende—: una ida y vuelta sin
+/// cambios no reescribe nada, y no viaja de vuelta un fichero que solo
+/// cambio en el ultimo decimal.
+pub fn escribir_marco(b: &Base, u: Unidades, propia: &MarcoDeLaHoja) -> std::io::Result<()> {
     if !propia.valido() {
         return Ok(());
     }
-    if let Some(ya) = an::leer(f).and_then(|t| MarcoDeLaHoja::de_texto(&t))
+    if let Some((ya, huella)) = an::leer(&b.marco()).and_then(|t| MarcoDeLaHoja::de_texto_con_huella(&t))
         && Unidades::del_marco(propia, &ya).is_some_and(|v| v.casi_iguales(&u))
     {
-        return Ok(());
+        return if huella.is_some() { b.quitar_la_huella() } else { Ok(()) };
     }
-    an::escribir(f, &u.marco_de(propia).a_texto())
+    b.escribir_marco(&u.marco_de(propia))
 }
 
 /// **La tinta de la hoja `i` de un PDF suelto** que es un adjunto del chat
@@ -486,6 +561,46 @@ pub(crate) mod pruebas {
         // Caso negativo: lo que no existe cae en el extremo mas cercano.
         assert_eq!([-1, 9].map(tipo_del_movil), [0, 3]);
         assert_eq!([-5, 7].map(grosor_del_movil), [0, 3]);
+    }
+
+    #[test]
+    fn los_espacios_de_cada_lado_y_el_verde_de_la_voz_viajan_como_en_el_movil() {
+        let r = raiz("lados-y-voz");
+        let doc = con_adjunto(&r, "libro.epub", b"PK");
+        let b = base(&doc);
+        // Del movil: un solo paso a la izquierda y dos a la derecha, y su verde.
+        an::escribir(&b.fichero(".maqueta"), "420,140,280,100,1,0").unwrap();
+        an::escribir(&b.fichero(".voz"), "12:0.25").unwrap();
+        let mut a = leer(&doc);
+        assert_eq!(a.lados, Some((140, 280)));
+        assert_eq!(a.voz, Some((12, 0.25)));
+        // Sin cambios no se reescribe nada.
+        escribir(&doc, &a).unwrap();
+        assert_eq!(an::leer(&b.fichero(".maqueta")).as_deref(), Some("420,140,280,100,1,0"));
+        assert_eq!(an::leer(&b.fichero(".voz")).as_deref(), Some("12:0.25"));
+        // El PC quita el paso de la izquierda y el verde avanza.
+        a.lados = Some((0, 280));
+        a.voz = Some((13, 0.3));
+        escribir(&doc, &a).unwrap();
+        assert_eq!(an::leer(&b.fichero(".maqueta")).as_deref(), Some("420,0,280,100,1,0"));
+        assert_eq!(an::leer(&b.fichero(".voz")).as_deref(), Some("13:0.3"));
+        // Acabado el documento: vacio, no borrado (borrado seria «no se sabe»).
+        a.voz = None;
+        escribir(&doc, &a).unwrap();
+        assert_eq!(an::leer(&b.fichero(".voz")).as_deref(), Some(""));
+        assert_eq!(leer(&doc).voz, None);
+        // Un espacio fuera de lo que cabe se acota al leer.
+        an::escribir(&b.fichero(".maqueta"), "420,900,280,100,1,0").unwrap();
+        assert_eq!(leer(&doc).lados, Some((280, 280)));
+    }
+
+    #[test]
+    fn un_documento_sin_verde_no_crea_su_fichero() {
+        let r = raiz("sin-verde");
+        let doc = con_adjunto(&r, "acta.docx", b"PK");
+        let b = base(&doc);
+        escribir(&doc, &leer(&doc)).unwrap();
+        assert!(!b.fichero(".voz").exists());
     }
 
     #[test]
@@ -863,11 +978,45 @@ mod pruebas_del_marco {
         std::fs::create_dir_all(tinta.parent().unwrap()).unwrap();
         std::fs::write(&tinta, TINTA_A_OTRA_ESCALA).unwrap();
         let (raiz_almacen, x) = adjunto_del_pdf(&pdf).unwrap();
-        let f = marco_de_la_hoja_del_pdf(Some(&(raiz_almacen, x)), 0).unwrap();
+        let f = base_de_la_hoja_del_pdf(Some(&(raiz_almacen, x)), 0).unwrap().marco();
         if let Some(m) = marco {
             an::escribir(&f, m).unwrap();
         }
         (r, pdf, d, tinta, f)
+    }
+
+    /// La huella de la tinta de la hoja 0 del PDF del chat, como ahora.
+    fn huella_de_la_hoja(pdf: &Path) -> String {
+        base_de_la_hoja_del_pdf(adjunto_del_pdf(pdf).as_ref(), 0).unwrap().huella().unwrap()
+    }
+
+    #[test]
+    fn un_marco_con_la_huella_de_otra_tinta_se_ignora_y_con_la_suya_manda() {
+        // Con la huella de su tinta, el marco manda: la esquina de la hoja.
+        let (r, pdf, d, tinta, f) = pdf_con_tinta("marco-huella", None);
+        let h = huella_de_la_hoja(&pdf);
+        an::escribir(&f, &format!("500.0,300.0,4700.0,6240.0\nv1\ntinta {h}\n")).unwrap();
+        assert!(cerca(puntos(&d.leer_capa(&pdf, 0, 0, 1980.0))[0][0], (0.0, 0.0)));
+        // El movil de hoy reescribe la tinta (otro trazo) sin tocar el
+        // marco: ya no es la suya, se lee con la regla vieja (x2,5, -1050).
+        let reescrita = TINTA_A_OTRA_ESCALA.replace("\"raya\"", "\"raya2\"");
+        std::fs::write(&tinta, &reescrita).unwrap();
+        let p = puntos(&d.leer_capa(&pdf, 0, 0, 1980.0));
+        assert!(cerca(p[1][0], (1850.0 / 2.5, 900.0 / 2.5)), "{:?}", p[1]);
+        // Y como el marco mentia, el lector le apunta el de la regla vieja,
+        // en las dos lineas de Android (lo que hace `tintaDeLaHoja`).
+        assert_eq!(an::leer(&f).as_deref(), Some("-1050,0,2450,4950\nv1\n"));
+        // Y una huella con una cifra cambiada, igual (caso negativo).
+        let otra: String = h.chars().rev().collect();
+        an::escribir(&f, &format!("500,300,4700,6240\nv1\ntinta {otra}\n")).unwrap();
+        std::fs::write(&tinta, TINTA_A_OTRA_ESCALA).unwrap();
+        assert_ne!(otra, h);
+        let p = puntos(&d.leer_capa(&pdf, 0, 0, 1980.0));
+        assert!(cerca(p[1][0], (1850.0 / 2.5, 900.0 / 2.5)), "{:?}", p[1]);
+        // Sin huella (el formato de Android) manda.
+        an::escribir(&f, SU_MARCO).unwrap();
+        assert!(cerca(puntos(&d.leer_capa(&pdf, 0, 0, 1980.0))[0][0], (0.0, 0.0)));
+        let _ = std::fs::remove_dir_all(&r);
     }
 
     #[test]
@@ -899,41 +1048,97 @@ mod pruebas_del_marco {
     }
 
     #[test]
-    fn ida_y_vuelta_sin_cambios_deja_la_tinta_y_el_marco_identicos() {
+    fn ida_y_vuelta_sin_cambios_no_escribe_y_al_guardar_la_tinta_pasa_a_la_hoja_como_en_android() {
         let (r, pdf, d, tinta, f) = pdf_con_tinta("marco-ida-y-vuelta", Some(SU_MARCO));
         let (antes_t, antes_m) = (std::fs::read(&tinta).unwrap(), std::fs::read(&f).unwrap());
         let mut c = d.leer_capa(&pdf, 0, 0, 1980.0);
         d.guardar_capa(&pdf, 0, &mut c, 1980.0).unwrap();
         assert_eq!(std::fs::read(&tinta).unwrap(), antes_t, "sin cambios no se escribe");
-        assert_eq!(std::fs::read(&f).unwrap(), antes_m);
-        // Y guardada aunque nada cambiara: cada numero vuelve tal cual y el
-        // marco del otro se queda con sus decimales.
+        assert_eq!(std::fs::read(&f).unwrap(), antes_m, "ni el marco");
+        // Guardada, como Android v0.98.0: la tinta en las unidades de la
+        // hoja (0 a 1400) y el marco que lo dice.
         c.sucia = true;
         d.guardar_capa(&pdf, 0, &mut c, 1980.0).unwrap();
-        assert_eq!(std::fs::read(&f).unwrap(), antes_m, "el marco del otro se conserva");
+        assert_eq!(std::fs::read_to_string(&f).unwrap(), "0,0,1400,1980\nv1\n");
         let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&tinta).unwrap()).unwrap();
-        assert_eq!(v["elements"][1]["x"].as_f64(), Some(800.0));
-        assert_eq!(v["elements"][1]["y"].as_f64(), Some(900.0));
-        assert_eq!(v["elements"][1]["strokeWidth"].as_f64(), Some(6.0));
+        let x = |v: &serde_json::Value| v.as_f64().unwrap();
+        assert!((x(&v["elements"][1]["x"]) - 100.0).abs() < 1e-3, "{}", v["elements"][1]);
+        assert!((x(&v["elements"][1]["y"]) - 200.0).abs() < 1e-3);
+        assert!((x(&v["elements"][1]["strokeWidth"]) - 2.0).abs() < 1e-4);
         let fin = &v["elements"][0]["points"][1];
-        assert_eq!(fin["x"].as_f64().or(fin[0].as_f64()), Some(4200.0), "{fin}");
+        assert!((fin["x"].as_f64().or(fin[0].as_f64()).unwrap() - 1400.0).abs() < 1e-3, "{fin}");
+        // Otra vez igual: ya no se toca nada.
+        let fecha = std::fs::metadata(&f).unwrap().modified().unwrap();
+        let mut c = d.leer_capa(&pdf, 0, 0, 1980.0);
+        assert!(cerca(puntos(&c)[1][0], (100.0, 200.0)), "{:?}", puntos(&c));
+        c.sucia = true;
+        d.guardar_capa(&pdf, 0, &mut c, 1980.0).unwrap();
+        assert_eq!(std::fs::metadata(&f).unwrap().modified().unwrap(), fecha);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    /// Lo que escribe Android v0.98.0 (`LectorPdfActivity`): la tinta de la
+    /// hoja en sus unidades, 0 a 1400, con `deHoja` al lado. Se lee sin
+    /// escala y con cualquier espacio puesto en el PC.
+    #[test]
+    fn la_tinta_nueva_del_movil_con_su_marco_de_hoja_se_lee_tal_cual_con_cualquier_espacio() {
+        let (r, pdf, d, tinta, f) = pdf_con_tinta("marco-android-nuevo", Some("0,0,1400,1979.899\nv1\n"));
+        std::fs::write(
+            &tinta,
+            r#"{"elements":[{"id":"aNdRoId98xxxxxxxxxxxx","type":"freedraw","x":100,"y":400,"width":300,"height":0,"strokeWidth":2,"version":3,"points":[{"x":0.0,"y":0.0},{"x":300.0,"y":0.0}]}]}"#,
+        )
+        .unwrap();
+        for espacios in 0..4u8 {
+            let c = d.leer_capa(&pdf, 0, espacios, 1980.0);
+            let p = puntos(&c);
+            assert!((p[0][0].0 - 100.0).abs() < 0.01 && (p[0][1].0 - 400.0).abs() < 0.01, "{espacios}: {p:?}");
+            assert!((p[0][0].1 - 400.0).abs() < 0.1, "{espacios}: {p:?}");
+            assert!((c.escena.visibles().next().unwrap().grosor - 2.0).abs() < 1e-3);
+        }
+        assert_eq!(an::leer(&f).as_deref(), Some("0,0,1400,1979.899\nv1\n"), "leer no toca su marco");
         let _ = std::fs::remove_dir_all(&r);
     }
 
     #[test]
-    fn sin_marco_se_lee_con_la_regla_de_antes_y_al_guardar_se_escribe_el_suyo() {
-        let (r, pdf, d, _, f) = pdf_con_tinta("marco-sin", None);
+    fn sin_marco_se_lee_con_la_regla_de_antes_y_se_le_apunta_su_marco_sin_tocarla() {
+        let (r, pdf, d, tinta, f) = pdf_con_tinta("marco-sin", None);
+        let antes = std::fs::read(&tinta).unwrap();
         // La regla vieja, sin espacios (`capa_del_movil(0)`): x2,5 y -1050.
         let mut c = d.leer_capa(&pdf, 0, 0, 1980.0);
         let p = puntos(&c);
         assert!(cerca(p[1][0], (1850.0 / 2.5, 900.0 / 2.5)), "{:?}", p[1]);
-        assert!(!f.exists(), "leer no escribe ningun marco");
+        // Como Android (`migrar`): su marco al lado, y la tinta intacta.
+        assert_eq!(an::leer(&f).as_deref(), Some("-1050,0,2450,4950\nv1\n"));
+        assert_eq!(std::fs::read(&tinta).unwrap(), antes, "la tinta, byte a byte");
+        // Ya no depende de los espacios: con los dos, en el mismo sitio.
+        assert_eq!(puntos(&d.leer_capa(&pdf, 0, 3, 1980.0)), p);
+        // Guardada, a la hoja.
         c.sucia = true;
         d.guardar_capa(&pdf, 0, &mut c, 1980.0).unwrap();
-        // El marco dice las unidades en que se escribio: las del movil sin espacios.
-        assert_eq!(an::leer(&f).as_deref(), Some("-1050,0,2450,4950\nv1\n"));
-        // Y leida con el, cae en el mismo sitio que con la regla vieja.
-        assert_eq!(puntos(&d.leer_capa(&pdf, 0, 3, 1980.0)), p);
+        assert_eq!(an::leer(&f).as_deref(), Some("0,0,1400,1980\nv1\n"));
+        assert_eq!(puntos(&d.leer_capa(&pdf, 0, 1, 1980.0)), p);
+        // Caso negativo: quien solo lee (compartir) no escribe ningun marco.
+        let (r2, pdf2, _, _, f2) = pdf_con_tinta("marco-sin-solo-leer", None);
+        let _ = DondeVa::solo_leer(&pdf2).leer_capa(&pdf2, 0, 0, 1980.0);
+        assert!(!f2.exists());
+        let _ = std::fs::remove_dir_all(&r);
+        let _ = std::fs::remove_dir_all(&r2);
+    }
+
+    /// `fijarLoViejo` de Android: antes de cambiar los espacios, lo que no
+    /// tiene marco lo recibe con los de ahora; asi la tinta no se corre.
+    #[test]
+    fn antes_de_cambiar_los_espacios_la_tinta_sin_marco_recibe_el_suyo() {
+        let (r, pdf, d, tinta, f) = pdf_con_tinta("marco-fijar", None);
+        let antes = std::fs::read(&tinta).unwrap();
+        assert_eq!(d.fijar_lo_viejo(&pdf, 2, &[1980.0, 1980.0]), 1);
+        let k = 2.5 / 1.75;
+        let m = MarcoDeLaHoja::de_texto(&an::leer(&f).unwrap()).unwrap();
+        assert!(m.casi_igual(&MarcoDeLaHoja::nuevo(-1050.0, 0.0, -1050.0 + 1400.0 * k, 1980.0 * k)), "{m:?}");
+        assert_eq!(std::fs::read(&tinta).unwrap(), antes);
+        // Otra vez, nada: ya lo tiene.
+        assert_eq!(d.fijar_lo_viejo(&pdf, 0, &[1980.0]), 0);
+        assert!(MarcoDeLaHoja::de_texto(&an::leer(&f).unwrap()).unwrap().casi_igual(&m));
         let _ = std::fs::remove_dir_all(&r);
     }
 
@@ -986,6 +1191,13 @@ mod pruebas_del_marco {
         // Ida y vuelta: sin cambios, nada; guardada, el marco del otro se queda.
         guardar_capa(&doc, &mut c).unwrap();
         assert_eq!(std::fs::read_to_string(b.tinta()).unwrap(), tinta);
+        c.sucia = true;
+        guardar_capa(&doc, &mut c).unwrap();
+        assert_eq!(an::leer(&b.fichero(HOJA)).as_deref(), Some("560,0,1400,840\nv1\n"));
+        // Uno con la huella del PC del 29-sep que dice lo mismo: se le quita.
+        let h = b.huella().unwrap();
+        an::escribir(&b.fichero(HOJA), &format!("560,0,1400,840\nv1\ntinta {h}\n")).unwrap();
+        let mut c = leer_capa(&doc);
         c.sucia = true;
         guardar_capa(&doc, &mut c).unwrap();
         assert_eq!(an::leer(&b.fichero(HOJA)).as_deref(), Some("560,0,1400,840\nv1\n"));

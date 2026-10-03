@@ -10,17 +10,26 @@
 //! al portapapeles como un mapa de bits suelto, no se escribe ningun fichero
 //! y no nace ninguna ventana. Es el comportamiento de antes, intacto.
 //!
+//! # Agrupar con el recuadro (2-oct)
+//!
+//! Tras cada captura sale el recuadro en la esquina. Sin tocarlo, se va solo
+//! a los `icono_segundos` y la siguiente captura es otra tanda. Un clic lo
+//! ARMA (bordes azules): ya no se va solo y cada captura se suma, sin plazo,
+//! hasta que otro clic lo suelta y el recuadro desaparece. Copiar desde el
+//! panel (clic derecho) con la tanda armada NO la suelta: se sigue agrupando
+//! hasta que el usuario lo diga. Decision tomada con lo que pidio: «eso es lo
+//! que lo mantiene en trabajo; sin eso lo libera y desaparece».
+//!
 //! # Nada lento en el hilo principal
 //!
-//! El hilo principal es tambien el del gancho de raton de los gestos. La
-//! primera version guardaba aqui mismo el PNG, y el usuario lo noto en la
-//! segunda captura: con el hilo ocupado codificando, el gancho veia tarde el
-//! `Alt + arrastrar` siguiente, el overlay se abria con el boton ya suelto y
-//! se quedaba esperando un clic. Por eso el PNG se escribe en un hilo aparte,
-//! la miniatura se saca por muestreo y no con el filtro bueno, y la lista de
-//! ficheros solo se publica cuando TODOS estan escritos: mientras tanto el
-//! portapapeles lleva la imagen suelta, que se puede pegar desde el primer
-//! instante.
+//! El hilo principal es el que abre el overlay de la captura siguiente: lo
+//! que se haga aqui despues de una captura retrasa la otra. Por eso el PNG se
+//! escribe en un hilo aparte, la miniatura se saca por muestreo, el
+//! portapapeles se publica desde otro hilo (montar el mapa de bits de una
+//! captura grande y releer un PNG para copiarlo eran decenas de ms), y la
+//! ventana del recuadro se REUTILIZA entre tandas: crearla es una superficie
+//! de composicion entera. La lista de ficheros solo se publica cuando TODOS
+//! estan escritos: mientras tanto el portapapeles lleva la imagen suelta.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -48,6 +57,72 @@ const LADO_MINIATURA: u32 = 160;
 /// Lo que cuenta el hilo que escribe un PNG al acabar.
 type Escrito = (PathBuf, Result<(), String>);
 
+/// Lo que se le pide al hilo del portapapeles. Uno solo y en orden: la
+/// imagen suelta de una captura tiene que llegar ANTES que la lista de
+/// ficheros que la incluye, o el pegado seria el de la tanda vieja.
+enum Trabajo {
+    Imagen(Arc<ImagenRgba>),
+    ImagenYFicheros(Arc<ImagenRgba>, Vec<PathBuf>),
+    /// Una copia pedida desde el panel: hay que releer el PNG. Devuelve
+    /// cuantas se copiaron, para el aviso.
+    Copia(Copia),
+}
+
+/// Hace un trabajo del portapapeles. Devuelve `Some` solo para las copias
+/// del panel, que llevan aviso.
+fn hacer(t: Trabajo) -> Option<Result<usize, String>> {
+    match t {
+        Trabajo::Imagen(imagen) => {
+            if let Err(e) = pixpin_codec::copiar_imagen(&imagen) {
+                tracing::warn!(?e, "la captura no se pudo copiar al portapapeles");
+            }
+            None
+        }
+        Trabajo::ImagenYFicheros(imagen, rutas) => {
+            match pixpin_codec::copiar_imagen_y_ficheros(&imagen, &rutas) {
+                Ok(()) => tracing::info!(cuantas = rutas.len(), "capturas apiladas publicadas"),
+                Err(e) => tracing::warn!(?e, "las capturas apiladas no se pudieron publicar"),
+            }
+            None
+        }
+        Trabajo::Copia(copia) => Some(
+            publicar(&copia)
+                .map(|()| copia.rutas().len())
+                .map_err(|e| format!("{e:#}")),
+        ),
+    }
+}
+
+/// El hilo del portapapeles. Nace con la primera captura y duerme en su
+/// canal el resto del tiempo.
+struct HiloPortapapeles {
+    tx: Sender<Trabajo>,
+}
+
+impl HiloPortapapeles {
+    fn lanzar(copiadas: Sender<Result<usize, String>>, aviso: HWND) -> Option<HiloPortapapeles> {
+        let (tx, rx) = channel::<Trabajo>();
+        let aviso = aviso.0 as isize;
+        let lanzado = std::thread::Builder::new()
+            .name("portapapeles-capturas".into())
+            .spawn(move || {
+                while let Ok(t) = rx.recv() {
+                    if let Some(hecho) = hacer(t) {
+                        let _ = copiadas.send(hecho);
+                        pixpin_shell::despertar(HWND(aviso as *mut _));
+                    }
+                }
+            });
+        match lanzado {
+            Ok(_) => Some(HiloPortapapeles { tx }),
+            Err(e) => {
+                tracing::warn!(?e, "no se pudo lanzar el hilo del portapapeles");
+                None
+            }
+        }
+    }
+}
+
 pub struct PilaCapturas {
     pila: Rc<RefCell<Pila>>,
     icono: Option<IconoPila>,
@@ -60,9 +135,6 @@ pub struct PilaCapturas {
     /// La ventana principal, para despertar el bucle tras un clic del panel
     /// o cuando un PNG termina de escribirse.
     aviso: HWND,
-    /// El cero del reloj de la pila. `Instant` es monotono, que es lo unico
-    /// que la pila pide de sus milisegundos.
-    nacio: Instant,
     /// La ultima captura entera: es el mapa de bits que acompana a la lista
     /// de ficheros. Una sola en memoria; el portapapeles ya guarda otra igual.
     ultima: Option<Arc<ImagenRgba>>,
@@ -70,11 +142,15 @@ pub struct PilaCapturas {
     escribiendo: HashSet<PathBuf>,
     hechos_tx: Sender<Escrito>,
     hechos_rx: Receiver<Escrito>,
+    portapapeles: Option<HiloPortapapeles>,
+    copiadas_tx: Sender<Result<usize, String>>,
+    copiadas_rx: Receiver<Result<usize, String>>,
 }
 
 impl PilaCapturas {
     pub fn nueva(ajustes: &Capturas, aviso: HWND) -> PilaCapturas {
         let (hechos_tx, hechos_rx) = channel();
+        let (copiadas_tx, copiadas_rx) = channel();
         PilaCapturas {
             pila: Rc::new(RefCell::new(Pila::nueva(ajustes.apilar_segundos))),
             icono: None,
@@ -87,25 +163,44 @@ impl PilaCapturas {
             },
             icono_ms: ajustes.icono_segundos as u64 * 1000,
             aviso,
-            nacio: Instant::now(),
             ultima: None,
             escribiendo: HashSet::new(),
             hechos_tx,
             hechos_rx,
+            portapapeles: None,
+            copiadas_tx,
+            copiadas_rx,
         }
     }
 
-    fn ahora_ms(&self) -> u64 {
-        self.nacio.elapsed().as_millis() as u64
+    /// Manda un trabajo al hilo del portapapeles (lo lanza si hace falta).
+    /// Si no hay hilo posible, se hace aqui: lento, pero la captura llega.
+    fn al_portapapeles(&mut self, t: Trabajo) {
+        if self.portapapeles.is_none() {
+            self.portapapeles = HiloPortapapeles::lanzar(self.copiadas_tx.clone(), self.aviso);
+        }
+        let t = match &self.portapapeles {
+            Some(h) => match h.tx.send(t) {
+                Ok(()) => return,
+                Err(std::sync::mpsc::SendError(t)) => {
+                    self.portapapeles = None;
+                    t
+                }
+            },
+            None => t,
+        };
+        if let Some(hecho) = hacer(t) {
+            let _ = self.copiadas_tx.send(hecho);
+        }
     }
 
     /// Una captura recien hecha que iba al portapapeles. `region` es donde se
     /// recorto, en pixeles fisicos del escritorio virtual: decide el monitor
     /// del icono.
     ///
-    /// Solo devuelve error si la captura NO llego al portapapeles. Que falle
-    /// el PNG o el icono se registra y se sigue: perder el montoncito es una
-    /// molestia, perder la captura es el fallo.
+    /// El portapapeles se publica desde otro hilo; que falle el PNG o el
+    /// icono se registra y se sigue: perder el montoncito es una molestia,
+    /// perder la captura es el fallo.
     pub fn entrar(
         &mut self,
         imagen: ImagenRgba,
@@ -114,9 +209,11 @@ impl PilaCapturas {
         ubicacion: &Ubicacion,
         textos: &Catalogo,
     ) -> Result<()> {
+        let t0 = Instant::now();
+        let imagen = Arc::new(imagen);
         // Lo primero y siempre: la imagen suelta al portapapeles, como antes
         // de que existiera la pila. Los ficheros, si tocan, llegan despues.
-        pixpin_codec::copiar_imagen(&imagen).context("no se pudo copiar al portapapeles")?;
+        self.al_portapapeles(Trabajo::Imagen(Arc::clone(&imagen)));
         if !self.pila.borrow().apilar_encendido() {
             return Ok(());
         }
@@ -134,28 +231,35 @@ impl PilaCapturas {
             alto: imagen.alto,
             elegida: true,
         };
-        let imagen = Arc::new(imagen);
         self.escribir_aparte(ruta, Arc::clone(&imagen));
         self.ultima = Some(imagen);
 
         let (monitor, escala) = monitor_de(region);
-        let ahora = self.ahora_ms();
-        let efecto = self.pila.borrow_mut().anadir(ahora, captura, monitor, escala);
-        tracing::info!(
-            ?efecto,
-            apiladas = self.pila.borrow().cuantas(),
-            "captura en la pila"
-        );
+        let efecto = self.pila.borrow_mut().anadir(captura, monitor, escala);
 
-        // Una tanda nueva puede caer en otro monitor, con otra escala: el
-        // icono viejo se suelta y nace otro en su sitio.
+        // Una tanda nueva puede caer en otro monitor con otra escala: solo
+        // entonces el icono viejo se suelta y nace otro. Con la misma escala
+        // se reutiliza (`refrescar` lo recoloca en su monitor).
         if efecto == Efecto::Empezada {
-            self.icono = None;
             self.pedidos.borrow_mut().clear();
+            if self
+                .icono
+                .as_ref()
+                .is_some_and(|i| i.escala_por_cien() != Some(escala))
+            {
+                self.icono = None;
+            }
         }
         if let Err(e) = self.mostrar(recursos, textos) {
             tracing::warn!(?e, "el icono de la pila no se pudo mostrar");
         }
+        tracing::info!(
+            ?efecto,
+            apiladas = self.pila.borrow().cuantas(),
+            armada = self.pila.borrow().armada(),
+            ms = t0.elapsed().as_millis() as u64,
+            "captura en la pila"
+        );
         Ok(())
     }
 
@@ -209,29 +313,45 @@ impl PilaCapturas {
                 self.icono = Some(icono);
             }
         }
-        if let Some(icono) = &self.icono {
-            // Se va cuando la tanda ya no admite mas Y ha pasado el rato de
-            // cortesia. Con `icono_segundos = 0` se queda hasta que lo quiten.
-            let falta = self
-                .pila
-                .borrow()
-                .falta_para_cerrar_ms(self.ahora_ms())
-                .unwrap_or(0);
-            let ms = if self.icono_ms == 0 {
-                0
-            } else {
-                (falta + self.icono_ms).min(u32::MAX as u64) as u32
-            };
-            icono.armar_desvanecido(ms);
-        }
+        self.armar_desvanecido();
         Ok(())
     }
 
-    /// Atiende lo que haya pendiente: los PNG que acabaron de escribirse y lo
-    /// que se pulso en el panel. Se llama en cada vuelta del bucle principal;
-    /// sin nada pendiente no hace nada.
+    /// El recuadro sin armar se va solo a los `icono_segundos` de la ultima
+    /// captura (cero: se queda hasta que lo quiten). Armado, no se va nunca
+    /// solo: lo mantiene el usuario. Con el panel abierto tampoco.
+    fn armar_desvanecido(&self) {
+        let Some(icono) = &self.icono else {
+            return;
+        };
+        icono.armar_desvanecido(ms_del_desvanecido(
+            self.pila.borrow().armada(),
+            icono.abierto(),
+            self.icono_ms,
+        ));
+    }
+
+    /// Atiende lo que haya pendiente: los PNG que acabaron de escribirse, las
+    /// copias que acabo el hilo del portapapeles y lo que se pulso en el
+    /// panel. Se llama en cada vuelta del bucle principal; sin nada pendiente
+    /// no hace nada.
     pub fn atender(&mut self, textos: &Catalogo, bandeja: &mut Bandeja) {
         self.recoger_escritos(textos);
+
+        while let Ok(hecho) = self.copiadas_rx.try_recv() {
+            match hecho {
+                Ok(cuantas) => {
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("cuantas", cuantas.to_string());
+                    let _ = bandeja.avisar(
+                        &textos.t("app-nombre"),
+                        &textos.t_args("pila-copiadas", &args),
+                    );
+                    tracing::info!(cuantas, "pila copiada");
+                }
+                Err(e) => tracing::warn!(%e, "la pila no se pudo copiar"),
+            }
+        }
 
         let pedidos: Vec<AccionPila> = self.pedidos.borrow_mut().drain(..).collect();
         for pedido in pedidos {
@@ -249,24 +369,31 @@ impl PilaCapturas {
                     // Sin nada elegido el boton no hace nada, y el panel se
                     // queda abierto para que se elija.
                     let Some(copia) = copia else { continue };
-                    match publicar(&copia) {
-                        Ok(()) => {
-                            let mut args = fluent_bundle::FluentArgs::new();
-                            args.set("cuantas", copia.rutas().len().to_string());
-                            let _ = bandeja.avisar(
-                                &textos.t("app-nombre"),
-                                &textos.t_args("pila-copiadas", &args),
-                            );
-                            tracing::info!(cuantas = copia.rutas().len(), "pila copiada");
-                            self.cerrar();
+                    self.al_portapapeles(Trabajo::Copia(copia));
+                    if self.pila.borrow().armada() {
+                        // Armada se sigue agrupando: solo se cierra el panel.
+                        if let Some(icono) = &self.icono {
+                            icono.cerrar_panel();
                         }
-                        Err(e) => tracing::warn!(?e, "la pila no se pudo copiar"),
+                        self.armar_desvanecido();
+                    } else {
+                        self.cerrar();
                     }
                 }
                 AccionPila::Cambiada => self.poner_al_dia(textos),
+                AccionPila::Armada => {
+                    tracing::info!(
+                        apiladas = self.pila.borrow().cuantas(),
+                        "pila armada: se agrupa hasta soltarla"
+                    );
+                    self.armar_desvanecido();
+                }
                 // El portapapeles NO se toca: quitar el montoncito de la
                 // esquina no es arrepentirse de lo copiado.
-                AccionPila::Cerrar => self.cerrar(),
+                AccionPila::Cerrar => {
+                    tracing::info!(apiladas = self.pila.borrow().cuantas(), "pila soltada");
+                    self.cerrar();
+                }
             }
         }
     }
@@ -299,15 +426,13 @@ impl PilaCapturas {
             return;
         }
         let copia = self.pila.borrow().que_copiar(false);
-        if let (Some(Copia::Ficheros { rutas, .. }), Some(imagen)) = (copia, &self.ultima) {
-            match pixpin_codec::copiar_imagen_y_ficheros(imagen, &rutas) {
-                Ok(()) => tracing::info!(cuantas = rutas.len(), "capturas apiladas publicadas"),
-                Err(e) => tracing::warn!(?e, "las capturas apiladas no se pudieron publicar"),
-            }
+        if let (Some(Copia::Ficheros { rutas, .. }), Some(imagen)) = (copia, self.ultima.clone()) {
+            self.al_portapapeles(Trabajo::ImagenYFicheros(imagen, rutas));
         }
     }
 
-    /// Tras un cambio en la pila: cierra si quedo vacia; si no, repinta.
+    /// Tras un cambio en la pila: cierra si quedo vacia; si no, repinta y
+    /// rearma el desvanecido que toque (el panel pudo cerrarse).
     fn poner_al_dia(&mut self, textos: &Catalogo) {
         let cuantas = self.pila.borrow().cuantas();
         if cuantas == 0 {
@@ -315,6 +440,7 @@ impl PilaCapturas {
         } else if let Some(icono) = &self.icono {
             icono.poner_titulo(titulo_de(textos, cuantas));
             icono.refrescar();
+            self.armar_desvanecido();
         }
     }
 
@@ -322,6 +448,17 @@ impl PilaCapturas {
         self.icono = None;
         self.ultima = None;
         self.pila.borrow_mut().vaciar();
+    }
+}
+
+/// Cuanto espera el recuadro para irse solo. Cero es «no se va solo»: armado
+/// lo mantiene el usuario, abierto se esta eligiendo, y `icono_segundos = 0`
+/// lo pide el TOML.
+fn ms_del_desvanecido(armada: bool, abierto: bool, icono_ms: u64) -> u32 {
+    if armada || abierto {
+        0
+    } else {
+        icono_ms.min(u32::MAX as u64) as u32
     }
 }
 
@@ -466,6 +603,17 @@ mod pruebas {
     fn la_miniatura_no_deforma_ni_pasa_del_lado_mayor() {
         assert_eq!(tamano_miniatura(3200, 1600), (160, 80));
         assert_eq!(tamano_miniatura(1000, 4000), (40, 160));
+    }
+
+    #[test]
+    fn solo_el_recuadro_sin_armar_y_cerrado_se_va_solo() {
+        assert_eq!(ms_del_desvanecido(false, false, 8_000), 8_000);
+        // Armado lo mantiene el usuario: no se va nunca solo.
+        assert_eq!(ms_del_desvanecido(true, false, 8_000), 0);
+        // Con el panel abierto se esta eligiendo.
+        assert_eq!(ms_del_desvanecido(false, true, 8_000), 0);
+        // `icono_segundos = 0`: se queda hasta que lo quiten.
+        assert_eq!(ms_del_desvanecido(false, false, 0), 0);
     }
 
     #[test]

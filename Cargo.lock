@@ -785,6 +785,8 @@ dependencies = [
 name = "pixpin-docs"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "thiserror",
  "zip",
 ]
@@ -800,6 +802,15 @@ version = "0.1.0"
 [[package]]
 name = "pixpin-gpu"
 version = "0.1.0"
+
+[[package]]
+name = "pixpin-lanzador"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "windows",
+]
 
 [[package]]
 name = "pixpin-model"
@@ -825,9 +836,12 @@ version = "0.1.0"
 dependencies = [
  "pixpin-codec",
  "pixpin-docs",
+ "pixpin-render",
  "pixpin-shell",
+ "pixpin-ui",
  "tracing",
  "windows",
+ "windows-numerics",
 ]
 
 [[package]]

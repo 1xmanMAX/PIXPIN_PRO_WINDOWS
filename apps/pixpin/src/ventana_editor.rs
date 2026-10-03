@@ -443,20 +443,41 @@ pub fn abrir(
     fondo: Option<pixpin_codec::ImagenRgba>,
     fotos: &[(u64, std::path::PathBuf)],
 ) -> Result<(Escena, Option<String>)> {
+    abrir_con_pegadas(escena, ajustes_iman, nivel, medir_fotogramas, fondo, fotos, &mut Vec::new())
+}
+
+/// `abrir`, devolviendo en `pegadas` los pixeles de las imagenes que se
+/// metieron en el lienzo durante la sesion (pegadas, desde un fichero, la
+/// foto de una zona), para que quien guarda la escena las guarde tambien
+/// (`imagenes_lienzo::guardar_pegadas_junto_a`). Sin eso, la figura quedaba
+/// guardada sin pixeles y al reabrir la imagen no estaba.
+pub fn abrir_con_pegadas(
+    escena: Escena,
+    ajustes_iman: pixpin_motor2d::enganche::Ajustes,
+    nivel: pixpin_nivel::Nivel,
+    medir_fotogramas: bool,
+    fondo: Option<pixpin_codec::ImagenRgba>,
+    fotos: &[(u64, std::path::PathBuf)],
+    pegadas: &mut Vec<(u64, pixpin_codec::ImagenRgba)>,
+) -> Result<(Escena, Option<String>)> {
     let fondo = fondo.map(crate::fondo_lienzo::Fuente::from);
-    abrir_sobre(escena, ajustes_iman, nivel, medir_fotogramas, fondo, fotos)
+    abrir_sobre_con_pegadas(escena, ajustes_iman, nivel, medir_fotogramas, fondo, fotos, pegadas)
 }
 
 /// `abrir` con cualquier fondo: tambien una pagina de PDF, que se pinta en
 /// su hilo y se afina al acercarse (`fondo_lienzo`). Es lo que usa el chat
-/// al abrir una hoja-pagina de un proyecto.
-pub fn abrir_sobre(
+/// al abrir una hoja-pagina de un proyecto. Devuelve tambien las imagenes
+/// nacidas en la sesion (ver [`abrir_con_pegadas`]); las de una vuelta
+/// anterior (F11) vuelven a entrar al reabrir la ventana, asi que alternar
+/// el modo tampoco las pierde.
+pub fn abrir_sobre_con_pegadas(
     escena: Escena,
     ajustes_iman: pixpin_motor2d::enganche::Ajustes,
     nivel: pixpin_nivel::Nivel,
     medir_fotogramas: bool,
     fondo: Option<crate::fondo_lienzo::Fuente>,
     fotos: &[(u64, std::path::PathBuf)],
+    pegadas: &mut Vec<(u64, pixpin_codec::ImagenRgba)>,
 ) -> Result<(Escena, Option<String>)> {
     // F11 alterna entre pantalla completa y ventana. La ventana del editor
     // nace con su tamano y todo lo de dentro se mide contra el, asi que
@@ -473,6 +494,7 @@ pub fn abrir_sobre(
             fotos,
             None,
             None,
+            pegadas,
         )?;
         if !cambiar {
             return Ok((vuelta, enlace));
@@ -508,6 +530,7 @@ pub fn abrir_universo(
             &[],
             Some(&mut *sesion),
             None,
+            &mut Vec::new(),
         )?;
         if !cambiar {
             return Ok(vuelta);
@@ -542,6 +565,7 @@ pub fn abrir_pantalla(
         &[],
         None,
         Some(&mut *pantalla),
+        &mut Vec::new(),
     )?;
     tracing::info!(
         elementos = vuelta.cuantos_visibles(),
@@ -580,6 +604,9 @@ fn abrir_en_modo(
     // El anotador de pantalla (ver `pantalla.rs`): `None` es el lienzo de
     // siempre.
     mut pantalla: Option<&mut pantalla::Pantalla<'_>>,
+    // Las imagenes nacidas en la sesion: entran las de la vuelta anterior
+    // (F11) y salen todas al cerrar, para que quien guarda las escriba.
+    pegadas: &mut Vec<(u64, pixpin_codec::ImagenRgba)>,
 ) -> Result<(Escena, Option<String>, bool)> {
     let dispositivo =
         pixpin_capture::Dispositivo::nuevo().context("sin dispositivo para el editor")?;
@@ -599,6 +626,10 @@ fn abrir_en_modo(
             }
             Err(e) => tracing::warn!(?e, ruta = %ruta.display(), "imagen del proyecto ilegible"),
         }
+    }
+    // Y las pegadas en la vuelta anterior (F11), que aun no estan en disco.
+    for (id, img) in std::mem::take(pegadas) {
+        imagenes.reponer_nueva(id, img);
     }
 
     let disposicion =
@@ -3409,6 +3440,9 @@ fn abrir_en_modo(
     ventana.ocultar();
     crate::dibujo::tema::fijar_papel(None);
     escena.compactar();
+    // Lo pegado sale con la escena: quien la guarda escribe tambien sus
+    // pixeles (`imagenes_lienzo`), o al reabrir la imagen no estaria.
+    pegadas.extend(imagenes.tomar_nuevas());
     // Y a que hoja queria ir, si pulso un recuadro con enlace: quien llama
     // es el unico que sabe donde estan las hojas.
     Ok((escena, enlace_pedido, cambiar_modo))

@@ -222,6 +222,7 @@ fn hoja_pdf(pagina: u32, tinta: Escena) -> HojaPdf {
     HojaPdf {
         foto: Some("data:image/jpeg;base64,AAAA".into()),
         plano: None,
+        texto: String::new(),
         alto: 1980.0,
         tinta,
         pagina,
@@ -241,7 +242,9 @@ fn en_el_pdf_lo_anotado_va_con_su_hoja_y_los_marcadores_saltan_a_su_altura() {
     let alto = 1980.0 * k;
     assert_eq!(h.tops.len(), 2);
     assert!((h.tops[1] - (alto + ENTRE_HOJAS as f64)).abs() < 0.01, "{:?}", h.tops);
-    assert_eq!(h.cuerpo.matches("<img data-b").count(), 2);
+    // Cada hoja es su bloque (`.hoja-pdf`), sea imagen o lineas.
+    assert_eq!(h.cuerpo.matches("<div class=\"hoja-pdf\"><img ").count(), 2);
+    assert_eq!(h.bloques, ".hoja-pdf");
     assert!(h.cuerpo.contains("alt=\"Hoja 3\""));
     // La tinta, atada a la hoja en la que esta (la segunda de la pagina).
     assert_eq!(ancla_de_la_pieza(&h.capa, 0), 1);
@@ -273,27 +276,27 @@ fn un_pdf_de_verdad_sale_con_sus_hojas_nitidas_y_lo_anotado() {
     let ruta_capa = crate::lector_tinta::ruta_de_hoja(&pdf, 1);
     std::fs::create_dir_all(ruta_capa.parent().unwrap()).unwrap();
     std::fs::write(&ruta_capa, pixpin_motor2d::excalidraw::escribir(&pixpin_motor2d::excalidraw::con_escena(&pixpin_motor2d::excalidraw::Lienzo::vacio(), &capa))).unwrap();
-    let html = web_de_pdf(&pdf, None).unwrap();
+    let html = web_de_pdf(&pdf, None, true).unwrap();
     // Un PDF de texto escrito aqui es vectorial: sus hojas van como lineas,
     // sin foto, y el guion que las despliega va una sola vez.
-    assert_eq!(html.matches("<svg data-b class=\"plano-hoja\"").count(), 2);
+    assert_eq!(html.matches("<div class=\"hoja-pdf\"><svg class=\"plano-hoja\"").count(), 2);
     assert_eq!(html.matches("class=\"plano-datos\"").count(), 2);
     assert_eq!(html.matches("function inflar(").count(), 1);
     assert!(!html.contains("src=\"data:image/jpeg;base64,"), "sin fotos de las hojas");
     assert!(html.contains("<svg class=\"ppa\" data-i=\"1\""));
     // Pedir solo la primera: una hoja y sin la tinta de la segunda.
-    let una = web_de_pdf(&pdf, Some(&[0])).unwrap();
-    assert_eq!(una.matches("<svg data-b class=\"plano-hoja\"").count(), 1);
+    let una = web_de_pdf(&pdf, Some(&[0]), true).unwrap();
+    assert_eq!(una.matches("<div class=\"hoja-pdf\"><svg class=\"plano-hoja\"").count(), 1);
     assert!(!una.contains("class=\"ppa\""));
     // Caso negativo: hojas que no hay.
-    assert!(web_de_pdf(&pdf, Some(&[9])).is_err());
+    assert!(web_de_pdf(&pdf, Some(&[9]), true).is_err());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// **Un escaneo sigue yendo como foto**: sus hojas son una imagen y nada
 /// mas, y como lineas no habria nada que ver.
 #[test]
-fn un_pdf_escaneado_sale_con_sus_hojas_en_jpeg_y_sin_el_guion_del_plano() {
+fn un_pdf_escaneado_sale_con_sus_hojas_como_imagen_y_sin_el_guion_del_plano() {
     let dir = std::env::temp_dir().join(format!("pixpin-docweb-escaneo-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -304,9 +307,11 @@ fn un_pdf_escaneado_sale_con_sus_hojas_en_jpeg_y_sin_el_guion_del_plano() {
         pixeles: [200u8, 190, 180, 255].repeat(60 * 80),
     };
     std::fs::write(&pdf, pixpin_pdf::union::de_imagenes(&[hoja.clone(), hoja]).unwrap()).unwrap();
-    let html = web_de_pdf(&pdf, None).unwrap();
-    assert_eq!(html.matches("<img data-b").count(), 2);
-    assert!(html.contains("src=\"data:image/jpeg;base64,"));
+    let html = web_de_pdf(&pdf, None, true).unwrap();
+    assert_eq!(html.matches("<div class=\"hoja-pdf\"><img ").count(), 2);
+    // Una hoja lisa pesa menos en WebP sin perdida que en JPEG.
+    assert!(html.contains("src=\"data:image/webp;base64,"));
+    assert!(!html.contains("class=\"texto-pdf\""), "un escaneo no tiene texto que poner");
     assert!(!html.contains("class=\"plano-hoja\""));
     assert!(!html.contains("function inflar("), "el guion solo va si hace falta");
     let _ = std::fs::remove_dir_all(&dir);
@@ -392,7 +397,7 @@ fn muestras_para_el_navegador() {
                 std::fs::create_dir_all(r.parent().unwrap()).unwrap();
                 guardar_como_el_lector(&r, capa);
             }
-            let html = web_de_pdf(&ruta, None).unwrap();
+            let html = web_de_pdf(&ruta, None, true).unwrap();
             std::fs::write(ruta.with_extension("pdf.html"), html).unwrap();
             continue;
         }
@@ -432,4 +437,68 @@ fn guardar_como_el_lector(ruta: &Path, escena: Escena) {
     c.escena = escena;
     c.sucia = true;
     c.guardar(ruta).unwrap();
+}
+
+/// **«Texto buscable» quitado** (Android v0.98.1): todas las hojas como
+/// imagen, con su texto invisible encima para seguir buscando; la tinta,
+/// atada a su hoja (`.hoja-pdf`, v0.98.3), y las hojas se desplazan con el
+/// dedo (el `touch-action:none` del dibujo no las alcanza).
+#[test]
+fn sin_texto_buscable_las_hojas_van_como_imagen_con_su_texto_invisible_encima() {
+    let dir = std::env::temp_dir().join(format!("pixpin-docweb-imagen-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let pdf = dir.join("memoria.pdf");
+    let hojas = super::super::hojas_de_texto(Some("Memoria & <otros>"), &"Parrafo de prueba. ".repeat(600));
+    let bytes = pixpin_pdf::escribir::de_hojas(&hojas[..2], Some(super::super::BLANCO), &|_| None).unwrap();
+    std::fs::write(&pdf, bytes).unwrap();
+    let html = web_de_pdf(&pdf, None, false).unwrap();
+    assert_eq!(html.matches("<div class=\"hoja-pdf\"><img ").count(), 2, "todas como imagen");
+    assert!(!html.contains("class=\"plano-hoja\"") && !html.contains("function inflar("));
+    assert!(html.contains("src=\"data:image/webp;base64,") || html.contains("src=\"data:image/jpeg;base64,"));
+    // El texto, invisible encima de cada hoja, escapado y con su matriz.
+    assert_eq!(html.matches("<svg class=\"texto-pdf\"").count(), 2);
+    assert!(html.contains(">Parrafo de prueba."), "sin el texto que se busca");
+    assert!(html.contains("Memoria &amp; &lt;otros&gt;"), "sin escapar");
+    assert!(html.contains("<text transform=\"matrix("));
+    assert!(html.contains("data-bloques=\".hoja-pdf\""), "la tinta no se ata a las hojas");
+    assert!(html.contains("html.vivo #lienzo .doc svg{touch-action:auto"), "las hojas no se desplazan con el dedo");
+    // Caso negativo: con el interruptor puesto van en lineas, sin foto ni capa aparte.
+    let lineas = web_de_pdf(&pdf, None, true).unwrap();
+    assert!(!lineas.contains("<svg class=\"texto-pdf\"") && !lineas.contains("src=\"data:image/"));
+    let _ = std::fs::write(dir.join("imagen.html"), &html);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// **Con copias de los PDF del usuario** (nunca los de verdad): cuanto pesa
+/// la pagina web con «Texto buscable» puesto y quitado, y cuanto tarda. Deja
+/// los `.html` al lado para abrirlos. Se lanza a mano:
+/// `PIXPIN_PDFS=<carpeta con copias> cargo test -p pixpin --bin pixpinmax medir_la_web_de_los_pdf_copiados -- --ignored --nocapture`.
+#[test]
+#[ignore = "necesita copias de los PDF del usuario"]
+fn medir_la_web_de_los_pdf_copiados() {
+    let dir = std::path::PathBuf::from(std::env::var("PIXPIN_PDFS").expect("PIXPIN_PDFS"));
+    for f in std::fs::read_dir(&dir).unwrap().flatten() {
+        let ruta = f.path();
+        if !ruta.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf")) {
+            continue;
+        }
+        for con_texto in [true, false] {
+            let t = std::time::Instant::now();
+            let html = web_de_pdf(&ruta, None, con_texto).unwrap();
+            let ms = t.elapsed().as_millis();
+            let lineas = html.matches("<svg class=\"plano-hoja\"").count();
+            let imagenes = html.matches("<div class=\"hoja-pdf\"><img ").count();
+            let webp = html.matches("data:image/webp").count();
+            println!(
+                "{} {}: {} KB en {ms} ms ({lineas} en lineas, {imagenes} imagen, {webp} webp, {} renglones invisibles)",
+                ruta.file_name().unwrap().to_string_lossy(),
+                if con_texto { "texto buscable" } else { "como imagen" },
+                html.len() / 1024,
+                html.matches("<text transform=\"matrix(").count()
+            );
+            let nombre = format!("{}.{}.html", ruta.file_stem().unwrap().to_string_lossy(), if con_texto { "lineas" } else { "imagen" });
+            std::fs::write(dir.join(nombre), html).unwrap();
+        }
+    }
 }

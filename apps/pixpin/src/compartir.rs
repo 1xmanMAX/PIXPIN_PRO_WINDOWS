@@ -25,7 +25,10 @@
 
 pub(crate) mod documento_web;
 mod pdf;
+pub(crate) mod pdf_anotado;
 pub(crate) mod ventana;
+/// Una nota como Word (H12, 1-oct).
+mod word;
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -86,6 +89,11 @@ pub(crate) fn idioma_de(ubicacion: &pixpin_store::Ubicacion) -> pixpin_store::Id
 // Los formatos, por el nombre que entiende `generar`.
 pub(crate) const WEB: &str = "web";
 pub(crate) const PDF: &str = "pdf";
+/// El PDF de un documento con el interruptor «Con anotaciones» quitado.
+pub(crate) const PDF_LIMPIO: &str = "pdf-limpio";
+/// La pagina web de un PDF con el interruptor «Texto buscable» quitado:
+/// todas las hojas como imagen.
+pub(crate) const WEB_IMAGEN: &str = "web-imagen";
 pub(crate) const PNG: &str = "png";
 pub(crate) const JPG: &str = "jpg";
 pub(crate) const SVG: &str = "svg";
@@ -638,8 +646,21 @@ fn anadir_mensaje(p: &mut Preparado, raiz: &Path, proyecto: &str, m: &Mensaje, s
         Some(Clase::Proyecto) => false,
         Some(Clase::Nota) | Some(Clase::Otra(_)) | None => {
             let texto = m.resumen();
-            !texto.trim().is_empty()
-                && anadir_texto(p, &clave, &nombre, &t.t("compartir-tipo-nota"), None, &texto, solo, t)
+            let puesta = !texto.trim().is_empty()
+                && anadir_texto(p, &clave, &nombre, &t.t("compartir-tipo-nota"), None, &texto, solo, t);
+            // Una nota Markdown sola tambien sale como Word (`word`).
+            if puesta
+                && solo
+                && word::es_nota(m)
+                && let Some((bytes, fichero)) = word::de_nota(raiz, proyecto, m, &t.t("nota-md-nueva"))
+            {
+                p.extras.push(Extra {
+                    id: "word",
+                    clave: "compartir-word",
+                    que: Entero::Escrito { fichero, bytes },
+                });
+            }
+            puesta
         }
     }
 }
@@ -1036,6 +1057,11 @@ fn anadir_documento(p: &mut Preparado, ruta: &Path, clave: &str, t: &Catalogo) -
     puesto
 }
 
+/// Si el documento es un PDF (lo que abre el lector de PDF).
+fn es_pdf(ruta: &Path) -> bool {
+    crate::lector_pdf::se_abre(&pixpin_docs::nombre(ruta))
+}
+
 /// **El documento al que pertenecen todas las paginas elegidas**, si es uno
 /// solo, y cuales de sus hojas son (desde 0; en un Word no cuentan: va
 /// entero, que la pagina web no se corta en hojas).
@@ -1290,11 +1316,35 @@ pub(crate) fn compartible(p: &Preparado, t: &Catalogo) -> Compartible {
         nombre: t.t(clave),
         cuantas,
         admite: None,
+        interruptor: None,
     };
     let mut de_paginas = Vec::new();
     if !p.piezas.is_empty() {
-        de_paginas.push(formato(WEB, "compartir-web", Cuantas::Varias));
-        de_paginas.push(formato(PDF, "compartir-pdf", Cuantas::Varias));
+        let mut web = formato(WEB, "compartir-web", Cuantas::Varias);
+        // **La pagina web de un PDF que se lee**: con el interruptor
+        // «Texto buscable» puesto, las hojas en lineas con su texto; quitado,
+        // todas como imagen con el texto invisible encima (Android v0.98.1,
+        // «que me de la opcion y pueda ver cual es mejor»).
+        if p.documentos.iter().any(|(_, r)| es_pdf(r)) {
+            web.interruptor = Some(pixpin_ui::hoja_compartir::Interruptor {
+                nombre: t.t("compartir-texto-buscable"),
+                detalle: t.t("compartir-texto-buscable-detalle"),
+                id_apagado: WEB_IMAGEN.into(),
+            });
+        }
+        de_paginas.push(web);
+        let mut pdf = formato(PDF, "compartir-pdf", Cuantas::Varias);
+        // **El PDF de un PDF que se lee** es el original con lo anotado
+        // encima, y con el interruptor quitado, limpio (`formatoPdf` del
+        // movil). Ver `pdf_anotado`.
+        if p.documentos.iter().any(|(_, r)| es_pdf(r)) {
+            pdf.interruptor = Some(pixpin_ui::hoja_compartir::Interruptor {
+                nombre: t.t("compartir-con-anotaciones"),
+                detalle: t.t("compartir-con-anotaciones-detalle"),
+                id_apagado: PDF_LIMPIO.into(),
+            });
+        }
+        de_paginas.push(pdf);
         de_paginas.push(formato(PNG, "compartir-png", Cuantas::Una));
         de_paginas.push(formato(JPG, "compartir-jpg", Cuantas::Una));
         de_paginas.push(formato(SVG, "compartir-svg", Cuantas::Una));
@@ -1457,16 +1507,32 @@ pub(crate) fn generar(p: &Preparado, formato: &str, claves: &[String], carpeta: 
     let piezas: Vec<&Pieza> = claves.iter().filter_map(|k| p.pieza_de(k)).collect();
     let base = nombre_de_fichero(&p.titulo);
     let mut imagen = None;
-    let documento = if formato == WEB { documento_elegido(p, claves) } else { None };
+    let documento = if matches!(formato, WEB | WEB_IMAGEN | PDF | PDF_LIMPIO) { documento_elegido(p, claves) } else { None };
     let ficheros = match formato {
-        WEB | PDF if piezas.is_empty() => anyhow::bail!("no hay paginas marcadas"),
+        WEB | WEB_IMAGEN | PDF | PDF_LIMPIO if piezas.is_empty() => anyhow::bail!("no hay paginas marcadas"),
+        // Un PDF que se lee: el original con lo anotado encima en vectores
+        // (o limpio), no fotos de sus hojas. Si no se deja (cifrado), como
+        // antes: pintado, que mejor pesado que nada.
+        PDF | PDF_LIMPIO if documento.as_ref().is_some_and(|(r, _)| es_pdf(r)) => {
+            let (ruta, hojas) = documento.as_ref().context("sin documento")?;
+            let bytes = match pdf_anotado::de_documento(ruta, Some(hojas), formato == PDF) {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::info!(?e, "el PDF no se deja anotar encima; va pintado");
+                    pdf::de_piezas(&piezas, &lector)?
+                }
+            };
+            let ruta = carpeta.join(format!("{base}.pdf"));
+            escribir(&ruta, &bytes)?;
+            vec![ruta]
+        }
         // Un documento que se lee va como documento: el texto de verdad (o
         // las hojas del PDF), lo anotado atado a su sitio y los marcadores,
         // con los mandos para seguir anotando. Ver `documento_web`.
-        WEB if documento.is_some() => {
+        WEB | WEB_IMAGEN if documento.is_some() => {
             let (ruta, hojas) = documento.as_ref().context("sin documento")?;
             let pagina = if crate::lector_pdf::se_abre(&pixpin_docs::nombre(ruta)) {
-                documento_web::web_de_pdf(ruta, Some(hojas))?
+                documento_web::web_de_pdf(ruta, Some(hojas), formato == WEB)?
             } else {
                 documento_web::web_de_texto(ruta)?
             };
@@ -1474,7 +1540,7 @@ pub(crate) fn generar(p: &Preparado, formato: &str, claves: &[String], carpeta: 
             escribir(&ruta, pagina.as_bytes())?;
             vec![ruta]
         }
-        WEB => {
+        WEB | WEB_IMAGEN => {
             // Cada pagina en su clase: un dibujo como SVG y una tabla como
             // tabla que sigue calculando, en la misma pagina (J3).
             enum Web {

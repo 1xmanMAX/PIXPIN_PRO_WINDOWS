@@ -70,11 +70,14 @@ fn las_paginas_del_pdf_salen_tal_cual_y_en_el_orden_de_la_hoja() {
     // La primera y la ultima son las del documento, copiadas: su texto sigue
     // siendo texto.
     let primera = pixpin_pdf::plano::de_bytes(&bytes, 0).unwrap();
-    assert!(lineas(&bytes, 0) && primera.textos.len() > 10, "la pagina copiada lleva su texto");
+    // (Se cuentan letras y no rotulos: los trozos de un renglon van juntos.)
+    let letras: usize = primera.textos.iter().map(|t| t.texto.chars().count()).sum();
+    assert!(lineas(&bytes, 0) && letras > 40, "la pagina copiada lleva su texto: {letras}");
     assert!(lineas(&bytes, 3));
     // La que lleva algo dibujado encima se compone como siempre: la pagina
     // pintada debajo (una foto) y el trazo encima.
-    assert!(!lineas(&bytes, 2), "con algo encima la pagina va pintada");
+    let tercera = pixpin_pdf::plano::de_bytes(&bytes, 2).unwrap();
+    assert!(tercera.fotos.len() == 1 && tercera.textos.is_empty(), "con algo encima la pagina va pintada");
     // Y todo el documento pesa menos que pintando las tres paginas.
     let todo_pintado = de_hojas(&claves.iter().map(|k| p.pieza_de(k).unwrap()).collect::<Vec<_>>(), &Lector {
         fuentes: &p.imagenes,

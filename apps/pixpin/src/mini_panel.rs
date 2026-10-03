@@ -68,6 +68,10 @@ pub enum Orden {
     Anadir(String),
     /// Tareas: tirar las que ya estan hechas.
     LimpiarHechas,
+    /// Tareas: esconder o volver a ensenar las hechas. **No toca el
+    /// documento** (ver [`solo_de_vista`]): es como se mira la lista, no lo
+    /// que dice, y no viaja al movil.
+    VerHechas,
     /// Cronometro y temporizador: el boton grande.
     ArrancarOParar,
     Vuelta,
@@ -117,7 +121,7 @@ pub struct Boton {
 }
 
 /// Una linea de la lista.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct FilaLista {
     pub texto: String,
     /// A la derecha: el importe de un gasto, o el tiempo de una vuelta.
@@ -132,6 +136,15 @@ pub struct FilaLista {
     /// corrige F2 y mueve Alt+flechas. La pone [`vista_con`]; [`vista`] a
     /// secas no sabe de teclado y la deja siempre apagada.
     pub marcada: bool,
+    /// Que linea del DOCUMENTO es. Coincide con su sitio en la lista salvo
+    /// cuando se esconden las tareas hechas: entonces la tercera que se ve
+    /// puede ser la quinta del documento, y las ordenes van por esta.
+    pub indice: usize,
+    /// Tareas: cuantos dias lleva creada, si se sabe. Se ensena como «hoy»
+    /// o «hace N dias», nunca como fecha (lo pidio el usuario el 2-oct).
+    pub edad: Option<u32>,
+    /// Lleva lapiz para corregirla con el raton (lo mismo que F2).
+    pub se_corrige: bool,
 }
 
 /// Todo lo que el panel ensena de una mini-app en este instante.
@@ -154,6 +167,9 @@ pub struct Vista {
     /// (`MiniActivity.kt:369-374, 434-440`), y **sin tocar disco**: lo que
     /// cambia es el numero que se calcula, no el documento.
     pub late_cada_ms: Option<u64>,
+    /// Tareas: cuantas hechas de cuantas, para la linea de avance. Cuenta
+    /// TODAS, tambien las escondidas: esconderlas no las deshace.
+    pub avance: Option<(usize, usize)>,
 }
 
 /// Cuanto vale un paso de la fila de pasos del contador
@@ -166,8 +182,25 @@ pub const PASOS: [i64; 4] = [1, 5, 10, 12];
 /// quedarse como texto en la lista, no abrir una pantalla en blanco que al
 /// guardar pisaria su documento.
 pub fn vista(cual: &str, documento: &str, moneda: &gastos::Moneda, ahora: i64) -> Option<Vista> {
+    let mut v = vista_sin_indices(cual, documento, moneda, ahora)?;
+    // Fuera de las tareas la lista no se filtra nunca: la linea `n` que se
+    // ve es la `n` del documento.
+    if cual != mini::TAREAS {
+        for (n, f) in v.lista.iter_mut().enumerate() {
+            f.indice = n;
+        }
+    }
+    Some(v)
+}
+
+fn vista_sin_indices(
+    cual: &str,
+    documento: &str,
+    moneda: &gastos::Moneda,
+    ahora: i64,
+) -> Option<Vista> {
     Some(match cual {
-        mini::TAREAS => de_tareas(documento),
+        mini::TAREAS => de_tareas(documento, ahora),
         mini::GASTOS => de_gastos(documento, moneda),
         mini::CRONOMETRO => de_cronometro(documento, ahora),
         mini::TEMPORIZADOR => de_temporizador(documento, ahora),
@@ -193,7 +226,7 @@ pub fn aplicar(
             .unwrap_or_else(|| documento.to_string());
     }
     match cual {
-        mini::TAREAS => tareas(documento, orden),
+        mini::TAREAS => tareas(documento, orden, ahora),
         mini::GASTOS => gastos_op(documento, moneda, orden),
         mini::CRONOMETRO => cronometro(documento, orden, ahora),
         mini::TEMPORIZADOR => temporizador(documento, orden, ahora),
@@ -206,44 +239,87 @@ pub fn aplicar(
 
 // --- Tareas -----------------------------------------------------------
 
-fn de_tareas(documento: &str) -> Vista {
+/// Antes de esto el reloj no es de verdad: un `ahora` de cero (o de unos
+/// milisegundos) es una prueba o un camino sin reloj a mano, y apuntarle a
+/// una tarea «creada el 1-ene-1970» seria peor que no apuntar nada.
+const RELOJ_DE_VERDAD: i64 = 946_684_800_000; // 1-ene-2000
+
+/// El dia de hoy **en el huso del usuario**, para fechar una tarea y para
+/// contar cuantos dias lleva. Las dos cosas pasan por aqui para que nunca se
+/// contradigan: creada «hoy» se lee «hoy» aunque sean las once de la noche
+/// en Peru y ya sea manana en UTC.
+fn hoy_de(ahora_utc: i64) -> Option<mini::Fecha> {
+    (ahora_utc >= RELOJ_DE_VERDAD).then(|| {
+        mini::Fecha::de_ms_locales(ahora_utc + pixpin_shell::entorno::desfase_local_ms())
+    })
+}
+
+fn de_tareas(documento: &str, ahora: i64) -> Vista {
     let tareas = mini::leer_tareas(documento);
-    let hay_hechas = tareas.iter().any(|t| t.hecha);
+    let (hechas, de) = mini::cuenta(&tareas);
+    let hoy = hoy_de(ahora);
     Vista {
         reparto: Reparto {
             con_tablero: false,
             filas_de_botones: 1,
             con_lista: true,
             con_anadir: true,
+            con_avance: true,
         },
         tablero: String::new(),
         alerta: false,
-        filas_de_botones: vec![vec![Boton {
-            rotulo: Rotulo::Clave("mini-limpiar-hechas"),
-            orden: Orden::LimpiarHechas,
-            activo: hay_hechas,
-            principal: false,
-        }]],
+        // «Esconder las hechas» va delante de «Quitarlas»: lo primero no
+        // borra nada, y es lo que se quiere casi siempre a media lista.
+        // `vista_con` le cambia el rotulo cuando ya estan escondidas.
+        filas_de_botones: vec![vec![
+            Boton {
+                rotulo: Rotulo::Clave("mini-ocultar-hechas"),
+                orden: Orden::VerHechas,
+                activo: hechas > 0,
+                principal: false,
+            },
+            Boton {
+                rotulo: Rotulo::Clave("mini-limpiar-hechas"),
+                orden: Orden::LimpiarHechas,
+                activo: hechas > 0,
+                principal: false,
+            },
+        ]],
         lista: tareas
             .iter()
-            .map(|t| FilaLista {
-                texto: t.texto.clone(),
-                detalle: String::new(),
-                hecha: t.hecha,
-                se_marca: true,
-                se_borra: true,
-                marcada: false,
+            .enumerate()
+            .map(|(n, t)| {
+                // La fecha viaja dentro del texto (ver `mini::partir`): aqui
+                // se separa para ensenar el texto limpio y, a la derecha,
+                // cuantos dias lleva. Una tarea de antes, sin fecha, no
+                // ensena nada: no hay de donde sacarla sin inventarla.
+                let (visible, creada) = mini::partir(&t.texto);
+                FilaLista {
+                    texto: visible.to_string(),
+                    detalle: String::new(),
+                    hecha: t.hecha,
+                    se_marca: true,
+                    se_borra: true,
+                    marcada: false,
+                    indice: n,
+                    edad: creada.zip(hoy).map(|(c, h)| mini::dias_desde(c, h)),
+                    se_corrige: true,
+                }
             })
             .collect(),
         guia: Some("mini-tarea-nueva"),
         late_cada_ms: None,
+        avance: Some((hechas, de)),
     }
 }
 
-fn tareas(documento: &str, orden: &Orden) -> String {
+fn tareas(documento: &str, orden: &Orden, ahora: i64) -> String {
     match orden {
         Orden::Alternar(n) => mini::alternar(documento, *n),
-        Orden::Anadir(t) => mini::anadir(documento, t),
+        Orden::Anadir(t) => match hoy_de(ahora) {
+            Some(hoy) => mini::anadir_el(documento, t, hoy),
+            None => mini::anadir(documento, t),
+        },
         Orden::Quitar(n) => {
             let mut v = mini::leer_tareas(documento);
             if *n >= v.len() {
@@ -265,6 +341,22 @@ fn tareas(documento: &str, orden: &Orden) -> String {
     }
 }
 
+/// Las ordenes que solo cambian **lo que se ve** y no el documento. Las
+/// cumple quien tiene el panel abierto, con su [`Teclado`]: devuelve si era
+/// una de estas (y entonces no hay nada que guardar).
+pub fn solo_de_vista(orden: &Orden, t: &mut Teclado) -> bool {
+    match orden {
+        Orden::VerHechas => {
+            t.ocultar_hechas = !t.ocultar_hechas;
+            // La marcada era un sitio en la lista de antes: en la nueva
+            // seria otra tarea, y Espacio tacharia la que no se ve venir.
+            t.marcada = None;
+            true
+        }
+        _ => false,
+    }
+}
+
 // --- Gastos -----------------------------------------------------------
 
 fn de_gastos(documento: &str, por_defecto: &gastos::Moneda) -> Vista {
@@ -275,6 +367,7 @@ fn de_gastos(documento: &str, por_defecto: &gastos::Moneda) -> Vista {
             filas_de_botones: 0,
             con_lista: true,
             con_anadir: true,
+            con_avance: false,
         },
         tablero: gastos::texto_de_importe(libro.total(), &libro.moneda),
         alerta: false,
@@ -289,10 +382,12 @@ fn de_gastos(documento: &str, por_defecto: &gastos::Moneda) -> Vista {
                 se_marca: false,
                 se_borra: true,
                 marcada: false,
+                ..Default::default()
             })
             .collect(),
         guia: Some("mini-gasto-nuevo"),
         late_cada_ms: None,
+        avance: None,
     }
 }
 
@@ -375,6 +470,7 @@ fn de_cronometro(documento: &str, ahora: i64) -> Vista {
             filas_de_botones: 1,
             con_lista: true,
             con_anadir: false,
+            con_avance: false,
         },
         tablero: tiempos::como_se_lee(c.transcurrido(ahora)),
         alerta: false,
@@ -418,10 +514,12 @@ fn de_cronometro(documento: &str, ahora: i64) -> Vista {
                 se_marca: false,
                 se_borra: false,
                 marcada: false,
+                ..Default::default()
             })
             .collect(),
         guia: None,
         late_cada_ms: corriendo.then_some(100),
+        avance: None,
     }
 }
 
@@ -471,6 +569,7 @@ fn de_temporizador(documento: &str, ahora: i64) -> Vista {
             // cuatro botones de minutos estan bien para el pulgar, pero con
             // teclado «25» e Intro es mas rapido que cinco veces «+5».
             con_anadir: true,
+            con_avance: false,
         },
         // Sin decimas, como el movil (`comoSeLeeCorto`, `MiniActivity.kt:447`):
         // una cuenta atras de minutos no se mira a la decima, y un digito
@@ -493,6 +592,7 @@ fn de_temporizador(documento: &str, ahora: i64) -> Vista {
         lista: Vec::new(),
         guia: Some("mini-guia-duracion"),
         late_cada_ms: corriendo.then_some(200),
+        avance: None,
     }
 }
 
@@ -605,6 +705,7 @@ fn de_contador(documento: &str) -> Vista {
             filas_de_botones: 2,
             con_lista: false,
             con_anadir: false,
+            con_avance: false,
         },
         tablero: format!("{}", cuenta.valor),
         alerta: false,
@@ -628,6 +729,7 @@ fn de_contador(documento: &str) -> Vista {
         lista: Vec::new(),
         guia: None,
         late_cada_ms: None,
+        avance: None,
     }
 }
 
@@ -658,6 +760,7 @@ fn de_ruleta(documento: &str) -> Vista {
             filas_de_botones: 1,
             con_lista: true,
             con_anadir: true,
+            con_avance: false,
         },
         tablero: String::new(),
         alerta: false,
@@ -678,10 +781,12 @@ fn de_ruleta(documento: &str) -> Vista {
                 se_marca: false,
                 se_borra: true,
                 marcada: false,
+                ..Default::default()
             })
             .collect(),
         guia: Some("mini-nombre-nuevo"),
         late_cada_ms: None,
+        avance: None,
     }
 }
 
@@ -737,6 +842,7 @@ fn de_alarma(documento: &str) -> Vista {
             // Para teclear la hora de una vez («7:30»): llegar de las 8:00 a
             // las 6:45 con los botones son cinco toques y la cuenta de cabeza.
             con_anadir: true,
+            con_avance: false,
         },
         // Sin rellenar la hora a dos cifras, igual que el movil
         // (`Tiempos.kt:170`): el minuto si, la hora no.
@@ -763,6 +869,7 @@ fn de_alarma(documento: &str) -> Vista {
         lista: Vec::new(),
         guia: Some("mini-guia-hora"),
         late_cada_ms: None,
+        avance: None,
     }
 }
 
@@ -827,8 +934,15 @@ pub enum Edicion {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Teclado {
     pub borrador: String,
+    /// `Fila(n)` lleva la linea del DOCUMENTO, no su sitio en la lista: si
+    /// mientras se corrige se esconde algo, la correccion sigue yendo a la
+    /// suya.
     pub edicion: Edicion,
+    /// El sitio **en la lista que se ve** (no en el documento).
     pub marcada: Option<usize>,
+    /// Tareas: las hechas, escondidas. Vive mientras el panel esta abierto,
+    /// como la fila marcada: es como se mira, no un dato.
+    pub ocultar_hechas: bool,
 }
 
 /// Una tecla pulsada, con lo que habia mantenido.
@@ -887,6 +1001,23 @@ pub fn vista_con(
     t: &Teclado,
 ) -> Option<Vista> {
     let mut v = vista(cual, documento, moneda, ahora)?;
+    if cual == mini::TAREAS && t.ocultar_hechas {
+        let escondidas = v.lista.iter().filter(|f| f.hecha).count();
+        v.lista.retain(|f| !f.hecha);
+        // El mismo boton las vuelve a ensenar, y relleno mientras haya
+        // alguna escondida: una lista que «se queda corta» sin que nada lo
+        // diga parece rota.
+        if let Some(b) = v
+            .filas_de_botones
+            .iter_mut()
+            .flatten()
+            .find(|b| b.orden == Orden::VerHechas)
+        {
+            b.rotulo = Rotulo::Clave("mini-mostrar-hechas");
+            b.activo = true;
+            b.principal = escondidas > 0;
+        }
+    }
     if let Some(n) = t.marcada
         && let Some(f) = v.lista.get_mut(n)
     {
@@ -917,9 +1048,16 @@ pub fn empezar_a_corregir(
     t: &mut Teclado,
     fila: Option<usize>,
 ) {
+    // La fila llega como sitio en la lista que se ve; se corrige la del
+    // documento.
+    let fila = fila.and_then(|n| indices_visibles(cual, documento, moneda, t).get(n).copied());
     let texto_de_fila = fila.filter(|_| lista_editable(cual)).and_then(|n| {
         let texto = match cual {
-            mini::TAREAS => mini::leer_tareas(documento).get(n)?.texto.clone(),
+            // Lo que se ve, sin la fecha: corregir una falta no tiene
+            // por que ensenar ni tocar el dia en que se creo.
+            mini::TAREAS => mini::partir(&mini::leer_tareas(documento).get(n)?.texto)
+                .0
+                .to_string(),
             mini::GASTOS => {
                 let libro = gastos::leer(documento, moneda);
                 gasto_tecleable(libro.gastos.get(n)?, libro.moneda.decimales())
@@ -942,6 +1080,29 @@ pub fn empezar_a_corregir(
     }
 }
 
+/// Que linea del documento es cada una de las que se ven, en orden.
+///
+/// Es la misma cuenta que hace [`vista_con`] al esconder las hechas, sin
+/// componer la vista entera: el teclado la necesita en cada pulsacion.
+fn indices_visibles(
+    cual: &str,
+    documento: &str,
+    moneda: &gastos::Moneda,
+    t: &Teclado,
+) -> Vec<usize> {
+    match cual {
+        mini::TAREAS => mini::leer_tareas(documento)
+            .iter()
+            .enumerate()
+            .filter(|(_, x)| !(t.ocultar_hechas && x.hecha))
+            .map(|(n, _)| n)
+            .collect(),
+        mini::GASTOS => (0..gastos::leer(documento, moneda).gastos.len()).collect(),
+        mini::RULETA => (0..pixpin_proyecto::mini::ruleta::leer(documento).len()).collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// Deja la caja como al abrir: sin nada escrito y anadiendo.
 fn soltar_caja(t: &mut Teclado) {
     t.borrador.clear();
@@ -952,6 +1113,121 @@ fn soltar_caja(t: &mut Teclado) {
 /// la deja marcada para el teclado.
 pub fn clic_en_fila(t: &mut Teclado, n: usize) {
     t.marcada = Some(n);
+}
+
+/// Que se toco dentro de una fila de la lista. Los numeros son el sitio en
+/// la lista QUE SE VE; [`cumplir_toque`] los pasa al documento.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToqueDeFila {
+    /// La casilla: tachar o destachar.
+    Marcar(usize),
+    /// El resto de la fila: elegirla (para las flechas, Supr, F2...). Tocar
+    /// otra vez la ya elegida la corrige, como un nombre de archivo.
+    Elegir(usize),
+    Borrar(usize),
+    Corregir(usize),
+    Subir(usize),
+    Bajar(usize),
+}
+
+/// Los iconos de la derecha de la fila `n`, **del aspa hacia la
+/// izquierda**: el hueco `k` es `Disposicion::icono_de_fila(fila, k)`.
+///
+/// Un hueco vacio (`None`) se deja sin pintar pero ocupa su sitio, para que
+/// los iconos no bailen de una fila a otra. Subir y bajar solo salen en la
+/// elegida: en todas serian cuatro iconos por linea, y lo que se lee de una
+/// lista es el texto.
+pub fn iconos_de_fila(f: &FilaLista, n: usize, cuantas: usize) -> [Option<ToqueDeFila>; 4] {
+    let mut iconos = [None; 4];
+    if f.se_borra {
+        iconos[0] = Some(ToqueDeFila::Borrar(n));
+    }
+    if f.se_corrige {
+        iconos[1] = Some(ToqueDeFila::Corregir(n));
+        if f.marcada {
+            iconos[2] = (n + 1 < cuantas).then_some(ToqueDeFila::Bajar(n));
+            iconos[3] = (n > 0).then_some(ToqueDeFila::Subir(n));
+        }
+    }
+    iconos
+}
+
+/// Que se toco en la lista, o `None` fuera de ella. Lo usan el panel del
+/// chat y el pin, con la misma cuenta que al pintar.
+pub fn toque_en_lista(
+    v: &Vista,
+    d: &pixpin_ui::mini::Disposicion,
+    scroll: i32,
+    escala: u32,
+    p: pixpin_geom::Punto,
+) -> Option<ToqueDeFila> {
+    let cuantas = v.lista.len();
+    let n = d.cual_fila(p, cuantas, scroll, escala)?;
+    let caja = d.fila(n, scroll, escala);
+    let f = &v.lista[n];
+    for (k, icono) in iconos_de_fila(f, n, cuantas).into_iter().enumerate() {
+        if let Some(toque) = icono
+            && d.icono_de_fila(caja, k as u32, escala).contiene(p)
+        {
+            return Some(toque);
+        }
+    }
+    if f.se_marca && d.casilla(caja, escala).contiene(p) {
+        return Some(ToqueDeFila::Marcar(n));
+    }
+    Some(ToqueDeFila::Elegir(n))
+}
+
+/// Lo que hace un toque en la lista: la orden (con la linea del documento)
+/// o solo repintar.
+pub fn cumplir_toque(
+    cual: &str,
+    documento: &str,
+    moneda: &gastos::Moneda,
+    v: &Vista,
+    t: &mut Teclado,
+    toque: ToqueDeFila,
+) -> Efecto {
+    let indice = |n: usize| v.lista.get(n).map(|f| f.indice);
+    match toque {
+        ToqueDeFila::Marcar(n) => {
+            clic_en_fila(t, n);
+            indice(n).map_or(Efecto::Nada, |i| Efecto::Hacer(Orden::Alternar(i)))
+        }
+        ToqueDeFila::Elegir(n) => {
+            let ya = t.marcada == Some(n);
+            clic_en_fila(t, n);
+            if ya && v.lista.get(n).is_some_and(|f| f.se_corrige) {
+                empezar_a_corregir(cual, documento, moneda, t, Some(n));
+            }
+            Efecto::Repintar
+        }
+        ToqueDeFila::Borrar(n) => {
+            let cuantas = v.lista.len();
+            if t.marcada == Some(n) {
+                t.marcada = (cuantas > 1).then(|| n.min(cuantas - 2));
+            }
+            indice(n).map_or(Efecto::Nada, |i| Efecto::Hacer(Orden::Quitar(i)))
+        }
+        ToqueDeFila::Corregir(n) => {
+            clic_en_fila(t, n);
+            empezar_a_corregir(cual, documento, moneda, t, Some(n));
+            Efecto::Repintar
+        }
+        ToqueDeFila::Subir(n) | ToqueDeFila::Bajar(n) => {
+            let hasta = match toque {
+                ToqueDeFila::Subir(_) => n.checked_sub(1),
+                _ => Some(n + 1),
+            };
+            match (indice(n), hasta.and_then(|h| indice(h).map(|i| (h, i)))) {
+                (Some(desde), Some((h, a))) => {
+                    t.marcada = Some(h);
+                    Efecto::Hacer(Orden::Mover { desde, hasta: a })
+                }
+                _ => Efecto::Nada,
+            }
+        }
+    }
 }
 
 /// Sortea en la ruleta y deja marcado a quien le toco, para que Supr lo
@@ -976,10 +1252,13 @@ pub fn tecla(
     t: &mut Teclado,
     k: Tecla,
 ) -> Efecto {
-    let Some(v) = vista(cual, documento, moneda, 0) else {
+    // La lista COMO SE VE: con las hechas escondidas, la flecha no puede
+    // pararse en una que no esta.
+    let Some(v) = vista_con(cual, documento, moneda, 0, t) else {
         return Efecto::Nada;
     };
     let cuantas = v.lista.len();
+    let indices: Vec<usize> = v.lista.iter().map(|f| f.indice).collect();
     let editando = t.edicion != Edicion::Anadir;
     match k.vk {
         // Escape deshace de dentro afuera: primero lo escrito, luego la
@@ -1002,7 +1281,7 @@ pub fn tecla(
                 Efecto::Nada
             }
         }
-        VK_ENTRAR => entrar(cual, documento, t, cuantas),
+        VK_ENTRAR => entrar(cual, documento, t, &indices),
         VK_F2 if !editando => {
             empezar_a_corregir(cual, documento, moneda, t, t.marcada);
             Efecto::Repintar
@@ -1012,7 +1291,7 @@ pub fn tecla(
         _ if editando => Efecto::Nada,
         VK_ARRIBA | VK_ABAJO => {
             let paso: i64 = if k.vk == VK_ARRIBA { -1 } else { 1 };
-            flecha(cual, t, cuantas, paso, k.alt)
+            flecha(cual, t, &indices, paso, k.alt)
         }
         VK_RE_PAG | VK_AV_PAG => {
             let arriba = k.vk == VK_RE_PAG;
@@ -1031,7 +1310,7 @@ pub fn tecla(
                 // La marca se queda en el sitio, sobre la siguiente: borrar
                 // varias seguidas es pulsar Supr varias veces.
                 t.marcada = (cuantas > 1).then(|| n.min(cuantas - 2));
-                Efecto::Hacer(Orden::Quitar(n))
+                Efecto::Hacer(Orden::Quitar(v.lista[n].indice))
             }
             _ => Efecto::Nada,
         },
@@ -1040,7 +1319,7 @@ pub fn tecla(
 }
 
 /// Intro: guardar lo escrito, o la accion principal si no hay nada escrito.
-fn entrar(cual: &str, documento: &str, t: &mut Teclado, cuantas: usize) -> Efecto {
+fn entrar(cual: &str, documento: &str, t: &mut Teclado, indices: &[usize]) -> Efecto {
     let escrito = t.borrador.trim().to_string();
     match t.edicion {
         Edicion::Titulo => {
@@ -1049,7 +1328,8 @@ fn entrar(cual: &str, documento: &str, t: &mut Teclado, cuantas: usize) -> Efect
         }
         Edicion::Fila(n) => {
             soltar_caja(t);
-            t.marcada = Some(n);
+            // `n` es la del documento; la marca va a donde se ve.
+            t.marcada = indices.iter().position(|i| *i == n);
             return Efecto::Hacer(Orden::Cambiar(n, escrito));
         }
         Edicion::Anadir => {}
@@ -1078,11 +1358,11 @@ fn entrar(cual: &str, documento: &str, t: &mut Teclado, cuantas: usize) -> Efect
             }
         };
     }
-    principal(cual, documento, t, cuantas)
+    principal(cual, documento, t, indices)
 }
 
 /// Lo que hace Intro o Espacio con la caja vacia: el boton gordo.
-fn principal(cual: &str, documento: &str, t: &Teclado, cuantas: usize) -> Efecto {
+fn principal(cual: &str, documento: &str, t: &Teclado, indices: &[usize]) -> Efecto {
     match cual {
         mini::CRONOMETRO | mini::TEMPORIZADOR => Efecto::Hacer(Orden::ArrancarOParar),
         mini::ALARMA => Efecto::Hacer(Orden::Activar),
@@ -1091,7 +1371,7 @@ fn principal(cual: &str, documento: &str, t: &Teclado, cuantas: usize) -> Efecto
             Efecto::Hacer(Orden::Girar(0.0))
         }
         mini::TAREAS => match t.marcada {
-            Some(n) if n < cuantas => Efecto::Hacer(Orden::Alternar(n)),
+            Some(n) if n < indices.len() => Efecto::Hacer(Orden::Alternar(indices[n])),
             _ => Efecto::Nada,
         },
         _ => Efecto::Nada,
@@ -1100,7 +1380,8 @@ fn principal(cual: &str, documento: &str, t: &Teclado, cuantas: usize) -> Efecto
 
 /// Flecha arriba o abajo: por la lista si la hay, o el ajuste fino de la
 /// que no tiene (minutos, hora, cuenta).
-fn flecha(cual: &str, t: &mut Teclado, cuantas: usize, paso: i64, alt: bool) -> Efecto {
+fn flecha(cual: &str, t: &mut Teclado, indices: &[usize], paso: i64, alt: bool) -> Efecto {
+    let cuantas = indices.len();
     if lista_editable(cual) {
         if cuantas == 0 {
             return Efecto::Nada;
@@ -1117,7 +1398,12 @@ fn flecha(cual: &str, t: &mut Teclado, cuantas: usize, paso: i64, alt: bool) -> 
                 return Efecto::Nada;
             }
             t.marcada = Some(hasta);
-            return Efecto::Hacer(Orden::Mover { desde, hasta });
+            // Entre las que se ven: con hechas escondidas en medio, subir
+            // una es ponerla delante de la anterior VISIBLE.
+            return Efecto::Hacer(Orden::Mover {
+                desde: indices[desde],
+                hasta: indices[hasta],
+            });
         }
         let siguiente = match t.marcada {
             // Sin marca, la primera flecha entra por el extremo que toca.
@@ -1145,16 +1431,12 @@ pub fn caracter(cual: &str, documento: &str, t: &mut Teclado, c: char) -> Efecto
         t.borrador.push(c);
         return Efecto::Repintar;
     }
-    let cuantas = match cual {
-        mini::TAREAS => mini::leer_tareas(documento).len(),
-        mini::RULETA => pixpin_proyecto::mini::ruleta::leer(documento).len(),
-        _ => 0,
-    };
+    let indices = indices_visibles(cual, documento, &gastos::Moneda::euro(), t);
     // Espacio con la caja vacia es el boton gordo: un espacio delante de
     // lo escrito no lo quiere nadie, y asi la tecla mas grande hace lo mas
     // corriente. Con algo escrito es un espacio y ya.
     if c == ' ' && t.borrador.is_empty() {
-        return principal(cual, documento, t, cuantas);
+        return principal(cual, documento, t, &indices);
     }
     match cual {
         // Sin caja: las teclas que dicen lo que hacen.
@@ -1671,6 +1953,7 @@ mod pruebas {
             borrador: "x".into(),
             edicion: Edicion::Anadir,
             marcada: Some(0),
+            ocultar_hechas: false,
         };
         let d = aplicar(
             mini::TAREAS,
@@ -2005,5 +2288,187 @@ mod pruebas {
         // Sin marca, o fuera de la lista, se queda como estaba.
         assert_eq!(scroll_para_ver(&d, None, 50, 17, 100), 17);
         assert_eq!(scroll_para_ver(&d, Some(99), 50, 17, 100), 17);
+    }
+
+    // --- Tareas con fecha, avance y lo de esconder (2-oct) ----------------
+
+    /// Un mediodia de verdad (2-oct-2026 a las 12:00 UTC): con el reloj de
+    /// las pruebas a 0 o 1000 no se fecha nada, a proposito.
+    const MEDIODIA: i64 = 1_790_942_400_000;
+    const DIA: i64 = 86_400_000;
+
+    #[test]
+    fn una_tarea_anadida_con_reloj_dice_hoy_y_luego_los_dias() {
+        let d = aplicar(
+            mini::TAREAS,
+            &nueva(mini::TAREAS),
+            &euro(),
+            &Orden::Anadir("pan".into()),
+            MEDIODIA,
+        );
+        let t = &mini::leer_tareas(&d)[0];
+        assert!(mini::partir(&t.texto).1.is_some(), "lleva fecha: {d:?}");
+        let v = vista(mini::TAREAS, &d, &euro(), MEDIODIA).unwrap();
+        assert_eq!(v.lista[0].texto, "pan", "la fecha no se ensena");
+        assert_eq!(v.lista[0].edad, Some(0));
+        let v = vista(mini::TAREAS, &d, &euro(), MEDIODIA + 3 * DIA).unwrap();
+        assert_eq!(v.lista[0].edad, Some(3));
+        // Sin reloj de verdad no se inventa: ni fecha al crear ni edad.
+        let sin = aplicar(mini::TAREAS, &nueva(mini::TAREAS), &euro(), &Orden::Anadir("sal".into()), 1_000);
+        assert_eq!(sin, "# P\n\n- [ ] sal");
+        assert_eq!(vista(mini::TAREAS, &d, &euro(), 0).unwrap().lista[0].edad, None);
+        // Y una de antes, sin fecha, tampoco ensena nada.
+        let vieja = vista(mini::TAREAS, "# L\n\n- [ ] vieja", &euro(), MEDIODIA).unwrap();
+        assert_eq!(vieja.lista[0].edad, None);
+    }
+
+    #[test]
+    fn la_linea_de_avance_cuenta_todas_aunque_se_escondan() {
+        let d = "# L\n\n- [x] a\n- [ ] b\n- [x] c\n- [ ] d";
+        let mut t = Teclado::default();
+        let v = vista_con(mini::TAREAS, d, &euro(), 0, &t).unwrap();
+        assert!(v.reparto.con_avance);
+        assert_eq!(v.avance, Some((2, 4)));
+        assert_eq!(v.lista.len(), 4);
+        // Esconder no toca el documento y deja ver solo las pendientes.
+        assert!(solo_de_vista(&Orden::VerHechas, &mut t));
+        assert_eq!(aplicar(mini::TAREAS, d, &euro(), &Orden::VerHechas, 0), d);
+        let v = vista_con(mini::TAREAS, d, &euro(), 0, &t).unwrap();
+        let textos: Vec<_> = v.lista.iter().map(|f| (f.texto.as_str(), f.indice)).collect();
+        assert_eq!(textos, [("b", 1), ("d", 3)]);
+        assert_eq!(v.avance, Some((2, 4)), "esconder no las deshace");
+        let boton = &v.filas_de_botones[0][0];
+        assert_eq!(boton.rotulo, Rotulo::Clave("mini-mostrar-hechas"));
+        // Otra orden cualquiera no es «solo de vista».
+        assert!(!solo_de_vista(&Orden::LimpiarHechas, &mut t));
+        // Y el gasto no tiene linea de avance.
+        let g = vista(mini::GASTOS, &nueva(mini::GASTOS), &euro(), 0).unwrap();
+        assert!(!g.reparto.con_avance && g.avance.is_none());
+    }
+
+    #[test]
+    fn con_las_hechas_escondidas_el_teclado_va_a_la_tarea_que_se_ve() {
+        let mut d = "# L\n\n- [x] a\n- [ ] b\n- [x] c\n- [ ] d".to_string();
+        let mut t = Teclado::default();
+        solo_de_vista(&Orden::VerHechas, &mut t);
+        // Flecha abajo entra por la primera que se ve («b», la 1 del
+        // documento); Espacio la tacha a ella y no a «a».
+        d = pulsar(mini::TAREAS, &d, &mut t, k(VK_ABAJO));
+        d = teclear(mini::TAREAS, &d, &mut t, " ");
+        assert_eq!(d, "# L\n\n- [x] a\n- [x] b\n- [x] c\n- [ ] d");
+        // Ya solo se ve «d»; Supr la borra a ella.
+        t.marcada = Some(0);
+        d = pulsar(mini::TAREAS, &d, &mut t, k(VK_SUPR));
+        assert_eq!(d, "# L\n\n- [x] a\n- [x] b\n- [x] c");
+    }
+
+    #[test]
+    fn subir_con_hechas_escondidas_salta_por_encima_de_ellas() {
+        let mut d = "# L\n\n- [ ] a\n- [x] b\n- [ ] c".to_string();
+        let mut t = Teclado::default();
+        solo_de_vista(&Orden::VerHechas, &mut t);
+        t.marcada = Some(1); // «c», la 2 del documento
+        d = pulsar(mini::TAREAS, &d, &mut t, alt(VK_ARRIBA));
+        assert_eq!(d, "# L\n\n- [ ] c\n- [ ] a\n- [x] b");
+        assert_eq!(t.marcada, Some(0));
+    }
+
+    fn panel() -> pixpin_ui::mini::Disposicion {
+        pixpin_ui::mini::Disposicion::calcular(
+            pixpin_geom::Rect {
+                x: 0,
+                y: 0,
+                ancho: 400,
+                alto: 600,
+            },
+            100,
+            pixpin_ui::mini::Reparto {
+                con_tablero: false,
+                filas_de_botones: 1,
+                con_lista: true,
+                con_anadir: true,
+                con_avance: true,
+            },
+        )
+    }
+
+    fn centro(r: pixpin_geom::Rect) -> pixpin_geom::Punto {
+        pixpin_geom::Punto {
+            x: r.x + r.ancho as i32 / 2,
+            y: r.y + r.alto as i32 / 2,
+        }
+    }
+
+    #[test]
+    fn el_raton_tacha_por_la_casilla_y_elige_por_el_texto() {
+        let d = "# L\n\n- [ ] pan ➕ 2026-09-01\n- [ ] sal".to_string();
+        let mut t = Teclado::default();
+        let disp = panel();
+        let v = vista_con(mini::TAREAS, &d, &euro(), 0, &t).unwrap();
+        let fila = disp.fila(0, 0, 100);
+        // La casilla tacha.
+        let toque = toque_en_lista(&v, &disp, 0, 100, centro(disp.casilla(fila, 100)));
+        assert_eq!(toque, Some(ToqueDeFila::Marcar(0)));
+        // El texto solo la elige: tocar para mover no tacha de paso.
+        let en_texto = pixpin_geom::Punto {
+            x: fila.x + 80,
+            y: fila.y + 5,
+        };
+        let toque = toque_en_lista(&v, &disp, 0, 100, en_texto).unwrap();
+        assert_eq!(toque, ToqueDeFila::Elegir(0));
+        assert_eq!(cumplir_toque(mini::TAREAS, &d, &euro(), &v, &mut t, toque), Efecto::Repintar);
+        assert_eq!(t.marcada, Some(0));
+        // Elegida, salen bajar (no subir: es la primera) y el lapiz.
+        let v = vista_con(mini::TAREAS, &d, &euro(), 0, &t).unwrap();
+        let iconos = iconos_de_fila(&v.lista[0], 0, 2);
+        assert_eq!(
+            iconos,
+            [
+                Some(ToqueDeFila::Borrar(0)),
+                Some(ToqueDeFila::Corregir(0)),
+                Some(ToqueDeFila::Bajar(0)),
+                None
+            ]
+        );
+        let bajar = disp.icono_de_fila(fila, 2, 100);
+        let toque = toque_en_lista(&v, &disp, 0, 100, centro(bajar)).unwrap();
+        let e = cumplir_toque(mini::TAREAS, &d, &euro(), &v, &mut t, toque);
+        assert_eq!(e, Efecto::Hacer(Orden::Mover { desde: 0, hasta: 1 }));
+        assert_eq!(t.marcada, Some(1), "la eleccion va con ella");
+        // Tocar otra vez el texto de la elegida la corrige, sin la fecha.
+        let mut t = Teclado {
+            marcada: Some(0),
+            ..Teclado::default()
+        };
+        let e = cumplir_toque(mini::TAREAS, &d, &euro(), &v, &mut t, ToqueDeFila::Elegir(0));
+        assert_eq!(e, Efecto::Repintar);
+        assert_eq!(t.edicion, Edicion::Fila(0));
+        assert_eq!(t.borrador, "pan");
+        // Intro guarda la correccion y la fecha sigue donde estaba.
+        t.borrador = "pan integral".into();
+        let d = pulsar(mini::TAREAS, &d, &mut t, k(VK_ENTRAR));
+        assert_eq!(d, "# L\n\n- [ ] pan integral ➕ 2026-09-01\n- [ ] sal");
+        // Caso negativo: el lapiz no sale en los gastos ni en la ruleta.
+        let g = vista(mini::GASTOS, "# G\n\n| Concepto | Importe |\n|---|---|\n| Cena | 42.50 |", &euro(), 0).unwrap();
+        assert!(g.lista.iter().all(|f| !f.se_corrige));
+    }
+
+    #[test]
+    fn la_edad_se_dice_en_dias_y_nunca_con_la_fecha() {
+        use pixpin_store::idioma::{Catalogo, Idioma};
+        let dime = |c: &Catalogo, dias: i64| {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("dias", dias);
+            c.t_args("mini-tarea-edad", &args)
+        };
+        let es = Catalogo::nuevo(Idioma::Espanol);
+        assert_eq!(dime(&es, 0), "hoy");
+        assert_eq!(dime(&es, 1), "hace 1 día");
+        assert_eq!(dime(&es, 5), "hace 5 días");
+        assert_eq!(dime(&es, 40), "hace 40 días", "sin pasar a semanas ni meses");
+        let en = Catalogo::nuevo(Idioma::Ingles);
+        assert_eq!(dime(&en, 0), "today");
+        assert_eq!(dime(&en, 1), "1 day ago");
+        assert_eq!(dime(&en, 12), "12 days ago");
     }
 }

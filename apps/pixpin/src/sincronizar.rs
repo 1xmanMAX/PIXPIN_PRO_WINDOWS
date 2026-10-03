@@ -1330,6 +1330,9 @@ fn responder(mut flujo: TcpStream, raiz: &Path, mi_puerto: u16) -> Result<()> {
         },
     };
     let hecho = r.atender(flujo, nonce().context("sin azar")?);
+    // Lo que llego sin marco de la tinta (el movil de hoy no lo escribe)
+    // recibe el suyo, en otro hilo; viaja en la vuelta siguiente (K21).
+    crate::marco_de_la_tinta::tras_sincronizar(raiz);
     // Lo que se escribio (la lista de proyectos, «sincronizado hace…»).
     presencia::difundir(presencia::Novedad::Identidad);
     hecho?;
@@ -1749,6 +1752,8 @@ fn una_vuelta(
     if r.is_err() {
         s.soltar();
     }
+    // Lo que llego sin marco de la tinta recibe el suyo, en otro hilo (K21).
+    crate::marco_de_la_tinta::tras_sincronizar(raiz);
     Ok(r?)
 }
 

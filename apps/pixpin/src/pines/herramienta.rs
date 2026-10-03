@@ -50,10 +50,73 @@ pub fn origen_de(cual: &str) -> String {
 /// Una de una version futura se queda como nota: mejor su texto que nada.
 pub fn cual_de_origen(origen: &str) -> Option<&'static str> {
     let cual = origen.strip_prefix(PREFIJO_ORIGEN)?;
+    // Una lista del chat lleva detras de quien es (ver [`origen_vinculado`]).
+    let cual = cual.split_once('@').map_or(cual, |(c, _)| c);
     if cual == TABLA {
         return Some(TABLA);
     }
     mini::TODAS.into_iter().find(|m| *m == cual)
+}
+
+// --- La lista de tareas del chat, sacada a la pantalla --------------------
+//
+// Un pin de tareas corriente lleva su documento en el almacen de pines. Uno
+// **sacado de un mensaje del chat** es ese mensaje: lo que se tacha o se
+// anade en el pin se guarda en el cuaderno del proyecto (con su cerrojo,
+// `cuaderno::cambiar`) y el chat lo ve. Android no tiene esto: su pin de
+// lista (`PinType.CHECKLIST`) solo nace de la palabra magica y no sabe de
+// mensajes; la pantalla es la misma que la del pin de tareas de siempre.
+//
+// El chat le pide el pin a la ventana principal por el mismo camino que
+// «Sacar a la pantalla» (`mensajero::enviar_ficheros`), con una ruta que no
+// existe y que solo dice de que mensaje se trata: `<carpeta del
+// proyecto>/<id del mensaje>.pixpin-lista`.
+
+/// La extension de esa ruta de mentira.
+pub const EXTENSION_DE_LISTA: &str = "pixpin-lista";
+
+/// De que mensaje es una herramienta sacada del chat.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Vinculo {
+    /// La carpeta del proyecto, donde esta su `guardados.jsonl`.
+    pub carpeta: std::path::PathBuf,
+    /// El `id` del mensaje.
+    pub mensaje: String,
+}
+
+/// La ruta con la que el chat pide sacar la lista del mensaje `id`.
+pub fn ruta_de_lista(carpeta: &std::path::Path, id: &str) -> std::path::PathBuf {
+    carpeta.join(format!("{id}.{EXTENSION_DE_LISTA}"))
+}
+
+/// El mensaje que pide una ruta de [`ruta_de_lista`], o `None` si no es una.
+pub fn vinculo_de_ruta(ruta: &std::path::Path) -> Option<Vinculo> {
+    if !ruta
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case(EXTENSION_DE_LISTA))
+    {
+        return None;
+    }
+    let mensaje = ruta.file_stem()?.to_str()?.to_string();
+    let carpeta = ruta.parent()?.to_path_buf();
+    (!mensaje.is_empty()).then_some(Vinculo { carpeta, mensaje })
+}
+
+/// El origen del almacen de un pin vinculado: `mini:tareas@<id>|<carpeta>`.
+/// Un PixPin viejo no lo reconoce y lo ensena como nota con el texto, que es
+/// lo menos malo.
+pub fn origen_vinculado(cual: &str, v: &Vinculo) -> String {
+    format!("{PREFIJO_ORIGEN}{cual}@{}|{}", v.mensaje, v.carpeta.display())
+}
+
+/// El vinculo de un origen, si lo lleva.
+pub fn vinculo_de_origen(origen: &str) -> Option<Vinculo> {
+    let (_, resto) = origen.strip_prefix(PREFIJO_ORIGEN)?.split_once('@')?;
+    let (mensaje, carpeta) = resto.split_once('|')?;
+    (!mensaje.is_empty() && !carpeta.is_empty()).then(|| Vinculo {
+        carpeta: carpeta.into(),
+        mensaje: mensaje.to_string(),
+    })
 }
 
 /// El nombre de la herramienta, para la cabecera de un documento sin titulo.
@@ -130,6 +193,9 @@ pub struct Herramienta {
     /// Si ya se aviso de que el temporizador llego a cero: el aviso sale una
     /// vez (`timerAlerted`), no en cada latido.
     pub avisado: bool,
+    /// De que mensaje del chat es, si se saco de alli: entonces su
+    /// documento se lee y se guarda en el cuaderno, no en el almacen.
+    pub vinculo: Option<Vinculo>,
 }
 
 /// La moneda con la que nacen unos gastos: la del idioma elegido.
@@ -146,6 +212,7 @@ impl Herramienta {
             scroll: 0,
             elegido: None,
             avisado: false,
+            vinculo: None,
         }
     }
 
@@ -224,20 +291,20 @@ impl Herramienta {
                 return Efecto::Hacer(botones[n].orden.clone());
             }
         }
-        let Some(n) = t.cual_fila(p, v.lista.len(), self.scroll, escala) else {
-            return Efecto::Nada;
-        };
-        let caja = t.fila(n, self.scroll, escala);
-        if v.lista[n].se_borra && t.aspa(caja, escala).contiene(p) {
-            return Efecto::Hacer(Orden::Quitar(n));
+        // La lista, con la misma cuenta que el panel del chat: la casilla
+        // tacha, el aspa borra, el lapiz corrige, las flechas mueven y el
+        // resto de la fila la elige (un gasto o un nombre, para el teclado).
+        match mini_panel::toque_en_lista(&v, &t, self.scroll, escala, p) {
+            Some(toque) => mini_panel::cumplir_toque(
+                &self.cual,
+                &self.documento,
+                moneda,
+                &v,
+                &mut self.teclado,
+                toque,
+            ),
+            None => Efecto::Nada,
         }
-        if v.lista[n].se_marca {
-            mini_panel::clic_en_fila(&mut self.teclado, n);
-            return Efecto::Hacer(Orden::Alternar(n));
-        }
-        // Un gasto o un nombre: queda marcado para el teclado.
-        mini_panel::clic_en_fila(&mut self.teclado, n);
-        Efecto::Repintar
     }
 
     /// Cumple lo que pidio un toque o una tecla. Puerto de `cumplir_mini`
@@ -266,6 +333,8 @@ impl Herramienta {
             Some(Orden::Girar(azar)) => {
                 self.elegido = mini_panel::girar(&self.documento, &mut self.teclado, azar);
             }
+            // Esconder las hechas: solo cambia como se mira.
+            Some(o) if mini_panel::solo_de_vista(&o, &mut self.teclado) => {}
             Some(o) => {
                 let nuevo = mini_panel::aplicar(&self.cual, &self.documento, moneda, &o, ahora);
                 if nuevo != self.documento {
@@ -579,9 +648,44 @@ fn pintar_mini(
         }
     }
 
+    // La linea de avance de las tareas, como en el panel del chat.
+    if d.avance.alto > 0
+        && let Some((hechas, de)) = v.avance
+    {
+        let tam = ui::BOTON_TAM * e;
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("hechas", hechas as i64);
+        args.set("de", de as i64);
+        let rotulo = textos.t_args("mini-avance", &args);
+        let r = rf(d.avance);
+        let (ancho, alto) = p.medir_texto(&rotulo, tam);
+        p.texto(&rotulo, r.x + margen, r.y + (r.alto - alto) / 2.0, tam, tema.apagado);
+        let x0 = r.x + margen + ancho + 10.0 * e;
+        let x1 = r.x + r.ancho - margen;
+        if x1 > x0 {
+            let barra = RectF {
+                x: x0,
+                y: r.y + r.alto / 2.0 - 2.0 * e,
+                ancho: x1 - x0,
+                alto: 4.0 * e,
+            };
+            p.rellenar_redondeado(barra, 2.0 * e, tema.borde);
+            if de > 0 && hechas > 0 {
+                let lleno = RectF {
+                    ancho: barra.ancho * hechas as f32 / de as f32,
+                    ..barra
+                };
+                p.rellenar_redondeado(lleno, 2.0 * e, tema.acento);
+            }
+        }
+    }
+
     // La lista, lo unico que se desplaza.
     if d.lista.alto > 0 {
+        use crate::mini_panel::ToqueDeFila;
         let tam = ui::FILA_TAM * e;
+        let tam_edad = ui::BOTON_TAM * e;
+        let cuantas = v.lista.len();
         p.empujar_recorte(rf(d.lista));
         let (_, alto_letra) = p.medir_texto("Ag", tam);
         for (n, f) in v.lista.iter().enumerate() {
@@ -596,11 +700,35 @@ fn pintar_mini(
             }
             let y = r.y + (r.alto - alto_letra) / 2.0;
             let color = if f.hecha { tema.apagado } else { tema.texto };
+            // Los iconos de la derecha, con la cuenta del clic.
             let mut derecha = r.x + r.ancho;
-            if f.se_borra {
-                let aspa = rf(d.aspa(fila, escala));
-                p.icono(&mi::CLOSE, encoger(aspa, 7.0 * e), tema.apagado);
-                derecha = aspa.x;
+            let iconos = mini_panel::iconos_de_fila(f, n, cuantas);
+            let usados = iconos.iter().rposition(Option::is_some).map_or(0, |k| k + 1);
+            for (k, icono) in iconos.iter().enumerate().take(usados) {
+                let ri = rf(d.icono_de_fila(fila, k as u32, escala));
+                derecha = derecha.min(ri.x);
+                let glifo: &'static Icono = match icono {
+                    Some(ToqueDeFila::Borrar(_)) => &mi::CLOSE,
+                    Some(ToqueDeFila::Corregir(_)) => &mi::EDIT,
+                    Some(ToqueDeFila::Subir(_)) => &mi::KEYBOARD_ARROW_UP,
+                    Some(ToqueDeFila::Bajar(_)) => &mi::KEYBOARD_ARROW_DOWN,
+                    _ => continue,
+                };
+                p.icono(glifo, encoger(ri, 7.0 * e), tema.apagado);
+            }
+            if let Some(dias) = f.edad {
+                let mut args = fluent_bundle::FluentArgs::new();
+                args.set("dias", i64::from(dias));
+                let edad = textos.t_args("mini-tarea-edad", &args);
+                let (ancho_e, alto_e) = p.medir_texto(&edad, tam_edad);
+                p.texto(
+                    &edad,
+                    derecha - ancho_e - 6.0 * e,
+                    r.y + (r.alto - alto_e) / 2.0,
+                    tam_edad,
+                    tema.apagado,
+                );
+                derecha -= ancho_e + 12.0 * e;
             }
             if !f.detalle.is_empty() {
                 let (ancho_d, _) = p.medir_texto(&f.detalle, tam);
@@ -624,9 +752,24 @@ fn pintar_mini(
                     },
                     if f.hecha { tema.acento } else { tema.apagado },
                 );
-                x += 26.0 * e;
+                let casilla = rf(d.casilla(fila, escala));
+                x = casilla.x + casilla.ancho;
             }
-            p.texto_linea(&f.texto, x, y, tam, (derecha - x).max(0.0), color);
+            let hueco = (derecha - x).max(0.0);
+            p.texto_linea(&f.texto, x, y, tam, hueco, color);
+            // Tachada, como en el movil.
+            if f.hecha {
+                let (ancho_t, _) = p.medir_texto(&f.texto, tam);
+                p.rellenar(
+                    RectF {
+                        x,
+                        y: y + alto_letra * 0.55,
+                        ancho: ancho_t.min(hueco),
+                        alto: (1.0 * e).max(1.0),
+                    },
+                    tema.apagado,
+                );
+            }
             p.rellenar(
                 RectF {
                     x: r.x,
@@ -737,6 +880,26 @@ mod pruebas {
     }
 
     #[test]
+    fn la_lista_del_chat_va_y_vuelve_por_su_ruta_y_su_origen() {
+        let carpeta = std::path::Path::new(r"C:\datos\proyectos\pr-7");
+        let v = Vinculo {
+            carpeta: carpeta.to_path_buf(),
+            mensaje: "1759400000000".into(),
+        };
+        let ruta = ruta_de_lista(carpeta, &v.mensaje);
+        assert_eq!(vinculo_de_ruta(&ruta), Some(v.clone()));
+        let origen = origen_vinculado(mini::TAREAS, &v);
+        assert_eq!(cual_de_origen(&origen), Some(mini::TAREAS), "{origen}");
+        assert_eq!(vinculo_de_origen(&origen), Some(v));
+        // Casos negativos: un fichero corriente no es una lista, y un pin de
+        // tareas de siempre no tiene mensaje.
+        assert_eq!(vinculo_de_ruta(&carpeta.join("foto.png")), None);
+        assert_eq!(vinculo_de_ruta(&carpeta.join("x.pixpin")), None);
+        assert_eq!(vinculo_de_origen(&origen_de(mini::TAREAS)), None);
+        assert_eq!(vinculo_de_origen("mini:tareas@|"), None);
+    }
+
+    #[test]
     fn las_lineas_de_una_nota_se_vuelven_tareas_y_el_titulo_nombre() {
         let d = documento_nuevo(mini::TAREAS, "# Compra\npan\n- [x] leche\n\n", &euro()).unwrap();
         assert_eq!(mini::titulo(&d), "Compra");
@@ -780,9 +943,21 @@ mod pruebas {
         let v = h.vista(&euro(), 0).unwrap();
         let d = Herramienta::disposicion(&v, tam, 100);
         let fila = d.fila(1, 0, 100);
-        let p = Punto {
-            x: fila.x + 40,
+        // En el texto solo la elige (como el `Checkbox` del movil, tacha la
+        // casilla y nada mas): asi se puede elegir para moverla sin tacharla.
+        let en_texto = Punto {
+            x: fila.x + 60,
             y: fila.y + fila.alto as i32 / 2,
+        };
+        let e = h.clic(en_texto, tam, 100, &euro(), 0);
+        assert_eq!(h.cumplir(e, tam, 100, &euro(), 0, 0.5), Hecho::Repintar);
+        assert_eq!(h.teclado.marcada, Some(1));
+        assert!(!mini::leer_tareas(&h.documento)[1].hecha);
+        // En la casilla, la tacha.
+        let casilla = d.casilla(fila, 100);
+        let p = Punto {
+            x: casilla.x + casilla.ancho as i32 / 2,
+            y: casilla.y + casilla.alto as i32 / 2,
         };
         let e = h.clic(p, tam, 100, &euro(), 0);
         assert_eq!(h.cumplir(e, tam, 100, &euro(), 0, 0.5), Hecho::Guardar);

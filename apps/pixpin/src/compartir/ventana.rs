@@ -142,8 +142,8 @@ impl Hoja {
         if !self.e.hay_que_preparar(&self.c) {
             return None;
         }
-        let f = self.e.formato(&self.c)?;
-        Some((f.id.clone(), self.e.elegidas(&self.c)))
+        // Con su interruptor quitado se genera otra cosa (el PDF limpio).
+        Some((self.e.id_a_generar(&self.c)?, self.e.elegidas(&self.c)))
     }
 
     fn pie(&self) -> Pie {
@@ -268,6 +268,7 @@ fn hilo(textos: &Catalogo, idioma: Idioma, ubicacion: Ubicacion, cosa: Cosa) -> 
                         Destino::Pagina(k) => hoja.e.tocar_pagina(&hoja.c, &k),
                         Destino::Todas => hoja.e.todas(&hoja.c),
                         Destino::Ninguna => hoja.e.ninguna(),
+                        Destino::Interruptor => hoja.e.alternar_interruptor(&hoja.c),
                         Destino::Salida(s) => {
                             vivo = pulsar(&mut hoja, s, &ventana, &preparado, textos, idioma, &ubicacion, &terminado);
                         }
@@ -519,6 +520,34 @@ fn guardar(ventana: &VentanaOverlay, salida: &Salida, hoja: &Hoja, textos: &Cata
 // ---------------------------------------------------------------------------
 // Pintar
 
+/// **El interruptor del formato** (`Compartible.Interruptor` del movil): la
+/// pastilla con su bola, azul puesta y gris quitada, y su nombre con lo que
+/// hace al lado. Todo el renglon se pulsa.
+fn pintar_interruptor(h: &Hoja, p: &Pintor, d: &Disposicion, sobre: bool) {
+    let (Some(caja), Some(puesto)) = (d.interruptor, h.e.interruptor(&h.c)) else {
+        return;
+    };
+    let Some(i) = h.e.formato(&h.c).and_then(|f| f.interruptor.as_ref()) else {
+        return;
+    };
+    let k = h.escala;
+    let (ancho, alto) = (34.0 * k, 18.0 * k);
+    let pastilla = RectF {
+        x: caja.x,
+        y: caja.y + (caja.alto - alto) / 2.0,
+        ancho,
+        alto,
+    };
+    let fondo = if puesto { ENCENDIDO } else if sobre { ENCIMA } else { REDONDEL };
+    p.rellenar_redondeado(pastilla, alto / 2.0, fondo);
+    let radio = alto / 2.0 - 3.0 * k;
+    let cx = if puesto { pastilla.x + ancho - alto / 2.0 } else { pastilla.x + alto / 2.0 };
+    p.circulo((cx, pastilla.y + alto / 2.0), radio, if puesto { TEXTO } else { APAGADO });
+    let x = pastilla.x + ancho + 10.0 * k;
+    let resto = (caja.x + caja.ancho - x).max(0.0);
+    p.texto_linea(&i.nombre, x, caja.y + caja.alto / 2.0 - 9.0 * k, 14.0 * k, resto, TEXTO);
+}
+
 fn rf(c: Caja) -> RectF {
     RectF {
         x: c.x,
@@ -544,6 +573,8 @@ fn icono_de(id: &str) -> &'static Icono {
         "excalidraw" => &mi::EDIT,
         "texto" => &mi::LIST,
         "csv" => &mi::TABLE_CHART,
+        // Una nota como Word: un documento, como el PDF.
+        "word" => &mi::DESCRIPTION,
         _ => &mi::ATTACH_FILE,
     }
 }
@@ -742,6 +773,13 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
         None => match encima {
             Destino::Salida(Boton::Copiar) => textos.t("compartir-copiar"),
             Destino::Salida(Boton::Wifi) => textos.t("compartir-wifi"),
+            // Encima del interruptor, que hace.
+            Destino::Interruptor => h
+                .e
+                .formato(&h.c)
+                .and_then(|f| f.interruptor.as_ref())
+                .map(|i| i.detalle.clone())
+                .unwrap_or_default(),
             _ => match h.pie() {
                 Pie::Preparando => textos.t("compartir-preparando"),
                 Pie::MarcaAlguna => textos.t("compartir-marca-alguna"),
@@ -760,6 +798,7 @@ fn pintar(h: &Hoja, p: &Pintor, textos: &Catalogo, coma: char) {
             },
         },
     };
+    pintar_interruptor(h, p, &d, encima == Destino::Interruptor);
     p.texto_linea(&pie, d.peso.x, d.peso.y + d.peso.alto / 2.0 - 9.0 * k, 14.0 * k, d.peso.ancho, TEXTO);
     let listo = matches!(h.pie(), Pie::Listo(..));
     for (s, caja) in &d.salidas {

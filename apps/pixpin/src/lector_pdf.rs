@@ -36,8 +36,9 @@
 //! Rueda: pasar hojas. Ctrl+rueda: acercar o alejar hacia el raton.
 //! Mayus+rueda o la rueda de lado: a los margenes. Arrastrar (izquierdo
 //! leyendo, central siempre): mover. Flechas, AvPag/RePag, Espacio,
-//! Inicio/Fin. Ctrl+0 aumento normal. Ctrl+[ y Ctrl+] (o los botones de las
-//! esquinas de abajo): espacio para anotar a la izquierda y a la derecha.
+//! Inicio/Fin. Ctrl+0 aumento normal. Ctrl+[ y Ctrl+] (o los mandos de los
+//! lados, abajo, como en el movil): espacio para anotar a cada lado. `L`
+//! escuchar en voz alta (`voz`).
 //! `M` marcador, Ctrl+1..9 ir, clic derecho en su punto: quitar. `A`
 //! anotar (P lapiz, R resaltador, E goma, 1-5 color, Ctrl+Z/Ctrl+Y). `G`
 //! ajustes. Esc salir.
@@ -61,11 +62,13 @@ use std::sync::mpsc;
 use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
 
 use crate::lector::{
-    self, APAGADO, CRISTAL, DORADO, EMOJIS, ENCENDIDO, FONDO_PDF, PAPEL_DEL_MARGEN, RAYA, TEXTO,
+    self, APAGADO, CRISTAL, DORADO, EMOJIS, FONDO_PDF, PAPEL_DEL_MARGEN, RAYA, TEXTO,
     ahora_ms, con_alfa, dentro,
 };
 use crate::lector_tinta::{self, Capa, Tinta};
 use crate::overlay::Recursos;
+
+mod voz;
 
 /// La pastilla del nombre se va sola tras esto.
 const MS_DE_LA_PASTILLA: u64 = 2600;
@@ -110,6 +113,7 @@ const VK_F: u32 = 0x46;
 const VK_F2: u32 = 0x71;
 const VK_F3: u32 = 0x72;
 const VK_M: u32 = 0x4D;
+const VK_L: u32 = 0x4C;
 const VK_S: u32 = 0x53;
 const VK_Y: u32 = 0x59;
 const VK_Z: u32 = 0x5A;
@@ -274,6 +278,24 @@ fn exportar(
     progreso: &dyn Fn(usize, usize),
 ) -> std::result::Result<(), String> {
     let total = altos.len();
+    // **El PDF de siempre con lo anotado encima** (`PdfConAnotaciones` del
+    // movil): texto que se busca, vectores y el peso del original mas la
+    // tinta. Solo si no se deja (cifrado, roto) va como antes, pintado.
+    let limpio = std::fs::read(documento.ruta()).ok().map(|mut b| {
+        if let Some(n) = pixpin_pdf::cocido::largo_sin_lo_cocido(&b) {
+            b.truncate(n);
+        }
+        b
+    });
+    let indice = crate::compartir::pdf_anotado::marcadores_de(marcas);
+    if let Some(bytes) = limpio.and_then(|b| crate::compartir::pdf_anotado::con_tinta(&b, tinta, (izq, der), &indice)) {
+        progreso(total, total);
+        if let Some(carpeta) = destino.parent() {
+            std::fs::create_dir_all(carpeta).map_err(|e| e.to_string())?;
+        }
+        return std::fs::write(destino, bytes).map_err(|e| e.to_string());
+    }
+    tracing::info!("el PDF no se deja anotar encima; se exporta pintado");
     let hojas: Vec<_> = (0..total)
         .filter_map(|i| hoja_anotada(i, altos, tinta.get(&i).map(Vec::as_slice), (izq, der)))
         .collect();
@@ -318,7 +340,12 @@ fn exportar(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Accion {
     Engranaje,
-    Espacio(u8),
+    /// Escuchar en voz alta (`voz`).
+    Escuchar,
+    /// Un boton de la barra de escuchar.
+    Voz(crate::leer_en_voz::BotonVoz),
+    /// Un boton de los mandos de los lados.
+    Lado(lector::BotonLado),
     Exportar,
     /// La hoja de compartir de toda la aplicacion, con este PDF.
     Compartir,
@@ -402,6 +429,10 @@ struct Estado {
     hallar: HallarPdf,
     /// El nombre de la pastilla y, si se esta cambiando, lo escrito (D5).
     renombre: crate::renombrar_doc::Pastilla,
+    /// **Escuchando** (la barra de abajo): la voz y los trozos de las hojas (`voz`).
+    voz: Option<voz::VozDelPdf>,
+    /// Se pidio escuchar y el texto del PDF aun no habia llegado.
+    escuchar_al_llegar: bool,
 }
 
 pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta: &Path) -> Result<()> {
@@ -480,10 +511,15 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta
         exportando: false,
         hallar: HallarPdf::default(),
         renombre: crate::renombrar_doc::Pastilla::de(ubicacion.raiz(), ruta),
+        voz: None,
+        escuchar_al_llegar: false,
     };
 
     // El nombre de la pastilla: el del mensaje del chat si es de uno.
     e.nombre = pixpin_docs::sin_extension(&e.renombre.visto);
+    if recoger_el_indice(&mut e, ruta) {
+        guardar_ajustes(&mut e, ruta);
+    }
     let mut hay_que_pintar = true;
     let mut vivo = true;
     // La ruta cambia si se renombra un PDF suelto (D5).
@@ -498,9 +534,17 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta
         if recoger_texto(&mut e, marco) {
             hay_que_pintar = true;
         }
+        // La voz: lo siguiente que decir (y empezar si llego el texto).
+        if voz::vuelta(&mut e, textos, ruta, marco) {
+            hay_que_pintar = true;
+        }
         while let Ok(l) = rx_llega.try_recv() {
             hay_que_pintar = true;
+            let son_las_hojas = matches!(l, Llega::Medidas(_));
             recibir(&mut e, l, &motor, textos);
+            if son_las_hojas {
+                al_saber_las_hojas(&e, ruta);
+            }
         }
         for (h, evento) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if h != ventana.handle() {
@@ -642,6 +686,12 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta
                     ctrl: true,
                     ..
                 } => hacer(&mut e, Accion::Compartir, textos, ruta, ubicacion, &tx_pedidos, marco),
+                // L: escuchar (play/pausa con la barra abierta).
+                EventoOverlay::Tecla {
+                    vk: VK_L,
+                    ctrl: false,
+                    ..
+                } if !e.anotando && !escribiendo(&e) => voz::escuchar(&mut e, textos, ruta, marco),
                 EventoOverlay::Tecla { vk, shift, ctrl, .. } => {
                     let (suya, nueva) = tecla_de_las_cajas(&mut e, vk, shift, ctrl, textos, ruta, ubicacion);
                     if nueva.is_some() {
@@ -726,6 +776,8 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion, ruta
     }
 
     let ruta: &Path = &ruta_viva;
+    // La voz se calla con el lector (el verde ya esta en las marcas).
+    e.voz = None;
     guardar_capas(&mut e, ruta);
     if !e.hojas.arriba.is_empty() {
         e.ajustes.pagina = e.hojas.sitio(e.y);
@@ -1046,6 +1098,7 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
             }
         }
         marcas_de_busqueda(e, p, i);
+        voz::pintar_lo_que_suena(e, p, i);
         if let Some(capa) = e.capas.get(&i) {
             let vista_hoja = (
                 e.x,
@@ -1088,7 +1141,25 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         e.anotando,
         &textos.t("marca-elige"),
     );
-    botones_de_espacio(e, p, m, &mut botones);
+    // Abajo: la barra de escuchar o los mandos de los lados (los mismos del
+    // lector de Word: espacio a cada lado y el candado), con la pastilla o
+    // con el raton en la franja de abajo.
+    if e.voz.is_some() && !e.poniendo_marca {
+        for (r, b) in voz::pintar_barra(e, p, m) {
+            botones.push((r, Accion::Voz(b)));
+        }
+    } else if !e.anotando
+        && !e.panel
+        && !e.poniendo_marca
+        && e.hojas.cuantas() > 0
+        && (e.pastilla_hasta > ahora_ms() || lector::raton_abajo(e.raton.1, m.alto, m.e))
+    {
+        let izq = u32::from(e.ajustes.espacios & vista::ESPACIO_IZQUIERDA != 0);
+        let der = u32::from(e.ajustes.espacios & vista::ESPACIO_DERECHA != 0);
+        for (r, b) in lector::pintar_mandos_de_los_lados(p, m.ancho, m.alto, m.e, izq, der, 1, e.ajustes.sin_lado) {
+            botones.push((r, Accion::Lado(b)));
+        }
+    }
     if e.anotando {
         // La barra y el panel del lienzo (`lector_tinta::Tinta`).
         let activa = e.tinta.hoja.and_then(|i| e.capas.get(&i));
@@ -1132,47 +1203,6 @@ fn barra_de_avance(e: &Estado, p: &Pintor, m: Marco) {
     );
 }
 
-/// **Los espacios para anotar, uno por lado** (v0.85): un cuadro partido,
-/// con la mitad del papel llena y la del espacio vacia, en la esquina de su
-/// lado. Encendido, en azul.
-fn botones_de_espacio(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>) {
-    let lado = 44.0 * m.e;
-    let borde = 18.0 * m.e;
-    for (izquierda, bit) in [(true, vista::ESPACIO_IZQUIERDA), (false, vista::ESPACIO_DERECHA)] {
-        let caja = RectF {
-            x: if izquierda { borde } else { m.ancho - borde - lado - 12.0 * m.e },
-            y: m.alto - borde - lado,
-            ancho: lado,
-            alto: lado,
-        };
-        let puesto = e.ajustes.espacios & bit != 0;
-        p.rellenar_redondeado(
-            caja,
-            12.0 * m.e,
-            if puesto { ENCENDIDO } else { con_alfa(CRISTAL, 0.8) },
-        );
-        let l = 22.0 * m.e;
-        let dibujo = RectF {
-            x: caja.x + (lado - l) / 2.0,
-            y: caja.y + (lado - l) / 2.0,
-            ancho: l,
-            alto: l,
-        };
-        p.trazar(dibujo, 1.5 * m.e, con_alfa(Color::BLANCO, 0.9));
-        // La mitad del papel, llena; la del espacio que se anade, vacia.
-        p.rellenar(
-            RectF {
-                x: if izquierda { dibujo.x + l / 2.0 } else { dibujo.x },
-                y: dibujo.y,
-                ancho: l / 2.0,
-                alto: l,
-            },
-            con_alfa(Color::BLANCO, 0.9),
-        );
-        botones.push((caja, Accion::Espacio(bit)));
-    }
-}
-
 fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>) {
     let tam = 15.0 * m.e;
     // Escribiendo el nombre (D5) se ensena solo lo escrito, sin la hoja.
@@ -1185,7 +1215,7 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
     };
     let (w, h) = p.medir_texto(&hoja, tam);
     let lado = 34.0 * m.e;
-    let total = w + 28.0 * m.e + lado;
+    let total = w + 28.0 * m.e + 2.0 * lado;
     let caja = RectF {
         x: (m.ancho - total) / 2.0,
         y: 14.0 * m.e,
@@ -1204,28 +1234,39 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
     if e.renombre.se_puede() {
         botones.push((RectF { x: caja.x, y: caja.y, ancho: w + 22.0 * m.e, alto: caja.alto }, Accion::Renombrar));
     }
-    let zona = RectF {
-        x: caja.x + 14.0 * m.e + w + 4.0 * m.e,
-        y: caja.y,
-        ancho: lado,
-        alto: caja.alto,
-    };
+    // **Escuchar** (`RecordVoiceOver`) y el engranaje, como la pastilla del movil.
+    let x0 = caja.x + 14.0 * m.e + w + 4.0 * m.e;
     let l = 19.0 * m.e;
-    p.icono(
-        &material::SETTINGS,
-        RectF {
-            x: zona.x + (lado - l) / 2.0,
-            y: zona.y + (zona.alto - l) / 2.0,
-            ancho: l,
-            alto: l,
-        },
-        if e.panel { DORADO } else { APAGADO },
-    );
-    botones.push((zona, Accion::Engranaje));
+    for (n, (icono, encendido, que)) in [
+        (&material::RECORD_VOICE_OVER, e.voz.is_some(), Accion::Escuchar),
+        (&material::SETTINGS, e.panel, Accion::Engranaje),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let zona = RectF {
+            x: x0 + n as f32 * lado,
+            y: caja.y,
+            ancho: lado,
+            alto: caja.alto,
+        };
+        p.icono(
+            icono,
+            RectF {
+                x: zona.x + (lado - l) / 2.0,
+                y: zona.y + (zona.alto - l) / 2.0,
+                ancho: l,
+                alto: l,
+            },
+            if encendido { DORADO } else { APAGADO },
+        );
+        botones.push((zona, que));
+    }
 }
 
 fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
     let mut filas = vec![
+        (textos.t("lector-escuchar"), Accion::Escuchar),
         (textos.t("compartir-lector"), Accion::Compartir),
         (textos.t("lector-exportar-pdf"), Accion::Exportar),
         (textos.t("visor-abrir-carpeta"), Accion::AbrirCarpeta),
@@ -1303,7 +1344,9 @@ fn mover_raton(e: &mut Estado, m: Marco) {
             let movido = movido || dx.abs().max(dy.abs()) > lector::UMBRAL_DE_ARRASTRE;
             if movido {
                 let s = px(e, m);
-                e.x = v.0 - dx / s;
+                if !e.ajustes.sin_lado {
+                    e.x = v.0 - dx / s;
+                }
                 e.y = v.1 - dy / s;
                 e.x_meta = None;
                 acotar(e, m);
@@ -1442,6 +1485,10 @@ fn rueda(e: &mut Estado, delta: i32, m: Marco) {
 }
 
 fn lado(e: &mut Estado, cuanto: f32, m: Marco) {
+    // Con el candado de los mandos de abajo, a lo ancho no se mueve.
+    if e.ajustes.sin_lado {
+        return;
+    }
     let antes = e.lateral.map_or(e.x, |(a, _)| a);
     e.lateral = Some((antes, ahora_ms()));
     e.x_meta = None;
@@ -1474,6 +1521,9 @@ fn tecla(e: &mut Estado, vk: u32, shift: bool, ctrl: bool, ruta: &Path, m: Marco
             if e.poniendo_marca || e.panel {
                 e.poniendo_marca = false;
                 e.panel = false;
+            } else if e.voz.is_some() {
+                // La primera Esc cierra la barra de escuchar.
+                e.voz = None;
             } else if e.anotando {
                 alternar_anotar(e, ruta);
             } else {
@@ -1554,27 +1604,37 @@ fn alternar_anotar(e: &mut Estado, ruta: &Path) {
     }
 }
 
+/// **Al abrir, el marco a toda la tinta que aun no lo tiene** (Android
+/// v0.98.5, `LaunchedEffect(cuantas) { capas.fijarLoViejo(cuantas) }`): en
+/// cuanto se sabe cuantas hojas hay y lo que mide cada una, la tinta de antes
+/// de v0.98 recibe el marco de los espacios de ahora, sin tocarla. Asi, si
+/// luego llegan otros espacios del movil, esa tinta ya no se corre. Solo
+/// escribe en un adjunto del chat (`fijar_lo_viejo` no toca lo demas).
+fn al_saber_las_hojas(e: &Estado, ruta: &Path) {
+    if !e.hojas.altos.is_empty() {
+        e.donde.fijar_lo_viejo(ruta, e.ajustes.espacios, &e.hojas.altos);
+    }
+}
+
 fn alternar_espacio(e: &mut Estado, lado: u8, ruta: &Path) {
-    let antes = e.donde.unidades(e.ajustes.espacios);
+    // **La tinta ya no se corre al poner un espacio** (Android v0.98.0):
+    // antes de cambiarlos, la tinta de un adjunto que aun no tiene marco
+    // recibe el de la regla vieja con los espacios de ahora
+    // (`fijarLoViejo`), y desde ahi manda el marco. Lo abierto ya esta en
+    // las unidades de la hoja y se queda como esta.
+    e.donde.fijar_lo_viejo(ruta, e.ajustes.espacios, &e.hojas.altos);
     e.ajustes.espacios = vista::con_espacio(e.ajustes.espacios, lado);
     guardar_ajustes(e, ruta);
-    // **Como en el movil**: su capa cuenta con los espacios de ahora, asi
-    // que al ponerlos o quitarlos la tinta de un adjunto se queda con sus
-    // numeros y se ve en otro sitio de la hoja. Lo abierto se guarda en las
-    // unidades en que se leyo y se vuelve a leer en las nuevas.
-    if e.donde.unidades(e.ajustes.espacios) != antes {
-        guardar_capas(e, ruta);
-        e.capas.clear();
-        e.hechos.clear();
-        e.deshechos.clear();
-        e.tinta.hoja = None;
-        e.tinta.olvidar_lo_calculado();
-    }
 }
 
 /// Una marca donde se esta leyendo: la hoja de arriba y la fraccion de ella
 /// (`dondeEstoy` del movil), centrada a lo ancho.
 fn poner_marca(e: &mut Estado, i: usize, ruta: &Path) {
+    // La ultima de la tira es el verde: uno solo, «se leera desde aqui».
+    if i == lector::VERDE_EN_LA_TIRA {
+        voz::verde_aqui(e, ruta);
+        return;
+    }
     let s = sitio(e);
     let pagina = s.floor() as i32;
     let (x, y) = marcas::en_la_pagina(pagina, s - pagina as f64, 0.5);
@@ -1635,7 +1695,27 @@ fn hacer(
                 e.panel = !e.panel;
             }
         }
-        Accion::Espacio(lado) => alternar_espacio(e, lado, ruta),
+        Accion::Escuchar => voz::escuchar(e, textos, ruta, m),
+        Accion::Voz(b) => voz::boton(e, b, ruta, m),
+        // Los mandos de abajo: en un PDF cada lado tiene un paso (esta o no).
+        Accion::Lado(b) => match b {
+            lector::BotonLado::Izquierda(mas) => {
+                if mas != (e.ajustes.espacios & vista::ESPACIO_IZQUIERDA != 0) {
+                    alternar_espacio(e, vista::ESPACIO_IZQUIERDA, ruta);
+                }
+            }
+            lector::BotonLado::Derecha(mas) => {
+                if mas != (e.ajustes.espacios & vista::ESPACIO_DERECHA != 0) {
+                    alternar_espacio(e, vista::ESPACIO_DERECHA, ruta);
+                }
+            }
+            lector::BotonLado::Candado => {
+                e.ajustes.sin_lado = !e.ajustes.sin_lado;
+                let clave = if e.ajustes.sin_lado { "lector-sin-lado" } else { "lector-con-lado" };
+                e.aviso = Some((textos.t(clave), ahora_ms() + 2500));
+                guardar_ajustes(e, ruta);
+            }
+        },
         Accion::Exportar => {
             if e.exportando {
                 return;
@@ -1753,6 +1833,43 @@ fn tinta_de_todas(e: &mut Estado, ruta: &Path) -> HashMap<usize, Vec<Orden>> {
     salida
 }
 
+/// **Los marcadores que ya trae el PDF** (Android v0.98.2): los de su
+/// indice (`/Outlines`) —un PDF exportado desde PixPin los lleva ahi— pasan
+/// al riel **la primera vez que se abre**, y solo si aun no se guardo
+/// ninguno: quitados a mano, no vuelven. «⭐ Hoja 3» vuelve a ser una
+/// estrella; lo que no empiece por uno de los nuestros, un 🔖. Devuelve si
+/// hay algo que guardar (la marca de que ya se miro, y las marcas).
+fn recoger_el_indice(e: &mut Estado, ruta: &Path) -> bool {
+    if e.ajustes.indice {
+        return false;
+    }
+    e.ajustes.indice = true;
+    // Un adjunto del chat cuyo mensaje ya tiene marcas (las puso el movil,
+    // o se quitaron todas: el fichero queda vacio) no las recibe.
+    if !e.marcas.is_empty() || crate::anotado_del_adjunto::hay_marcas_del_mensaje(ruta) {
+        return true;
+    }
+    let bytes = std::fs::read(ruta).unwrap_or_default();
+    e.marcas = marcas_del_indice(&bytes, ahora_ms() as i64);
+    if !e.marcas.is_empty() {
+        tracing::info!(cuantos = e.marcas.len(), "marcadores recogidos del indice del PDF");
+    }
+    true
+}
+
+/// Los marcadores del indice de `bytes` como marcas del lector (ver
+/// [`recoger_el_indice`]), puestas a las `ahora`.
+fn marcas_del_indice(bytes: &[u8], ahora: i64) -> Vec<Marca> {
+    let mut lista = Vec::new();
+    for m in pixpin_pdf::con_anotaciones::marcadores_del_indice(bytes, marcas::MAXIMO) {
+        let emoji = EMOJIS.iter().copied().find(|x| m.titulo.starts_with(x)).unwrap_or(EMOJIS[0]);
+        let pagina = i32::try_from(m.pagina).unwrap_or(i32::MAX);
+        let (x, y) = marcas::en_la_pagina(pagina, m.alto, 0.5);
+        lista = marcas::con(&lista, x, y, emoji, ahora);
+    }
+    lista
+}
+
 fn guardar_ajustes(e: &mut Estado, ruta: &Path) {
     e.ajustes.marcas = marcas::a_texto(&e.marcas);
     if let Err(err) = crate::anotado_del_adjunto::escribir(ruta, &e.ajustes) {
@@ -1856,21 +1973,8 @@ fn caracter_de_las_cajas(e: &mut Estado, c: char, ruta: &Path) -> bool {
 
 fn hecho_de_buscar(e: &mut Estado, h: crate::buscador::Hecho, ruta: &Path) {
     use crate::buscador::Hecho;
-    if matches!(h, Hecho::Abierta | Hecho::Siguiente | Hecho::Anterior)
-        && e.hallar.texto.is_none()
-        && e.hallar.leyendo.is_none()
-    {
-        let (tx, rx) = mpsc::channel();
-        let r = ruta.to_path_buf();
-        let lanzado = std::thread::Builder::new()
-            .name("lector-pdf-texto".into())
-            .spawn(move || {
-                let _ = tx.send(pixpin_pdf::texto::de_fichero(&r));
-            });
-        match lanzado {
-            Ok(_) => e.hallar.leyendo = Some(rx),
-            Err(err) => tracing::warn!(?err, "sin hilo para leer el texto del PDF"),
-        }
+    if matches!(h, Hecho::Abierta | Hecho::Siguiente | Hecho::Anterior) {
+        voz::pedir_el_texto(e, ruta);
     }
     match h {
         Hecho::Abierta | Hecho::Escrito => rebuscar(e),
@@ -2056,6 +2160,8 @@ mod pruebas {
             exportando: false,
             hallar: HallarPdf::default(),
             renombre: Default::default(),
+            voz: None,
+            escuchar_al_llegar: false,
         }
     }
 
@@ -2286,12 +2392,97 @@ mod pruebas {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// **Poner o quitar un espacio en un adjunto mueve su tinta, como en el
-    /// movil**: su capa cuenta con los espacios de ahora, asi que lo abierto
-    /// se guarda en las unidades en que se leyo y se vuelve a leer en las
-    /// nuevas. En un PDF suelto (caso negativo) no cambia nada.
+    /// Un PDF de verdad de dos hojas con dos marcadores en su indice, como
+    /// lo exporta PixPin.
+    fn pdf_con_indice() -> Vec<u8> {
+        let img = pixpin_codec::ImagenRgba { ancho: 20, alto: 30, pixeles: [250, 250, 250, 255].repeat(600) };
+        let base = pixpin_pdf::union::de_imagenes(&[img.clone(), img]).unwrap();
+        let nada = |_: usize| None;
+        let sin = |_: u64| None;
+        let marcadores = [
+            pixpin_pdf::con_anotaciones::Marcador { titulo: "⭐ Hoja 1".into(), pagina: 0, alto: 0.25 },
+            pixpin_pdf::con_anotaciones::Marcador { titulo: "Capitulo 2".into(), pagina: 1, alto: 0.0 },
+        ];
+        let a = pixpin_pdf::con_anotaciones::Anotaciones {
+            tinta: &nada,
+            izquierda: 0.0,
+            derecha: 0.0,
+            marcadores: &marcadores,
+            imagenes: &sin,
+            letra: None,
+        };
+        pixpin_pdf::con_anotaciones::hacer(&base, &a).unwrap()
+    }
+
+    /// **Los marcadores vuelven** (Android v0.98.2): un PDF exportado desde
+    /// PixPin trae los suyos en el indice y el lector los recoge la primera
+    /// vez que lo abre, con su emoticono; los de otro programa, con 🔖.
     #[test]
-    fn un_espacio_puesto_en_un_adjunto_vuelve_a_leer_su_tinta_como_el_movil() {
+    fn la_primera_vez_el_lector_recoge_los_marcadores_del_indice_y_no_mas() {
+        let dir = std::env::temp_dir().join(format!("pixpin-lector-indice-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pdf = dir.join("exportado.pdf");
+        std::fs::write(&pdf, pdf_con_indice()).unwrap();
+        let mut e = estado(2);
+        assert!(recoger_el_indice(&mut e, &pdf));
+        let resumen: Vec<(u32, &str)> = e.marcas.iter().map(|m| (marcas::pagina_de(m), m.emoji.as_str())).collect();
+        assert_eq!(resumen, vec![(0, "⭐"), (1, "🔖")]);
+        assert!((marcas::alto_en_la_pagina(&e.marcas[0]) - 0.25).abs() < 1e-3);
+        assert!(e.ajustes.indice);
+        // Quitadas a mano, no vuelven: ya se miro.
+        e.marcas.clear();
+        assert!(!recoger_el_indice(&mut e, &pdf));
+        assert!(e.marcas.is_empty());
+        // Caso negativo: con marcas propias no se mira el indice.
+        let mut con = estado(2);
+        con.marcas = marcas::con(&[], 0.5, 1.5, "❗", 1);
+        assert!(recoger_el_indice(&mut con, &pdf));
+        assert_eq!(con.marcas.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **Poner o quitar un espacio ya no mueve la tinta** (Android v0.98.0):
+    /// la de antes, sin marco, recibe el suyo con los espacios de antes de
+    /// cambiarlos y se queda donde estaba; el fichero no se toca. En un PDF
+    /// suelto (caso negativo) no se escribe nada.
+    /// **Al abrir, la tinta sin marco recibe el suyo** (Android v0.98.5,
+    /// `fijarLoViejo` en cuanto se saben las hojas): si luego llegan otros
+    /// espacios (del movil, por la sincronizacion), ya no se corre. Sin
+    /// fijarlo al abrir (caso negativo), los espacios nuevos la mueven.
+    #[test]
+    fn al_abrir_un_adjunto_su_tinta_sin_marco_recibe_el_suyo_y_no_se_corre() {
+        let preparar = |etiqueta: &str| {
+            let r = crate::anotado_del_adjunto::pruebas::raiz(etiqueta);
+            let pdf = crate::anotado_del_adjunto::pruebas::con_adjunto(&r, "tesis.pdf", b"%PDF-1.4");
+            let mut e = estado(1);
+            e.donde = crate::lector_pdf_proyecto::DondeVa::de(&r, &pdf, 1);
+            let h = e.donde.para_escribir(&pdf, 0);
+            std::fs::create_dir_all(h.parent().unwrap()).unwrap();
+            std::fs::write(&h, r#"{"elements":[{"id":"jDNyxAFkaxm2qZ-KsluKG","type":"freedraw","x":-800,"y":1000,"width":250,"height":0,"strokeWidth":1,"points":[{"x":0.0,"y":0.0},{"x":250.0,"y":0.0}]}]}"#).unwrap();
+            (r, pdf, e)
+        };
+        let x = |e: &Estado, pdf: &Path| {
+            e.donde
+                .leer_capa(pdf, 0, e.ajustes.espacios, alto_de(&e.hojas, 0))
+                .escena
+                .caja()
+                .unwrap()
+                .0
+        };
+        let (r, pdf, mut e) = preparar("abrir-fija");
+        al_saber_las_hojas(&e, &pdf);
+        e.ajustes.espacios = 3;
+        assert!((x(&e, &pdf) - 99.2).abs() < 1.0, "fijada al abrir: {}", x(&e, &pdf));
+        let _ = std::fs::remove_dir_all(&r);
+        // Caso negativo: sin fijarla al abrir, los espacios que llegan la mueven.
+        let (r, pdf, mut e) = preparar("abrir-sin-fijar");
+        e.ajustes.espacios = 3;
+        assert!((x(&e, &pdf) - 99.2).abs() > 1.0, "sin marco se corre: {}", x(&e, &pdf));
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn un_espacio_puesto_en_un_adjunto_deja_su_tinta_donde_estaba_como_el_movil() {
         let r = crate::anotado_del_adjunto::pruebas::raiz("espacio-adjunto");
         let pdf = crate::anotado_del_adjunto::pruebas::con_adjunto(&r, "tesis.pdf", b"%PDF-1.4");
         let mut e = estado(1);
@@ -2306,8 +2497,10 @@ mod pruebas {
         assert!((x(&mut e) - 99.2).abs() < 1.0, "sin espacios: {}", x(&mut e));
         alternar_espacio(&mut e, vista::ESPACIO_IZQUIERDA, &pdf);
         alternar_espacio(&mut e, vista::ESPACIO_DERECHA, &pdf);
-        assert!(e.capas.is_empty(), "lo abierto se vuelve a leer");
-        assert!((x(&mut e) + 800.0).abs() < 3.0, "con los dos, la hoja tal cual: {}", x(&mut e));
+        assert!((x(&mut e) - 99.2).abs() < 1.0, "con los dos, donde estaba: {}", x(&mut e));
+        // Leida otra vez desde el disco, igual: manda su marco.
+        e.capas.clear();
+        assert!((x(&mut e) - 99.2).abs() < 1.0, "releida: {}", x(&mut e));
         let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&h).unwrap()).unwrap();
         assert_eq!(v["elements"][0]["x"].as_f64(), Some(-800.0), "el fichero no cambia");
         // Caso negativo: un PDF suelto no depende de los espacios.

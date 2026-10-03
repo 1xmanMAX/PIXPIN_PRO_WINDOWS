@@ -165,6 +165,11 @@ fn comprobar(salida: &Salida, formato: &str, paginas: usize) {
         }
         "pixpin" => assert!(bytes.starts_with(b"PK"), "un .pixpin es un zip"),
         "texto" | "csv" => assert!(String::from_utf8(bytes).is_ok()),
+        // Un Word que el lector de Word de PixPin vuelve a abrir.
+        "word" => {
+            assert!(r.extension().is_some_and(|e| e == "docx"), "{}", r.display());
+            pixpin_docs::abrir(r).expect("el .docx se vuelve a leer");
+        }
         _ => {}
     }
 }
@@ -200,6 +205,8 @@ fn el_lienzo_del_editor_sale_en_todos_los_formatos_y_con_sus_marcos() {
     assert!(!marcadas.contains("lienzo") && marcadas.len() == 2, "{marcadas:?}");
     let hechos = todos_los_formatos(&p, &dir);
     assert_eq!(hechos, [WEB, PDF, PNG, JPG, SVG, "excalidraw"]);
+    // Caso negativo: el PDF de un lienzo no tiene interruptor «Con anotaciones».
+    assert!(compartible(&p, &textos()).formatos.iter().all(|f| f.interruptor.is_none()));
     // La pagina web lleva el lienzo dentro para volver a editarlo.
     let web = std::fs::read_to_string(dir.join(WEB).join("Casa.html")).unwrap();
     assert!(web.contains("class=\"excalidraw\""));
@@ -397,7 +404,8 @@ fn cada_mensaje_solo_ofrece_sus_formatos_y_su_original() {
     let esperado: [(&str, &[&str]); 5] = [
         ("m-lienzo", &[WEB, PDF, PNG, JPG, SVG, "excalidraw"]),
         ("m-foto", &["original", WEB, PDF, PNG, JPG, SVG]),
-        ("m-nota", &[WEB, PDF, PNG, JPG, SVG, "texto"]),
+        // Una nota Markdown sola tambien sale como Word (`word`).
+        ("m-nota", &[WEB, PDF, PNG, JPG, SVG, "texto", "word"]),
         ("m-tabla", &[WEB, PDF, PNG, JPG, SVG, "csv"]),
         ("m-tareas", &[WEB, PDF, PNG, JPG, SVG, "texto"]),
     ];
@@ -529,6 +537,37 @@ fn un_pdf_anotado_sale_con_su_tinta_y_solo_las_paginas_elegidas() {
     // Solo la segunda: un PDF de una pagina, con la tinta.
     let una = generar(&p, PDF, &[p.piezas[1].pagina.clave.clone()], &dir.join("una")).unwrap();
     comprobar(&una, PDF, 1);
+    // **La pagina sigue siendo la del PDF** (su texto se lee) y la tinta va
+    // encima dentro de su contenido y en su capa (Android v0.98.2), no como
+    // foto de la hoja ni como anotacion que el visor del movil no pinta.
+    let una = std::fs::read(&una.ficheros[0]).unwrap();
+    let hoja = pixpin_pdf::plano::de_bytes(&una, 0).unwrap();
+    assert!(hoja.textos.iter().any(|x| x.texto.contains("Parrafo de prueba")), "sin su texto");
+    let texto = String::from_utf8_lossy(&una);
+    assert!(texto.contains(" BDC\n/PxT") && !texto.contains("/Subtype /Stamp"), "sin la tinta en el contenido");
+    // Todas: el original entero al principio y la revision detras.
+    let original_bytes = std::fs::read(&pdf).unwrap();
+    let todas: Vec<String> = p.piezas.iter().map(|x| x.pagina.clave.clone()).collect();
+    let entero = generar(&p, PDF, &todas, &dir.join("todas")).unwrap();
+    let entero = std::fs::read(&entero.ficheros[0]).unwrap();
+    assert_eq!(&entero[..original_bytes.len()], &original_bytes[..], "el original no va entero");
+    assert!(entero.len() - original_bytes.len() < 20_000, "pesa la tinta, no las hojas");
+    // El interruptor quitado: el PDF limpio, tal cual.
+    let pdf_formato = c.formatos.iter().find(|f| f.id == PDF).unwrap();
+    assert_eq!(pdf_formato.interruptor.as_ref().map(|i| i.id_apagado.as_str()), Some(PDF_LIMPIO));
+    let limpio = generar(&p, PDF_LIMPIO, &todas, &dir.join("limpio")).unwrap();
+    assert_eq!(std::fs::read(&limpio.ficheros[0]).unwrap(), original_bytes);
+    // **La pagina web, con «Texto buscable»** (Android v0.98.1): puesto, las
+    // hojas en lineas; quitado, como imagen con el texto invisible encima.
+    let web_formato = c.formatos.iter().find(|f| f.id == WEB).unwrap();
+    assert_eq!(web_formato.interruptor.as_ref().map(|i| i.id_apagado.as_str()), Some(WEB_IMAGEN));
+    let en_lineas = generar(&p, WEB, &todas, &dir.join("web")).unwrap();
+    let en_lineas = std::fs::read_to_string(&en_lineas.ficheros[0]).unwrap();
+    assert!(en_lineas.contains("class=\"plano-hoja\"") && !en_lineas.contains("class=\"texto-pdf\""));
+    let como_imagen = generar(&p, WEB_IMAGEN, &todas, &dir.join("web-imagen")).unwrap();
+    let como_imagen = std::fs::read_to_string(&como_imagen.ficheros[0]).unwrap();
+    assert!(!como_imagen.contains("class=\"plano-hoja\"") && como_imagen.contains("class=\"texto-pdf\""));
+    assert!(como_imagen.contains("Parrafo de prueba."), "el texto se sigue buscando");
     let png = generar(&p, PNG, &[p.piezas[1].pagina.clave.clone()], &dir.join("png2")).unwrap();
     let img = png.imagen.unwrap();
     assert!(

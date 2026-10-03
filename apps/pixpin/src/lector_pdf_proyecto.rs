@@ -119,11 +119,11 @@ impl DondeVa {
     /// chat. El PDF de un proyecto no: su hoja es el dibujo del editor del
     /// proyecto, que la pone siempre a 1400 desde el cero (el marco es fijo
     /// y va implicito), y lo de junto al PDF solo lo lee el PC.
-    fn marco(&self, i: usize) -> Option<PathBuf> {
+    fn marco(&self, i: usize) -> Option<pixpin_proyecto::anotado::Base> {
         if self.proyecto.is_some() {
             return None;
         }
-        crate::anotado_del_adjunto::marco_de_la_hoja_del_pdf(self.adjunto.as_ref(), i)
+        crate::anotado_del_adjunto::base_de_la_hoja_del_pdf(self.adjunto.as_ref(), i)
     }
 
     /// **En que unidades esta el fichero de la hoja `i`**: las que dice su
@@ -133,30 +133,87 @@ impl DondeVa {
     /// en unidades del lector (`Hojas::altos`).
     pub fn unidades_de(&self, i: usize, espacios: u8, alto: f32) -> crate::lector_tinta::Unidades {
         self.marco(i)
-            .and_then(|f| crate::anotado_del_adjunto::unidades_del_marco(&f, &hoja_propia(alto)))
+            .and_then(|b| crate::anotado_del_adjunto::unidades_del_marco(&b, &hoja_propia(alto)))
             .unwrap_or_else(|| self.unidades(espacios))
     }
 
     /// **La capa de la hoja `i`, en las unidades de la hoja** (ver
-    /// [`DondeVa::unidades_de`]); guardarla la devuelve a las del fichero.
+    /// [`DondeVa::unidades_de`]); guardarla la escribe en las de la hoja
+    /// ([`DondeVa::guardar_capa`]).
+    ///
+    /// Sin marco que valga, la regla de antes con los `espacios` de ahora y,
+    /// si la abre el lector, **se le apunta al lado el marco de esa regla sin
+    /// tocar la tinta** (`tintaDeLaHoja` con `migrar` de Android v0.98.0): asi
+    /// ya no depende de los espacios que se pongan despues.
     pub fn leer_capa(&self, pdf: &Path, i: usize, espacios: u8, alto: f32) -> crate::lector_tinta::Capa {
         let ruta = self.para_leer(pdf, i);
-        let con_marco = self.marco(i).is_some_and(|f| f.is_file());
-        let u = self.unidades_de(i, espacios, alto);
+        // Un marco que esta pero no vale (no se entiende, o es de otra
+        // tinta) es como no tenerlo: la regla de antes, con su migracion.
+        let del_marco = self
+            .marco(i)
+            .and_then(|b| crate::anotado_del_adjunto::unidades_del_marco(&b, &hoja_propia(alto)));
+        let con_marco = del_marco.is_some();
+        let u = del_marco.unwrap_or_else(|| self.unidades(espacios));
         // Con marco no se migra nada: quien lo escribio ya puso cada trazo
         // en las unidades que dice, tambien lo nacido en otro PC.
-        if self.escribe && self.adjunto.is_some() && self.proyecto.is_none() && !con_marco {
+        let migrar = self.escribe && self.adjunto.is_some() && self.proyecto.is_none() && !con_marco;
+        if migrar {
             crate::anotado_del_adjunto::lo_del_pc_a_la_capa_del_movil(pdf, i, &ruta, u);
         }
-        crate::lector_tinta::Capa::leer_en(&ruta, u)
+        let capa = crate::lector_tinta::Capa::leer_en(&ruta, u);
+        // Uno que esta y no se entiende (un formato nuevo del otro aparato)
+        // no se pisa; uno con la huella de otra tinta (del PC del 29-sep)
+        // miente, y si.
+        if migrar
+            && !capa.escena.elementos.is_empty()
+            && let Some(b) = self.marco(i)
+            && pixpin_proyecto::anotado::leer(&b.marco())
+                .is_none_or(|t| pixpin_sincro::anotado::MarcoDeLaHoja::de_texto_con_huella(&t).is_some())
+            && let Err(e) = b.escribir_marco(&u.marco_de(&hoja_propia(alto)))
+        {
+            tracing::warn!(?e, hoja = i, "no se pudo apuntar el marco de la tinta de antes");
+        }
+        capa
     }
 
-    /// **Guarda la capa de la hoja `i` y su marco**, si cambio: la tinta en
-    /// las unidades en que se leyo y, al lado, donde cae la hoja en ellas.
-    /// Primero la tinta y luego el marco, cada uno por un temporal: como el
-    /// PC escribe siempre en las unidades en que leyo, el marco que hubiera
-    /// ya decia lo mismo (o no habia, y la regla vieja da esas mismas), asi
-    /// que un corte entre los dos no deja una tinta con un marco ajeno.
+    /// **A la tinta de un PDF del chat que aun no tiene marco se le escribe
+    /// el de la regla de antes con los `espacios` de ahora, sin tocarla**
+    /// (`fijarLoViejo` de Android v0.98.0): se llama antes de cambiar los
+    /// espacios, para que lo anotado no se corra. `altos`: el de cada hoja
+    /// en unidades del lector. Devuelve cuantas hojas recibieron marco.
+    pub fn fijar_lo_viejo(&self, pdf: &Path, espacios: u8, altos: &[f32]) -> usize {
+        if !self.escribe || self.adjunto.is_none() || self.proyecto.is_some() {
+            return 0;
+        }
+        let u = self.unidades(espacios);
+        let mut n = 0;
+        for (i, alto) in altos.iter().enumerate() {
+            let Some(b) = self.marco(i) else { continue };
+            if !self.para_leer(pdf, i).is_file()
+                || crate::anotado_del_adjunto::unidades_del_marco(&b, &hoja_propia(*alto)).is_some()
+            {
+                continue;
+            }
+            // `leer_capa` hace la migracion y apunta el marco si hay tinta.
+            if !self.leer_capa(pdf, i, espacios, *alto).escena.elementos.is_empty() {
+                n += 1;
+            }
+        }
+        if n > 0 {
+            tracing::info!(hojas = n, ?u, "marco de la tinta de antes apuntado antes de cambiar los espacios");
+        }
+        n
+    }
+
+    /// **Guarda la capa de la hoja `i` y su marco**, si cambio. La de un PDF
+    /// suelto del chat va **siempre en las unidades de la hoja** (0 a 1400
+    /// desde su esquina) con el marco que lo dice, `0,0,1400,alto`: es lo que
+    /// escribe Android desde v0.98.0 pongan o quiten espacios, y asi hay una
+    /// sola convencion. Lo de antes en otras unidades pasa a estas al
+    /// guardar (sin subir versiones: convertir no es cambiar), como en
+    /// Android. Primero la tinta y luego el marco, cada uno por un temporal.
+    /// Lo de un proyecto y lo de junto al PDF, en las unidades en que se leyo
+    /// (que son ya las de la hoja).
     pub fn guardar_capa(
         &self,
         pdf: &Path,
@@ -167,10 +224,12 @@ impl DondeVa {
         if !capa.sucia {
             return Ok(());
         }
-        capa.guardar(&self.para_escribir(pdf, i))?;
         match self.marco(i) {
-            Some(f) => crate::anotado_del_adjunto::escribir_marco(&f, capa.unidades(), &hoja_propia(alto)),
-            None => Ok(()),
+            Some(b) => {
+                capa.guardar_en(&self.para_escribir(pdf, i), crate::lector_tinta::Unidades::DEL_PC)?;
+                b.escribir_marco(&hoja_propia(alto))
+            }
+            None => capa.guardar(&self.para_escribir(pdf, i)),
         }
     }
 

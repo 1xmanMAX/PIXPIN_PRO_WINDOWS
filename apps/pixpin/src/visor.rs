@@ -32,6 +32,11 @@
 //!   (`maqueta_movil`), asi que con la misma columna la tinta cae en la
 //!   misma palabra en los dos aparatos.
 //! - **Word a PDF** (v0.63): `pixpin_docs::pdf`.
+//! - **Escuchar** (22-sep-2026): la voz de Windows lee por parrafos, con
+//!   el que suena en ambar y el **marcador verde** donde se dejo
+//!   (`leer_en_voz`, `pixpin_docs::voz_alta`). L o el boton de la pastilla.
+//! - **Espacio a cada lado** (23-sep-2026): los mandos de abajo (−, +, el
+//!   candado del lado), que viajan en la maqueta (`izq`, `der`).
 //!
 //! Lo que se guarda va **junto al documento**: `<nombre>.pixpin-lectura`
 //! (letra, sitio, marcadores, aumento) y la carpeta
@@ -69,8 +74,10 @@ use crate::lector::{
     self, APAGADO, CRISTAL, DORADO, EMOJIS, FONDO, RAYA, TEXTO, ahora_ms, con_alfa, dentro,
 };
 use crate::compartir::documento_web;
+use crate::leer_en_voz::{self, LeerEnVoz, Suceso};
 use crate::lector_tinta::{self, Capa, Tinta};
 use crate::overlay::Recursos;
+use pixpin_docs::voz_alta;
 
 mod maqueta_movil;
 mod maqueta_vieja;
@@ -106,6 +113,7 @@ const VK_F2: u32 = 0x71;
 const VK_F3: u32 = 0x72;
 const VK_G: u32 = 0x47;
 const VK_I: u32 = 0x49;
+const VK_L: u32 = 0x4C;
 const VK_M: u32 = 0x4D;
 const VK_S: u32 = 0x53;
 const VK_T: u32 = 0x54;
@@ -183,6 +191,12 @@ enum Accion {
     QuitarTinta,
     GuardarPagina,
     GuardarPdf,
+    /// Escuchar en voz alta (la voz de Windows, `leer_en_voz`).
+    Escuchar,
+    /// Un boton de la barra de escuchar.
+    Voz(leer_en_voz::BotonVoz),
+    /// Un boton de los mandos de los lados (espacio y candado).
+    Lado(lector::BotonLado),
     /// La hoja de compartir de toda la aplicacion, con este documento.
     Compartir,
     AbrirCarpeta,
@@ -273,6 +287,8 @@ struct Estado {
     tinta_de_antes: bool,
     /// Algo cambio que tiene que ir al disco ya (la tinta mudada).
     guardar_ya: bool,
+    /// **Escuchando** (la barra de abajo): la voz que lee el documento.
+    voz: Option<LeerEnVoz>,
 }
 
 pub fn abrir(
@@ -353,6 +369,7 @@ pub fn abrir(
         hoja: Hoja::de(ruta),
         tinta_de_antes,
         guardar_ya: false,
+        voz: None,
     };
     // Se entra por donde se dejo. Como el sitio es una fraccion, hace falta
     // medir antes, y medir necesita un fotograma: se apunta y se aplica en
@@ -516,6 +533,20 @@ pub fn abrir(
             break;
         }
 
+        // La voz: el trozo siguiente, el parrafo siguiente o el final.
+        if let Some(suceso) = e.voz.as_mut().and_then(|v| v.vuelta()) {
+            match suceso {
+                Suceso::Parrafo(i) => al_sonar(&mut e, i, ruta, marco),
+                // Acabado el documento, el verde se quita: la proxima vez se
+                // empieza por lo que se este viendo (`alAcabarElDocumento`).
+                Suceso::Acabado => {
+                    e.ajustes.voz = None;
+                    guardar_ajustes(&e, ruta);
+                }
+            }
+            hay_que_pintar = true;
+        }
+
         let ahora = ahora_ms();
         // La pastilla se va sola y el aviso tambien: los dos hacen que haya
         // que repintar aunque nadie toque nada.
@@ -590,6 +621,8 @@ pub fn abrir(
     // Por donde se iba, para volver aqui la proxima vez. Con el nombre que
     // tenga ahora: si se cambio (D5), sus cosas ya estan en el nuevo.
     let ruta: &Path = &ruta_viva;
+    // La voz se calla con el lector (el verde ya esta apuntado).
+    e.voz = None;
     e.ajustes.sitio = fraccion(&e);
     e.ajustes.zoom = e.zoom;
     guardar_ajustes(&e, ruta);
@@ -638,12 +671,25 @@ fn limites(e: &Estado) -> (f32, f32) {
         .filter_map(|c| c.caja.map(|k| k.x + k.ancho))
         .fold(e.columna, f32::max);
     let (izq, der) = if e.ajustes.letra_fijada() || e.anotando {
-        let m = vista::margen_de(e.columna);
-        (-m, e.columna + m)
+        let (i, d) = lados(e);
+        (-i, e.columna + d)
     } else {
         (0.0, e.columna)
     };
     (izq, der.max(tablas))
+}
+
+/// **El espacio en blanco de cada lado de la columna**, en unidades: el
+/// puesto con los mandos de abajo (`espacioIzq`/`espacioDer` del movil, que
+/// viajan en la maqueta) o, si nunca se toco, los dos tercios de siempre.
+fn lados(e: &Estado) -> (f32, f32) {
+    match e.ajustes.lados {
+        Some((i, d)) if e.ajustes.letra_fijada() => (i as f32, d as f32),
+        _ => {
+            let m = vista::margen_de(e.columna);
+            (m, m)
+        }
+    }
 }
 
 fn fraccion(e: &Estado) -> f32 {
@@ -863,6 +909,15 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     }
     // Lo encontrado, debajo del texto: se lee por encima.
     marcas_de_busqueda(e, p, vista_doc);
+    // **Lo que suena**, en ambar por debajo del texto (`.pixpin-leyendo`).
+    if let Some(c) = colocado_que_suena(e) {
+        let aire = 3.0;
+        p.rellenar_redondeado(
+            RectF { x: c.sangria - aire, y: c.y - aire, ancho: c.ancho + 2.0 * aire, alto: c.alto + 2.0 * aire },
+            aire,
+            leer_en_voz::AMBAR_LEYENDO,
+        );
+    }
     let margen = 40.0 / s;
     for c in &e.colocados {
         if c.y + c.alto < vista_doc.1 - margen || c.y > vista_doc.3 + margen {
@@ -925,7 +980,9 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     }
 
     barra_de_avance(e, p, m);
-    let emojis: Vec<&str> = e.ajustes.marcadores.iter().map(|x| x.emoji.as_str()).collect();
+    // Los del usuario y, entre ellos, el verde de donde se dejo de escuchar.
+    let lista = lista_del_riel(e);
+    let emojis: Vec<&str> = lista.iter().map(|x| x.emoji.as_str()).collect();
     let riel = lector::riel(
         m.ancho,
         m.alto,
@@ -950,6 +1007,23 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         || (!e.hallar.caja.abierto && (e.pastilla_hasta > ahora_ms() || e.panel || e.viendo_indice))
     {
         pastilla(e, p, m, &mut botones);
+    }
+    // Abajo: la barra de escuchar o, si no, los mandos de los lados (con la
+    // pastilla, o con el raton en la franja de abajo).
+    if let Some(v) = e.voz.as_ref().filter(|_| !e.poniendo_marca) {
+        for (r, b) in leer_en_voz::pintar_barra(p, m.ancho, m.alto, m.e, v) {
+            botones.push((r, Accion::Voz(b)));
+        }
+    } else if !e.anotando
+        && !e.panel
+        && !e.poniendo_marca
+        && !e.viendo_indice
+        && (e.pastilla_hasta > ahora_ms() || lector::raton_abajo(e.raton.1, m.alto, m.e))
+    {
+        let (izq, der, tope) = pasos_de_los_lados(e);
+        for (r, b) in lector::pintar_mandos_de_los_lados(p, m.ancho, m.alto, m.e, izq, der, tope, e.ajustes.sin_lado) {
+            botones.push((r, Accion::Lado(b)));
+        }
     }
     // La caja de buscar, arriba en medio (en el sitio de la pastilla).
     if e.nombre.editando.is_none() {
@@ -1009,6 +1083,8 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
     let lado = 34.0 * m.e;
     let iconos: Vec<(&pixpin_render::icono::Icono, bool, Accion)> = [
         (!e.indice.is_empty()).then_some((&material::LIST, e.viendo_indice, Accion::Indice)),
+        // **Escuchar** (`RecordVoiceOver` de la pastilla del movil).
+        Some((&material::RECORD_VOICE_OVER, e.voz.is_some(), Accion::Escuchar)),
         Some((&material::SETTINGS, e.panel, Accion::Engranaje)),
     ]
     .into_iter()
@@ -1273,6 +1349,7 @@ fn panel(e: &Estado, p: &Pintor, m: Marco, textos: &Catalogo, botones: &mut Vec<
 /// Lo que se puede hacer desde el engranaje, con su texto ya traducido.
 fn filas_del_panel(e: &Estado, textos: &Catalogo) -> Vec<(String, Accion)> {
     let mut filas = vec![
+        (textos.t("lector-escuchar"), Accion::Escuchar),
         (textos.t("compartir-lector"), Accion::Compartir),
         (textos.t("visor-guardar-pagina"), Accion::GuardarPagina),
         (textos.t("visor-guardar-pdf"), Accion::GuardarPdf),
@@ -1306,7 +1383,7 @@ fn riel_de(e: &Estado, m: Marco) -> pixpin_ui::riel_marcas::Riel {
         m.ancho,
         m.alto,
         m.escala_por_cien,
-        e.ajustes.marcadores.len(),
+        lista_del_riel(e).len(),
         e.poniendo_marca,
     )
 }
@@ -1362,7 +1439,9 @@ fn mover_raton(e: &mut Estado, m: Marco) {
             let movido = movido || dx.abs().max(dy.abs()) > lector::UMBRAL_DE_ARRASTRE;
             if movido {
                 let s = px(e, m);
-                e.x = vista.0 - dx / s;
+                if !e.ajustes.sin_lado {
+                    e.x = vista.0 - dx / s;
+                }
                 e.y = vista.1 - dy / s;
                 e.x_meta = None;
                 acotar(e, m);
@@ -1461,9 +1540,14 @@ fn pulsar_derecho(e: &mut Estado, ruta: &Path, m: Marco) {
     // Quitar un marcador: clic derecho en su punto del riel (el toque largo
     // del movil, que un raton no tiene).
     if let DestinoRiel::Marca(i) = riel_de(e, m).destino(lector::punto(e.raton.0, e.raton.1))
-        && i < e.ajustes.marcadores.len()
+        && let Some(quitado) = lista_del_riel(e).get(i).cloned()
     {
-        e.ajustes.marcadores.remove(i);
+        // El verde es el de la voz: se quita su sitio, no un marcador.
+        if quitado.emoji == voz_alta::EMOJI_DE_VOZ {
+            e.ajustes.voz = None;
+        } else {
+            e.ajustes.marcadores.retain(|x| x.id != quitado.id);
+        }
         guardar_ajustes(e, ruta);
     }
 }
@@ -1506,6 +1590,10 @@ fn rueda(e: &mut Estado, delta: i32, m: Marco) {
 
 /// Corre la vista a lo ancho `cuanto` pixeles.
 fn lado(e: &mut Estado, cuanto: f32, m: Marco) {
+    // Con el candado de los mandos de abajo, a lo ancho no se mueve.
+    if e.ajustes.sin_lado {
+        return;
+    }
     if e.lateral.is_none() {
         e.lateral = Some((e.x, ahora_ms()));
     }
@@ -1559,6 +1647,9 @@ fn tecla(
                 e.poniendo_marca = false;
                 e.panel = false;
                 e.viendo_indice = false;
+            } else if e.voz.is_some() {
+                // La primera Esc cierra la barra de escuchar; la segunda, el lector.
+                e.voz = None;
             } else if e.anotando {
                 alternar_anotar(e, ruta, m);
             } else {
@@ -1616,6 +1707,7 @@ fn tecla(
             e.panel = false;
         }
         (VK_A, false) => alternar_anotar(e, ruta, m),
+        (VK_L, false) => escuchar(e, textos, ruta, m),
         (VK_G, false) => {
             e.panel = !e.panel;
             e.viendo_indice = false;
@@ -1703,6 +1795,10 @@ fn alternar_anotar(e: &mut Estado, ruta: &Path, m: Marco) {
 }
 
 fn poner_marcador(e: &mut Estado, i: usize, ruta: &Path) {
+    if i == lector::VERDE_EN_LA_TIRA {
+        poner_el_verde_aqui(e, ruta);
+        return;
+    }
     let emoji = EMOJIS.get(i).copied().unwrap_or(EMOJIS[0]);
     e.ajustes.marcadores =
         lectura::con_marcador(&e.ajustes.marcadores, fraccion(e), emoji, ahora_ms());
@@ -1711,14 +1807,225 @@ fn poner_marcador(e: &mut Estado, i: usize, ruta: &Path) {
 }
 
 fn ir_al_marcador(e: &mut Estado, i: usize) {
-    if let Some(m) = e.ajustes.marcadores.get(i) {
+    if let Some(m) = lista_del_riel(e).get(i) {
         e.y = e.alto_doc * m.fraccion;
+    }
+}
+
+/// Los puntos del riel: los marcadores y el verde de la voz en su sitio
+/// (`Lectura.conMarcaDeVoz`).
+fn lista_del_riel(e: &Estado) -> Vec<lectura::Marcador> {
+    voz_alta::con_marca_de_voz(&e.ajustes.marcadores, e.ajustes.voz.map(|v| v.1))
+}
+
+// ---------------------------------------------------------------------------
+// Escuchar (la voz de Windows) y el espacio de los lados
+
+/// Los colocados que se leen, en orden: los que tienen texto (ni el hueco
+/// de una imagen ni una raya). Cada uno es un «parrafo» de la voz, como cada
+/// bloque de texto sin otro dentro en el movil (`VozAlta.PREPARAR`).
+pub(crate) fn para_leer(colocados: &[Colocado]) -> Vec<usize> {
+    colocados
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| !c.recuadro && !matches!(c.clase, Clase::Regla | Clase::Capitulo) && !c.texto.trim().is_empty())
+        .map(|(i, _)| i)
+        .collect()
+}
+
+fn colocado_que_suena(e: &Estado) -> Option<&Colocado> {
+    let v = e.voz.as_ref()?;
+    let i = *para_leer(&e.colocados).get(v.actual)?;
+    e.colocados.get(i)
+}
+
+/// Donde empieza cada parrafo de la voz, de 0 a 1.
+fn fracciones_de(e: &Estado, idx: &[usize]) -> Vec<f32> {
+    let alto = e.alto_doc.max(1.0);
+    idx.iter().map(|i| (e.colocados[*i].y / alto).clamp(0.0, 1.0)).collect()
+}
+
+/// El primer parrafo que asoma arriba de la ventana.
+fn parrafo_arriba(e: &Estado, idx: &[usize]) -> usize {
+    idx.iter()
+        .position(|i| {
+            let c = &e.colocados[*i];
+            c.y + c.alto > e.y + 4.0
+        })
+        .unwrap_or(0)
+}
+
+/// **Escuchar** (el boton de la pastilla y la L): la primera vez se arranca
+/// la voz de Windows con el idioma del texto y se empieza **por el marcador
+/// verde**, donde se dejo de escuchar; si no hay, por lo que asoma arriba.
+/// Con la barra ya abierta, play/pausa.
+fn escuchar(e: &mut Estado, textos: &Catalogo, ruta: &Path, m: Marco) {
+    if let Some(v) = e.voz.as_mut() {
+        v.alternar();
+        return;
+    }
+    let idx = para_leer(&e.colocados);
+    if idx.is_empty() {
+        e.aviso = Some((textos.t("lector-sin-texto"), ahora_ms() + 3000));
+        return;
+    }
+    let fracciones = fracciones_de(e, &idx);
+    let desde = e
+        .ajustes
+        .voz
+        .and_then(|marca| voz_alta::parrafo_de_la_marca(&fracciones, marca))
+        .unwrap_or_else(|| parrafo_arriba(e, &idx));
+    let parrafos: Vec<String> = idx.iter().map(|i| voz_alta::juntar_blancos(&e.colocados[*i].texto)).collect();
+    let muestra: String = parrafos.iter().skip(desde).take(40).cloned().collect::<Vec<_>>().join(" ").chars().take(4000).collect();
+    let de_la_app = leer_en_voz::idioma_de_la_app(textos);
+    let idioma = voz_alta::idioma_para_leer(&muestra, "", &de_la_app);
+    let Some(mut v) = LeerEnVoz::arrancar(&idioma, &de_la_app, parrafos, 1.0) else {
+        e.aviso = Some((leer_en_voz::sin_voz(textos, &idioma), ahora_ms() + 6000));
+        return;
+    };
+    v.leer(desde);
+    e.voz = Some(v);
+    e.poniendo_marca = false;
+    e.panel = false;
+    al_sonar(e, desde, ruta, m);
+}
+
+/// **Suena otro parrafo**: el verde se mueve a el (en cada parrafo, no solo
+/// al parar, como `apuntarElVerde`) y, si el de antes se estaba viendo, la
+/// vista lo sigue (`VozAlta.resaltar` con `seguir`; anotando no se mueve).
+fn al_sonar(e: &mut Estado, i: usize, ruta: &Path, m: Marco) {
+    let idx = para_leer(&e.colocados);
+    let Some(&k) = idx.get(i) else {
+        return;
+    };
+    let alto = e.alto_doc.max(1.0);
+    let c = &e.colocados[k];
+    let (y, abajo) = (c.y, c.y + c.alto);
+    let visto = m.alto / px(e, m);
+    let se_veia = |a: f32, b: f32| b > e.y && a < e.y + visto;
+    let antes_se_veia = i
+        .checked_sub(1)
+        .and_then(|j| idx.get(j))
+        .map(|j| {
+            let a = &e.colocados[*j];
+            se_veia(a.y, a.y + a.alto)
+        })
+        .unwrap_or(true);
+    if !e.anotando && antes_se_veia && (y < e.y + visto * 0.08 || abajo > e.y + visto * 0.85) {
+        e.y = (y - visto * 0.25).max(0.0);
+        acotar(e, m);
+    }
+    e.ajustes.voz = Some((i, (y / alto).clamp(0.0, 1.0)));
+    guardar_ajustes(e, ruta);
+}
+
+/// **El marcador verde, aqui** («poder mover el bookmark verde donde quiero
+/// que empiece a leer»): al primer parrafo que asoma arriba. Escuchando, la
+/// voz salta ahi ya.
+fn poner_el_verde_aqui(e: &mut Estado, ruta: &Path) {
+    e.poniendo_marca = false;
+    let idx = para_leer(&e.colocados);
+    if idx.is_empty() {
+        return;
+    }
+    let p = parrafo_arriba(e, &idx);
+    let f = (e.colocados[idx[p]].y / e.alto_doc.max(1.0)).clamp(0.0, 1.0);
+    e.ajustes.voz = Some((p, f));
+    guardar_ajustes(e, ruta);
+    if let Some(v) = e.voz.as_mut() {
+        if v.leyendo {
+            v.leer(p);
+        } else {
+            let actual = v.actual as isize;
+            v.saltar(p as isize - actual);
+        }
+    }
+}
+
+/// Un boton de la barra de escuchar.
+fn boton_de_voz(e: &mut Estado, b: leer_en_voz::BotonVoz, ruta: &Path, m: Marco) {
+    use leer_en_voz::BotonVoz;
+    let Some(v) = e.voz.as_mut() else {
+        return;
+    };
+    match b {
+        BotonVoz::Alternar => v.alternar(),
+        BotonVoz::Anterior | BotonVoz::Siguiente => {
+            let i = v.saltar(if b == BotonVoz::Anterior { -1 } else { 1 });
+            al_sonar(e, i, ruta, m);
+        }
+        BotonVoz::Velocidad => {
+            v.otra_velocidad();
+        }
+        BotonVoz::Cerrar => e.voz = None,
+    }
+}
+
+/// Los pasos de espacio puestos a cada lado y cuantos caben (sin columna
+/// fijada, ninguno y dos, como el movil).
+fn pasos_de_los_lados(e: &Estado) -> (u32, u32, u32) {
+    if !e.ajustes.letra_fijada() {
+        return (0, 0, 2);
+    }
+    let c = e.ajustes.columna;
+    let m = c * 2 / 3;
+    let (i, d) = e.ajustes.lados.unwrap_or((m, m));
+    let (pi, tope) = vista::pasos_de_espacio(i, c);
+    let (pd, _) = vista::pasos_de_espacio(d, c);
+    (pi, pd, tope)
+}
+
+/// **Espacio en blanco a un lado** (`anadirEspacio` del movil): un paso mas
+/// o uno menos. Si la columna aun no esta fijada, se fija aqui, sin espacio
+/// a ningun lado salvo el pedido. En el PC la tinta cuenta desde el borde
+/// de la columna, asi que el texto y lo anotado no se mueven; la del
+/// mensaje del chat se escribe antes con su marco (`.hoja`) en las unidades
+/// de ahora, para que el `izq` nuevo de la maqueta no la corra.
+fn anadir_espacio(e: &mut Estado, izquierda: bool, mas: bool, textos: &Catalogo, ruta: &Path) {
+    if !e.ajustes.letra_fijada() {
+        e.ajustes.columna = e.columna.round().max(1.0) as u32;
+        e.ajustes.lados = Some((0, 0));
+    }
+    let c = e.ajustes.columna;
+    let m = c * 2 / 3;
+    let (i, d) = e.ajustes.lados.unwrap_or((m, m));
+    let paso = i64::from(vista::paso_de_espacio(c)) * if mas { 1 } else { -1 };
+    let antes = if izquierda { i } else { d };
+    let ahora = vista::espacio_valido(i64::from(antes) + paso, c);
+    if ahora == antes {
+        let clave = if mas { "lector-espacio-tope" } else { "lector-espacio-nada" };
+        e.aviso = Some((textos.t(clave), ahora_ms() + 2500));
+        return;
+    }
+    if !e.capa.vacia() {
+        e.capa.sucia = true;
+        guardar_capa(e, ruta);
+    }
+    e.ajustes.lados = Some(if izquierda { (ahora, d) } else { (i, ahora) });
+    guardar_ajustes(e, ruta);
+    e.pastilla_hasta = ahora_ms() + MS_DE_LA_PASTILLA;
+}
+
+fn boton_de_lado(e: &mut Estado, b: lector::BotonLado, textos: &Catalogo, ruta: &Path) {
+    match b {
+        lector::BotonLado::Izquierda(mas) => anadir_espacio(e, true, mas, textos, ruta),
+        lector::BotonLado::Derecha(mas) => anadir_espacio(e, false, mas, textos, ruta),
+        lector::BotonLado::Candado => {
+            e.ajustes.sin_lado = !e.ajustes.sin_lado;
+            let clave = if e.ajustes.sin_lado { "lector-sin-lado" } else { "lector-con-lado" };
+            e.aviso = Some((textos.t(clave), ahora_ms() + 2500));
+            e.pastilla_hasta = ahora_ms() + MS_DE_LA_PASTILLA;
+            guardar_ajustes(e, ruta);
+        }
     }
 }
 
 fn hacer(e: &mut Estado, a: Accion, textos: &Catalogo, ruta: &Path, ubicacion: &Ubicacion, m: Marco) {
     match a {
         Accion::Renombrar => e.nombre.empezar(),
+        Accion::Escuchar => escuchar(e, textos, ruta, m),
+        Accion::Voz(b) => boton_de_voz(e, b, ruta, m),
+        Accion::Lado(b) => boton_de_lado(e, b, textos, ruta),
         Accion::Buscar(b) => {
             let h = e.hallar.caja.boton(b);
             hecho_de_buscar(e, h);
@@ -2117,7 +2424,94 @@ mod pruebas {
             hoja: Hoja::Word,
             tinta_de_antes: false,
             guardar_ya: false,
+            voz: None,
         }
+    }
+
+    fn colocado_para_leer(texto: &str, clase: Clase, y: f32, recuadro: bool) -> Colocado {
+        Colocado {
+            texto: texto.into(),
+            tramos: Vec::new(),
+            clase,
+            tam: 16.0,
+            sangria: 0.0,
+            ancho: 800.0,
+            y,
+            alto: 40.0,
+            color: TEXTO,
+            bloque: Some(0),
+            caja: None,
+            letra: Letra::del_cuerpo(Hoja::Word, &lectura::Ajustes::default()),
+            recuadro,
+            renglones: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn la_voz_lee_lo_que_tiene_texto_y_no_imagenes_ni_rayas() {
+        let c = vec![
+            colocado_para_leer("Titulo", Clase::Titulo(1), 0.0, false),
+            colocado_para_leer("", Clase::Parrafo, 50.0, false),
+            colocado_para_leer("[imagen]", Clase::Parrafo, 100.0, true),
+            colocado_para_leer("", Clase::Regla, 150.0, false),
+            colocado_para_leer("Un parrafo.", Clase::Parrafo, 200.0, false),
+        ];
+        assert_eq!(para_leer(&c), vec![0, 4]);
+    }
+
+    #[test]
+    fn se_empieza_por_el_verde_y_se_mueve_con_lo_que_suena() {
+        let dir = std::env::temp_dir().join("pixpin-visor-voz");
+        let _ = std::fs::create_dir_all(&dir);
+        let ruta = dir.join("libro.md");
+        std::fs::write(&ruta, "x").unwrap();
+        let mut e = estado_de_prueba();
+        e.alto_doc = 1000.0;
+        e.colocados = (0..5).map(|i| colocado_para_leer("Algo.", Clase::Parrafo, i as f32 * 200.0, false)).collect();
+        let idx = para_leer(&e.colocados);
+        let f = fracciones_de(&e, &idx);
+        assert_eq!(voz_alta::parrafo_de_la_marca(&f, (3, 0.6)), Some(3));
+        // Lo que asoma arriba con la vista a media pagina.
+        e.y = 390.0;
+        assert_eq!(parrafo_arriba(&e, &idx), 2);
+        al_sonar(&mut e, 4, &ruta, marco());
+        assert_eq!(e.ajustes.voz, Some((4, 0.8)));
+        assert_eq!(lectura::leer(&ruta).voz, Some((4, 0.8)), "el verde queda junto al documento");
+        // El verde sale en el riel y quitarlo no toca los marcadores.
+        e.ajustes.marcadores = lectura::con_marcador(&[], 0.1, "⭐", 1);
+        let lista = lista_del_riel(&e);
+        assert_eq!(lista.iter().map(|m| m.emoji.as_str()).collect::<Vec<_>>(), vec!["⭐", voz_alta::EMOJI_DE_VOZ]);
+    }
+
+    #[test]
+    fn los_mandos_abren_espacio_a_tercios_y_el_candado_bloquea_el_lado() {
+        let dir = std::env::temp_dir().join("pixpin-visor-lados");
+        let _ = std::fs::create_dir_all(&dir);
+        let ruta = dir.join("tesis.md");
+        std::fs::write(&ruta, "x").unwrap();
+        let textos = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
+        let mut e = estado_de_prueba();
+        e.columna = 600.0;
+        assert_eq!(limites(&e).0, 0.0, "sin columna fijada no hay margenes");
+        assert_eq!(pasos_de_los_lados(&e), (0, 0, 2));
+        // Sin columna fijada se fija aqui, con solo el espacio pedido.
+        anadir_espacio(&mut e, false, true, &textos, &ruta);
+        assert_eq!(e.ajustes.columna, 600);
+        assert_eq!(e.ajustes.lados, Some((0, 200)));
+        assert_eq!(limites(&e), (0.0, 800.0));
+        anadir_espacio(&mut e, false, true, &textos, &ruta);
+        anadir_espacio(&mut e, false, true, &textos, &ruta);
+        assert_eq!(e.ajustes.lados, Some((0, 400)), "como mucho dos pasos");
+        assert!(e.aviso.is_some());
+        anadir_espacio(&mut e, true, true, &textos, &ruta);
+        assert_eq!(pasos_de_los_lados(&e), (1, 2, 2));
+        assert_eq!(limites(&e), (-200.0, 1000.0));
+        assert_eq!(lectura::leer(&ruta).lados, Some((200, 400)), "se guarda");
+        // El candado: a lo ancho no se mueve.
+        boton_de_lado(&mut e, lector::BotonLado::Candado, &textos, &ruta);
+        let x = e.x;
+        lado(&mut e, 300.0, marco());
+        assert_eq!(e.x, x);
     }
 
     #[test]

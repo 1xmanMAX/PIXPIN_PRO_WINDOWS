@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 
 // Las herramientas pineadas (C3, C4, L3) y el panel de propiedades de la
 // anotacion. Modulos hijos: ven los campos del gestor sin hacerlos publicos.
-mod herramienta;
+pub(crate) mod herramienta;
 mod panel;
 mod pizarra;
 mod sacar;

@@ -355,12 +355,6 @@ impl Capa {
         self.guardar_en(ruta, u)
     }
 
-    /// En que unidades esta el fichero (las de la ultima lectura o
-    /// escritura): con ellas se escribe su marco (`anot-….hoja`).
-    pub fn unidades(&self) -> Unidades {
-        self.corrida.0
-    }
-
     /// Lo mismo, devolviendo lo corrido: en el fichero la columna empieza
     /// `dx` mas alla (ver [`Capa::leer_corrida`]).
     pub fn guardar_corrida(&mut self, ruta: &Path, dx: f32) -> std::io::Result<()> {

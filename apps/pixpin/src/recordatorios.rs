@@ -534,6 +534,25 @@ pub fn programar(carpeta: &Path, id: &str, texto: &str, cuando_utc_ms: i64) {
     }
 }
 
+/// **Vuelve a poner la hora de la nota `id` a `cuando_utc_ms`** («Volver a
+/// llamar en» de la llamada secreta, v0.98.6 del movil:
+/// `Recordatorios.poner` + `recuerdaEn = cuando`): en el cuaderno, que es lo
+/// que viaja y sobrevive a cerrar el programa, y en el vigia. `Ok(false)` si
+/// la nota ya no esta (se borro mientras sonaba).
+pub fn volver_a_poner(carpeta: &Path, id: &str, cuando_utc_ms: i64) -> std::io::Result<bool> {
+    if !guardar(carpeta, id, Some(cuando_utc_ms))? {
+        return Ok(false);
+    }
+    let texto = Cuaderno::leer_de(carpeta)?
+        .mensajes
+        .iter()
+        .find(|m| m.id == id)
+        .map(Mensaje::resumen)
+        .unwrap_or_default();
+    programar(carpeta, id, &texto, cuando_utc_ms);
+    Ok(true)
+}
+
 /// Le quita al vigia una hora. Tampoco escribe en disco.
 pub fn cancelar(id: &str) {
     if let Some(v) = VIGIA.get() {
@@ -877,6 +896,21 @@ mod pruebas {
             !guardar(&c, "m9", Some(1)).unwrap(),
             "no hay mensaje m9: no puede decir que si"
         );
+        let _ = std::fs::remove_dir_all(&c);
+    }
+
+    /// «Volver a llamar en 15 min» (v0.98.6): la nota, que ya sono y perdio
+    /// su hora, la vuelve a tener en el campo del movil, y viaja.
+    #[test]
+    fn volver_a_llamar_pone_otra_vez_la_hora_en_el_campo_del_movil() {
+        let c = carpeta("volver");
+        cuaderno::anadir(&c, &nota("m1", None, "recado")).unwrap();
+        assert!(volver_a_poner(&c, "m1", 1_758_351_600_000).unwrap());
+        let cu = Cuaderno::leer_de(&c).unwrap();
+        assert_eq!(hora_de(&cu.mensajes[0]), Some(1_758_351_600_000));
+        // Caso negativo: una nota que ya no esta no se inventa.
+        assert!(!volver_a_poner(&c, "m9", 1).unwrap());
+        assert_eq!(Cuaderno::leer_de(&c).unwrap().mensajes.len(), 1);
         let _ = std::fs::remove_dir_all(&c);
     }
 

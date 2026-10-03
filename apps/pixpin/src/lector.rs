@@ -124,6 +124,99 @@ pub fn punto(x: f32, y: f32) -> Punto {
     }
 }
 
+/// **La tira de emoticonos lleva el verde al final** (`ElegirEmojiDeMarca`
+/// con `conVerde = true` del movil): el marcador de la voz, que es uno solo
+/// y se pone «aqui» para que se lea desde ahi.
+pub const VERDE_EN_LA_TIRA: usize = EMOJIS.len();
+
+/// El emoticono de la celda `i` de la tira: los de marcar y, el ultimo, el verde.
+pub fn emoji_de_la_tira(i: usize) -> &'static str {
+    EMOJIS.get(i).copied().unwrap_or(pixpin_docs::voz_alta::EMOJI_DE_VOZ)
+}
+
+/// Un boton de los mandos de los lados.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BotonLado {
+    /// Mas espacio (`true`) o menos a la izquierda.
+    Izquierda(bool),
+    Derecha(bool),
+    /// El candado del desplazamiento de lado.
+    Candado,
+}
+
+/// Si el raton esta en la franja de abajo, donde salen los mandos de los
+/// lados (el «tocar para que salgan» del movil, con raton).
+pub fn raton_abajo(raton_y: f32, alto: f32, e: f32) -> bool {
+    raton_y > alto - 110.0 * e
+}
+
+/// **Los mandos de los lados** (`MandosDeLosLadosDeLector` del movil), abajo
+/// y pequenos: a la izquierda el espacio de la izquierda (−, ⟵, +); en
+/// medio el candado del desplazamiento de lado; a la derecha el espacio de
+/// la derecha. `pasos_*` son los pasos puestos y `tope` los que caben (en
+/// un PDF, uno: el espacio esta o no). El − solo sale si hay algo que
+/// quitar; el + se apaga en el tope.
+#[allow(clippy::too_many_arguments)] // lo que se ve depende de los dos lados y del candado
+pub fn pintar_mandos_de_los_lados(
+    p: &Pintor<'_>,
+    ancho: f32,
+    alto: f32,
+    e: f32,
+    pasos_izq: u32,
+    pasos_der: u32,
+    tope: u32,
+    sin_lado: bool,
+) -> Vec<(RectF, BotonLado)> {
+    let mut botones = Vec::new();
+    let lado = 36.0 * e;
+    let y = alto - 12.0 * e - lado - 20.0 * e;
+    let fondo = con_alfa(OSCURO, 0.55);
+    let tam = 16.0 * e;
+    let centrado = |p: &Pintor<'_>, t: &str, r: RectF, color: Color| {
+        let (w, h) = p.medir_texto(t, tam);
+        p.texto(t, r.x + (r.ancho - w) / 2.0, r.y + (r.alto - h) / 2.0, tam, color);
+    };
+    let mut pastilla = |p: &Pintor<'_>, izquierda: bool, x: f32, pasos: u32| -> f32 {
+        let flecha = if izquierda { "⟵" } else { "⟶" };
+        let (wf, _) = p.medir_texto(flecha, tam);
+        let menos = pasos > 0;
+        let ancho_flecha = wf + if menos { 4.0 } else { 20.0 } * e;
+        let total = ancho_flecha + lado + if menos { lado } else { 0.0 };
+        let x = if izquierda { x } else { x - total };
+        p.rellenar_redondeado(RectF { x, y, ancho: total, alto: lado }, lado / 2.0, fondo);
+        let mut xx = x;
+        if menos {
+            let r = RectF { x: xx, y, ancho: lado, alto: lado };
+            centrado(p, "−", r, Color::BLANCO);
+            botones.push((r, if izquierda { BotonLado::Izquierda(false) } else { BotonLado::Derecha(false) }));
+            xx += lado;
+        }
+        centrado(p, flecha, RectF { x: xx, y, ancho: ancho_flecha, alto: lado }, con_alfa(Color::BLANCO, 0.8));
+        xx += ancho_flecha;
+        let r = RectF { x: xx, y, ancho: lado, alto: lado };
+        let lleno = pasos >= tope;
+        centrado(p, "+", r, con_alfa(Color::BLANCO, if lleno { 0.3 } else { 1.0 }));
+        if !lleno {
+            botones.push((r, if izquierda { BotonLado::Izquierda(true) } else { BotonLado::Derecha(true) }));
+        }
+        total
+    };
+    pastilla(p, true, 14.0 * e, pasos_izq);
+    pastilla(p, false, ancho - 14.0 * e, pasos_der);
+    // El candado, en medio.
+    let candado = if sin_lado { "🔒" } else { "🔓" };
+    let (wc, _) = p.medir_texto(candado, tam);
+    let (wd, _) = p.medir_texto(" ⟷", tam);
+    let total = wc + wd + 24.0 * e;
+    let r = RectF { x: (ancho - total) / 2.0, y, ancho: total, alto: lado };
+    p.rellenar_redondeado(r, lado / 2.0, fondo);
+    let (_, h) = p.medir_texto(candado, tam);
+    p.texto_color(candado, r.x + 12.0 * e, r.y + (lado - h) / 2.0, tam, if sin_lado { DORADO } else { Color::BLANCO });
+    p.texto(" ⟷", r.x + 12.0 * e + wc, r.y + (lado - h) / 2.0, tam, Color::BLANCO);
+    botones.push((r, BotonLado::Candado));
+    botones
+}
+
 /// El riel colocado para esta ventana. La tira de emoticonos va debajo de
 /// la pastilla del nombre (o de la barra de anotar), que es lo que hay
 /// arriba en el centro.
@@ -135,7 +228,7 @@ pub fn riel(ancho: f32, alto: f32, escala_por_cien: u32, cuantas: usize, tira: b
         escala_por_cien,
         cuantas,
         tira,
-        EMOJIS.len(),
+        EMOJIS.len() + 1,
         (60.0 * e) as i32,
     )
 }
@@ -235,9 +328,9 @@ pub fn pintar_riel(
                 );
             }
             let tam = 22.0 * e;
-            let (w, h) = p.medir_texto(EMOJIS[i], tam);
+            let (w, h) = p.medir_texto(emoji_de_la_tira(i), tam);
             p.texto_color(
-                EMOJIS[i],
+                emoji_de_la_tira(i),
                 r.x + (r.ancho - w) / 2.0,
                 r.y + (r.alto - h) / 2.0,
                 tam,
@@ -333,6 +426,16 @@ mod pruebas {
         assert!(tiene_lector("notas.md"));
         assert!(tiene_lector("gastos.csv"));
         assert!(!tiene_lector("foto.png"));
+    }
+
+    #[test]
+    fn la_tira_acaba_en_el_verde_de_la_voz() {
+        assert_eq!(emoji_de_la_tira(0), EMOJIS[0]);
+        assert_eq!(emoji_de_la_tira(VERDE_EN_LA_TIRA), pixpin_docs::voz_alta::EMOJI_DE_VOZ);
+        let r = riel(1600.0, 900.0, 100, 0, true);
+        assert_eq!(r.tira.expect("tira").celdas.len(), EMOJIS.len() + 1);
+        assert!(raton_abajo(850.0, 900.0, 1.0));
+        assert!(!raton_abajo(400.0, 900.0, 1.0));
     }
 
     #[test]

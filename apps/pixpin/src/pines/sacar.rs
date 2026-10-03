@@ -116,6 +116,58 @@ impl Pines {
         Ok(id)
     }
 
+    /// **La lista de tareas de un mensaje del chat**, sacada a la pantalla
+    /// («Sacar a la pantalla» del menu del mensaje). Lo que se toca en el pin
+    /// se guarda en ese mensaje (ver `herramienta::Vinculo`).
+    ///
+    /// Si ese mensaje ya tiene su pin abierto no sale otro: dos pines de la
+    /// misma lista se pisarian el uno al otro sin saberlo.
+    pub fn pinear_lista_del_chat(
+        &mut self,
+        vinculo: herramienta::Vinculo,
+        monitor: &Monitor,
+    ) -> Result<u64> {
+        if let Some((id, _)) = self
+            .herramientas
+            .iter()
+            .find(|(id, h)| h.vinculo.as_ref() == Some(&vinculo) && self.vivos.contains_key(id))
+        {
+            tracing::info!(id, "esa lista ya esta en la pantalla");
+            return Ok(*id);
+        }
+        let m = pixpin_proyecto::cuaderno::Cuaderno::leer_de(&vinculo.carpeta)
+            .context("no se pudo leer el cuaderno del proyecto")?
+            .mensajes
+            .into_iter()
+            .find(|m| m.id == vinculo.mensaje)
+            .context("ese mensaje ya no esta")?;
+        let cual = m
+            .miniapp
+            .as_deref()
+            .and_then(|c| pixpin_proyecto::mini::TODAS.into_iter().find(|t| *t == c))
+            .filter(|c| *c == pixpin_proyecto::mini::TAREAS)
+            .context("ese mensaje no es una lista de tareas")?;
+        let mut h = Herramienta::nueva(cual, m.texto.clone());
+        h.vinculo = Some(vinculo.clone());
+        let moneda = herramienta::moneda(textos());
+        let (ancho, alto) = herramienta::tamano_natural(&h, monitor.escala_por_cien, &moneda);
+        let contenido = Contenido::Herramienta { ancho, alto };
+        let region = self.sitio(&contenido, None, monitor);
+        let id = self
+            .almacen
+            .borrow_mut()
+            .guardar_nota(
+                &m.texto,
+                &herramienta::origen_vinculado(cual, &vinculo),
+                Some(Pines::guardado_desde(region, monitor.escala_por_cien, 100)),
+            )
+            .context("no se pudo guardar la lista")?;
+        self.herramientas.insert(id, h);
+        self.crear_ventana(id, contenido, region, monitor.escala_por_cien)?;
+        tracing::info!(id, mensaje = %vinculo.mensaje, "lista del chat pineada");
+        Ok(id)
+    }
+
     /// La pizarra, el lienzo y la hoja: pines de imagen con su fondo hecho
     /// aqui y lo dibujado encima, como en el movil.
     fn pinear_dibujo(&mut self, app: MiniApp, donde: Option<Punto>, monitor: &Monitor) -> Result<u64> {
@@ -184,7 +236,20 @@ impl Pines {
         texto: Option<&str>,
     ) -> Option<Contenido> {
         if let Some(cual) = herramienta::cual_de_origen(origen) {
-            let h = Herramienta::nueva(cual, texto?.to_string());
+            let vinculo = herramienta::vinculo_de_origen(origen);
+            // Una lista del chat vuelve con lo que diga HOY su mensaje: el
+            // chat o el movil pueden haberla cambiado con PixPin cerrado. Si
+            // el mensaje ya no esta, con lo ultimo que se vio.
+            let al_dia = vinculo.as_ref().and_then(|v| {
+                pixpin_proyecto::cuaderno::Cuaderno::leer_de(&v.carpeta)
+                    .ok()?
+                    .mensajes
+                    .into_iter()
+                    .find(|m| m.id == v.mensaje)
+                    .map(|m| m.texto)
+            });
+            let mut h = Herramienta::nueva(cual, al_dia.or(texto.map(str::to_string))?);
+            h.vinculo = vinculo;
             let (ancho, alto) = herramienta::tamano_natural(&h, 100, &herramienta::moneda(textos()));
             self.herramientas.insert(id, h);
             return Some(Contenido::Herramienta { ancho, alto });
@@ -231,6 +296,13 @@ impl Pines {
         let Some(h) = self.herramientas.get(&id) else {
             return Ok(());
         };
+        // Una lista del chat ya se guardo en su mensaje al cumplir el toque
+        // (`dentro`, con el cerrojo del cuaderno); aqui solo se le dice al
+        // chat que relea, y la nota del almacen se queda como copia por si
+        // el mensaje desaparece.
+        if h.vinculo.is_some() {
+            crate::ventana_chat::refrescar();
+        }
         let ruta = {
             let a = self.almacen.borrow();
             let e = a
@@ -291,7 +363,8 @@ impl Pines {
         let Some(h) = self.herramientas.get_mut(&id) else {
             return Ok(());
         };
-        let hecho = match cambio {
+        // Lo que puede cambiar el documento: un toque, una tecla, una letra.
+        let interior = |h: &mut Herramienta| match cambio {
             CambioPin::ClicInterior { x, y } => {
                 let e = h.clic(Punto { x, y }, tam, escala, &moneda, ahora);
                 h.cumplir(e, tam, escala, &moneda, ahora, azar)
@@ -310,6 +383,46 @@ impl Pines {
                 azar,
             ),
             CambioPin::CaracterInterior(c) => h.caracter(c, tam, escala, &moneda, ahora, azar),
+            _ => Hecho::Nada,
+        };
+        let hecho = match cambio {
+            CambioPin::ClicInterior { .. }
+            | CambioPin::TeclaInterior { .. }
+            | CambioPin::CaracterInterior(_) => match h.vinculo.clone() {
+                None => interior(h),
+                // Una lista del chat: se lee su mensaje, se cumple el toque
+                // sobre lo que diga AHORA (el chat pudo cambiarlo) y se
+                // guarda, todo con el cerrojo del cuaderno tomado.
+                Some(v) => {
+                    let mut hecho = None;
+                    let mut releida = false;
+                    let guardado = pixpin_proyecto::cuaderno::cambiar(&v.carpeta, &v.mensaje, |m| {
+                        if m.texto != h.documento {
+                            h.documento = m.texto.clone();
+                            releida = true;
+                        }
+                        let e = interior(h);
+                        hecho = Some(e);
+                        if e == Hecho::Guardar {
+                            m.texto = h.documento.clone();
+                            true
+                        } else {
+                            false
+                        }
+                    });
+                    if let Err(e) = &guardado {
+                        tracing::warn!(?e, id, "no se pudo guardar la lista en su mensaje");
+                    }
+                    match hecho {
+                        // Releida, hay que repintar aunque el toque no hiciera nada.
+                        Some(Hecho::Nada) if releida => Hecho::Repintar,
+                        Some(e) => e,
+                        // El mensaje ya no esta (o no se pudo leer): la lista
+                        // sigue viva en el pin y en su copia del almacen.
+                        None => interior(h),
+                    }
+                }
+            },
             CambioPin::RuedaInterior { delta } => {
                 if h.rueda(delta, tam, escala, &moneda, ahora) {
                     Hecho::Repintar

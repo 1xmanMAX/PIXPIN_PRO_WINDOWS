@@ -66,15 +66,18 @@ mod editor;
 mod fondo_lienzo;
 mod foto_anotada;
 mod fusionar_paginas;
+mod galeria_capturas;
 mod gif;
 mod grupos_ventanas;
 mod grabador;
 mod imagenes_lienzo;
+mod leer_en_voz;
 mod lector;
 mod lector_pdf;
 mod lector_pdf_proyecto;
 mod lector_tinta;
 mod llamada;
+mod marco_de_la_tinta;
 mod medir_fotogramas;
 mod mini_panel;
 mod miniaturas;
@@ -84,10 +87,12 @@ mod overlay;
 mod panel_dibujo;
 mod pdf_del_proyecto;
 mod pdf_en_chat;
+mod pedidos;
 mod pila_capturas;
 mod pin_vivo;
 mod pines;
 mod pronunciar;
+mod punto_de_proyecto;
 mod recibir;
 mod recordatorios;
 mod renombrar_doc;
@@ -156,6 +161,8 @@ const ID_ABRIR_DOCUMENTO: u32 = 902;
 /// «Grupos de ventanas…» (H9): guardar y reabrir lienzos, lectores y notas
 /// con su sitio. Sin atajo: en el movil tambien es una entrada de menu.
 const ID_GRUPOS_VENTANAS: u32 = 903;
+/// «Galeria de capturas…» (2-oct): todas las capturas guardadas.
+const ID_GALERIA_CAPTURAS: u32 = 904;
 
 const _: () = assert!(
     ID_VENTANA_UNIVERSO >= pixpin_shell::ventana::ID_MENU_GRUPO_TOPE,
@@ -190,6 +197,7 @@ fn acciones_de_bandeja(t: impl Fn(&str) -> String) -> Vec<(u32, String)> {
     // lo minimo para abrirlo desde la bandeja y probarlo a mano.
     v.push((ID_ABRIR_DOCUMENTO, t("bandeja-abrir-documento")));
     v.push((ID_GRUPOS_VENTANAS, t("bandeja-grupos-ventanas")));
+    v.push((ID_GALERIA_CAPTURAS, t("bandeja-galeria-capturas")));
     v.push((ID_VENTANA_EDITOR, "Editor".to_string()));
     v
 }
@@ -488,6 +496,9 @@ fn arrancar(
     // esperar para que me aparezca». Se puede apagar con `[sincro] presencia
     // = false`.
     sincronizar::presencia::instalar(ubicacion.raiz().to_path_buf(), config.sincro.presencia);
+    // 7d. El marco de la tinta de lo ya anotado (K21): una vez por almacen,
+    // en un hilo aparte; no toca ninguna tinta.
+    marco_de_la_tinta::al_arrancar(ubicacion.raiz().to_path_buf());
 
     std::thread::spawn(|| match pixpin_capture::Dispositivo::nuevo() {
         Ok(_) => tracing::debug!("dispositivo D3D11 precalentado"),
@@ -580,6 +591,9 @@ fn arrancar(
         nivel: decision.nivel,
         medir_fotogramas: config.rendimiento.medir_fotogramas,
     };
+    // Las hojas que se abren desde una nota (paginas vivas, enlaces), con
+    // los mismos ajustes del lienzo.
+    notas_md::paginas_vivas::poner_opciones_del_lienzo(opciones_lienzo);
     ventana_chat::lanzar(lengua, ubicacion.clone(), opciones_lienzo);
 
     // 8e. Los recordatorios. Su hilo duerme hasta que vence el proximo y solo
@@ -872,75 +886,49 @@ fn arrancar(
                 Continuar::Si
             }
             Evento::AbrirFicheros(rutas) => {
-                // Un Word, un libro o un PDF abiertos desde el Explorador
-                // («Abrir con», doble clic) se LEEN, en su lector: es lo que
-                // se pidio al abrirlos. Como pin solo eran una ficha con su
-                // icono, que no se puede leer.
-                let (a_leer, rutas): (Vec<_>, Vec<_>) = rutas
-                    .into_iter()
-                    .partition(|r| lector::se_lee_al_tocar(&pixpin_docs::nombre(r)));
-                for ruta in &a_leer {
-                    lector::abrir_en_su_lector(lengua, &ubicacion, ruta, &pixpin_docs::nombre(ruta));
-                }
-                // Cada ruta cae en el pin que le toque por su extension:
-                // imagen, video o ficha de archivo. Eso ya lo decide el
-                // gestor, que es quien conoce los tipos.
-                // Un `.pixpin` no es un fichero que pinear: es un proyecto
-                // entero, y cada hoja suya sale como su propio pin.
-                let (proyectos, sueltos): (Vec<_>, Vec<_>) = rutas.into_iter().partition(|r| {
-                    r.extension()
-                        .is_some_and(|e| e.eq_ignore_ascii_case("pixpin"))
-                });
-                // Y ademas entra en la LISTA de proyectos, que es donde el
-                // usuario lo busca: un `.pixpin` es una conversacion entera.
-                // Los pines de sus hojas siguen saliendo, que es lo de antes.
-                for ruta in &proyectos {
-                    let hecho = pixpin_proyecto::Paquete::abrir(ruta)
-                        .map_err(|e| e.to_string())
-                        .and_then(|p| {
-                            pixpin_proyecto::almacen::importar_paquete(
-                                ubicacion.raiz(),
-                                &p,
-                                &identidad_equipo,
-                            )
-                            .map_err(|e| e.to_string())
-                        });
-                    match hecho {
-                        Ok(f) => tracing::info!(id = %f.id, nombre = %f.nombre, "proyecto en la lista"),
-                        Err(e) => tracing::warn!(%e, ruta = %ruta.display(), "no se pudo importar"),
-                    }
-                }
-                let hecho = preparar_pines(
+                abrir_ficheros(
+                    rutas,
+                    lengua,
+                    &ubicacion,
+                    &identidad_equipo,
                     &mut recursos_overlay,
                     &mut pines,
-                    &ubicacion,
                     &textos,
                     hwnd,
                     ritmo_video,
-                )
-                .and_then(|p| {
-                    let d = pixpin_capture::enumerar_monitores()?;
-                    let m = d.principal().context("sin monitor")?.to_owned();
-                    let mut cuantos = 0;
-                    for proyecto in &proyectos {
-                        // Un proyecto que falle no puede llevarse los
-                        // demas ficheros que venian con el.
-                        match p.abrir_paquete(proyecto, &m, &ubicacion) {
-                            Ok((hechas, _)) => cuantos += hechas,
-                            Err(e) => tracing::warn!(?e, ruta = %proyecto.display(), "proyecto que no se pudo abrir"),
-                        }
-                    }
-                    if !sueltos.is_empty() {
-                        cuantos += pinear_portapapeles(
-                            p,
-                            pixpin_codec::ContenidoPortapapeles::Rutas(sueltos),
-                        )?;
-                    }
-                    Ok(cuantos)
-                });
-                match hecho {
-                    Ok(cuantos) => tracing::info!(cuantos, "ficheros abiertos como pines"),
-                    Err(e) => tracing::warn!(?e, "no se pudieron abrir los ficheros"),
+                );
+                Continuar::Si
+            }
+            // Un pedido de otro programa (`docs/protocolo-pedidos.md`): la
+            // ventana ya le contesto; aqui se hace. Lo que no sale se dice con
+            // el globo, que es lo unico que el usuario ve cuando lo pidio desde
+            // un lanzador con PixPin escondida en la bandeja.
+            Evento::Pedido(json) => {
+                let hecho = pedidos::atender(
+                    &json,
+                    &pedidos::Contexto {
+                        idioma: lengua,
+                        ubicacion: &ubicacion,
+                        opciones: opciones_lienzo,
+                        aparato: &identidad_equipo,
+                        textos: &textos,
+                    },
+                );
+                if let Some(aviso) = hecho.aviso {
+                    let _ = bandeja.avisar(&textos.t("app-nombre"), &aviso);
+                }
+                if !hecho.ficheros.is_empty() {
+                    abrir_ficheros(
+                        hecho.ficheros,
+                        lengua,
+                        &ubicacion,
+                        &identidad_equipo,
+                        &mut recursos_overlay,
+                        &mut pines,
+                        &textos,
+                        hwnd,
+                        ritmo_video,
+                    );
                 }
                 Continuar::Si
             }
@@ -966,6 +954,10 @@ fn arrancar(
                     // Word, libro, pagina o PDF: cada uno a su lector.
                     lector::abrir_en_su_lector(lengua, &ubicacion, ruta, &pixpin_docs::nombre(ruta));
                 }
+                Continuar::Si
+            }
+            Evento::Menu(id) if id == ID_GALERIA_CAPTURAS => {
+                galeria_capturas::abrir(lengua, ubicacion.clone());
                 Continuar::Si
             }
             Evento::Menu(id) if id == ID_GRUPOS_VENTANAS => {
@@ -1011,6 +1003,13 @@ fn arrancar(
             }
             _ if modo_overlay.is_some() => {
                 let (modo, inicio) = modo_overlay.expect("comprobado en la guarda");
+                // Cuando lo pidio la mano: la pulsacion del gesto (la vio el
+                // gancho) o el mensaje del atajo. El overlay mide desde aqui.
+                let mut desde_ms = if inicio.is_some() {
+                    pixpin_shell::gestos::hora_de_la_pulsacion()
+                } else {
+                    pixpin_shell::gestos::hora_del_mensaje()
+                };
                 // La cuenta atras va AQUI y no antes de decidir el modo:
                 // hace falta tener los recursos de dibujo montados para
                 // ensenar el cartel, y montarlos es lo primero que hace
@@ -1028,6 +1027,7 @@ fn arrancar(
                             }
                         }
                     }
+                    desde_ms = pixpin_shell::gestos::reloj_ms();
                 }
                 let anotar_al_pinear = comando == Some(comandos::Comando::CapturarYAnotar);
                 tracing::info!(?modo, ?inicio, anotar_al_pinear, "abrir captura");
@@ -1053,7 +1053,15 @@ fn arrancar(
                     nada => Recursos::nuevos().map(|r| nada.insert(r)),
                 }
                 .and_then(|r| {
-                    ejecutar_overlay(r, decision.nivel, modo, &etiquetas_barra, formato, inicio)
+                    ejecutar_overlay(
+                        r,
+                        decision.nivel,
+                        modo,
+                        &etiquetas_barra,
+                        formato,
+                        inicio,
+                        desde_ms,
+                    )
                 });
                 if let Some(g) = &gancho {
                     g.suspender(false);
@@ -1478,14 +1486,25 @@ fn arrancar(
                 } = pedido;
                 // F5: las marcas de este lienzo viven junto a su dibujo.
                 let _marcas = ventana_editor::marcas::junto_a(&ruta);
-                let resultado = ventana_editor::abrir(
+                // Las imagenes pegadas en el lienzo del pin, en la carpeta
+                // de al lado del dibujo (`imagenes_lienzo`).
+                let fotos = imagenes_lienzo::fotos_junto_a(&ruta, &escena);
+                let mut pegadas = Vec::new();
+                let resultado = ventana_editor::abrir_con_pegadas(
                     escena,
                     config.enganche,
                     decision.nivel,
                     config.rendimiento.medir_fotogramas,
                     Some(fondo),
-                    &[],
+                    &fotos,
+                    &mut pegadas,
                 );
+                if let Ok((escena, _)) = &resultado
+                    && let Err(e) =
+                        imagenes_lienzo::guardar_pegadas_junto_a(&ruta, escena, &pegadas)
+                {
+                    tracing::error!(?e, "no se pudieron guardar las imagenes pegadas del pin");
+                }
                 p.terminar_lienzo(id, &ruta, habia_fichero, resultado.map(|(e, _)| e));
                 p.purgar();
             }
@@ -1548,9 +1567,34 @@ fn atender_recordatorios(
     ritmo_video: u32,
 ) {
     let perdidas = llamada::tomar_perdidas();
+    let volver = llamada::tomar_volver();
     let vencidos = recordatorios::tomar_vencidos();
-    if vencidos.is_empty() && perdidas.is_empty() {
+    if vencidos.is_empty() && perdidas.is_empty() && volver.is_empty() {
         return;
+    }
+    // «Volver a llamar en» (B11, v0.98.6): la misma alarma a otra hora y el
+    // aviso de cuando, como el `Toast` del movil.
+    for v in volver {
+        match recordatorios::volver_a_poner(&v.carpeta, &v.mensaje, v.cuando_utc_ms) {
+            Ok(true) => {
+                let local = pixpin_shell::entorno::a_local(v.cuando_utc_ms);
+                let mut args = fluent_bundle::FluentArgs::new();
+                args.set(
+                    "hora",
+                    recordatorios::cuando_legible(local, pixpin_shell::entorno::ahora_local_ms()),
+                );
+                let mut aviso = pixpin_shell::aviso::Aviso::sobre_la_bandeja(hwnd);
+                if let Err(e) = aviso.mostrar(
+                    &textos.t("llamada-titulo"),
+                    &textos.t_args("llamada-vuelve-a-las", &args),
+                ) {
+                    tracing::warn!(?e, "no se pudo avisar de cuando vuelve la llamada");
+                }
+                ventana_chat::refrescar();
+            }
+            Ok(false) => tracing::warn!(mensaje = %v.mensaje, "la nota de la llamada ya no esta"),
+            Err(e) => tracing::warn!(?e, "no se pudo volver a poner la llamada"),
+        }
     }
     // El monitor se busca UNA vez para todos: enumerar monitores es una
     // llamada al sistema y dos recordatorios para el mismo minuto son
@@ -1631,6 +1675,115 @@ fn rotulos_de_la_llamada(textos: &Catalogo) -> llamada::Rotulos {
         altavoz: textos.t("llamada-altavoz"),
         llamada: textos.t("llamada-titulo"),
         perdida: textos.t("llamada-perdida"),
+        volver_en: textos.t("llamada-volver-en"),
+    }
+}
+
+/// Abre ficheros como «Abrir con PixPin»: cada uno en lo suyo (una nota en
+/// su editor, un documento en su lector, un `.pixpin` en la lista de
+/// proyectos y como pines, lo demas como pin).
+///
+/// Aparte del bucle porque llegan por dos sitios —otra copia del programa
+/// (`Evento::AbrirFicheros`) y un pedido `abrir` de tipo `fichero`— y los
+/// dos tienen que hacer exactamente lo mismo.
+#[allow(clippy::too_many_arguments)]
+fn abrir_ficheros(
+    rutas: Vec<std::path::PathBuf>,
+    lengua: pixpin_store::Idioma,
+    ubicacion: &Ubicacion,
+    identidad_equipo: &str,
+    recursos_overlay: &mut Option<Recursos>,
+    pines: &mut Option<Pines>,
+    textos: &Catalogo,
+    hwnd: windows::Win32::Foundation::HWND,
+    ritmo_video: u32,
+) {
+    // Un Word, un libro o un PDF abiertos desde el Explorador
+    // («Abrir con», doble clic) se LEEN, en su lector: es lo que
+    // se pidio al abrirlos. Como pin solo eran una ficha con su
+    // icono, que no se puede leer.
+    // Un Markdown, en el editor de notas (no en el navegador).
+    let (notas, rutas): (Vec<_>, Vec<_>) =
+        rutas.into_iter().partition(|r| notas_md::es_markdown(r));
+    for ruta in notas {
+        notas_md::abrir(lengua, ubicacion.clone(), notas_md::Destino::Fichero { ruta });
+    }
+    let (a_leer, rutas): (Vec<_>, Vec<_>) = rutas
+        .into_iter()
+        .partition(|r| lector::se_lee_al_tocar(&pixpin_docs::nombre(r)));
+    for ruta in &a_leer {
+        lector::abrir_en_su_lector(lengua, ubicacion, ruta, &pixpin_docs::nombre(ruta));
+    }
+    // Cada ruta cae en el pin que le toque por su extension:
+    // imagen, video o ficha de archivo. Eso ya lo decide el
+    // gestor, que es quien conoce los tipos.
+    // La lista de tareas de un mensaje del chat («Sacar a la pantalla»):
+    // no es un fichero, es la ruta que dice de que mensaje es.
+    let (listas, rutas): (Vec<_>, Vec<_>) = rutas
+        .into_iter()
+        .partition(|r| pines::herramienta::vinculo_de_ruta(r).is_some());
+    // Un `.pixpin` no es un fichero que pinear: es un proyecto
+    // entero, y cada hoja suya sale como su propio pin.
+    let (proyectos, sueltos): (Vec<_>, Vec<_>) = rutas.into_iter().partition(|r| {
+        r.extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("pixpin"))
+    });
+    // Y ademas entra en la LISTA de proyectos, que es donde el
+    // usuario lo busca: un `.pixpin` es una conversacion entera.
+    // Los pines de sus hojas siguen saliendo, que es lo de antes.
+    for ruta in &proyectos {
+        let hecho = pixpin_proyecto::Paquete::abrir(ruta)
+            .map_err(|e| e.to_string())
+            .and_then(|p| {
+                pixpin_proyecto::almacen::importar_paquete(
+                    ubicacion.raiz(),
+                    &p,
+                    identidad_equipo,
+                )
+                .map_err(|e| e.to_string())
+            });
+        match hecho {
+            Ok(f) => tracing::info!(id = %f.id, nombre = %f.nombre, "proyecto en la lista"),
+            Err(e) => tracing::warn!(%e, ruta = %ruta.display(), "no se pudo importar"),
+        }
+    }
+    let hecho = preparar_pines(
+        recursos_overlay,
+        pines,
+        ubicacion,
+        textos,
+        hwnd,
+        ritmo_video,
+    )
+    .and_then(|p| {
+        let d = pixpin_capture::enumerar_monitores()?;
+        let m = d.principal().context("sin monitor")?.to_owned();
+        let mut cuantos = 0;
+        for v in listas.iter().filter_map(|r| pines::herramienta::vinculo_de_ruta(r)) {
+            match p.pinear_lista_del_chat(v, &m) {
+                Ok(_) => cuantos += 1,
+                Err(e) => tracing::warn!(?e, "no se pudo sacar la lista a la pantalla"),
+            }
+        }
+        for proyecto in &proyectos {
+            // Un proyecto que falle no puede llevarse los
+            // demas ficheros que venian con el.
+            match p.abrir_paquete(proyecto, &m, ubicacion) {
+                Ok((hechas, _)) => cuantos += hechas,
+                Err(e) => tracing::warn!(?e, ruta = %proyecto.display(), "proyecto que no se pudo abrir"),
+            }
+        }
+        if !sueltos.is_empty() {
+            cuantos += pinear_portapapeles(
+                p,
+                pixpin_codec::ContenidoPortapapeles::Rutas(sueltos),
+            )?;
+        }
+        Ok(cuantos)
+    });
+    match hecho {
+        Ok(cuantos) => tracing::info!(cuantos, "ficheros abiertos como pines"),
+        Err(e) => tracing::warn!(?e, "no se pudieron abrir los ficheros"),
     }
 }
 

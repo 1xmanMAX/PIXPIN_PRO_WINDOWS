@@ -16,8 +16,11 @@
 //!   riel que lleva a ellos.
 //! - **PDF**: las hojas una debajo de otra, con su margen a cada lado: como
 //!   **lineas** (SVG, `pixpin_pdf::plano_web`) si la hoja es vectorial, y
-//!   como fotografia solo si es un escaneo o trae algo que no se entiende; lo anotado encima de cada una (tambien lo de los
-//!   margenes) y los marcadores saltando a su hoja y a su altura.
+//!   como imagen solo si es un escaneo o trae algo que no se entiende, o
+//!   todas con el interruptor «Texto buscable» quitado (Android v0.98.1),
+//!   con su texto invisible encima para seguir buscandolo; lo anotado encima
+//!   de cada una (tambien lo de los margenes), atado a su hoja
+//!   (`.hoja-pdf`), y los marcadores saltando a su hoja y a su altura.
 //!
 //! Las dos son la misma clase de hoja de la pagina web de siempre
 //! (`exportar_html::HojaDocumento`), asi que los mandos le vienen dados por
@@ -51,10 +54,6 @@ use crate::visor::Colocado;
 /// Lo que mide una hoja de PDF en la pagina web, en pixeles CSS (la del
 /// movil). La tinta la mide en `vista::ANCHO_HOJA` unidades.
 const COLUMNA_PDF: f32 = 800.0;
-/// La calidad del JPEG de cada hoja del PDF. Una hoja de texto a 80 pesaba
-/// mas de medio mega; a 72 la letra sigue limpia al doble de aumento y un
-/// articulo de treinta hojas baja de los diez megas.
-const CALIDAD_PDF: u8 = 72;
 /// El aire entre dos hojas del PDF.
 const ENTRE_HOJAS: f32 = 8.0;
 /// El guion que despliega en SVG las hojas que viajan como lineas.
@@ -491,6 +490,11 @@ pub(crate) struct HojaPdf {
     /// unidades de la columna, si la pagina es vectorial y se entiende
     /// entera. Con el, `foto` no hace falta y no se pinta.
     pub plano: Option<String>,
+    /// **El texto de la hoja, invisible encima de su foto** ([`capa_de_texto`]):
+    /// una hoja que va como imagen se sigue pudiendo buscar, seleccionar y
+    /// leer en alto. Vacio si no tiene texto o si va como lineas (que ya
+    /// llevan el suyo).
+    pub texto: String,
     /// El alto de la hoja en unidades del lector (a `vista::ANCHO_HOJA` de ancho).
     pub alto: f32,
     pub tinta: Escena,
@@ -515,6 +519,11 @@ pub(crate) fn hoja_de_pdf(nombre: &str, hojas: &[HojaPdf], marcas_texto: &str) -
     let mut hay_planos = false;
     for (n, h) in hojas.iter().enumerate() {
         let alto = (h.alto as f64 * k).max(1.0);
+        // **El bloque al que se ata lo anotado es la hoja** (`.hoja-pdf`,
+        // Android v0.98.3), sea SVG o imagen: el visor vuelve a medir los
+        // bloques al abrir, y contar las `img` ataba la tinta de la hoja 1 a
+        // la primera hoja que fuera foto.
+        cuerpo.push_str("<div class=\"hoja-pdf\">");
         match (&h.plano, &h.foto) {
             // **Como lineas** (`PlanoWeb` del movil): un SVG vacio y su
             // paquete al lado, que el guion despliega al cargar. Se amplia
@@ -522,7 +531,7 @@ pub(crate) fn hoja_de_pdf(nombre: &str, hojas: &[HojaPdf], marcas_texto: &str) -
             (Some(json), _) => {
                 let id = format!("plano-{n}");
                 cuerpo.push_str(&format!(
-                    "<svg data-b class=\"plano-hoja\" id=\"{id}\" role=\"img\" aria-label=\"Hoja {}\" \
+                    "<svg class=\"plano-hoja\" id=\"{id}\" role=\"img\" aria-label=\"Hoja {}\" \
                      viewBox=\"0 0 {} {}\" preserveAspectRatio=\"xMidYMin meet\" width=\"{}\" height=\"{}\"></svg>\
                      <script type=\"application/json\" class=\"plano-datos\" data-hoja=\"{id}\">{}</script>",
                     h.pagina + 1,
@@ -534,22 +543,29 @@ pub(crate) fn hoja_de_pdf(nombre: &str, hojas: &[HojaPdf], marcas_texto: &str) -
                 ));
                 hay_planos = true;
             }
-            (None, Some(src)) => cuerpo.push_str(&format!(
-                "<img data-b alt=\"Hoja {}\" width=\"{}\" height=\"{}\" src=\"{src}\">",
-                h.pagina + 1,
-                columna as u32,
-                alto.round() as u32
-            )),
+            (None, Some(src)) => {
+                cuerpo.push_str(&format!(
+                    "<img alt=\"Hoja {}\" width=\"{}\" height=\"{}\" src=\"{src}\">",
+                    h.pagina + 1,
+                    columna as u32,
+                    alto.round() as u32
+                ));
+                cuerpo.push_str(&h.texto);
+            }
             // Una hoja que no se pudo dibujar ocupa su sitio en blanco: si
             // no, lo anotado de las de abajo subiria a la que no esta.
-            (None, None) => cuerpo.push_str(&format!(
-                "<img data-b alt=\"Hoja {}\" width=\"{}\" height=\"{}\" style=\"height:{}px\">",
-                h.pagina + 1,
-                columna as u32,
-                alto.round() as u32,
-                px(alto as f32)
-            )),
+            (None, None) => {
+                cuerpo.push_str(&format!(
+                    "<img alt=\"Hoja {}\" width=\"{}\" height=\"{}\" style=\"height:{}px\">",
+                    h.pagina + 1,
+                    columna as u32,
+                    alto.round() as u32,
+                    px(alto as f32)
+                ));
+                cuerpo.push_str(&h.texto);
+            }
         }
+        cuerpo.push_str("</div>");
         let ancla = n as i32;
         tops.push(y);
         piezas.extend(piezas_de(&h.tinta, &|_| ancla, (margen as f64, y, k)));
@@ -572,9 +588,16 @@ pub(crate) fn hoja_de_pdf(nombre: &str, hojas: &[HojaPdf], marcas_texto: &str) -
         cuerpo.push_str(PLANO_EN_SVG);
         cuerpo.push_str("</script>");
     }
+    // **El texto de la hoja, encima y transparente** (`ESTILO` del movil):
+    // cada renglon en su sitio, como la capa de texto de los visores de PDF
+    // de los navegadores; no se ve, pero se busca, se selecciona y se lee en
+    // alto. Ver [`capa_de_texto`].
     let mut estilo = format!(
         ".doc-caja{{background:{PAPEL_PDF}}}.doc{{line-height:0;background:{PAPEL_PDF}}}\
-         .doc img,.doc svg.plano-hoja{{display:block;width:100%;height:auto;margin:0 0 {}px;background:#fff;break-inside:avoid;page-break-inside:avoid}}",
+         .doc .hoja-pdf{{position:relative;margin:0 0 {}px;break-inside:avoid;page-break-inside:avoid}}\
+         .doc .hoja-pdf>img,.doc svg.plano-hoja{{display:block;width:100%;height:auto;background:#fff}}\
+         .doc svg.texto-pdf{{position:absolute;left:0;top:0;width:100%;height:100%;fill:transparent;cursor:text}}\
+         .texto-pdf ::selection{{background:rgba(0,90,255,.25)}}",
         ENTRE_HOJAS as u32
     );
     estilo.push_str(&estilo_de_impresion(columna, margen, &piezas, !senales.is_empty()));
@@ -588,15 +611,73 @@ pub(crate) fn hoja_de_pdf(nombre: &str, hojas: &[HojaPdf], marcas_texto: &str) -
         tops,
         letra: 16.0,
         fondo: PAPEL_PDF.into(),
-        bloques: dw::SELECTOR_MARCADO.into(),
+        bloques: BLOQUES_PDF.into(),
         riel: dw::riel_de(&senales, "pdf"),
     }
 }
 
-/// A cuantos pixeles se dibuja cada hoja: cuantas mas hojas, menos, para
-/// que un documento largo no pese decenas de megas (el movil: 1600, 1200 y
-/// 960). A 1600 una hoja de 800 px CSS se ve nitida en una pantalla de
-/// doble densidad.
+/// Los bloques a los que se ata lo anotado en un PDF: sus hojas (Android v0.98.3).
+const BLOQUES_PDF: &str = ".hoja-pdf";
+
+/// Un numero corto para el estilo de la capa de texto: tres decimales como mucho.
+fn n3(v: f64) -> String {
+    let r = (v * 1000.0).round() / 1000.0;
+    if r == r.trunc() { format!("{}", r as i64) } else { format!("{r}") }
+}
+
+/// **Las lineas de texto de la hoja, invisibles, en su sitio sobre la foto**
+/// (`capaDeTexto` del movil), en pixeles de la columna de `columna` de ancho.
+/// Cada renglon (el plano ya junta los trozos de uno, `juntar_renglones`)
+/// es un `<text>` de SVG con la matriz que lo coloca en el papel (tambien lo
+/// girado) y **estirado a lo que ocupa en el PDF** (`textLength`): con un
+/// `span` la letra del navegador salia mas ancha que la del PDF y lo
+/// seleccionado no caia sobre su palabra (mirado en Edge). Es el mismo
+/// rotulo que despliega el guion de las hojas en lineas, sin pintar: se
+/// busca, se selecciona y se lee en alto. Vacio si la hoja no tiene texto
+/// (un escaneo).
+pub(crate) fn capa_de_texto(plano: &pixpin_pdf::plano::Plano, columna: f64) -> String {
+    if plano.ancho <= 0.0 || plano.textos.iter().all(|t| t.texto.trim().is_empty()) {
+        return String::new();
+    }
+    let k = columna / plano.ancho;
+    let mut s = format!(
+        "<svg class=\"texto-pdf\" viewBox=\"0 0 {} {}\" preserveAspectRatio=\"none\">",
+        n3(columna),
+        n3(plano.alto * k)
+    );
+    for t in plano.textos.iter().filter(|t| !t.texto.trim().is_empty()) {
+        let texto = t.texto.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        // La letra a 100 y encogida con `scale(0.01)`, como en el guion de
+        // las hojas en lineas: con un tamano pequeno de verdad algunos
+        // navegadores la subirian a su minimo.
+        s.push_str(&format!(
+            "<text transform=\"matrix({} {} {} {} {} {}) scale(0.01)\" font-size=\"100\" font-family=\"{}\"",
+            n3(t.a * k),
+            n3(t.b * k),
+            n3(t.c * k),
+            n3(t.d * k),
+            n3(t.x * k),
+            n3(t.y * k),
+            t.familia.replace("-condensed", "")
+        ));
+        if t.ancho > 0.0 {
+            s.push_str(&format!(" textLength=\"{}\" lengthAdjust=\"spacingAndGlyphs\"", n3(t.ancho * 100.0)));
+        }
+        s.push('>');
+        s.push_str(&texto);
+        s.push_str("</text>");
+    }
+    s.push_str("</svg>");
+    s
+}
+
+/// A cuantos pixeles se dibuja cada hoja que va como imagen: cuantas mas
+/// hojas, menos, para que un documento largo no pese decenas de megas. El
+/// movil subio a 2000, 1600 y 1200 en v0.98.1 porque su WebP es con perdida;
+/// aqui el WebP es sin perdida y las hojas fotograficas van en JPEG, asi que
+/// se quedan los de antes (medido: un articulo de 26 hojas con fotos pesaba
+/// 23 MB a 1600). A 1600 una hoja de 800 px CSS se ve nitida en una pantalla
+/// de doble densidad.
 fn ancho_de_foto(hojas: usize) -> u32 {
     match hojas {
         0..=10 => 1600,
@@ -605,9 +686,56 @@ fn ancho_de_foto(hojas: usize) -> u32 {
     }
 }
 
+/// Por encima de esto (bytes por pixel), una hoja en WebP sin perdida es
+/// una foto o un escaneo con grano, y el JPEG la deja mas ligera.
+const WEBP_DE_FOTO: f64 = 0.07;
+/// La calidad del JPEG de una hoja fotografica: la de antes, a la que la
+/// letra sigue limpia al doble de aumento.
+const CALIDAD_DE_FOTO: u8 = 72;
+
+/// **Una hoja del PDF como imagen para la pagina web** (`enWebp` del movil,
+/// v0.98.1). Windows no trae codificador WebP (solo el de leerlo) y el del
+/// crate `image`, que ya va en el ejecutable, solo lo hace sin perdida: en
+/// una hoja de texto pesa menos que el JPEG de antes y es exacta (medido
+/// con los PDF del usuario: 591 KB frente a 942 en tres hojas de un
+/// informe, y cuatro veces mas rapido). En una hoja fotografica pesa mas:
+/// entonces se prueba el JPEG y va el mas ligero.
+pub(crate) fn hoja_como_imagen(img: &ImagenRgba) -> Option<String> {
+    let webp = webp_sin_perdida(img);
+    let pixeles = (img.ancho as f64 * img.alto as f64).max(1.0);
+    match webp {
+        Some(w) if (w.len() as f64) / pixeles <= WEBP_DE_FOTO => Some(data_uri("image/webp", &w)),
+        w => {
+            let jpg = pixpin_codec::imagen::codificar_jpg(img, CALIDAD_DE_FOTO).ok();
+            match (w, jpg) {
+                (Some(w), Some(j)) if w.len() <= j.len() => Some(data_uri("image/webp", &w)),
+                (_, Some(j)) => Some(data_uri("image/jpeg", &j)),
+                (Some(w), None) => Some(data_uri("image/webp", &w)),
+                (None, None) => None,
+            }
+        }
+    }
+}
+
+/// WebP sin perdida en memoria, por un temporal (el codec guarda en ficheros).
+fn webp_sin_perdida(img: &ImagenRgba) -> Option<Vec<u8>> {
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = std::env::temp_dir().join(format!("pixpin-hoja-web-{}-{n}.webp", std::process::id()));
+    let hecho = pixpin_codec::imagen::guardar(img, &tmp, pixpin_codec::imagen::FormatoImagen::Webp)
+        .ok()
+        .and_then(|()| std::fs::read(&tmp).ok());
+    let _ = std::fs::remove_file(&tmp);
+    hecho
+}
+
 /// **La pagina web de un PDF con lo anotado**, leyendo todo del disco.
-/// `paginas` son las hojas que van (desde 0); `None`, todas.
-pub(crate) fn web_de_pdf(ruta: &Path, paginas: Option<&[usize]>) -> Result<String> {
+/// `paginas` son las hojas que van (desde 0); `None`, todas. `con_texto`
+/// es el interruptor «Texto buscable» de la hoja de compartir (Android
+/// v0.98.1): puesto, cada hoja que se deja leer va en lineas con su texto;
+/// quitado, **todas como imagen** con el texto invisible encima, que en un
+/// plano escaneado o con mucho sombreado puede verse mejor.
+pub(crate) fn web_de_pdf(ruta: &Path, paginas: Option<&[usize]>, con_texto: bool) -> Result<String> {
     let doc = pixpin_pdf::Documento::abrir(ruta).map_err(|e| anyhow::anyhow!("{e}"))?;
     let colocadas = vista::Hojas::colocar(&doc.medidas());
     let todas: Vec<usize> = (0..colocadas.cuantas()).collect();
@@ -626,24 +754,36 @@ pub(crate) fn web_de_pdf(ruta: &Path, paginas: Option<&[usize]>) -> Result<Strin
     // plano pasado de tope vuelven a la foto de siempre. Leer las lineas
     // ademas ahorra pintar: un A0 de AutoCAD tardaba 16 s en salir de
     // Windows y 2,3 s como lineas.
-    let planos = std::fs::read(ruta)
-        .map(|b| pixpin_pdf::plano_web::de_paginas(&b, &cuales, COLUMNA_PDF as f64))
-        .unwrap_or_else(|_| vec![None; cuales.len()]);
+    // Con el plano de cada hoja sale tambien su texto, para ponerlo
+    // invisible encima de las que van como foto (Android v0.98.1).
+    let mut leidas: Vec<(Option<String>, String)> = Vec::with_capacity(cuales.len());
+    match std::fs::read(ruta) {
+        Ok(b) => pixpin_pdf::plano::con_cada(&b, &cuales, |_, p| {
+            let texto = p.as_ref().map(|p| capa_de_texto(p, COLUMNA_PDF as f64)).unwrap_or_default();
+            let lineas = p
+                .filter(|p| con_texto && p.se_manda_como_lineas())
+                .map(|p| pixpin_pdf::plano_web::a_json(&p, COLUMNA_PDF as f64));
+            leidas.push((lineas, texto));
+        }),
+        Err(e) => tracing::warn!(?e, "el PDF no se pudo leer para sacar sus lineas"),
+    }
+    leidas.resize(cuales.len(), (None, String::new()));
     // La tinta de un PDF de proyecto esta en sus hojas (`lector_pdf_proyecto`).
     let donde = crate::lector_pdf_proyecto::DondeVa::solo_leer(ruta);
     let espacios = crate::anotado_del_adjunto::leer(ruta).espacios;
     let hojas: Vec<HojaPdf> = cuales
         .iter()
-        .zip(planos)
-        .map(|(&i, plano)| {
+        .zip(leidas)
+        .map(|(&i, (plano, texto))| {
             let foto = if plano.is_some() {
                 None
             } else {
                 doc.renderizar(i as u32, ancho)
                     .inspect_err(|e| tracing::warn!(?e, hoja = i, "hoja del PDF que no se pudo dibujar para la web"))
                     .ok()
-                    .and_then(|img| foto_para_la_web(&img, CALIDAD_PDF))
+                    .and_then(|img| hoja_como_imagen(&img))
             };
+            let texto = if plano.is_some() { String::new() } else { texto };
             let capa = donde.para_leer(ruta, i);
             let tinta = if capa.is_file() {
                 donde.leer_capa(ruta, i, espacios, colocadas.altos[i]).escena
@@ -653,6 +793,7 @@ pub(crate) fn web_de_pdf(ruta: &Path, paginas: Option<&[usize]>) -> Result<Strin
             HojaPdf {
                 foto,
                 plano,
+                texto,
                 alto: colocadas.altos[i],
                 tinta,
                 pagina: i as u32,

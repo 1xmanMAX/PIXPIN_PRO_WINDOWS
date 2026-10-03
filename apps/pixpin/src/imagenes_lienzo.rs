@@ -14,15 +14,21 @@
 //! modulo reutiliza sus dos reglas ya probadas: `lado_de_subida` (D139) y
 //! `modo_nitidez` (D141).
 //!
-//! **Alcance: la sesion.** El almacen vive mientras el lienzo esta abierto y
-//! se suelta al cerrarlo. La escena sale del editor con sus `Figura::Imagen`
-//! dentro, pero los pixeles NO se escriben en el `.excalidraw` ni en el
-//! `.pixpin`: al reabrir, esas figuras se quedan sin bitmap y no se pintan.
+//! **Alcance: la sesion, y lo pegado sale con la escena.** El almacen vive
+//! mientras el lienzo esta abierto. Antes los pixeles de lo pegado morian con
+//! el: la figura se guardaba (o ni eso, en una hoja de proyecto) y al reabrir
+//! la imagen habia desaparecido («si pego una imagen en el canvas no se
+//! guarda», 2-oct-2026). Ahora cada imagen nacida en la sesion se marca como
+//! **nueva** y sale del editor con [`ImagenesLienzo::tomar_nuevas`], y quien
+//! guarda la escribe donde la lee al abrir: en una hoja de proyecto, a
+//! `imagenes/<fileId>` con su entrada en `files`, como el movil
+//! ([`guardar_pegadas_en_hoja`]); en un `.pixpin2d`, a la carpeta de al lado
+//! ([`guardar_pegadas_junto_a`]).
 
 use std::collections::HashMap;
 
 use pixpin_codec::ImagenRgba;
-use pixpin_motor2d::{ColorRgba, Elemento, EstiloRelleno, EstiloTrazo, Figura};
+use pixpin_motor2d::{ColorRgba, Elemento, Escena, EstiloRelleno, EstiloTrazo, Figura};
 use pixpin_render::{MotorRender, Pintor, RectF};
 use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
 
@@ -43,6 +49,9 @@ struct ImagenDelLienzo {
     bitmap: Option<ID2D1Bitmap1>,
     /// Subir fallo: no se reintenta en cada fotograma hasta `soltar`.
     fallo: bool,
+    /// Nacio en esta sesion (pegada, metida desde un fichero, la foto de una
+    /// zona): no esta en disco y hay que escribirla al guardar.
+    nueva: bool,
 }
 
 /// Las imagenes del documento mientras el lienzo esta abierto.
@@ -89,17 +98,84 @@ impl ImagenesLienzo {
                     .ok()?
             }
         };
-        let id = self.siguiente_id;
-        self.siguiente_id += 1;
+        let id = self.id_nuevo(&imagen);
         self.imagenes.insert(
             id,
             ImagenDelLienzo {
                 imagen,
                 bitmap: None,
                 fallo: false,
+                nueva: true,
             },
         );
         Some(id)
+    }
+
+    /// **Un id que sirva tambien fuera de la sesion.** El `id_objeto` acaba
+    /// siendo el `fileId` del fichero (`pc<hex>`, ver [`id_de_fichero`]), y
+    /// la carpeta `imagenes/` es de todo el proyecto: un 1, 2, 3 de sesion
+    /// pisaria la foto pegada ayer en otra hoja. Sale de los pixeles, la hora
+    /// y un contador, y nunca es cero ni uno que ya este.
+    fn id_nuevo(&mut self, imagen: &ImagenRgba) -> u64 {
+        let ahora = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0);
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325 ^ ahora;
+        let mezclar = |h: &mut u64, b: u64| {
+            *h ^= b;
+            *h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        };
+        mezclar(&mut h, imagen.ancho as u64);
+        mezclar(&mut h, imagen.alto as u64);
+        // Una muestra de los pixeles basta para que dos imagenes distintas
+        // en el mismo instante no coincidan; leerlos todos no aporta nada.
+        let paso = (imagen.pixeles.len() / 4096).max(1);
+        for b in imagen.pixeles.iter().step_by(paso) {
+            mezclar(&mut h, *b as u64);
+        }
+        loop {
+            mezclar(&mut h, self.siguiente_id);
+            self.siguiente_id += 1;
+            // Por debajo de 2^48: el `pc<hex>` queda en doce cifras.
+            let id = h & 0x0000_ffff_ffff_ffff;
+            if id != 0 && !self.imagenes.contains_key(&id) {
+                return id;
+            }
+        }
+    }
+
+    /// Vuelve a meter una imagen nueva que ya paso por [`Self::guardar`] (y
+    /// por su reduccion): la de la vuelta anterior del mismo lienzo al
+    /// alternar F11, que cierra la ventana y la abre otra vez.
+    pub fn reponer_nueva(&mut self, id: u64, imagen: ImagenRgba) {
+        if id == 0 || imagen.ancho == 0 || imagen.alto == 0 {
+            return;
+        }
+        self.imagenes.insert(
+            id,
+            ImagenDelLienzo {
+                imagen,
+                bitmap: None,
+                fallo: false,
+                nueva: true,
+            },
+        );
+    }
+
+    /// **Lo nacido en esta sesion**, que no esta en disco: se saca del
+    /// almacen (que se suelta al cerrar de todos modos) para que quien
+    /// guarda la escena escriba tambien sus pixeles.
+    pub fn tomar_nuevas(&mut self) -> Vec<(u64, ImagenRgba)> {
+        let ids: Vec<u64> = self
+            .imagenes
+            .iter()
+            .filter(|(_, i)| i.nueva)
+            .map(|(id, _)| *id)
+            .collect();
+        ids.into_iter()
+            .filter_map(|id| self.imagenes.remove(&id).map(|i| (id, i.imagen)))
+            .collect()
     }
 
     /// Mete una imagen con un `id_objeto` que YA existe: el que lleva la
@@ -130,6 +206,7 @@ impl ImagenesLienzo {
                 imagen,
                 bitmap: None,
                 fallo: false,
+                nueva: false,
             },
         );
         true
@@ -314,8 +391,143 @@ pub fn decidir_pegado(
         Some(pixpin_codec::ContenidoPortapapeles::Imagen(img)) if img.ancho > 0 && img.alto > 0 => {
             Pegado::Imagen(img)
         }
+        // Un fichero de imagen copiado en el Explorador llega como ruta, no
+        // como pixeles: se pega la primera que sea una imagen que se lee.
+        Some(pixpin_codec::ContenidoPortapapeles::Rutas(rutas)) => match imagen_de_rutas(&rutas) {
+            Some(img) => Pegado::Imagen(img),
+            None => Pegado::Nada,
+        },
         _ => Pegado::Nada,
     }
+}
+
+/// Las extensiones de imagen que se pegan desde una ruta. Por extension y
+/// no probando a abrir cualquier cosa: copiar un video de dos gigas y pulsar
+/// Ctrl+V en el lienzo no puede ponerse a leerlo.
+const EXTENSIONES_DE_IMAGEN: [&str; 9] = ["png", "jpg", "jpeg", "bmp", "gif", "webp", "tif", "tiff", "ico"];
+
+/// La primera imagen legible de unas rutas copiadas.
+pub fn imagen_de_rutas(rutas: &[std::path::PathBuf]) -> Option<ImagenRgba> {
+    rutas
+        .iter()
+        .filter(|r| {
+            r.extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| EXTENSIONES_DE_IMAGEN.contains(&e.to_ascii_lowercase().as_str()))
+        })
+        .find_map(|r| {
+            pixpin_codec::cargar(r)
+                .inspect_err(|e| tracing::warn!(?e, ruta = %r.display(), "imagen copiada ilegible"))
+                .ok()
+                .filter(|i| i.ancho > 0 && i.alto > 0)
+        })
+}
+
+/// El `fileId` con el que se guarda la imagen `id` del almacen: el `pc<hex>`
+/// de lo que nace en el escritorio, que `id_del_fichero` devuelve al mismo
+/// numero al reabrir.
+pub fn id_de_fichero(id: u64) -> String {
+    pixpin_motor2d::enlace::id_de_texto(id)
+}
+
+/// Las imagenes nuevas que la escena sigue usando (las pegadas y luego
+/// borradas no se escriben), cada una con su `fileId`.
+fn pegadas_en_uso<'a>(
+    escena: &Escena,
+    pegadas: &'a [(u64, ImagenRgba)],
+) -> Vec<(String, &'a ImagenRgba)> {
+    let usadas: std::collections::HashSet<u64> = escena
+        .visibles()
+        .filter_map(|e| match e.figura {
+            Figura::Imagen { id_objeto } => Some(id_objeto),
+            _ => None,
+        })
+        .collect();
+    pegadas
+        .iter()
+        .filter(|(id, _)| usadas.contains(id))
+        .map(|(id, img)| (id_de_fichero(*id), img))
+        .collect()
+}
+
+/// Escribe `img` en PNG en `ruta`, si no estaba ya: a un temporal y luego se
+/// cambia el nombre, como el dibujo, para que un corte de luz no deje media
+/// foto.
+fn escribir_png_si_falta(ruta: &std::path::Path, img: &ImagenRgba) -> std::io::Result<()> {
+    if ruta.is_file() {
+        return Ok(());
+    }
+    if let Some(dir) = ruta.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let bytes = pixpin_codec::imagen::codificar_png(img)
+        .map_err(|e| std::io::Error::other(format!("{e:?}")))?;
+    let mut temporal = ruta.as_os_str().to_owned();
+    temporal.push(".tmp");
+    std::fs::write(&temporal, bytes)?;
+    std::fs::rename(&temporal, ruta)
+}
+
+/// **Las imagenes pegadas en una hoja de proyecto, donde las busca el movil**:
+/// cada una a `imagenes/<fileId>` de la carpeta del proyecto y apuntada en
+/// `files` del lienzo con esa ruta (el `SceneFile` de alla, sin base64). Es
+/// exactamente lo que lee `preparar_hoja` al abrir (`excalidraw::ficheros`).
+/// Devuelve el lienzo con las entradas puestas; `con_escena` ya sabe escribir
+/// la figura con su `fileId`.
+pub fn guardar_pegadas_en_hoja(
+    carpeta_proyecto: &std::path::Path,
+    lienzo: &pixpin_motor2d::excalidraw::Lienzo,
+    escena: &Escena,
+    pegadas: &[(u64, ImagenRgba)],
+    ahora_ms: i64,
+) -> std::io::Result<pixpin_motor2d::excalidraw::Lienzo> {
+    let mut salida = lienzo.clone();
+    for (clave, img) in pegadas_en_uso(escena, pegadas) {
+        let relativa = format!("imagenes/{clave}");
+        escribir_png_si_falta(&carpeta_proyecto.join("imagenes").join(&clave), img)?;
+        pixpin_motor2d::excalidraw::poner_fichero(&mut salida, &clave, "image/png", &relativa, ahora_ms);
+    }
+    Ok(salida)
+}
+
+/// La carpeta de las imagenes de un dibujo `.pixpin2d` (el de un pin o el de
+/// una foto del chat): a su lado, con su nombre entero y `.imagenes` detras.
+pub fn carpeta_junto_a(dibujo: &std::path::Path) -> std::path::PathBuf {
+    let mut s = dibujo.as_os_str().to_owned();
+    s.push(".imagenes");
+    std::path::PathBuf::from(s)
+}
+
+/// Las imagenes guardadas junto a un `.pixpin2d` que su escena usa, con el
+/// `id_objeto` de su figura: lo que el editor recibe como `fotos`.
+pub fn fotos_junto_a(dibujo: &std::path::Path, escena: &Escena) -> Vec<(u64, std::path::PathBuf)> {
+    let carpeta = carpeta_junto_a(dibujo);
+    escena
+        .visibles()
+        .filter_map(|e| match e.figura {
+            Figura::Imagen { id_objeto } => Some(id_objeto),
+            _ => None,
+        })
+        .collect::<std::collections::BTreeSet<u64>>()
+        .into_iter()
+        .map(|id| (id, carpeta.join(id_de_fichero(id))))
+        .filter(|(_, ruta)| ruta.is_file())
+        .collect()
+}
+
+/// Escribe junto a un `.pixpin2d` las imagenes pegadas que su escena usa.
+/// Devuelve cuantas escribio de nuevas o ya estaban.
+pub fn guardar_pegadas_junto_a(
+    dibujo: &std::path::Path,
+    escena: &Escena,
+    pegadas: &[(u64, ImagenRgba)],
+) -> std::io::Result<usize> {
+    let carpeta = carpeta_junto_a(dibujo);
+    let en_uso = pegadas_en_uso(escena, pegadas);
+    for (clave, img) in &en_uso {
+        escribir_png_si_falta(&carpeta.join(clave), img)?;
+    }
+    Ok(en_uso.len())
 }
 
 /// El tamano con el que entra en el lienzo una imagen de `ancho` x `alto`
@@ -520,6 +732,56 @@ mod pruebas {
         let mut a = ImagenesLienzo::nuevo(64);
         let id = a.guardar(imagen(256, 128)).expect("se reduce");
         assert_eq!(a.tamano(id), Some((64, 32)));
+    }
+
+    #[test]
+    fn una_imagen_pegada_en_el_lienzo_de_un_pin_vuelve_al_reabrirlo() {
+        // El mismo fallo en un `.pixpin2d` (pin o foto del chat): la figura
+        // se guardaba, los pixeles no.
+        let dir = std::env::temp_dir().join(format!("pixpin-pegada-pin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let dibujo = dir.join("pin.pixpin2d");
+        let mut sesion = ImagenesLienzo::nuevo(4096);
+        let mut original = imagen(6, 5);
+        original.pixeles[0] = 7;
+        let id = sesion.guardar(original.clone()).unwrap();
+        let mut escena = Escena::nueva();
+        escena.anadir(elemento_imagen(id, 1.0, 2.0, 6.0, 5.0));
+        let pegadas = sesion.tomar_nuevas();
+        assert_eq!(guardar_pegadas_junto_a(&dibujo, &escena, &pegadas).unwrap(), 1);
+        pixpin_motor2d::guardar(&dibujo, &escena).unwrap();
+
+        let reabierta = pixpin_motor2d::cargar(&dibujo).unwrap();
+        let fotos = fotos_junto_a(&dibujo, &reabierta);
+        assert_eq!(fotos.len(), 1);
+        assert_eq!(fotos[0].0, id);
+        let leida = pixpin_codec::cargar(&fotos[0].1).unwrap();
+        assert_eq!(leida.pixeles, original.pixeles);
+        // Caso negativo: lo tomado ya no esta en el almacen de la sesion,
+        // y las que vienen de disco nunca salen como nuevas.
+        assert!(sesion.tomar_nuevas().is_empty());
+        let mut otra = ImagenesLienzo::nuevo(4096);
+        assert!(otra.guardar_con_id(id, leida));
+        assert!(otra.tomar_nuevas().is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn el_id_de_una_imagen_pegada_vuelve_igual_de_su_file_id() {
+        let mut a = ImagenesLienzo::nuevo(4096);
+        let id = a.guardar(imagen(3, 3)).unwrap();
+        assert_eq!(pixpin_motor2d::enlace::id_del_fichero(&id_de_fichero(id)), id);
+    }
+
+    #[test]
+    fn una_ruta_que_no_es_imagen_no_se_pega() {
+        assert_eq!(
+            decidir_pegado(
+                false,
+                Some(ContenidoPortapapeles::Rutas(vec!["video.mp4".into(), "no-esta.png".into()]))
+            ),
+            Pegado::Nada
+        );
     }
 
     #[test]

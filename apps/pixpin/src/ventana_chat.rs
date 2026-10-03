@@ -39,6 +39,15 @@ mod donde_vive;
 mod hoja_portapapeles;
 /// Un Excel del chat es un libro de tablas (D11).
 mod libro;
+/// Los archivos con el icono de su tipo, un color por extension (v0.98.4).
+mod icono_de_tipo;
+/// «Quien llama» en la llamada secreta de una nota de voz (B11, v0.98.6).
+mod quien_llama;
+/// El microfono flotante del pedido «grabar»: graba, guarda y ofrece
+/// convertir la nota en llamada secreta, sin abrir el chat (2-oct).
+mod microfono_flotante;
+/// La caja flotante a la que se sueltan ficheros para un proyecto (2-oct).
+mod caja_de_soltar;
 /// Mayus+clic marca un tramo de burbujas.
 mod marcar;
 /// Clip → «Una pagina de un proyecto».
@@ -1258,6 +1267,10 @@ pub fn abrir(
                                     a.hora_a_mano = None;
                                     Efecto::Nada
                                 }
+                                Zona::CerrarQuien => {
+                                    a.quien_llama = None;
+                                    Efecto::Nada
+                                }
                                 Zona::SelCopiar => copiar_marcados(a, textos),
                                 Zona::SelCompartir => {
                                     let indices = indices_marcados(a);
@@ -1600,15 +1613,7 @@ pub fn abrir(
                                 if let Err(e) = empezar_a_grabar(ubicacion, a) {
                                     tracing::warn!(?e, "no se pudo abrir el microfono");
                                     aviso = Some((
-                                        textos.t(match e {
-                                            pixpin_audio::ErrorAudio::SinMicrofono => {
-                                                "chat-voz-sin-microfono"
-                                            }
-                                            pixpin_audio::ErrorAudio::SinCodificadorAac => {
-                                                "chat-voz-sin-codec"
-                                            }
-                                            _ => "chat-voz-fallo",
-                                        }),
+                                        textos.t(rotulo_de_no_grabar(&e)),
                                         std::time::Instant::now(),
                                     ));
                                 }
@@ -2128,6 +2133,39 @@ pub fn abrir(
                         ventana.soltar_raton();
                     }
                     arrastre = None;
+                }
+                // «Quien llama» (B11, v0.98.6): mientras su barra esta
+                // abierta, lo que se teclea es el nombre; Intro lo guarda y
+                // vuelve a sacar las horas, Escape la deja.
+                EventoOverlay::Caracter(c)
+                    if pendientes.is_none()
+                        && abierto.as_ref().is_some_and(|a| a.quien_llama.is_some()) =>
+                {
+                    if let Some((_, escrito)) =
+                        abierto.as_mut().and_then(|a| a.quien_llama.as_mut())
+                    {
+                        quien_llama::teclear(escrito, c);
+                    }
+                    hay_que_pintar = true;
+                }
+                EventoOverlay::Tecla { vk, .. }
+                    if pendientes.is_none()
+                        && menu.is_none()
+                        && matches!(vk, VK_RETROCESO | VK_ESCAPE | VK_ENTRAR)
+                        && abierto.as_ref().is_some_and(|a| a.quien_llama.is_some()) =>
+                {
+                    if let Some(a) = abierto.as_mut() {
+                        match vk {
+                            VK_RETROCESO => {
+                                if let Some((_, escrito)) = a.quien_llama.as_mut() {
+                                    escrito.pop();
+                                }
+                            }
+                            VK_ESCAPE => a.quien_llama = None,
+                            _ => menu = quien_llama::al_pulsar_intro(a, ubicacion.raiz(), textos),
+                        }
+                    }
+                    hay_que_pintar = true;
                 }
                 // «Elegir la hora…»: mientras la barra esta abierta, lo que
                 // se teclea es la hora. Solo cifras y separadores, y cinco
@@ -3617,6 +3655,9 @@ struct Abierto {
     /// teclea en una barra encima de la caja de escribir; Intro la pone y
     /// Escape la deja.
     hora_a_mano: Option<(String, String)>,
+    /// «Quien llama» (B11, v0.98.6): la nota de voz (por id) y el nombre
+    /// tecleado. Intro lo guarda y vuelve a sacar las horas.
+    quien_llama: Option<(String, String)>,
 }
 
 /// La pantalla de la letra abierta: de que nota es y como se esta leyendo.
@@ -4400,7 +4441,6 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         .unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
     p.empujar_recorte(rf(area));
     let (primero, cuantos) = h::visibles(area, &c.puestos, scroll);
-    let en_guardados = a.ficha.es_guardados();
     for cual in primero..primero + cuantos {
         let puesto = c.puestos[cual];
         let piezas = &c.piezas[cual];
@@ -4543,7 +4583,8 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                     ancho: chat::FILA_PUNTO as f32 * e,
                     alto: chat::FILA_PUNTO as f32 * e,
                 },
-                !en_guardados,
+                &a.raiz,
+                m,
             );
             if let Some(v) = &piezas.viene {
                 let caja =
@@ -4658,7 +4699,8 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                             ancho: chat::FILA_PUNTO as f32 * e,
                             alto: chat::FILA_PUNTO as f32 * e,
                         },
-                        !en_guardados,
+                        &a.raiz,
+                        m,
                     );
                 }
             }
@@ -4676,9 +4718,15 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                 escala,
             );
             let circulo = rf(fila.circulo);
-            p.rellenar_redondeado(circulo, circulo.ancho / 2.0, tema.circulo);
-            icono_centrado(p, f.icono, fila.circulo, 24.0 * e, tema.circulo_icono);
-            punto_de_proyecto(p, rf(fila.punto), !en_guardados);
+            // Un archivo, con el icono de su tipo (v0.98.4); lo demas, el
+            // boton redondo de siempre.
+            if let Some(nombre) = &f.archivo {
+                icono_de_tipo::pintar(p, nombre, circulo);
+            } else {
+                p.rellenar_redondeado(circulo, circulo.ancho / 2.0, tema.circulo);
+                icono_centrado(p, f.icono, fila.circulo, 24.0 * e, tema.circulo_icono);
+            }
+            punto_de_proyecto(p, rf(fila.punto), &a.raiz, m);
             // Una nota de voz ensena su ONDA en el sitio del nombre, dibujada
             // de los picos que el movil anoto al grabarla. Sin picos no se
             // inventa ninguna: una onda de mentira mentiria sobre lo que se
@@ -5592,6 +5640,7 @@ fn medir_mensaje(
             detalle,
             ancho_texto,
             onda,
+            archivo: icono_de_tipo::nombre_para_el_icono(m),
         }
     });
     let texto = texto_de(m, vista.is_some() || fila.is_some(), textos);
@@ -6097,11 +6146,21 @@ fn icono_centrado(p: &Pintor, icono: &Icono, caja: Rect, lado: f32, color: Color
     );
 }
 
-/// El punto de si vive en un proyecto: verde, o rojo si no (el chat de
-/// «Mensajes guardados» es el general, fuera de los proyectos), con un halo
-/// blanco para que se lea sobre la burbuja y sobre una foto
-/// (`PuntoDeProyecto`).
-fn punto_de_proyecto(p: &Pintor, r: RectF, en_un_proyecto: bool) {
+/// El punto de si vive tambien en los proyectos: verde si alguna hoja de un
+/// proyecto es suya, rojo si solo esta en el chat (`PuntoDeProyecto`). Lo
+/// decide `punto_de_proyecto::esta`, no el chat en el que se ve: mandar algo
+/// al chat de un proyecto no lo une. Con un halo blanco para que se lea sobre
+/// la burbuja y sobre una foto. Una nota o una voz no llevan punto.
+fn punto_de_proyecto(
+    p: &Pintor,
+    r: RectF,
+    raiz: &std::path::Path,
+    m: &pixpin_proyecto::cuaderno::Mensaje,
+) {
+    if !crate::punto_de_proyecto::lleva_punto(m) {
+        return;
+    }
+    let en_un_proyecto = crate::punto_de_proyecto::esta(raiz, m);
     p.rellenar_redondeado(r, r.ancho / 2.0, Color::BLANCO);
     let dentro = encoger(r, r.ancho / 6.0);
     p.rellenar_redondeado(
@@ -6515,6 +6574,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
         voz: Default::default(),
         salto_pendiente: None,
         hora_a_mano: None,
+        quien_llama: None,
     }
 }
 
@@ -6524,26 +6584,22 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pixpin_proyecto::almacen::Ficha
 /// reves, un fallo de escritura dejaria en pantalla un mensaje que no
 /// existe, y el usuario creeria que lo tiene guardado.
 fn guardar_nota(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Result<()> {
-    use pixpin_proyecto::cuaderno;
     let texto = a.borrador.trim().to_string();
     let cuando = pixpin_shell::entorno::ahora_utc_ms();
     // El numero sigue al mayor que ya hay, que es lo que hace el codigo de
     // chat (`47·K7Q2`) unico dentro de la conversacion.
     let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-    let mut mensaje = cuaderno::Mensaje::nota(
-        &texto,
-        &cuaderno::Sello {
-            cuando,
-            numero,
-            aparato: aparato.to_string(),
-            proyecto: a.ficha.id.clone(),
-        },
-    );
     // Si se estaba contestando a algo, la nota queda colgada de ello: es lo
     // que convierte una lista de cosas en una conversacion.
-    mensaje.responde_a = a.respondiendo.clone();
-    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
-    cuaderno::anadir(&carpeta, &mensaje)?;
+    let mensaje = escribir_nota(
+        ubicacion.raiz(),
+        &a.ficha.id,
+        aparato,
+        &texto,
+        cuando,
+        numero,
+        a.respondiendo.clone(),
+    )?;
 
     a.respondiendo = None;
     a.vistas.push(None);
@@ -6552,13 +6608,64 @@ fn guardar_nota(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::i
     // La ficha de la lista sube al momento: es la misma conversacion.
     a.ficha.tocado = cuando;
     a.ficha.resumen = texto;
-    let mut indice = pixpin_proyecto::almacen::Indice::leer(ubicacion.raiz());
-    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == a.ficha.id) {
-        f.tocado = a.ficha.tocado;
-        f.resumen = a.ficha.resumen.clone();
-        indice.guardar(ubicacion.raiz())?;
+    subir_en_la_lista(ubicacion.raiz(), &a.ficha.id, a.ficha.tocado, &a.ficha.resumen)
+}
+
+/// Lo de [`guardar_nota`] que toca el disco, sin la conversacion abierta:
+/// la nota sellada y anadida al cuaderno. Lo usan tambien los pedidos de
+/// otros programas (`pedidos.rs`), para que un texto mandado desde Flow
+/// Launcher nazca igual que uno escrito en la caja.
+pub(crate) fn escribir_nota(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    aparato: &str,
+    texto: &str,
+    cuando: i64,
+    numero: i64,
+    responde_a: Option<String>,
+) -> std::io::Result<pixpin_proyecto::cuaderno::Mensaje> {
+    use pixpin_proyecto::cuaderno;
+    let mut mensaje = cuaderno::Mensaje::nota(
+        texto,
+        &cuaderno::Sello {
+            cuando,
+            numero,
+            aparato: aparato.to_string(),
+            proyecto: proyecto.to_string(),
+        },
+    );
+    mensaje.responde_a = responde_a;
+    cuaderno::anadir(&pixpin_proyecto::almacen::carpeta(raiz, proyecto), &mensaje)?;
+    Ok(mensaje)
+}
+
+/// Sube un proyecto en la lista: su hora y la linea que ensena debajo del
+/// nombre, como al escribir en el.
+pub(crate) fn subir_en_la_lista(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    cuando: i64,
+    resumen: &str,
+) -> std::io::Result<()> {
+    let mut indice = pixpin_proyecto::almacen::Indice::leer(raiz);
+    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == proyecto) {
+        f.tocado = cuando;
+        f.resumen = resumen.to_string();
+        indice.guardar(raiz)?;
     }
     Ok(())
+}
+
+/// El numero del siguiente mensaje de un proyecto, leido de su cuaderno: el
+/// mayor que hay mas uno, como hace el chat con los que tiene a la vista.
+/// Un proyecto sin nada escrito todavia empieza por el uno.
+pub(crate) fn siguiente_numero_en(raiz: &std::path::Path, proyecto: &str) -> std::io::Result<i64> {
+    use pixpin_proyecto::{almacen, cuaderno};
+    match cuaderno::Cuaderno::leer_de(&almacen::carpeta(raiz, proyecto)) {
+        Ok(c) => Ok(c.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(1),
+        Err(e) => Err(e),
+    }
 }
 
 /// Mete en el proyecto lo que haya en el portapapeles. Devuelve cuantos
@@ -6973,6 +7080,46 @@ fn ruta_del_mensaje(
     pixpin_proyecto::vista::ruta_real(raiz, proyecto, relativa)
 }
 
+/// **El fichero de un mensaje que esta en el disco**: el de su `ruta` o, en
+/// un lienzo que llego de la lista de un proyecto sin `ruta` y solo con su
+/// codigo (`referencia`), su dibujo en `lienzos/` (el usuario, 1-oct:
+/// «algunos canvas me dicen que el mensaje no tiene archivo»). Es lo que
+/// sacan a la pantalla, abren o envian las acciones del chat, y el pedido
+/// «pinear».
+pub(crate) fn fichero_del_mensaje(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    m: &pixpin_proyecto::cuaderno::Mensaje,
+) -> Option<std::path::PathBuf> {
+    ruta_del_mensaje(raiz, proyecto, m)
+        .filter(|r| r.is_file())
+        .or_else(|| {
+            let id = m.referencia.as_deref().filter(|r| {
+                !r.is_empty() && m.clase == Some(pixpin_proyecto::cuaderno::Clase::Dibujo)
+            })?;
+            Some(pixpin_proyecto::almacen::lienzo(raiz, proyecto, id)).filter(|r| r.is_file())
+        })
+}
+
+/// **Los iconos de archivo del chat, en PNG, para quien los pida** (el pedido
+/// «iconos» del plugin de Flow Launcher): en su hilo, porque pintar fuera de
+/// pantalla espera a la GPU, y sin aviso, porque nadie lo esta mirando.
+pub(crate) fn pintar_iconos_de_extension(raiz: std::path::PathBuf, extensiones: Vec<String>) {
+    let lanzado = std::thread::Builder::new()
+        .name("iconos-de-extension".into())
+        .spawn(move || {
+            let _com = pixpin_shell::ComDelHilo::iniciar();
+            match icono_de_tipo::pintar_los_que_faltan(&raiz, &extensiones) {
+                Ok(0) => {}
+                Ok(n) => tracing::info!(n, "iconos de extension pintados"),
+                Err(e) => tracing::warn!(?e, "no se pudieron pintar los iconos de extension"),
+            }
+        });
+    if let Err(e) = lanzado {
+        tracing::warn!(?e, "no se pudo lanzar el hilo de los iconos");
+    }
+}
+
 /// Las fotos de las burbujas que se ven ahora mismo en el historial.
 ///
 /// Usa la colocacion del ultimo fotograma: la de este se calcula al pintar.
@@ -7149,47 +7296,62 @@ fn crear_miniapp(
     cual: &str,
     textos: &Catalogo,
 ) -> std::io::Result<()> {
-    use pixpin_proyecto::{almacen, cuaderno};
     let nombre = clave_del_nombre(cual)
         .map(|c| textos.t(c))
         .unwrap_or_default();
-    let documento =
-        pixpin_proyecto::mini::documento_nuevo(cual, &nombre, &moneda_del_catalogo(textos))
-            .ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("no se conoce la mini-app «{cual}»"),
-                )
-            })?;
-
-    let cuando = pixpin_shell::entorno::ahora_utc_ms();
     let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-    let mensaje = cuaderno::Mensaje::miniapp(
+    let mensaje = escribir_miniapp(
+        ubicacion.raiz(),
+        &a.ficha.id,
+        aparato,
         cual,
         &nombre,
-        &documento,
-        &cuaderno::Sello {
-            cuando,
-            numero,
-            aparato: aparato.to_string(),
-            proyecto: a.ficha.id.clone(),
-        },
-    );
-    let raiz = ubicacion.raiz();
-    cuaderno::anadir(&almacen::carpeta(raiz, &a.ficha.id), &mensaje)?;
+        &moneda_del_catalogo(textos),
+        numero,
+    )?;
+    let cuando = mensaje.cuando;
     // Estas no tienen ojeada: su burbuja es la fila con el icono, el nombre y
     // el resumen. Una vista previa de «0 de 0» no dice mas que el resumen.
     a.vistas.push(None);
     a.mensajes.push(mensaje);
     a.ficha.tocado = cuando;
     a.ficha.resumen = nombre;
-    let mut indice = almacen::Indice::leer(raiz);
-    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == a.ficha.id) {
-        f.tocado = a.ficha.tocado;
-        f.resumen = a.ficha.resumen.clone();
-        indice.guardar(raiz)?;
-    }
-    Ok(())
+    subir_en_la_lista(ubicacion.raiz(), &a.ficha.id, a.ficha.tocado, &a.ficha.resumen)
+}
+
+/// Lo de [`crear_miniapp`] que toca el disco, sin la conversacion abierta:
+/// el documento nuevo, su mensaje sellado y anadido al cuaderno. `nombre`
+/// es tambien el titulo del documento. Lo usan los pedidos (`pedidos.rs`)
+/// para crear una lista de tareas desde fuera igual que desde el clip.
+pub(crate) fn escribir_miniapp(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    aparato: &str,
+    cual: &str,
+    nombre: &str,
+    moneda: &pixpin_proyecto::mini::gastos::Moneda,
+    numero: i64,
+) -> std::io::Result<pixpin_proyecto::cuaderno::Mensaje> {
+    use pixpin_proyecto::{almacen, cuaderno};
+    let documento = pixpin_proyecto::mini::documento_nuevo(cual, nombre, moneda).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("no se conoce la mini-app «{cual}»"),
+        )
+    })?;
+    let mensaje = cuaderno::Mensaje::miniapp(
+        cual,
+        nombre,
+        &documento,
+        &cuaderno::Sello {
+            cuando: pixpin_shell::entorno::ahora_utc_ms(),
+            numero,
+            aparato: aparato.to_string(),
+            proyecto: proyecto.to_string(),
+        },
+    );
+    cuaderno::anadir(&almacen::carpeta(raiz, proyecto), &mensaje)?;
+    Ok(mensaje)
 }
 
 /// Crea un lienzo vacio en el proyecto y lo anuncia en el cuaderno.
@@ -7198,33 +7360,9 @@ fn crear_miniapp(
 /// `ruta` (relativa, para poder abrirlo desde aqui): Android usa la primera
 /// y este equipo la segunda, y ninguna de las dos sobra.
 fn crear_lienzo(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::io::Result<()> {
-    use pixpin_proyecto::{almacen, cuaderno};
-    let raiz = ubicacion.raiz();
-    let id = pixpin_proyecto::codigos::nuevo();
-    let ruta = almacen::lienzo(raiz, &a.ficha.id, &id);
-    if let Some(padre) = ruta.parent() {
-        std::fs::create_dir_all(padre)?;
-    }
-    let json = pixpin_motor2d::excalidraw::escribir(&pixpin_motor2d::excalidraw::Lienzo::vacio());
-    std::fs::write(&ruta, &json)?;
-
-    let cuando = pixpin_shell::entorno::ahora_utc_ms();
     let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-    let nombre = format!("{id}.excalidraw");
-    let mut mensaje = cuaderno::Mensaje::adjunto(
-        cuaderno::Clase::Dibujo,
-        &nombre,
-        &format!("lienzos/{nombre}"),
-        json.len() as i64,
-        &cuaderno::Sello {
-            cuando,
-            numero,
-            aparato: aparato.to_string(),
-            proyecto: a.ficha.id.clone(),
-        },
-    );
-    mensaje.referencia = Some(id);
-    cuaderno::anadir(&almacen::carpeta(raiz, &a.ficha.id), &mensaje)?;
+    let mensaje = escribir_lienzo(ubicacion.raiz(), &a.ficha.id, aparato, numero, None)?;
+    let (cuando, nombre) = (mensaje.cuando, mensaje.nombre.clone());
 
     // Un lienzo recien creado esta vacio, y `leer_vista` devuelve `None` a
     // proposito para los vacios: la burbuja ensena su nombre hasta que se
@@ -7233,13 +7371,51 @@ fn crear_lienzo(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::i
     a.mensajes.push(mensaje);
     a.ficha.tocado = cuando;
     a.ficha.resumen = nombre;
-    let mut indice = almacen::Indice::leer(raiz);
-    if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == a.ficha.id) {
-        f.tocado = a.ficha.tocado;
-        f.resumen = a.ficha.resumen.clone();
-        indice.guardar(raiz)?;
+    subir_en_la_lista(ubicacion.raiz(), &a.ficha.id, a.ficha.tocado, &a.ficha.resumen)
+}
+
+/// Lo de [`crear_lienzo`] que toca el disco, sin la conversacion abierta: el
+/// `.excalidraw` vacio y su mensaje `DIBUJO` en el cuaderno.
+///
+/// `nombre` es el que se le pone a la fila, como al renombrarla en el chat
+/// (`guardar_nombre_de_mensaje`): sin el, la fila se llama como su fichero.
+/// Lo usan los pedidos (`pedidos.rs`), que pueden traerlo puesto.
+pub(crate) fn escribir_lienzo(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    aparato: &str,
+    numero: i64,
+    nombre: Option<&str>,
+) -> std::io::Result<pixpin_proyecto::cuaderno::Mensaje> {
+    use pixpin_proyecto::{almacen, cuaderno};
+    let id = pixpin_proyecto::codigos::nuevo();
+    let ruta = almacen::lienzo(raiz, proyecto, &id);
+    if let Some(padre) = ruta.parent() {
+        std::fs::create_dir_all(padre)?;
     }
-    Ok(())
+    let json = pixpin_motor2d::excalidraw::escribir(&pixpin_motor2d::excalidraw::Lienzo::vacio());
+    std::fs::write(&ruta, &json)?;
+
+    let fichero = format!("{id}.excalidraw");
+    let mut mensaje = cuaderno::Mensaje::adjunto(
+        cuaderno::Clase::Dibujo,
+        &fichero,
+        &format!("lienzos/{fichero}"),
+        json.len() as i64,
+        &cuaderno::Sello {
+            cuando: pixpin_shell::entorno::ahora_utc_ms(),
+            numero,
+            aparato: aparato.to_string(),
+            proyecto: proyecto.to_string(),
+        },
+    );
+    mensaje.referencia = Some(id);
+    // El mismo tope que al renombrar a mano.
+    if let Some(n) = nombre.map(str::trim).filter(|n| !n.is_empty()) {
+        mensaje.nombre = n.chars().take(80).collect();
+    }
+    cuaderno::anadir(&almacen::carpeta(raiz, proyecto), &mensaje)?;
+    Ok(mensaje)
 }
 
 fn meter_ficheros(
@@ -7833,6 +8009,13 @@ fn abrir_mensaje(
     // el movil: sin esperar a otra aplicacion y con los marcadores y lo
     // anotado a mano.
     let nombre = pixpin_docs::nombre(&ruta);
+    // Un Markdown se abre en el editor de notas de PixPin, no en el programa
+    // que Windows tenga para `.md` (en muchos equipos, el navegador, que lo
+    // ensena como texto plano y no deja editarlo).
+    if crate::notas_md::es_markdown(&ruta) {
+        crate::notas_md::abrir(idioma, ubicacion.clone(), crate::notas_md::Destino::Fichero { ruta });
+        return;
+    }
     if crate::lector::se_lee_al_tocar(&nombre)
         && crate::lector::abrir_en_su_lector(idioma, ubicacion, &ruta, &nombre)
     {
@@ -7968,7 +8151,7 @@ fn pintar_tarjeta_galeria(
     // al recuadro oscuro que parecia una miniatura rota.
     let ext = chat::extension_corta(&m.nombre);
     if !ext.is_empty() {
-        pintar_chapa_extension(p, c, &ext, celda);
+        pintar_chapa_extension(p, c, &ext, &m.nombre, celda);
         return;
     }
     p.rellenar_redondeado(rf(celda), 4.0 * e, tema.burbuja_otra);
@@ -8014,13 +8197,14 @@ fn pintar_tarjeta_galeria(
 /// La chapa de un fichero sin vista previa: un rectangulo de color con su
 /// extension, como en Telegram.
 ///
-/// El color sale de la propia extension, asi que todos los PDF se ven
-/// iguales entre si y distintos de los HTML: de un vistazo se distingue un
+/// El color es el de su familia en la tabla del movil (v0.98.4, el mismo que
+/// el icono de su fila en el chat): todos los PDF rojos, los Word azules,
+/// los planos amarillos con la letra oscura. De un vistazo se distingue un
 /// grupo de otro sin leer nada.
-fn pintar_chapa_extension(p: &Pintor, c: &Pinta, ext: &str, caja: Rect) {
+fn pintar_chapa_extension(p: &Pintor, c: &Pinta, ext: &str, nombre: &str, caja: Rect) {
     let e = c.escala as f32 / 100.0;
-    let (r, g, b) = chat::color_de_extension(ext);
-    p.rellenar_redondeado(rf(caja), 4.0 * e, Color { r, g, b, a: 1.0 });
+    let (fondo, letra) = icono_de_tipo::colores(nombre);
+    p.rellenar_redondeado(rf(caja), 4.0 * e, fondo);
     // La letra, a un quinto del lado: cabe «XLSX» en la celda mas pequena y
     // se sigue leyendo en la fila de un archivo, que es mucho mas baja.
     let tam = (caja.ancho.min(caja.alto) as f32 / 5.0).clamp(9.0 * e, 34.0 * e);
@@ -8030,7 +8214,7 @@ fn pintar_chapa_extension(p: &Pintor, c: &Pinta, ext: &str, caja: Rect) {
         caja.x as f32 + (caja.ancho as f32 - w) / 2.0,
         caja.y as f32 + (caja.alto as f32 - h) / 2.0,
         tam,
-        Color::BLANCO,
+        letra,
     );
 }
 
@@ -8506,14 +8690,23 @@ fn abrir_foto_en_lienzo(foto: &std::path::Path, opciones: OpcionesLienzo) {
     };
     // F5: las marcas de este lienzo viven junto a su dibujo.
     let _marcas = crate::ventana_editor::marcas::junto_a(&dibujo);
-    let resultado = crate::ventana_editor::abrir(
+    // Las imagenes pegadas en este lienzo viven en la carpeta de al lado.
+    let fotos = crate::imagenes_lienzo::fotos_junto_a(&dibujo, &escena);
+    let mut pegadas = Vec::new();
+    let resultado = crate::ventana_editor::abrir_con_pegadas(
         escena,
         opciones.enganche,
         opciones.nivel,
         opciones.medir_fotogramas,
         Some(fondo),
-        &[],
+        &fotos,
+        &mut pegadas,
     );
+    if let Ok((escena, _)) = &resultado
+        && let Err(e) = crate::imagenes_lienzo::guardar_pegadas_junto_a(&dibujo, escena, &pegadas)
+    {
+        tracing::error!(?e, ruta = %dibujo.display(), "no se pudieron guardar las imagenes pegadas");
+    }
     match resultado {
         Ok((escena, _)) => match crate::pines::guardar_lienzo(&dibujo, &escena, habia) {
             Ok(guardado) => {
@@ -9083,22 +9276,78 @@ struct Grabando {
     temporal: std::path::PathBuf,
 }
 
+/// La clave del aviso que explica por que no se pudo empezar a grabar.
+fn rotulo_de_no_grabar(e: &pixpin_audio::ErrorAudio) -> &'static str {
+    match e {
+        pixpin_audio::ErrorAudio::SinMicrofono => "chat-voz-sin-microfono",
+        pixpin_audio::ErrorAudio::SinCodificadorAac => "chat-voz-sin-codec",
+        _ => "chat-voz-fallo",
+    }
+}
+
+/// **Graba una nota de voz desde fuera del chat** (el pedido «grabar» del
+/// plugin de Flow Launcher): un microfono flotante, siempre encima, que se
+/// para con un clic y la guarda con `nombre` en `proyecto`. Ver
+/// [`microfono_flotante`].
+pub(crate) fn grabar_flotante(
+    textos: &Catalogo,
+    raiz: std::path::PathBuf,
+    proyecto: String,
+    aparato: String,
+    nombre: String,
+) {
+    microfono_flotante::lanzar(
+        microfono_flotante::Pedido {
+            raiz,
+            proyecto,
+            aparato,
+            nombre,
+        },
+        microfono_flotante::Rotulos::de(textos),
+    );
+}
+
+/// **La caja de soltar de un proyecto** (pedido «soltar» y «Añadir
+/// arrastrando…»): un recuadro flotante que mete en ese chat todo lo que se
+/// le suelta, sin abrirlo. Ver [`caja_de_soltar`].
+pub(crate) fn caja_de_soltar(
+    textos: &Catalogo,
+    raiz: std::path::PathBuf,
+    proyecto: String,
+    nombre: String,
+    aparato: String,
+) {
+    let rotulos = caja_de_soltar::Rotulos::de(textos, &nombre);
+    caja_de_soltar::lanzar(
+        caja_de_soltar::Pedido {
+            raiz,
+            proyecto,
+            nombre,
+            aparato,
+        },
+        rotulos,
+    );
+}
+
+/// Donde escribe la grabadora mientras graba en `proyecto`.
+///
+/// El temporal vive en la carpeta del proyecto y no en la del sistema: si
+/// la aplicacion se cierra a mitad, lo que quedo esta al lado de su
+/// conversacion y no perdido en `%TEMP%`.
+fn temporal_de_la_voz(raiz: &std::path::Path, proyecto: &str) -> std::path::PathBuf {
+    pixpin_proyecto::almacen::carpeta(raiz, proyecto).join(format!(
+        "voz-{}.m4a.parcial",
+        pixpin_shell::entorno::ahora_utc_ms()
+    ))
+}
+
 /// Empieza a grabar, o dice por que no se puede.
 ///
 /// El fallo se cuenta **en el acto** y no despues: que no haya microfono, o
 /// que el permiso este quitado en los ajustes de Windows, es un caso normal,
 /// y un boton rojo que no graba nada es peor que un aviso.
-fn empezar_a_grabar(
-    ubicacion: &Ubicacion,
-    a: &mut Abierto,
-) -> Result<(), pixpin_audio::ErrorAudio> {
-    // El temporal vive en la carpeta del proyecto y no en la del sistema: si
-    // la aplicacion se cierra a mitad, lo que quedo esta al lado de su
-    // conversacion y no perdido en `%TEMP%`.
-    let temporal = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id).join(format!(
-        "voz-{}.m4a.parcial",
-        pixpin_shell::entorno::ahora_utc_ms()
-    ));
+fn empezar_a_grabar(ubicacion: &Ubicacion, a: &mut Abierto) -> Result<(), pixpin_audio::ErrorAudio> {
+    let temporal = temporal_de_la_voz(ubicacion.raiz(), &a.ficha.id);
     let grabadora = pixpin_audio::Grabadora::empezar(&temporal)?;
     a.grabando = Some(Grabando {
         grabadora,
@@ -9108,11 +9357,6 @@ fn empezar_a_grabar(
 }
 
 /// Para de grabar y deja la nota de voz en la conversacion.
-///
-/// El mensaje lleva `duracionMs` y los `picos` con el contrato del movil
-/// —enteros crudos de 0 a 32767, como mucho 256—, que es lo que hace que la
-/// onda se vea igual alli. Los picos van en `resto` porque el `Mensaje` de
-/// aqui no declara ese campo, igual que al leerlos.
 fn terminar_de_grabar(
     ubicacion: &Ubicacion,
     a: &mut Abierto,
@@ -9123,41 +9367,77 @@ fn terminar_de_grabar(
     };
     let temporal = g.temporal.clone();
     let grabacion = g.grabadora.parar()?;
-    let leido = std::fs::read(&grabacion.ruta);
+    let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
+    let hecho = guardar_la_voz(ubicacion.raiz(), &a.ficha.id, aparato, None, &grabacion, numero);
     let _ = std::fs::remove_file(&temporal);
-    let bytes = leido.map_err(|_| pixpin_audio::ErrorAudio::NoEsAudio {
+    let mensaje = hecho?;
+    a.vistas.push(None);
+    a.ficha.tocado = mensaje.cuando;
+    a.ficha.resumen = mensaje.nombre.clone();
+    a.mensajes.push(mensaje);
+    a.colocado.borrow_mut().ancho = 0;
+    Ok(())
+}
+
+/// **Mete en el proyecto una nota de voz recien grabada**: la del boton del
+/// chat y la del microfono flotante, por el mismo camino, para que las dos
+/// salgan identicas (sello, numero, nombre, `duracionMs` y picos).
+///
+/// El mensaje lleva `duracionMs` y los `picos` con el contrato del movil
+/// —enteros crudos de 0 a 32767, como mucho 256—, que es lo que hace que la
+/// onda se vea igual alli. Los picos van en `resto` porque el `Mensaje` de
+/// aqui no declara ese campo, igual que al leerlos. El temporal de la
+/// grabadora lo borra quien llama.
+fn guardar_la_voz(
+    raiz: &std::path::Path,
+    proyecto: &str,
+    aparato: &str,
+    nombre: Option<&str>,
+    grabacion: &pixpin_audio::Grabacion,
+    numero: i64,
+) -> Result<pixpin_proyecto::cuaderno::Mensaje, pixpin_audio::ErrorAudio> {
+    let bytes = std::fs::read(&grabacion.ruta).map_err(|_| pixpin_audio::ErrorAudio::NoEsAudio {
         ruta: grabacion.ruta.display().to_string(),
     })?;
-
-    let nombre = format!("voz_{}.m4a", pixpin_shell::entorno::ahora_utc_ms());
-    let numero = a.mensajes.iter().map(|m| m.numero).max().unwrap_or(0) + 1;
-    let mut mensaje = adjuntar_en_proyecto(
-        ubicacion.raiz(),
-        &a.ficha.id,
-        aparato,
-        &nombre,
-        &bytes,
-        numero,
-    )
-    .map_err(|_| pixpin_audio::ErrorAudio::NoEsAudio {
-        ruta: nombre.clone(),
-    })?;
+    let nombre = nombre_de_la_voz(nombre, pixpin_shell::entorno::ahora_utc_ms());
+    let mut mensaje = adjuntar_en_proyecto(raiz, proyecto, aparato, &nombre, &bytes, numero)
+        .map_err(|_| pixpin_audio::ErrorAudio::NoEsAudio {
+            ruta: nombre.clone(),
+        })?;
     mensaje.duracion_ms = grabacion.duracion_ms;
     mensaje
         .resto
         .insert("picos".into(), serde_json::json!(grabacion.picos));
     // Se reescribe la linea que acaba de escribir `adjuntar_en_proyecto`: es
     // una sola pasada mas y evita duplicar ahi el camino de la voz.
-    let carpeta = pixpin_proyecto::almacen::carpeta(ubicacion.raiz(), &a.ficha.id);
+    let carpeta = pixpin_proyecto::almacen::carpeta(raiz, proyecto);
     if let Err(e) = pixpin_proyecto::cuaderno::reemplazar(&carpeta, &mensaje) {
         tracing::warn!(?e, "la nota quedo sin duracion ni picos");
     }
-    a.vistas.push(None);
-    a.ficha.tocado = mensaje.cuando;
-    a.ficha.resumen = nombre;
-    a.mensajes.push(mensaje);
-    a.colocado.borrow_mut().ancho = 0;
-    Ok(())
+    Ok(mensaje)
+}
+
+/// Como se llama el fichero de una nota de voz nueva.
+///
+/// Con nombre puesto, ese nombre con su `.m4a`: asi se llaman igual la fila
+/// del chat y el fichero que viaja al movil, y se encuentra buscando por
+/// cualquiera de los dos. El `.m4a` se le pone siempre porque la clase del
+/// mensaje (`clase_de_nombre`) y el reproductor van por la extension. Lo que
+/// Windows no admite en un nombre lo quita despues `guardar_adjunto`. Sin
+/// nombre, o con uno en blanco, la hora, como hasta ahora.
+fn nombre_de_la_voz(nombre: Option<&str>, ahora: i64) -> String {
+    match nombre.map(str::trim).filter(|n| !n.is_empty()) {
+        Some(n) => {
+            let n: String = n.chars().take(80).collect();
+            // Si ya lo trae, no se dobla.
+            if n.to_lowercase().ends_with(".m4a") {
+                n
+            } else {
+                format!("{n}.m4a")
+            }
+        }
+        None => format!("voz_{ahora}.m4a"),
+    }
 }
 
 /// **Arranca «Pasar a texto» sobre una nota de voz**, o dice que falta.
@@ -9220,7 +9500,7 @@ fn empezar_a_transcribir(
 ///
 /// Se mira **antes** de lanzar el hilo: cargar un modelo que no existe para
 /// contarlo diez segundos despues no le sirve a nadie.
-fn falta_para_transcribir(
+pub(crate) fn falta_para_transcribir(
     ubicacion: &Ubicacion,
     textos: &Catalogo,
     idioma: pixpin_store::Idioma,
@@ -9253,7 +9533,7 @@ fn falta_para_transcribir(
 /// Se traduce **del enum** y no del `Display` de `ErrorVoz`: aquellas frases
 /// estan en castellano sin tildes y son para el registro. Anadir una
 /// variante alli deja de compilar esto, que es justo lo que hay que saber.
-fn razon_de_voz(e: &pixpin_voz::ErrorVoz, textos: &Catalogo) -> String {
+pub(crate) fn razon_de_voz(e: &pixpin_voz::ErrorVoz, textos: &Catalogo) -> String {
     use pixpin_voz::ErrorVoz as E;
     let arg = |clave, nombre, valor: String| {
         let mut args = fluent_bundle::FluentArgs::new();
@@ -10270,6 +10550,7 @@ fn reparto_de_biblioteca() -> pixpin_ui::mini::Reparto {
         filas_de_botones: 0,
         con_lista: true,
         con_anadir: false,
+        con_avance: false,
     }
 }
 
@@ -10498,6 +10779,11 @@ impl MiniAbierta {
             self.elegido = crate::mini_panel::girar(&self.documento, &mut self.teclado, *azar);
             return true;
         }
+        // Esconder las hechas cambia como se mira, no el documento: nada
+        // que guardar.
+        if crate::mini_panel::solo_de_vista(orden, &mut self.teclado) {
+            return false;
+        }
         let nuevo = crate::mini_panel::aplicar(
             &self.cual,
             &self.documento,
@@ -10576,38 +10862,26 @@ fn guardar_mini(ubicacion: &Ubicacion, a: &mut Abierto, m: &MiniAbierta) -> Resu
     Ok(())
 }
 
-/// Donde cayo el raton dentro del panel.
-enum ZonaMini {
-    Boton(crate::mini_panel::Orden),
-    Marcar(usize),
-    Borrar(usize),
-}
-
-/// Que se pulso, calculado igual al pintar y al hacer clic.
+/// El boton que cae bajo el raton, si alguno y si se puede pulsar.
 ///
 /// Se resuelve aqui y no en el bucle para que las dos mitades —lo que se
 /// dibuja y lo que responde— salgan de la misma cuenta: un boton pintado en
-/// un sitio y pulsable en otro es el fallo clasico de estas pantallas.
-fn zona_mini(
+/// un sitio y pulsable en otro es el fallo clasico de estas pantallas. La
+/// lista la resuelve `mini_panel::toque_en_lista`, que es la misma del pin.
+fn boton_mini(
     v: &crate::mini_panel::Vista,
     d: &pixpin_ui::mini::Disposicion,
-    m: &MiniAbierta,
     l: Punto,
     escala: u32,
-) -> Option<ZonaMini> {
+) -> Option<crate::mini_panel::Orden> {
     for (fila, botones) in v.filas_de_botones.iter().enumerate() {
         if let Some(n) = d.cual_boton(l, fila as u32, botones.len(), escala)
             && botones[n].activo
         {
-            return Some(ZonaMini::Boton(botones[n].orden.clone()));
+            return Some(botones[n].orden.clone());
         }
     }
-    let n = d.cual_fila(l, v.lista.len(), m.scroll, escala)?;
-    let caja = d.fila(n, m.scroll, escala);
-    if v.lista[n].se_borra && d.aspa(caja, escala).contiene(l) {
-        return Some(ZonaMini::Borrar(n));
-    }
-    v.lista[n].se_marca.then_some(ZonaMini::Marcar(n))
+    None
 }
 
 /// Atiende un clic dentro del panel: dice que hacer, y lo hace
@@ -10622,7 +10896,7 @@ fn pulsar_mini(
     escala: u32,
     textos: &Catalogo,
 ) -> crate::mini_panel::Efecto {
-    use crate::mini_panel::{Efecto, Orden};
+    use crate::mini_panel::Efecto;
     let Some(m) = a.mini.as_mut() else {
         return Efecto::Nada;
     };
@@ -10645,21 +10919,23 @@ fn pulsar_mini(
         }
         return Efecto::Cerrar;
     }
-    let Some(zona) = zona_mini(&v, &t, m, l, escala) else {
-        return Efecto::Nada;
-    };
-    let orden = match zona {
-        // El clic tambien la deja marcada: asi las flechas, F2 y Supr siguen
-        // desde la fila que se acaba de tocar, no desde otra.
-        ZonaMini::Marcar(n) => {
-            crate::mini_panel::clic_en_fila(&mut m.teclado, n);
-            Orden::Alternar(n)
-        }
-        ZonaMini::Borrar(n) => Orden::Quitar(n),
-        // El azar lo pone `cumplir_mini`, igual que con la tecla.
-        ZonaMini::Boton(otra) => otra,
-    };
-    Efecto::Hacer(orden)
+    // El azar de la ruleta lo pone `cumplir_mini`, igual que con la tecla.
+    if let Some(orden) = boton_mini(&v, &t, l, escala) {
+        return Efecto::Hacer(orden);
+    }
+    // La lista: la casilla tacha, el aspa borra, el lapiz corrige, las
+    // flechas mueven y el resto de la fila la elige para el teclado.
+    match crate::mini_panel::toque_en_lista(&v, &t, m.scroll, escala, l) {
+        Some(toque) => crate::mini_panel::cumplir_toque(
+            &m.cual,
+            &m.documento,
+            &moneda_del_catalogo(textos),
+            &v,
+            &mut m.teclado,
+            toque,
+        ),
+        None => Efecto::Nada,
+    }
 }
 
 /// **Cumple lo que pidio una tecla** dentro del panel de la mini-app
@@ -10831,9 +11107,52 @@ fn pintar_mini(p: &Pintor, d: &Disposicion, c: &Pinta, m: &MiniAbierta) {
         }
     }
 
+    // La linea de avance de las tareas: «3 de 7 hechas» y su barrita. Es la
+    // cuenta de la burbuja, aqui dentro para no tener que cerrar para verla.
+    if t.avance.alto > 0
+        && let Some((hechas, de)) = v.avance
+    {
+        let tam = ui::BOTON_TAM * e;
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("hechas", hechas as i64);
+        args.set("de", de as i64);
+        let rotulo = c.textos.t_args("mini-avance", &args);
+        let caja = rf(t.avance);
+        let (ancho, alto) = p.medir_texto(&rotulo, tam);
+        p.texto(
+            &rotulo,
+            caja.x + margen,
+            caja.y + (caja.alto - alto) / 2.0,
+            tam,
+            tema.apagado,
+        );
+        let x0 = caja.x + margen + ancho + 12.0 * e;
+        let x1 = caja.x + caja.ancho - margen;
+        if x1 > x0 {
+            let barra = RectF {
+                x: x0,
+                y: caja.y + caja.alto / 2.0 - 2.0 * e,
+                ancho: x1 - x0,
+                alto: 4.0 * e,
+            };
+            p.rellenar_redondeado(barra, 2.0 * e, tema.pildora_borde);
+            if de > 0 && hechas > 0 {
+                let lleno = RectF {
+                    ancho: barra.ancho * hechas as f32 / de as f32,
+                    ..barra
+                };
+                p.rellenar_redondeado(lleno, 2.0 * e, tema.enviar);
+            }
+        }
+    }
+
     // La lista, lo unico que se desplaza.
     if t.lista.alto > 0 {
+        use crate::mini_panel::ToqueDeFila;
         let tam = ui::FILA_TAM * e;
+        let tam_edad = ui::BOTON_TAM * e;
+        let cuantas = v.lista.len();
+        let (_, alto) = p.medir_texto("Ag", tam);
         p.empujar_recorte(rf(t.lista));
         for (n, f) in v.lista.iter().enumerate() {
             let caja = t.fila(n, m.scroll, escala);
@@ -10843,32 +11162,56 @@ fn pintar_mini(p: &Pintor, d: &Disposicion, c: &Pinta, m: &MiniAbierta) {
                 continue;
             }
             let caja_f = rf(caja);
-            // La fila marcada con las flechas: es la que tachan Espacio,
-            // corrige F2 y borra Supr.
+            // La fila elegida (flechas o clic): la que tacha Espacio, corrige
+            // F2, borra Supr y la unica con subir y bajar.
             if f.marcada {
                 p.rellenar_redondeado(caja_f, 6.0 * e, tema.pildora_borde);
             }
-            let (_, alto) = p.medir_texto("Ag", tam);
             let y = caja_f.y + (caja_f.alto - alto) / 2.0;
             let color = if f.hecha {
                 tema.apagado
             } else {
                 tema.texto_papel
             };
+            // Los iconos de la derecha, del aspa hacia dentro, con la misma
+            // cuenta que el clic (`mini_panel::toque_en_lista`).
             let mut derecha = caja_f.x + caja_f.ancho;
-            if f.se_borra {
-                let aspa = rf(t.aspa(caja, escala));
-                p.icono(&mi::CLOSE, encoger(aspa, 7.0 * e), tema.apagado);
-                derecha = aspa.x;
+            let iconos = crate::mini_panel::iconos_de_fila(f, n, cuantas);
+            let usados = iconos.iter().rposition(Option::is_some).map_or(0, |k| k + 1);
+            for (k, icono) in iconos.iter().enumerate().take(usados) {
+                let r = rf(t.icono_de_fila(caja, k as u32, escala));
+                derecha = derecha.min(r.x);
+                let glifo: &'static Icono = match icono {
+                    Some(ToqueDeFila::Borrar(_)) => &mi::CLOSE,
+                    Some(ToqueDeFila::Corregir(_)) => &mi::EDIT,
+                    Some(ToqueDeFila::Subir(_)) => &mi::KEYBOARD_ARROW_UP,
+                    Some(ToqueDeFila::Bajar(_)) => &mi::KEYBOARD_ARROW_DOWN,
+                    _ => continue,
+                };
+                p.icono(glifo, encoger(r, 7.0 * e), tema.apagado);
+            }
+            // Cuantos dias lleva, nunca la fecha (lo pidio el usuario):
+            // pequeno y gris, que es un dato de contexto y no la tarea.
+            if let Some(dias) = f.edad {
+                let mut args = fluent_bundle::FluentArgs::new();
+                args.set("dias", i64::from(dias));
+                let edad = c.textos.t_args("mini-tarea-edad", &args);
+                let (ancho_e, alto_e) = p.medir_texto(&edad, tam_edad);
+                p.texto(
+                    &edad,
+                    derecha - ancho_e - 6.0 * e,
+                    caja_f.y + (caja_f.alto - alto_e) / 2.0,
+                    tam_edad,
+                    tema.apagado,
+                );
+                derecha -= ancho_e + 12.0 * e;
             }
             if !f.detalle.is_empty() {
                 let (ancho_d, _) = p.medir_texto(&f.detalle, tam);
                 p.texto(&f.detalle, derecha - ancho_d - 6.0 * e, y, tam, color);
                 derecha -= ancho_d + 12.0 * e;
             }
-            // La casilla de una tarea, con su marca. El tachado del movil no
-            // se imita con una raya: se apaga el color, que es lo que este
-            // pintor sabe hacer y se lee igual de rapido.
+            // La casilla de una tarea, con su marca: lo unico que tacha.
             let mut x = caja_f.x;
             if f.se_marca {
                 let icono: &'static Icono = if f.hecha {
@@ -10886,9 +11229,25 @@ fn pintar_mini(p: &Pintor, d: &Disposicion, c: &Pinta, m: &MiniAbierta) {
                     },
                     if f.hecha { tema.enviar } else { tema.apagado },
                 );
-                x += 26.0 * e;
+                let casilla = rf(t.casilla(caja, escala));
+                x = casilla.x + casilla.ancho;
             }
-            p.texto_linea(&f.texto, x, y, tam, (derecha - x).max(0.0), color);
+            let hueco = (derecha - x).max(0.0);
+            p.texto_linea(&f.texto, x, y, tam, hueco, color);
+            // Lo hecho se tacha, como en el movil (`TextDecoration.LineThrough`):
+            // ver lo tachado dice lo que ya no hay que volver a pensar.
+            if f.hecha {
+                let (ancho_t, _) = p.medir_texto(&f.texto, tam);
+                p.rellenar(
+                    RectF {
+                        x,
+                        y: y + alto * 0.55,
+                        ancho: ancho_t.min(hueco),
+                        alto: (1.0 * e).max(1.0),
+                    },
+                    tema.apagado,
+                );
+            }
             p.rellenar(
                 RectF {
                     x: caja_f.x,
@@ -11561,19 +11920,37 @@ fn abrir_una_hoja(
             .filter(|r| !r.is_empty())
             .unwrap_or_else(|| m.codigo_unico()),
     });
-    let resultado = crate::ventana_editor::abrir_sobre(
+    let mut pegadas = Vec::new();
+    let resultado = crate::ventana_editor::abrir_sobre_con_pegadas(
         escena,
         opciones.enganche,
         opciones.nivel,
         opciones.medir_fotogramas,
         fondo,
         &fotos,
+        &mut pegadas,
     );
     let (escena, destino) = match resultado {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(?e, "no se pudo abrir el lienzo");
             return (false, None);
+        }
+    };
+    // Las imagenes pegadas, a `imagenes/` del proyecto y apuntadas en
+    // `files`, como las del movil: sin esto la figura no se escribia y al
+    // reabrir la hoja la imagen habia desaparecido.
+    let lienzo = match crate::imagenes_lienzo::guardar_pegadas_en_hoja(
+        &pixpin_proyecto::almacen::carpeta(raiz, proyecto),
+        &lienzo,
+        &escena,
+        &pegadas,
+        pixpin_shell::entorno::ahora_utc_ms(),
+    ) {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!(?e, "no se pudieron guardar las imagenes pegadas en la hoja");
+            lienzo
         }
     };
     let guardada = guardar_hoja_dibujada(&ruta, &lienzo, &escena);
@@ -11633,6 +12010,110 @@ pub(crate) fn hoja_abierta_y_guardada(
     editar(&mut escena);
     let guardada = guardar_hoja_dibujada(&h.ruta, &h.lienzo, &escena);
     Some((abierta, h.fotos, guardada))
+}
+
+#[cfg(test)]
+mod pruebas_imagen_pegada {
+    //! «Si pego una imagen en el canvas no se guarda: al cerrarlo, la imagen
+    //! desaparece al volver a abrirlo» (2-oct-2026). El camino entero de una
+    //! hoja de proyecto, sin ventana: abrir, pegar, guardar como al cerrar
+    //! (`abrir_una_hoja`) y volver a abrir.
+    use super::{guardar_hoja_dibujada, preparar_hoja};
+    use crate::imagenes_lienzo::{self as img, ImagenesLienzo};
+    use pixpin_codec::ImagenRgba;
+    use pixpin_motor2d::Figura;
+    use pixpin_proyecto::almacen;
+
+    fn raiz(etiqueta: &str) -> std::path::PathBuf {
+        let r = std::env::temp_dir().join(format!("pixpin-pegada-{etiqueta}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&r);
+        std::fs::create_dir_all(&r).unwrap();
+        r
+    }
+
+    /// Una imagen de colores distintos por pixel: si vuelve otra, se nota.
+    fn foto(ancho: u32, alto: u32, tono: u8) -> ImagenRgba {
+        let mut pixeles = Vec::with_capacity((ancho * alto * 4) as usize);
+        for y in 0..alto {
+            for x in 0..ancho {
+                pixeles.extend_from_slice(&[(x * 7) as u8 ^ tono, (y * 11) as u8, tono, 255]);
+            }
+        }
+        ImagenRgba { ancho, alto, pixeles }
+    }
+
+    #[test]
+    fn una_imagen_pegada_y_un_fichero_pegado_siguen_ahi_al_reabrir_la_hoja() {
+        let r = raiz("hoja");
+        let ruta = almacen::lienzo(&r, "p1", "h1");
+        std::fs::create_dir_all(ruta.parent().unwrap()).unwrap();
+        std::fs::write(&ruta, r#"{"type":"excalidraw","version":2,"elements":[],"files":{}}"#).unwrap();
+        let m = pixpin_proyecto::cuaderno::Mensaje {
+            referencia: Some("h1".into()),
+            ..Default::default()
+        };
+        let h = preparar_hoja(&r, "p1", &m, 0).expect("la hoja se abre");
+        let mut escena = h.escena;
+
+        // Los dos caminos del Ctrl+V: pixeles del portapapeles, y un fichero
+        // copiado en el Explorador (llega como ruta).
+        let mapa = foto(40, 30, 0x55);
+        let copiado = r.join("copiado.png");
+        pixpin_codec::imagen::guardar(&foto(24, 16, 0xa0), &copiado, pixpin_codec::FormatoImagen::Png).unwrap();
+        let del_fichero = match img::decidir_pegado(
+            false,
+            Some(pixpin_codec::ContenidoPortapapeles::Rutas(vec![r.join("notas.txt"), copiado.clone()])),
+        ) {
+            img::Pegado::Imagen(i) => i,
+            otro => panic!("un .png copiado se pega como imagen: {otro:?}"),
+        };
+        let mut almacen_sesion = ImagenesLienzo::nuevo(4096);
+        let a = almacen_sesion.guardar(mapa.clone()).unwrap();
+        let b = almacen_sesion.guardar(del_fichero.clone()).unwrap();
+        // Y una tercera que se pega y se borra: esa no se escribe.
+        let c = almacen_sesion.guardar(foto(8, 8, 1)).unwrap();
+        escena.anadir(img::elemento_imagen(a, 10.0, 20.0, 40.0, 30.0));
+        escena.anadir(img::elemento_imagen(b, 100.0, 20.0, 24.0, 16.0));
+        let borrada = escena.anadir(img::elemento_imagen(c, 0.0, 0.0, 8.0, 8.0));
+        escena.borrar_apuntando(borrada);
+        let pegadas = almacen_sesion.tomar_nuevas();
+        assert_eq!(pegadas.len(), 3);
+
+        // Lo que hace `abrir_una_hoja` al cerrar el editor.
+        let lienzo =
+            img::guardar_pegadas_en_hoja(&almacen::carpeta(&r, "p1"), &h.lienzo, &escena, &pegadas, 5).unwrap();
+        assert!(guardar_hoja_dibujada(&ruta, &lienzo, &escena), "habia algo que guardar");
+
+        // Reabrir: las dos figuras, con sus fotos, y nada de la borrada.
+        let h2 = preparar_hoja(&r, "p1", &m, 0).expect("se reabre");
+        let ids: Vec<u64> = h2
+            .escena
+            .visibles()
+            .filter_map(|e| match e.figura {
+                Figura::Imagen { id_objeto } => Some(id_objeto),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ids, vec![a, b], "las dos imagenes siguen en la hoja");
+        assert_eq!(h2.fotos.len(), 2, "y las dos tienen su fichero: {:?}", h2.fotos);
+        for (id, original) in [(a, &mapa), (b, &del_fichero)] {
+            let (_, ruta_foto) = h2.fotos.iter().find(|(i, _)| *i == id).expect("su foto");
+            assert_eq!(ruta_foto, &almacen::carpeta(&r, "p1").join("imagenes").join(img::id_de_fichero(id)));
+            let leida = pixpin_codec::imagen::cargar(ruta_foto).unwrap();
+            assert_eq!((leida.ancho, leida.alto), (original.ancho, original.alto));
+            assert_eq!(leida.pixeles, original.pixeles, "los mismos pixeles");
+            // Y el editor la encuentra con el id de su figura.
+            let mut al_abrir = ImagenesLienzo::nuevo(4096);
+            assert!(al_abrir.guardar_con_id(id, leida));
+        }
+        assert!(
+            !almacen::carpeta(&r, "p1").join("imagenes").join(img::id_de_fichero(c)).exists(),
+            "la pegada y borrada no se escribe"
+        );
+        // Abrir y cerrar sin tocar nada no reescribe la hoja.
+        assert!(!guardar_hoja_dibujada(&ruta, &h2.lienzo, &h2.escena));
+        let _ = std::fs::remove_dir_all(&r);
+    }
 }
 
 /// La vista de una pagina del documento del proyecto, o `None` mientras se
@@ -11749,6 +12230,8 @@ enum Zona {
     Marca(usize, i64),
     /// El aspa de la barra de teclear la hora de un recordatorio.
     CerrarHora,
+    /// El aspa de la barra de teclear quien llama.
+    CerrarQuien,
 }
 
 /// La fila de un archivo ya medida.
@@ -11761,6 +12244,9 @@ struct FilaDeArchivo {
     /// microfono. Ocupa el sitio del nombre: en una nota de voz el nombre es
     /// «voz_1758..m4a», que no le dice nada a nadie, y la onda si.
     onda: Vec<f32>,
+    /// El nombre por el que se elige el icono de su tipo, si es un archivo
+    /// (`icono_de_tipo`); `None` lleva el boton redondo.
+    archivo: Option<String>,
 }
 
 /// Los picos del microfono que el movil anoto al grabar la nota.
@@ -12275,7 +12761,7 @@ const CHAPA_TAM: f32 = 10.0;
 
 /// El codigo de chat de un mensaje, como lo ensena el movil: `#47·K7Q2`.
 /// `None` si el mensaje todavia no tiene numero.
-fn chapa_de_codigo(m: &pixpin_proyecto::cuaderno::Mensaje) -> Option<String> {
+pub(crate) fn chapa_de_codigo(m: &pixpin_proyecto::cuaderno::Mensaje) -> Option<String> {
     if m.numero <= 0 {
         return None;
     }
@@ -12632,7 +13118,12 @@ fn pintar_redaccion(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto, alto_te
     //
     // Menos a la de teclear la hora de un recordatorio, que manda sobre
     // todas: se abrio a proposito hace un segundo y lo que se teclea va ahi.
-    if let Some((_, escrito)) = &a.hora_a_mano {
+    // Igual la de «Quien llama» (v0.98.6), que se abre desde ese mismo menu.
+    if let Some((_, escrito)) = &a.quien_llama {
+        let barra = d.encima_de_la_isla(alto_texto, escala);
+        let cerrar = quien_llama::pintar_barra(p, barra, tema, textos, escrito, e);
+        a.zonas.borrow_mut().push((cerrar, Zona::CerrarQuien));
+    } else if let Some((_, escrito)) = &a.hora_a_mano {
         let barra = d.encima_de_la_isla(alto_texto, escala);
         let caja = RectF {
             alto: (barra.alto as f32 - 6.0 * e).max(1.0),
@@ -13022,7 +13513,12 @@ enum Accion {
     /// de exportar o el dialogo de imprimir de Windows.
     Exportar(usize),
     Imprimir(usize),
+    /// Meter la hoja como pagina viva en una nota (H12, `paginas_vivas`).
+    InsertarEnNota(usize),
     Pinear(usize),
+    /// Sacar a la pantalla la lista de tareas de ese mensaje, viva: lo que
+    /// se tacha en el pin se guarda en el mensaje (`herramienta::Vinculo`).
+    PinearLista(usize),
     Rescatar(usize),
     Etiquetas(usize),
     Etiquetar(usize, Option<String>),
@@ -13034,6 +13530,8 @@ enum Accion {
     RecordarEn(usize, i64),
     /// «Elegir la hora…»: abrir la barra donde se teclea.
     RecordarAMano(usize),
+    /// «Quien llama: …» de una nota de voz: abrir la barra donde se teclea.
+    QuienLlama(usize),
     /// Quitarle la hora que tenia.
     Olvidar(usize),
     Ir(usize),
@@ -13081,6 +13579,10 @@ enum Accion {
     EditarNota(usize),
     /// El menu de los grupos de ventanas guardados (H9).
     GruposVentanas,
+    /// La galeria de todas las capturas (2-oct).
+    GaleriaCapturas,
+    /// «Añadir arrastrando…»: la caja de soltar de este proyecto (2-oct).
+    CajaDeSoltar,
 }
 
 /// Una linea de menu: icono, nombre y lo que hace. Borrar va en rojo.
@@ -13395,6 +13897,13 @@ fn menu_de_cabecera(textos: &Catalogo, en_guardados: bool, proyecto: &str) -> Ve
         ));
     }
     v.push(entrada(None, textos.t("chat-proyectos"), Accion::Proyectos));
+    // Una caja flotante a la que soltar ficheros para este proyecto, con el
+    // chat cerrado (el usuario, 2-oct).
+    v.push(entrada(
+        Some(&mi::ATTACH_FILE),
+        textos.t("chat-anadir-arrastrando"),
+        Accion::CajaDeSoltar,
+    ));
     v.push(entrada(
         None,
         textos.t("chat-comenzar"),
@@ -13415,6 +13924,11 @@ fn menu_de_cabecera(textos: &Catalogo, en_guardados: bool, proyecto: &str) -> Ve
         None,
         textos.t("chat-grupos-ventanas"),
         Accion::GruposVentanas,
+    ));
+    v.push(entrada(
+        Some(&mi::IMAGE),
+        textos.t("chat-galeria-capturas"),
+        Accion::GaleriaCapturas,
     ));
     v.push(entrada(
         None,
@@ -13647,6 +14161,14 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             Accion::EditarNota(i),
         ));
     }
+    // Una hoja como pagina viva en una nota del proyecto (H12).
+    if crate::notas_md::paginas_vivas::se_puede_insertar(m) {
+        v.push(entrada(
+            Some(&mi::DESCRIPTION),
+            textos.t("chat-insertar-en-nota"),
+            Accion::InsertarEnNota(i),
+        ));
+    }
     if m.clase == Some(Clase::Dibujo) && m.referencia.is_some() {
         v.push(entrada(
             Some(&mi::EDIT),
@@ -13671,6 +14193,17 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
             Some(&mi::OPEN_IN_NEW),
             textos.t("chat-pinear"),
             Accion::Pinear(i),
+        ));
+    }
+    // Una lista de tareas no tiene fichero, pero si se saca: el pin es la
+    // misma lista, viva, y lo que se tacha alli se guarda en el mensaje.
+    if m.clase == Some(Clase::MiniApp)
+        && m.miniapp.as_deref() == Some(pixpin_proyecto::mini::TAREAS)
+    {
+        v.push(entrada(
+            Some(&mi::OPEN_IN_NEW),
+            textos.t("chat-pinear"),
+            Accion::PinearLista(i),
         ));
     }
     // Lo que solo tiene Windows con una foto: el lienzo grande o dibujar en
@@ -13892,12 +14425,10 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             Err(e) => fallo(&e),
         }
     };
-    let ruta_de = |a: &Abierto, i: usize| {
-        a.mensajes
-            .get(i)
-            .and_then(|m| ruta_del_mensaje(&a.raiz, &a.ficha.id, m))
-            .filter(|r| r.is_file())
-    };
+    // Un lienzo que llego de la lista de un proyecto no lleva `ruta`, solo
+    // su codigo (`referencia`): su dibujo esta en `lienzos/` (el usuario,
+    // 1-oct: «algunos canvas me dicen que el mensaje no tiene archivo»).
+    let ruta_de = |a: &Abierto, i: usize| fichero_del_mensaje(&a.raiz, &a.ficha.id, a.mensajes.get(i)?);
     match accion {
         Accion::Aviso(clave) => Efecto::Aviso(cx.textos.t(clave)),
         // En su propio hilo: el chat sigue abierto y usable detras (D215).
@@ -13921,8 +14452,23 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         Accion::Fijar(i) => reescribir(a, i, &|m| m.fijado = !m.fijado),
         Accion::Rescatar(i) => reescribir(a, i, &|m| m.en_buzon = false),
         Accion::Etiquetar(i, emoji) => reescribir(a, i, &|m| m.emoji = emoji.clone()),
-        Accion::Recordar(i) => Efecto::Menu(menu_de_recordatorio(i, cx.textos)),
+        // Una nota de voz es una llamada: primero, quien llama (v0.98.6).
+        Accion::Recordar(i) => Efecto::Menu(quien_llama::menu_de_las_horas(
+            a.mensajes.get(i),
+            i,
+            &carpeta,
+            cx.textos,
+        )),
+        Accion::QuienLlama(i) => {
+            a.hora_a_mano = None;
+            a.quien_llama = a
+                .mensajes
+                .get(i)
+                .map(|m| (m.id.clone(), quien_llama::nombre_actual(&carpeta, m)));
+            Efecto::Cambio
+        }
         Accion::RecordarAMano(i) => {
+            a.quien_llama = None;
             a.hora_a_mano = a.mensajes.get(i).map(|m| (m.id.clone(), String::new()));
             Efecto::Cambio
         }
@@ -13937,6 +14483,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             }
             if let Some(m) = a.mensajes.get(i) {
                 crate::recordatorios::programar(&carpeta, &m.id, &m.resumen(), cuando);
+                quien_llama::al_poner_la_hora(raiz, &carpeta, m);
             }
             let mut args = fluent_bundle::FluentArgs::new();
             args.set(
@@ -14019,6 +14566,18 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         },
         // Sacar a la pantalla: el fichero va a la ventana principal, que es
         // quien tiene los pines (imagen, video o ficha, segun lo que sea).
+        Accion::PinearLista(i) => {
+            let Some(m) = a.mensajes.get(i) else {
+                return Efecto::Nada;
+            };
+            let carpeta = pixpin_proyecto::almacen::carpeta(raiz, &a.ficha.id);
+            let ruta = crate::pines::herramienta::ruta_de_lista(&carpeta, &m.id);
+            if pixpin_shell::mensajero::enviar_ficheros(std::slice::from_ref(&ruta)) {
+                Efecto::Aviso(cx.textos.t("chat-pineado"))
+            } else {
+                fallo(&"no contesta la ventana principal")
+            }
+        }
         Accion::Pinear(i) => match ruta_de(a, i) {
             Some(ruta) if pixpin_shell::mensajero::enviar_ficheros(std::slice::from_ref(&ruta)) => {
                 Efecto::Aviso(cx.textos.t("chat-pineado"))
@@ -14050,6 +14609,12 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                 Some(aviso) => Efecto::Aviso(aviso),
                 None => Efecto::Cambio,
             }
+        }
+        Accion::InsertarEnNota(i) => {
+            if let Some(m) = a.mensajes.get(i) {
+                crate::notas_md::paginas_vivas::insertar_en_nota(cx.idioma, &cx.ubicacion, &a.ficha.id, m);
+            }
+            Efecto::Nada
         }
         Accion::Renombrar(i) => {
             if let Some(m) = a.mensajes.get(i) {
@@ -14283,6 +14848,20 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
                 }
             };
             crate::notas_md::abrir(cx.idioma, cx.ubicacion.clone(), destino);
+            Efecto::Nada
+        }
+        Accion::CajaDeSoltar => {
+            caja_de_soltar(
+                cx.textos,
+                raiz.to_path_buf(),
+                a.ficha.id.clone(),
+                a.ficha.nombre.clone(),
+                cx.identidad.to_string(),
+            );
+            Efecto::Nada
+        }
+        Accion::GaleriaCapturas => {
+            crate::galeria_capturas::abrir(cx.idioma, cx.ubicacion.clone());
             Efecto::Nada
         }
         Accion::GruposVentanas => {
@@ -15080,6 +15659,34 @@ fn abrir_el_origen(
 mod pruebas_piezas {
     use super::{extension_de, viene_de};
     use pixpin_proyecto::cuaderno::Mensaje;
+
+    #[test]
+    fn una_nota_de_voz_con_nombre_se_llama_asi_y_sigue_siendo_audio() {
+        use super::nombre_de_la_voz;
+        use pixpin_proyecto::cuaderno::{Clase, clase_de_nombre};
+        assert_eq!(nombre_de_la_voz(Some("  reunion lunes "), 5), "reunion lunes.m4a");
+        assert_eq!(nombre_de_la_voz(Some("idea.M4A"), 5), "idea.M4A");
+        assert_eq!(clase_de_nombre(&nombre_de_la_voz(Some("plan"), 5)), Clase::Voz);
+        // Casos negativos: sin nombre, o en blanco, la hora de siempre.
+        assert_eq!(nombre_de_la_voz(None, 42), "voz_42.m4a");
+        assert_eq!(nombre_de_la_voz(Some("   "), 42), "voz_42.m4a");
+    }
+
+    #[test]
+    fn un_lienzo_nuevo_lleva_el_nombre_pedido_y_su_dibujo_en_el_disco() {
+        let raiz = std::env::temp_dir().join(format!("pixpin-lienzo-pedido-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let m = super::escribir_lienzo(&raiz, "p1", "PC01", 7, Some("Plano cocina")).unwrap();
+        assert_eq!(m.nombre, "Plano cocina");
+        assert_eq!(m.numero, 7);
+        let id = m.referencia.clone().unwrap();
+        assert!(pixpin_proyecto::almacen::lienzo(&raiz, "p1", &id).is_file());
+        // Sin nombre, la fila se llama como su fichero, como desde el clip.
+        let sin = super::escribir_lienzo(&raiz, "p1", "PC01", 8, Some("  ")).unwrap();
+        assert!(sin.nombre.ends_with(".excalidraw"));
+        assert_eq!(super::siguiente_numero_en(&raiz, "p1").unwrap(), 9);
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
 
     #[test]
     fn viene_de_se_lee_de_lo_que_escribe_el_movil() {
