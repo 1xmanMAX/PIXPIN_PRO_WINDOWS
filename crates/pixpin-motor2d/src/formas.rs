@@ -17,6 +17,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::azar::Azar;
+use crate::rough;
 use crate::vector::Punto2;
 
 /// Cuantos tramos tiene cada linea "a mano": suficientes para que la curva se
@@ -638,37 +639,6 @@ fn contorno_liso(tramos: &[Tramo]) -> Vec<Punto2> {
     salida
 }
 
-/// Los tramos a mano alzada: cada recta con sus dos pasadas de [`linea`] y
-/// cada esquina con dos pasadas de una curva desviada, como hace rough.js
-/// con cada orden de la ruta (`_bezierTo` con su desvio). Las pasadas no
-/// empalman exactas, igual que en Excalidraw: las tapa la punta redonda del
-/// trazo (`lineCap: round`), y es parte de que parezca dibujado.
-fn contorno_a_mano(tramos: &[Tramo], rugosidad: f32, azar: &mut Azar) -> Vec<Vec<Punto2>> {
-    let mut salida = Vec::with_capacity(tramos.len() * 2);
-    for t in tramos {
-        match *t {
-            Tramo::Recta(a, b) => salida.extend(linea(a, b, rugosidad, azar)),
-            Tramo::Curva(a, c1, c2, b) => {
-                // Un desvio pequeno: la esquina es corta y temblarla como
-                // una recta larga la convertiria en un garabato.
-                let d = (a.distancia(b) / 40.0).clamp(0.5, 2.0) * rugosidad;
-                for pasada in 0..2 {
-                    let d = if pasada == 0 { d } else { d * 0.7 };
-                    let mut mueve =
-                        |p: Punto2| Punto2::nuevo(p.x + azar.desvio(d), p.y + azar.desvio(d));
-                    let (a, c1, c2, b) = (mueve(a), mueve(c1), mueve(c2), mueve(b));
-                    salida.push(
-                        (0..=TRAMOS_ESQUINA)
-                            .map(|i| cubica(a, c1, c2, b, i as f32 / TRAMOS_ESQUINA as f32))
-                            .collect(),
-                    );
-                }
-            }
-        }
-    }
-    salida
-}
-
 /// La ruta del rectangulo redondeado de Excalidraw (`shape.ts`, rama
 /// `roundness`): radio `getCornerRadius` del lado menor, rectas entre las
 /// esquinas y cada esquina una `Q` con el vertice de control.
@@ -764,20 +734,126 @@ pub fn rombo_redondo(x: f32, y: f32, ancho: f32, alto: f32) -> Vec<Punto2> {
 }
 
 /// El trazo de un rombo redondeado con cualquier rugosidad: con 0, el
-/// contorno liso en una pasada; con mas, a mano alzada por tramos.
+/// contorno liso en una pasada (la ruta de Excalidraw, con sus `C`); con
+/// mas, el `roughContinuous` del movil: la curva suave de rough.js por el
+/// contorno muestreado parejo, con los vertices quietos.
 pub fn rombo_redondo_a_mano(
     x: f32,
     y: f32,
     ancho: f32,
     alto: f32,
-    rugosidad: f32,
+    o: rough::Opciones,
     azar: &mut Azar,
 ) -> Vec<Vec<Punto2>> {
     match tramos_de_rombo_redondo(x, y, ancho, alto) {
-        Some(t) if rugosidad > 0.0 => contorno_a_mano(&t, rugosidad, azar),
+        Some(t) if o.rugosidad > 0.0 => tramos_a_mano(&t, o, azar),
         Some(t) => vec![contorno_liso(&t)],
-        None => rombo(x, y, ancho, alto, rugosidad, azar),
+        None => rombo_a_mano(x, y, ancho, alto, o, azar),
     }
+}
+
+/// **La ruta redondeada a mano, como la traza Excalidraw** (`generator.path`
+/// de rough.js con `preserveVertices`, que es lo que pide para las rutas
+/// continuas): cada recta con sus dos pasadas de [`rough::Rough::doble_linea`]
+/// y cada esquina con dos de [`rough::Rough::cubica_a`], las dos con los
+/// extremos quietos, asi que lados y esquinas empalman.
+///
+/// El movil traza estas rutas de otra manera (`roughContinuous`: una
+/// Catmull-Rom por el contorno muestreado y sacudido punto a punto), y se
+/// probo aqui primero: en pantalla los lados salian ondulados, como un
+/// contorno abollado, peor que lo que habia. La de Excalidraw es la que el
+/// usuario tiene por referencia y la que se ve lisa.
+fn tramos_a_mano(tramos: &[Tramo], o: rough::Opciones, azar: &mut Azar) -> Vec<Vec<Punto2>> {
+    let o = rough::Opciones { preservar: true, ..o };
+    let pt = |p: Punto2| rough::Pt::nuevo(p.x as f64, p.y as f64);
+    let mut r = rough::Rough::con_azar(o, azar.clone());
+    let mut ops = Vec::new();
+    for t in tramos {
+        match *t {
+            Tramo::Recta(a, b) => ops.extend(r.doble_linea(pt(a), pt(b))),
+            Tramo::Curva(a, c1, c2, b) => ops.extend(r.cubica_a(pt(a), pt(c1), pt(c2), pt(b))),
+        }
+    }
+    *azar = r.azar();
+    rough::a_pasadas(&ops)
+}
+
+/// **El rectangulo a mano, el de rough.js** (`rectangle`): cada lado con
+/// sus dos pasadas de cubica con panza, y con los vertices quietos por debajo
+/// de la rugosidad de dibujante, que es lo que cierra las esquinas. Sin
+/// rugosidad, los cuatro lados exactos en una sola pasada cerrada.
+pub fn rectangulo_a_mano(
+    x: f32,
+    y: f32,
+    ancho: f32,
+    alto: f32,
+    o: rough::Opciones,
+    azar: &mut Azar,
+) -> Vec<Vec<Punto2>> {
+    if o.rugosidad <= 0.0 {
+        return vec![vec![
+            Punto2::nuevo(x, y),
+            Punto2::nuevo(x + ancho, y),
+            Punto2::nuevo(x + ancho, y + alto),
+            Punto2::nuevo(x, y + alto),
+            Punto2::nuevo(x, y),
+        ]];
+    }
+    let mut r = rough::Rough::con_azar(o, azar.clone());
+    let ops = r.rectangulo(x as f64, y as f64, ancho as f64, alto as f64);
+    *azar = r.azar();
+    rough::a_pasadas(&ops)
+}
+
+/// El rombo a mano: el `polygon` de rough.js por sus cuatro vertices.
+pub fn rombo_a_mano(
+    x: f32,
+    y: f32,
+    ancho: f32,
+    alto: f32,
+    o: rough::Opciones,
+    azar: &mut Azar,
+) -> Vec<Vec<Punto2>> {
+    let v = vertices_de_rombo(x, y, ancho, alto);
+    if o.rugosidad <= 0.0 {
+        return vec![vec![v[0], v[1], v[2], v[3], v[0]]];
+    }
+    let pts = v.map(|p| rough::Pt::nuevo(p.x as f64, p.y as f64));
+    let mut r = rough::Rough::con_azar(o, azar.clone());
+    let ops = r.poligono(&pts);
+    *azar = r.azar();
+    rough::a_pasadas(&ops)
+}
+
+/// **La elipse a mano, la de rough.js** (`ellipse` con `curveFitting` 1,
+/// como la pide Excalidraw): una curva lisa por puntos apenas sacudidos (1 y
+/// 1,5 px por la rugosidad), dos vueltas, y la primera se pasa un poco del
+/// cierre. Devuelve las pasadas y el poligono del nucleo, que es por donde
+/// el movil rellena.
+pub fn elipse_a_mano(
+    x: f32,
+    y: f32,
+    ancho: f32,
+    alto: f32,
+    o: rough::Opciones,
+    azar: &mut Azar,
+) -> (Vec<Vec<Punto2>>, Vec<Punto2>) {
+    let o = rough::Opciones {
+        ajuste_de_curva: 1.0,
+        ..o
+    };
+    let mut r = rough::Rough::con_azar(o, azar.clone());
+    let (ops, nucleo) = r.elipse(
+        (x + ancho / 2.0) as f64,
+        (y + alto / 2.0) as f64,
+        ancho as f64,
+        alto as f64,
+    );
+    *azar = r.azar();
+    (
+        rough::a_pasadas(&ops),
+        nucleo.iter().map(|p| Punto2::nuevo(p.x as f32, p.y as f32)).collect(),
+    )
 }
 
 /// El radio de una esquina redondeada para un lado de `corto`: el
@@ -824,13 +900,13 @@ pub fn rectangulo_redondo_a_mano(
     y: f32,
     ancho: f32,
     alto: f32,
-    rugosidad: f32,
+    o: rough::Opciones,
     azar: &mut Azar,
 ) -> Vec<Vec<Punto2>> {
     match tramos_de_rectangulo_redondo(x, y, ancho, alto) {
-        Some(t) if rugosidad > 0.0 => contorno_a_mano(&t, rugosidad, azar),
+        Some(t) if o.rugosidad > 0.0 => tramos_a_mano(&t, o, azar),
         Some(t) => vec![contorno_liso(&t)],
-        None => rectangulo(x, y, ancho, alto, rugosidad, azar),
+        None => rectangulo_a_mano(x, y, ancho, alto, o, azar),
     }
 }
 

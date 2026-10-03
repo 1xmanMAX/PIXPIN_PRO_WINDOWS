@@ -67,6 +67,7 @@ pub mod puntos_etiquetados;
 pub mod recorte;
 pub mod regiones;
 pub mod relleno;
+pub mod rough;
 pub mod seleccion;
 pub mod serie;
 pub mod tabla_dibujada;

@@ -44,6 +44,15 @@ impl Azar {
         self.semilla as f32 / 2_147_483_648.0
     }
 
+    /// El mismo paso que [`Self::siguiente`], en doble precision: el `Double`
+    /// del `Rand` del movil y de rough.js. Lo usa `rough`, que copia el
+    /// generador del movil numero a numero; en `f32` el valor perderia siete
+    /// bits y las figuras se moverian centesimas de pixel respecto de alla.
+    pub fn siguiente_f64(&mut self) -> f64 {
+        self.semilla = self.semilla.wrapping_mul(48271) & 0x7FFF_FFFF;
+        self.semilla as f64 / 2_147_483_648.0
+    }
+
     /// Un valor en `[-mitad, +mitad)`: el desplazamiento tipico de un punto
     /// "dibujado a mano".
     pub fn desvio(&mut self, mitad: f32) -> f32 {

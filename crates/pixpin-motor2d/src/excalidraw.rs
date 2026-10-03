@@ -28,6 +28,8 @@
 //!   texto original se guarda para devolverlo intacto: cambiarselo romperia
 //!   las ataduras entre flechas y figuras dentro del propio fichero.
 
+use std::collections::HashMap;
+
 use serde_json::{Map, Value};
 
 use crate::elemento::{
@@ -424,15 +426,31 @@ pub fn con_escena(lienzo: &Lienzo, escena: &crate::Escena) -> Lienzo {
     }
     let mut nuevos: Vec<&Elemento> = escena.visibles().filter(|e| e.id > n).collect();
     nuevos.sort_by_key(|e| e.id);
+    // Las fotos que nacen aqui necesitan su `fileId`, que es texto y no se
+    // puede sacar del numero: se busca la entrada de `files` cuyo id da ese
+    // numero (la que quien guarda acaba de poner con [`poner_fichero`], o la
+    // de una foto que ya estaba y se copio y pego dentro del lienzo).
+    let claves: HashMap<u64, String> = match salida.resto.get("files") {
+        Some(Value::Object(files)) => files.keys().map(|k| (id_estable(k), k.clone())).collect(),
+        _ => HashMap::new(),
+    };
     for e in nuevos {
-        // Una foto pegada aqui no tiene fichero en `imagenes/` ni entrada en
-        // `files`: escribirla dejaria en el movil un hueco que no abre.
-        if matches!(e.figura, Figura::Imagen { .. }) {
-            continue;
-        }
+        let original = match e.figura {
+            // Una foto sin fichero en `files` no se escribe: dejaria en el
+            // movil un hueco que no abre.
+            Figura::Imagen { id_objeto } => match claves.get(&id_objeto) {
+                Some(clave) => serde_json::json!({
+                    "fileId": clave,
+                    "status": "saved",
+                    "scale": [1.0, 1.0],
+                }),
+                None => continue,
+            },
+            _ => Value::Null,
+        };
         salida.entradas.push(Entrada::Nuestro {
             elemento: e.clone(),
-            original: Box::new(Value::Null),
+            original: Box::new(original),
         });
     }
     // Los clavos, solo si cambiaron (un lienzo que nadie toco sale igual).
@@ -1675,6 +1693,26 @@ pub fn ficheros(lienzo: &Lienzo) -> Vec<(u64, String)> {
         .collect()
 }
 
+/// Apunta en `files` la foto `id` (su `fileId`), guardada en `ruta` dentro
+/// del proyecto: lo contrario de [`ficheros`], con la forma del `SceneFile`
+/// del movil (`id`, `mimeType`, `path`, `created`). Una entrada que ya
+/// estaba no se toca: es la misma foto y su fecha es la de cuando nacio.
+pub fn poner_fichero(lienzo: &mut Lienzo, id: &str, tipo: &str, ruta: &str, creado_ms: i64) {
+    let files = lienzo
+        .resto
+        .entry("files")
+        .or_insert_with(|| Value::Object(Map::new()));
+    if !files.is_object() {
+        *files = Value::Object(Map::new());
+    }
+    let Value::Object(files) = files else {
+        return;
+    };
+    files.entry(id.to_string()).or_insert_with(|| {
+        serde_json::json!({"id": id, "mimeType": tipo, "path": ruta, "created": creado_ms})
+    });
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
@@ -2663,6 +2701,62 @@ mod pruebas {
             "el id del fichero y el de la figura tienen que ser el mismo"
         );
         assert_eq!(ficheros[0].1, "imagenes/7xJoKC");
+    }
+
+    /// Una imagen pegada en el escritorio, con el `id_objeto` que le da el
+    /// almacen (`pc<hex>` al escribirse).
+    fn imagen_pegada(id_objeto: u64) -> Elemento {
+        Elemento {
+            figura: Figura::Imagen { id_objeto },
+            ancho: 320.0,
+            alto: 200.0,
+            x: 40.0,
+            y: 50.0,
+            ..Elemento::default()
+        }
+    }
+
+    #[test]
+    fn una_imagen_pegada_con_su_fichero_apuntado_se_guarda_y_vuelve_a_abrir() {
+        // El fallo del usuario (2-oct-2026): «si pego una imagen en el canvas
+        // no se guarda». `con_escena` se saltaba toda imagen nueva.
+        let id = 0x1a2b_3c4d_5e6f_u64;
+        let clave = crate::enlace::id_de_texto(id);
+        let mut lienzo = Lienzo::vacio();
+        poner_fichero(&mut lienzo, &clave, "image/png", &format!("imagenes/{clave}"), 7);
+        let mut escena = crate::Escena::nueva();
+        escena.anadir(imagen_pegada(id));
+        let texto = escribir(&con_escena(&lienzo, &escena));
+
+        let v: Value = serde_json::from_str(&texto).unwrap();
+        assert_eq!(v["elements"][0]["type"], "image");
+        assert_eq!(v["elements"][0]["fileId"], clave.as_str());
+        assert_eq!(v["files"][&clave]["path"], format!("imagenes/{clave}"));
+        assert_eq!(v["files"][&clave]["mimeType"], "image/png");
+
+        let reabierto = leer(&texto).unwrap();
+        let elementos = a_escena(&reabierto);
+        let foto = elementos.visibles().next().expect("la imagen sigue ahi");
+        assert_eq!(foto.figura, Figura::Imagen { id_objeto: id });
+        assert_eq!((foto.x, foto.y, foto.ancho, foto.alto), (40.0, 50.0, 320.0, 200.0));
+        assert_eq!(ficheros(&reabierto), vec![(id, format!("imagenes/{clave}"))]);
+    }
+
+    #[test]
+    fn una_imagen_pegada_sin_fichero_no_deja_un_hueco_en_el_movil() {
+        // Caso negativo: sin su entrada en `files`, el movil abriria una
+        // imagen que no encuentra. Se sigue sin escribir.
+        let mut escena = crate::Escena::nueva();
+        escena.anadir(imagen_pegada(99));
+        let texto = escribir(&con_escena(&Lienzo::vacio(), &escena));
+        let v: Value = serde_json::from_str(&texto).unwrap();
+        assert_eq!(v["elements"].as_array().unwrap().len(), 0);
+        // Y apuntar dos veces la misma foto no la duplica ni le cambia la fecha.
+        let mut l = Lienzo::vacio();
+        poner_fichero(&mut l, "pc63", "image/png", "imagenes/pc63", 1);
+        poner_fichero(&mut l, "pc63", "image/png", "imagenes/pc63", 2);
+        assert_eq!(l.resto["files"].as_object().unwrap().len(), 1);
+        assert_eq!(l.resto["files"]["pc63"]["created"], 1);
     }
 
     #[test]

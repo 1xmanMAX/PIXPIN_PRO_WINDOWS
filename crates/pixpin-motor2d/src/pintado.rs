@@ -227,8 +227,13 @@ fn rugosidad_ajustada(e: &Elemento) -> f32 {
         e.figura,
         Figura::Linea { .. } | Figura::Flecha { .. } | Figura::Cota { .. }
     );
-    let (mayor, menor) = (e.ancho.max(e.alto), e.ancho.min(e.alto));
-    let de_sobra = (menor >= 20.0 && mayor >= 50.0) || (lineal && mayor >= 50.0);
+    let (w, h) = (e.ancho.abs(), e.alto.abs());
+    let (mayor, menor) = (w.max(h), w.min(h));
+    // La segunda condicion del original: redondeada y de mas de 15 de lado.
+    let redondeable = matches!(e.figura, Figura::Rectangulo | Figura::Rombo) || lineal;
+    let de_sobra = (menor >= 20.0 && mayor >= 50.0)
+        || (menor >= 15.0 && e.redondo && redondeable)
+        || (lineal && mayor >= 50.0);
     if de_sobra {
         e.rugosidad
     } else {
@@ -240,6 +245,18 @@ fn rugosidad_ajustada(e: &Elemento) -> f32 {
 /// (2) los extremos de cada raya no se mueven.
 fn vertices_quietos(e: &Elemento) -> bool {
     e.rugosidad < 2.0
+}
+
+/// **Las opciones de rough.js de una figura** (`roughOptionsFor` del movil,
+/// `generateRoughOptions` de Excalidraw): la rugosidad ajustada al tamano,
+/// los vertices quietos por debajo de la de dibujante y una sola pasada si
+/// el trazo es discontinuo o punteado.
+fn opciones_rough(e: &Elemento) -> crate::rough::Opciones {
+    crate::rough::Opciones::nuevas(
+        rugosidad_ajustada(e),
+        vertices_quietos(e),
+        !matches!(e.estilo, EstiloTrazo::Solido),
+    )
 }
 
 /// Aplica la opacidad del elemento a un color.
@@ -366,12 +383,20 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
         return vec![Orden::Relleno { puntos, color }];
     }
 
+    // Las rayas salen RECTAS del barrido y se recortan a la figura; el
+    // temblor se lo pone despues rough.js (`doubleLine` del relleno del
+    // movil), con los extremos quietos: antes se sacudian los extremos hasta
+    // 4 px y las rayas se salian del contorno.
+    let rough_relleno = (e.rugosidad > 0.0
+        && e.estilo_relleno != EstiloRelleno::LineasPixpin)
+        .then(|| crate::rough::Opciones::nuevas(rugosidad_ajustada(e), vertices_quietos(e), false));
+    let mut rough_rayas = rough_relleno.map(|o| crate::rough::Rough::con_azar(o, azar.clone()));
     crate::relleno::lineas_de_rayado(
         (e.x, e.y, e.ancho, e.alto),
         elipse,
         e.estilo_relleno,
         e.grosor,
-        e.rugosidad,
+        0.0,
         &mut azar,
     )
     .into_iter()
@@ -393,8 +418,15 @@ fn ordenes_de_relleno(e: &Elemento, elipse: bool) -> Vec<Orden> {
             Some((a, b))
         }
     })
-    .map(|(a, b)| Orden::Polilinea {
-        puntos: vec![a, b],
+    .flat_map(|(a, b)| match rough_rayas.as_mut() {
+        Some(r) => {
+            let pt = |p: Punto2| crate::rough::Pt::nuevo(p.x as f64, p.y as f64);
+            crate::rough::a_pasadas(&r.doble_linea(pt(a), pt(b)))
+        }
+        None => vec![vec![a, b]],
+    })
+    .map(|puntos| Orden::Polilinea {
+        puntos,
         color,
         grosor: crate::relleno::grosor_de_rayado(e.grosor),
         // Siempre solidas: unas rayas de relleno discontinuas se leerian
@@ -705,9 +737,9 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
             // fabrica del movil trae `roundness`, asi que un rombo pide
             // puntas redondeadas desde el primer dia.
             let pasadas = if e.redondo {
-                formas::rombo_redondo_a_mano(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar)
+                formas::rombo_redondo_a_mano(e.x, e.y, e.ancho, e.alto, opciones_rough(e), &mut azar)
             } else {
-                formas::rombo(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar)
+                formas::rombo_a_mano(e.x, e.y, e.ancho, e.alto, opciones_rough(e), &mut azar)
             };
             for pasada in pasadas {
                 salida.push(Orden::Polilinea {
@@ -732,11 +764,11 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
                     e.y,
                     e.ancho,
                     e.alto,
-                    e.rugosidad,
+                    opciones_rough(e),
                     &mut azar,
                 )
             } else {
-                formas::rectangulo(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar)
+                formas::rectangulo_a_mano(e.x, e.y, e.ancho, e.alto, opciones_rough(e), &mut azar)
             };
             for pasada in pasadas {
                 salida.push(Orden::Polilinea {
@@ -750,7 +782,11 @@ pub fn ordenes(e: &Elemento) -> Vec<Orden> {
 
         Figura::Elipse => {
             salida.extend(ordenes_de_relleno(e, true));
-            for pasada in formas::elipse(e.x, e.y, e.ancho, e.alto, e.rugosidad, &mut azar) {
+            // La de rough.js (ver `formas::elipse_a_mano`): una curva lisa,
+            // no 32 vertices sacudidos unidos con rectas.
+            let (pasadas, _) =
+                formas::elipse_a_mano(e.x, e.y, e.ancho, e.alto, opciones_rough(e), &mut azar);
+            for pasada in pasadas {
                 salida.push(Orden::Polilinea {
                     puntos: pasada,
                     color,
@@ -1713,6 +1749,14 @@ mod pruebas {
         dentro_de(&formas::rectangulo_redondo(e.x, e.y, e.ancho, e.alto), q)
     }
 
+    /// Lo que `q` queda del contorno redondeado, si esta fuera.
+    fn fuera_por(e: &Elemento, q: Punto2) -> f32 {
+        let c = formas::rectangulo_redondo(e.x, e.y, e.ancho, e.alto);
+        c.windows(2)
+            .map(|w| crate::vector::distancia_a_segmento(q, w[0], w[1]))
+            .fold(f32::MAX, f32::min)
+    }
+
     fn redondo(estilo_relleno: EstiloRelleno, rugosidad: f32) -> Elemento {
         Elemento {
             redondo: true,
@@ -1768,8 +1812,16 @@ mod pruebas {
                 let e = redondo(estilo, rugosidad);
                 let rayas = rayas_de(&e);
                 assert!(!rayas.is_empty());
+                // A mano, las rayas son las de rough.js: extremos quietos en
+                // el borde y una panza de un par de pixeles que puede rozarlo
+                // por fuera, debajo del propio trazo del contorno.
+                let holgura = e.grosor * rugosidad;
                 for q in rayas.iter().flatten() {
-                    assert!(dentro_del_redondeado(&e, *q), "{estilo:?}: {q:?} se sale");
+                    assert!(
+                        dentro_del_redondeado(&e, *q) || fuera_por(&e, *q) <= holgura,
+                        "{estilo:?} r={rugosidad}: {q:?} se sale {}",
+                        fuera_por(&e, *q)
+                    );
                 }
             }
         }
@@ -1827,8 +1879,14 @@ mod pruebas {
         );
         let rayas = rayas_de(&e);
         assert!(rayas.len() > 3, "solo salieron {} rayas", rayas.len());
+        // Cada raya es la de rough.js: dos pasadas de una cubica casi recta
+        // (antes, un segmento con los extremos sacudidos que se salia).
         for r in &rayas {
-            assert_eq!(r.len(), 2, "cada raya es un segmento");
+            assert!(r.len() >= 2);
+            let (a, b) = (r[0], *r.last().unwrap());
+            for q in r {
+                assert!(crate::vector::distancia_a_segmento(*q, a, b) < 3.0, "la raya se tuerce");
+            }
         }
         // Y van antes del contorno, como el relleno solido.
         assert!(matches!(o[0], Orden::Polilinea { .. }));
