@@ -36,6 +36,8 @@ pub const EXTENSIONES: &[&str] = &[
     ".mov", ".webm", ".wmv", // Y el proyecto entero del movil.
     ".pixpin", // Los documentos con lector propio.
     ".pdf", ".docx", ".epub",
+    // Y el Markdown, que se abre en el editor de notas.
+    ".md", ".markdown",
 ];
 
 #[derive(Debug, thiserror::Error)]

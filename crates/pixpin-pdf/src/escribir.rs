@@ -211,9 +211,10 @@ fn contenido(
     hay_imagen: &mut dyn FnMut(u64) -> bool,
     r: &mut Recursos,
     letra_propia: Option<&Letra>,
+    margen: f32,
 ) -> String {
     let mut c = String::with_capacity(hoja.ordenes.len() * 256);
-    let Some((k, dx, dy)) = exportar::encaje(hoja, pagina.0, pagina.1, MARGEN) else {
+    let Some((k, dx, dy)) = exportar::encaje(hoja, pagina.0, pagina.1, margen) else {
         return c;
     };
     // De escena a papel: escalar, correr y voltear la Y, porque el papel
@@ -863,6 +864,37 @@ pub fn de_hojas_con_indice(
     letra_propia: Option<&Letra>,
     indice: &[Marcador],
 ) -> Option<Vec<u8>> {
+    let a4 = |_: usize, h: &Hoja| if exportar::apaisada(h) { (A4.1, A4.0) } else { A4 };
+    escribir_hojas(hojas, fondo, imagenes, letra_propia, indice, &a4, MARGEN)
+}
+
+/// **Cada hoja en una pagina de su medida exacta y sin margen**: la unidad
+/// de la hoja cae en `medidas[i].0 / hoja.ancho()` puntos y la esquina de
+/// arriba a la izquierda de su caja, en la de arriba a la izquierda del
+/// papel. Es lo que necesita la tinta que se pega encima de un PDF ajeno
+/// (`con_anotaciones`): alli no se encaja en un A4, se calca sobre la hoja.
+/// `None` si no hay una medida por hoja.
+pub fn de_hojas_a_medida(
+    hojas: &[Hoja],
+    medidas: &[(f32, f32)],
+    imagenes: &dyn Fn(u64) -> Option<Pixeles>,
+    letra_propia: Option<&Letra>,
+) -> Option<Vec<u8>> {
+    if medidas.len() != hojas.len() {
+        return None;
+    }
+    escribir_hojas(hojas, None, imagenes, letra_propia, &[], &|i, _| medidas[i], 0.0)
+}
+
+fn escribir_hojas(
+    hojas: &[Hoja],
+    fondo: Option<ColorRgba>,
+    imagenes: &dyn Fn(u64) -> Option<Pixeles>,
+    letra_propia: Option<&Letra>,
+    indice: &[Marcador],
+    medida: &dyn Fn(usize, &Hoja) -> (f32, f32),
+    margen: f32,
+) -> Option<Vec<u8>> {
     if hojas.is_empty() {
         return None;
     }
@@ -895,14 +927,10 @@ pub fn de_hojas_con_indice(
     };
     // Primero el contenido, que es lo que dice que recursos hacen falta.
     let mut paginas = Vec::with_capacity(hojas.len());
-    for hoja in hojas {
-        let tam = if exportar::apaisada(hoja) {
-            (A4.1, A4.0)
-        } else {
-            A4
-        };
+    for (i, hoja) in hojas.iter().enumerate() {
+        let tam = medida(i, hoja);
         let mut r = Recursos::default();
-        let c = contenido(hoja, tam, fondo, &mut hay, &mut r, letra_propia);
+        let c = contenido(hoja, tam, fondo, &mut hay, &mut r, letra_propia, margen);
         paginas.push((tam, c, r));
     }
     drop(hay);
@@ -981,7 +1009,7 @@ pub fn de_hojas_con_indice(
     let a_papel: Vec<AlPapel> = hojas
         .iter()
         .zip(&paginas)
-        .map(|(h, (tam, _, _))| (tam.1, exportar::encaje(h, tam.0, tam.1, MARGEN)))
+        .map(|(h, (tam, _, _))| (tam.1, exportar::encaje(h, tam.0, tam.1, margen)))
         .collect();
     // La imagen de cada tela, una por material y color en todo el documento:
     // lo que cambia de pagina a pagina es solo su patron (su matriz).

@@ -385,6 +385,42 @@ pub fn reemplazar(carpeta: &std::path::Path, m: &Mensaje) -> std::io::Result<boo
     let _cerrojo = cerrojo();
     let fichero = carpeta.join("guardados.jsonl");
     let texto = std::fs::read_to_string(&fichero)?;
+    reescribir_con_el(&fichero, &texto, m)
+}
+
+/// Lee el mensaje `id`, deja que `cambio` lo toque y, si dice que cambio,
+/// lo reescribe: **todo con el cerrojo tomado**, para que nadie escriba en
+/// medio. Es lo que necesita quien edita un mensaje desde fuera del chat
+/// (la lista de tareas sacada a la pantalla): leer, cambiar y guardar por
+/// separado perderia lo que el chat guardase entre medias.
+///
+/// Devuelve el mensaje como quedo, o `None` si ya no esta (se borro). Un
+/// `cambio` que devuelve `false` no reescribe nada. `cambio` no puede tocar
+/// el cuaderno: el cerrojo no es reentrante.
+pub fn cambiar(
+    carpeta: &std::path::Path,
+    id: &str,
+    cambio: impl FnOnce(&mut Mensaje) -> bool,
+) -> std::io::Result<Option<Mensaje>> {
+    let _cerrojo = cerrojo();
+    let fichero = carpeta.join("guardados.jsonl");
+    let texto = std::fs::read_to_string(&fichero)?;
+    let Some(mut m) = texto
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Mensaje>(l).ok())
+        .find(|m| m.id == id)
+    else {
+        return Ok(None);
+    };
+    if cambio(&mut m) {
+        reescribir_con_el(&fichero, &texto, &m)?;
+    }
+    Ok(Some(m))
+}
+
+/// El cuaderno `texto` con la linea de `m` cambiada por la nueva, escrito en
+/// `fichero`. Quien llama tiene el cerrojo.
+fn reescribir_con_el(fichero: &std::path::Path, texto: &str, m: &Mensaje) -> std::io::Result<bool> {
     let nueva = serde_json::to_string(m).map_err(std::io::Error::other)?;
     let mut salida = String::with_capacity(texto.len() + nueva.len());
     let mut encontrado = false;
@@ -403,7 +439,7 @@ pub fn reemplazar(carpeta: &std::path::Path, m: &Mensaje) -> std::io::Result<boo
     }
     let temporal = fichero.with_extension("jsonl.tmp");
     std::fs::write(&temporal, salida)?;
-    std::fs::rename(&temporal, &fichero)?;
+    std::fs::rename(&temporal, fichero)?;
     Ok(true)
 }
 
@@ -605,6 +641,31 @@ mod pruebas {
         ajeno.id = "m9".into();
         assert!(!reemplazar(&d, &ajeno).unwrap());
         assert_eq!(Cuaderno::leer_de(&d).unwrap().mensajes.len(), 2);
+    }
+
+    #[test]
+    fn cambiar_lee_toca_y_guarda_de_una_vez_y_solo_si_cambio() {
+        let d = carpeta_temporal("cambiar");
+        let mut lista = Mensaje::nota("# L\n\n- [ ] pan", &sello(1, 1));
+        lista.id = "l1".into();
+        anadir(&d, &lista).unwrap();
+        let hecho = cambiar(&d, "l1", |m| {
+            m.texto.push_str("\n- [ ] sal");
+            true
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(hecho.texto, "# L\n\n- [ ] pan\n- [ ] sal");
+        assert_eq!(Cuaderno::leer_de(&d).unwrap().mensajes[0].texto, hecho.texto);
+        // Sin cambio no se reescribe: el fichero sigue siendo el mismo.
+        let antes = std::fs::read_to_string(d.join("guardados.jsonl")).unwrap();
+        let igual = cambiar(&d, "l1", |_| false).unwrap().unwrap();
+        assert_eq!(igual.texto, hecho.texto);
+        assert_eq!(std::fs::read_to_string(d.join("guardados.jsonl")).unwrap(), antes);
+        // Caso negativo: uno que ya no esta no se inventa ni escribe nada.
+        assert!(cambiar(&d, "borrado", |_| true).unwrap().is_none());
+        assert_eq!(std::fs::read_to_string(d.join("guardados.jsonl")).unwrap(), antes);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     fn sello(cuando: i64, numero: i64) -> Sello {

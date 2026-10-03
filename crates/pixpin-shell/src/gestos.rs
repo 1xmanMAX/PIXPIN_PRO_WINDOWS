@@ -30,7 +30,7 @@
 //! corriente (se devuelve como cualquier Alt+clic sin arrastre); solo el
 //! segundo, pulsacion y soltada, se lo traga el gancho.
 
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicIsize, AtomicU32, AtomicUsize, Ordering};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -77,6 +77,16 @@ static ORIGEN_X: AtomicI32 = AtomicI32::new(0);
 static ORIGEN_Y: AtomicI32 = AtomicI32::new(0);
 /// El gesto pendiente ya se aviso con `WM_GESTO`.
 static ANUNCIADO: AtomicBool = AtomicBool::new(false);
+/// La hora de la pulsacion del ultimo gesto (`MSLLHOOKSTRUCT::time`, el
+/// reloj de `GetTickCount`): de ahi se mide cuanto tardo el overlay en salir.
+static ORIGEN_T: AtomicU32 = AtomicU32::new(0);
+/// El gesto anunciado ya se solto, y donde. Es lo que permite completar un
+/// arrastre que acabo ANTES de que el overlay llegara a salir (2-oct: con el
+/// overlay tardando, salia con el boton ya suelto, abria en exploracion y el
+/// clic siguiente empezaba el recorte en otro sitio: captura incompleta).
+static SOLTADO: AtomicBool = AtomicBool::new(false);
+static SOLTADO_X: AtomicI32 = AtomicI32::new(0);
+static SOLTADO_Y: AtomicI32 = AtomicI32::new(0);
 /// Marca de los clics que sintetiza este modulo, para dejarlos pasar en vez
 /// de volver a tragarselos (Alt sigue pulsado cuando se devuelven).
 const MARCA_PROPIA: usize = 0x5049_5850; // "PIXP"
@@ -215,6 +225,44 @@ fn reglas_de_doble_clic() -> (u32, (i32, i32)) {
 /// abrirse para arrancar ya arrastrando.
 pub fn gesto_en_curso() -> bool {
     EN_CURSO.load(Ordering::SeqCst)
+}
+
+/// Donde se solto el boton del ultimo gesto ANUNCIADO, si ya se solto.
+///
+/// El overlay lo mira al abrirse: si el usuario ya acabo el arrastre, el
+/// recorte va de la pulsacion a la soltada, sin esperar un clic que nunca
+/// iba a llegar. Una pulsacion nueva lo borra.
+pub fn soltada_del_gesto() -> Option<(i32, i32)> {
+    SOLTADO.load(Ordering::SeqCst).then(|| {
+        (
+            SOLTADO_X.load(Ordering::SeqCst),
+            SOLTADO_Y.load(Ordering::SeqCst),
+        )
+    })
+}
+
+/// La hora (reloj de `GetTickCount`) de la pulsacion del ultimo gesto.
+pub fn hora_de_la_pulsacion() -> u32 {
+    ORIGEN_T.load(Ordering::SeqCst)
+}
+
+/// La hora del mensaje que se esta atendiendo (`GetMessageTime`): para un
+/// atajo, el instante en que se pulso la combinacion.
+pub fn hora_del_mensaje() -> u32 {
+    // SAFETY: consulta del hilo actual, sin precondiciones.
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetMessageTime() as u32 }
+}
+
+/// El reloj de `GetTickCount`, el mismo de las dos horas de arriba.
+pub fn reloj_ms() -> u32 {
+    // SAFETY: consulta del reloj del sistema, sin precondiciones.
+    unsafe { windows::Win32::System::SystemInformation::GetTickCount() }
+}
+
+/// Milisegundos de `desde` a `hasta` en ese reloj, que da la vuelta cada
+/// 49 dias.
+pub fn ms_entre(desde: u32, hasta: u32) -> u32 {
+    hasta.wrapping_sub(desde)
 }
 
 /// El gancho instalado. Al soltarlo se desinstala y su hilo termina.
@@ -455,6 +503,13 @@ extern "system" fn procedimiento(codigo: i32, wparam: WPARAM, lparam: LPARAM) ->
         EN_CURSO.store(false, Ordering::SeqCst);
         if PENDIENTE.load(Ordering::SeqCst) == boton {
             PENDIENTE.store(NINGUNO, Ordering::SeqCst);
+            if ANUNCIADO.load(Ordering::SeqCst) {
+                // El arrastre acabo. Si el overlay aun no ha salido, con esto
+                // sabra donde terminaba el recorte.
+                SOLTADO_X.store(info.pt.x, Ordering::SeqCst);
+                SOLTADO_Y.store(info.pt.y, Ordering::SeqCst);
+                SOLTADO.store(true, Ordering::SeqCst);
+            }
             if !ANUNCIADO.load(Ordering::SeqCst) {
                 tracing::info!(
                     boton,
@@ -531,6 +586,8 @@ extern "system" fn procedimiento(codigo: i32, wparam: WPARAM, lparam: LPARAM) ->
             ORIGEN_X.store(info.pt.x, Ordering::SeqCst);
             ORIGEN_Y.store(info.pt.y, Ordering::SeqCst);
             ANUNCIADO.store(false, Ordering::SeqCst);
+            SOLTADO.store(false, Ordering::SeqCst);
+            ORIGEN_T.store(info.time, Ordering::SeqCst);
             EN_CURSO.store(true, Ordering::SeqCst);
             tracing::info!(
                 boton,
@@ -659,6 +716,12 @@ mod pruebas {
         assert!(es_arrastre((500, 500), (508, 500)));
         assert!(es_arrastre((500, 500), (500, 492)));
         assert!(es_arrastre((-1900, 40), (-1950, 40)), "monitor de la izquierda");
+    }
+
+    #[test]
+    fn la_cuenta_de_milisegundos_sobrevive_a_la_vuelta_del_reloj() {
+        assert_eq!(ms_entre(1_000, 1_250), 250);
+        assert_eq!(ms_entre(u32::MAX - 9, 10), 20, "a traves de la vuelta");
     }
 
     #[test]

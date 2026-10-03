@@ -31,6 +31,7 @@ pub mod almacen;
 pub mod anotado;
 pub mod capas_del_pdf;
 pub mod codigos;
+pub mod comentarios_de_notas;
 pub mod cuaderno;
 pub mod formula;
 pub mod identidad;

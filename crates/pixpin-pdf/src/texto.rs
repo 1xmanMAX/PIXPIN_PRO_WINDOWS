@@ -141,6 +141,9 @@ struct Fuente {
     ancho_por_omision: f32,
     /// Sin `ToUnicode` y de un byte: se lee como WinAnsi (con `Differences`).
     diferencias: HashMap<u32, char>,
+    /// Lo que no dicen ni el `ToUnicode` ni las `Differences`, en MacRoman
+    /// y no en WinAnsi (ver [`mac_roman`]).
+    mac_roman: bool,
 }
 
 impl Fuente {
@@ -153,6 +156,9 @@ impl Fuente {
         }
         if let Some(c) = self.diferencias.get(&codigo) {
             return Some(c.to_string());
+        }
+        if self.mac_roman && codigo >= 128 {
+            return mac_roman(codigo as u8).map(str::to_string);
         }
         winansi(codigo as u8).map(|c| c.to_string())
     }
@@ -240,6 +246,7 @@ fn leer_fuente(archivo: &Archivo, d: &Dicc) -> Fuente {
         {
             f.ancho_por_omision = a;
         }
+        f.mac_roman = es_mac_roman(archivo, d);
         if let Some(Valor::Dicc(enc)) = archivo.resolver(en(d, b"Encoding"))
             && let Some(Valor::Lista(dif)) = archivo.resolver(en(&enc, b"Differences"))
         {
@@ -354,6 +361,42 @@ fn letra_de_glifo(n: &[u8]) -> Option<char> {
         "nine" => '9',
         _ => return None,
     })
+}
+
+/// `MacRomanEncoding` de 128 a 255 (`MAC_ROMAN` de `PlanoDePdf` del movil).
+const MAC_ROMAN: &str = "ÄÅÇÉÑÖÜáàâäãåçéèêëíìîïñóòôöõúùûü†°¢£§•¶ß®©™´¨≠ÆØ∞±≤≥¥µ∂∑∏π∫ªºΩæø¿¡¬√ƒ≈∆«»…\u{a0}ÀÃÕŒœ–—“”‘’÷◊ÿŸ⁄€‹›ﬁﬂ‡·‚„‰ÂÊÁËÈÍÎÏÌÓÔ\u{f8ff}ÒÚÛÙıˆ˜¯˘˙˚¸˝˛ˇ";
+
+/// **Una letra de 128 a 255 en MacRoman** (Android v0.98.0): de 128 en
+/// adelante no es Latin-1, y sin esto en los articulos hechos en Mac la
+/// ligadura «fi» salia «Þ» y «defined» no se encontraba. Las ligaduras van
+/// en sus dos letras, que es lo que se busca.
+pub(crate) fn mac_roman(b: u8) -> Option<&'static str> {
+    static TABLA: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    let t = TABLA.get_or_init(|| {
+        let mut v = Vec::with_capacity(128);
+        let mut resto = MAC_ROMAN;
+        while let Some(c) = resto.chars().next() {
+            let (una, sigue) = resto.split_at(c.len_utf8());
+            v.push(match c {
+                'ﬁ' => "fi",
+                'ﬂ' => "fl",
+                _ => una,
+            });
+            resto = sigue;
+        }
+        v
+    });
+    b.checked_sub(128).and_then(|i| t.get(i as usize).copied())
+}
+
+/// Si la fuente de un byte `d` dice `MacRomanEncoding`, suelta o como
+/// `BaseEncoding` de su diccionario de codificacion.
+pub(crate) fn es_mac_roman(archivo: &Archivo, d: &Dicc) -> bool {
+    let es = |v: Option<&Valor>| matches!(v, Some(Valor::Nombre(n)) if n == b"MacRomanEncoding");
+    match archivo.resolver(en(d, b"Encoding")) {
+        Some(Valor::Dicc(enc)) => es(archivo.resolver(en(&enc, b"BaseEncoding")).as_ref()),
+        otro => es(otro.as_ref()),
+    }
 }
 
 /// La tabla de `WinAnsiEncoding` (la de Windows-1252): lo que se lee en una
@@ -1055,6 +1098,40 @@ mod pruebas {
     fn las_cadenas_con_escapes_y_winansi_se_leen_bien() {
         let b = una_hoja(r"BT /F1 10 Tf 20 50 Td (a\(b\) a\361o \200) Tj ET", "");
         assert_eq!(de_bytes(&b).unwrap()[0].texto, "a(b) año €");
+    }
+
+    /// Una hoja con la fuente `F1` en otra codificacion (`encoding`: lo que
+    /// va detras de `/Encoding`).
+    fn una_hoja_con(contenido: &str, encoding: &str) -> Vec<u8> {
+        pdf(&[
+            "<< /Type /Catalog /Pages 2 0 R >>".into(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 /MediaBox [0 0 200 100] >>".into(),
+            "<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".into(),
+            flujo(contenido),
+            format!("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding {encoding} >>"),
+        ])
+    }
+
+    /// **MacRoman** (Android v0.98.0): de 128 en adelante no es Latin-1. En
+    /// los articulos hechos en Mac la ligadura «fi» (0xDE) salia «Þ» y
+    /// «defined» no se encontraba.
+    #[test]
+    fn en_macroman_la_ligadura_fi_es_fi_y_no_una_thorn() {
+        let b = una_hoja_con(r"BT /F1 10 Tf 20 50 Td (de\336ned \216t\216 \321) Tj ET", "/MacRomanEncoding");
+        assert_eq!(de_bytes(&b).unwrap()[0].texto, "defined été —");
+        // Tambien como `BaseEncoding` de un diccionario, y las `Differences`
+        // mandan sobre la tabla.
+        let b = una_hoja_con(
+            r"BT /F1 10 Tf 20 50 Td (\336\337\216) Tj ET",
+            "<< /BaseEncoding /MacRomanEncoding /Differences [142 /A] >>",
+        );
+        assert_eq!(de_bytes(&b).unwrap()[0].texto, "fiflA");
+        // La tabla llena de 128 a 255, y nada por debajo.
+        assert_eq!((128..=255u8).filter(|b| mac_roman(*b).is_some()).count(), 128);
+        assert_eq!((mac_roman(0x80), mac_roman(0xFF), mac_roman(0x41)), (Some("Ä"), Some("ˇ"), None));
+        // Caso negativo: en WinAnsi el 0xDE sigue siendo «Þ».
+        let b = una_hoja_con(r"BT /F1 10 Tf 20 50 Td (\336) Tj ET", "/WinAnsiEncoding");
+        assert_eq!(de_bytes(&b).unwrap()[0].texto, "Þ");
     }
 
     #[test]

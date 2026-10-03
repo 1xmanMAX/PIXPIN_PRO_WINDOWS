@@ -53,6 +53,7 @@ use windows::core::PCWSTR;
 
 use crate::mezcla::{self, Remuestreador};
 use crate::picos::{MINIMO_MS, Reparto};
+use crate::realce::Realce;
 use crate::{ErrorAudio, en};
 
 /// Cuanto sonido cabe en el anillo de la tarjeta antes de que se pise.
@@ -383,6 +384,9 @@ struct Equipo {
     canales: u16,
     bits: u16,
     remuestreador: Remuestreador,
+    /// El realce de la voz (`crate::realce`): toda grabacion pasa por el
+    /// antes de los picos y del `.m4a`, para que la nota no salga baja.
+    realce: Realce,
     reparto: Reparto,
     muestreo: u32,
     /// Muestras mono ya escritas: marca el tiempo de cada muestra del MP4.
@@ -453,6 +457,7 @@ fn preparar(destino: &Path) -> Result<Equipo, ErrorAudio> {
             canales,
             bits,
             remuestreador: Remuestreador::nuevo(de_la_tarjeta, muestreo),
+            realce: Realce::nuevo(muestreo),
             reparto: Reparto::nuevo(muestreo),
             muestreo,
             escritas: 0,
@@ -544,10 +549,13 @@ fn vaciar(
             let _ = equipo.captura.ReleaseBuffer(marcos);
         }
 
-        let muestras = equipo.remuestreador.empuja(&mono);
+        let mut muestras = equipo.remuestreador.empuja(&mono);
         if muestras.is_empty() {
             continue;
         }
+        // En su sitio y ya al muestreo de salida: no cambia ni el formato ni
+        // cuantas muestras hay, solo lo alto que suenan.
+        equipo.realce.procesar(&mut muestras);
         nivel.store(crate::picos::pico_de_bloque(&muestras), Ordering::Relaxed);
         equipo.reparto.empuja(&muestras);
         escribir(equipo, &muestras)?;

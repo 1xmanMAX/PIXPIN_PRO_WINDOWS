@@ -617,6 +617,13 @@ pub const REPLAY: Icono = Icono {
         false,
     )],
 };
+
+/// `keyboard_arrow_up` (`src/hardware/keyboard_arrow_up/materialicons/24px.svg`):
+/// subir una tarea en su lista.
+pub const KEYBOARD_ARROW_UP: Icono = Icono {
+    vista: VISTA,
+    trazos: &[relleno("M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z", false)],
+};
 /// Todos, para poder comprobarlos de una vez.
 pub const TODOS: &[Icono] = &[
     FLAG,
@@ -653,6 +660,7 @@ pub const TODOS: &[Icono] = &[
     IMAGE,
     IOS_SHARE,
     KEYBOARD_ARROW_DOWN,
+    KEYBOARD_ARROW_UP,
     LAUNCH,
     LIBRARY_ADD,
     LIBRARY_MUSIC,

@@ -605,6 +605,11 @@ fn dictar(
 /// (`SPF_ASYNC`): quien llama sigue pintando mientras suena.
 pub struct Lector {
     voz: windows::Win32::Media::Speech::ISpVoice,
+    /// Como se llama la voz en Windows («Microsoft Helena Desktop»).
+    nombre: String,
+    /// Si esta en pausa (`Pause` de SAPI cuenta: dos pausas piden dos
+    /// `Resume`, asi que se lleva aqui y se pide una sola).
+    pausado: std::cell::Cell<bool>,
 }
 
 impl Lector {
@@ -616,14 +621,69 @@ impl Lector {
         // SAFETY: COM iniciado en el hilo (contrato); la voz es nuestra y la
         // ficha se le da prestada.
         unsafe {
+            let nombre = ficha
+                .GetStringValue(PCWSTR::null())
+                .map(|p| cadena_com(p))
+                .unwrap_or_default();
             let voz: ISpVoice = CoCreateInstance(&SpVoice, None, CLSCTX_ALL).ok()?;
             voz.SetVoice(&ficha).ok()?;
-            Some(Lector { voz })
+            Some(Lector { voz, nombre, pausado: std::cell::Cell::new(false) })
         }
+    }
+
+    /// El nombre de la voz, para ensenarlo.
+    pub fn nombre(&self) -> &str {
+        &self.nombre
+    }
+
+    /// **La velocidad**, de −10 a 10 (0 es la normal; cada diez pasos, el
+    /// triple). Vale para lo que se lea despues.
+    pub fn poner_tasa(&self, tasa: i32) {
+        // SAFETY: voz viva.
+        unsafe {
+            let _ = self.voz.SetRate(tasa.clamp(-10, 10));
+        }
+    }
+
+    /// Se para donde va, a media palabra, y [`Lector::reanudar`] sigue ahi.
+    pub fn pausar(&self) {
+        if self.pausado.replace(true) {
+            return;
+        }
+        // SAFETY: voz viva.
+        unsafe {
+            let _ = self.voz.Pause();
+        }
+    }
+
+    pub fn reanudar(&self) {
+        if !self.pausado.replace(false) {
+            return;
+        }
+        // SAFETY: voz viva.
+        unsafe {
+            let _ = self.voz.Resume();
+        }
+    }
+
+    /// **Si ya dijo todo lo que se le dio** (`SPRS_DONE`). En pausa no ha
+    /// acabado.
+    pub fn acabado(&self) -> bool {
+        use windows::Win32::Media::Speech::{SPRS_DONE, SPVOICESTATUS};
+        if self.pausado.get() {
+            return false;
+        }
+        let mut estado = SPVOICESTATUS::default();
+        // SAFETY: voz viva; el estado es nuestro y sin marcador que liberar
+        // (puntero nulo: no se pide).
+        let hecho = unsafe { self.voz.GetStatus(&mut estado, std::ptr::null_mut()) };
+        hecho.is_ok() && estado.dwRunningState & SPRS_DONE.0 as u32 != 0
     }
 
     /// Lee `texto` desde el principio, cortando lo que estuviera leyendo.
     pub fn leer(&self, texto: &str) {
+        // Purgar con la voz en pausa la dejaria esperando: antes se suelta.
+        self.reanudar();
         use windows::Win32::Media::Speech::{SPF_ASYNC, SPF_IS_NOT_XML, SPF_PURGEBEFORESPEAK};
         let ancho: Vec<u16> = texto.encode_utf16().chain(std::iter::once(0)).collect();
         let banderas = (SPF_ASYNC.0 | SPF_PURGEBEFORESPEAK.0 | SPF_IS_NOT_XML.0) as u32;
@@ -636,6 +696,7 @@ impl Lector {
 
     /// Calla lo que estuviera leyendo.
     pub fn callar(&self) {
+        self.reanudar();
         use windows::Win32::Media::Speech::{SPF_ASYNC, SPF_PURGEBEFORESPEAK};
         let banderas = (SPF_ASYNC.0 | SPF_PURGEBEFORESPEAK.0) as u32;
         // SAFETY: voz viva; una cadena nula con purga es «callate».
@@ -772,6 +833,31 @@ mod pruebas {
                 t.elapsed() < std::time::Duration::from_millis(500),
                 "leer no puede esperar a que acabe la frase"
             );
+        });
+        hecho.join().unwrap();
+    }
+
+    /// Habla por los altavoces del equipo: va aparte (`--ignored`).
+    #[test]
+    #[ignore = "suena por los altavoces"]
+    fn en_pausa_no_acaba_y_al_reanudar_termina_la_frase() {
+        let hecho = std::thread::spawn(|| {
+            let _com = Com::iniciar();
+            let Some(l) = Lector::nuevo("es").or_else(|| Lector::nuevo("en")) else {
+                return;
+            };
+            assert!(!l.nombre().is_empty());
+            l.poner_tasa(10);
+            l.leer("uno dos tres");
+            l.pausar();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            assert!(!l.acabado(), "en pausa no ha acabado");
+            l.reanudar();
+            let t = std::time::Instant::now();
+            while !l.acabado() && t.elapsed().as_secs() < 10 {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            assert!(l.acabado(), "la frase tiene que acabar");
         });
         hecho.join().unwrap();
     }

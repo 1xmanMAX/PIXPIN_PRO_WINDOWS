@@ -164,40 +164,16 @@ pub fn extension_corta(nombre: &str) -> String {
     ext.to_uppercase().chars().take(4).collect()
 }
 
-/// Un color estable para la chapa de una extension.
+/// El color de la chapa de una extension: el de su familia en la tabla del
+/// movil ([`crate::color_de_extension`], v0.98.4), para que todo diga lo
+/// mismo (rojo los PDF, azul los Word...). Lo que no esta en la tabla sale
+/// siempre del mismo color, con la cuenta del movil. Quien tenga el nombre
+/// entero mejor que use `color_de_extension::de`: aqui `ext` puede venir ya
+/// recortada («EXCA»).
 ///
-/// Del propio texto y no de una tabla: una tabla obligaria a mantenerla al
-/// dia y dejaria en gris lo que no estuviera en ella. Asi cada extension
-/// tiene SIEMPRE el mismo color, y dos distintas casi nunca coinciden.
-///
-/// Devuelve (r, g, b) de 0 a 1. Saturacion y brillo fijos: asi ninguno sale
-/// ni chillon ni tan oscuro que no se lea el rotulo blanco encima.
+/// Devuelve (r, g, b) de 0 a 1.
 pub fn color_de_extension(ext: &str) -> (f32, f32, f32) {
-    if ext.is_empty() {
-        return (0.35, 0.38, 0.44);
-    }
-    // Suma simple: no hace falta un buen hash para repartir una docena de
-    // extensiones por la rueda de color.
-    let tono = ext
-        .bytes()
-        .fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32))
-        % 360;
-    hsv_a_rgb(tono as f32, 0.55, 0.62)
-}
-
-fn hsv_a_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {
-    let c = v * s;
-    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
-    let m = v - c;
-    let (r, g, b) = match h as u32 / 60 {
-        0 => (c, x, 0.0),
-        1 => (x, c, 0.0),
-        2 => (0.0, c, x),
-        3 => (0.0, x, c),
-        4 => (x, 0.0, c),
-        _ => (c, 0.0, x),
-    };
-    (r + m, g + m, b + m)
+    crate::color_de_extension::rgb(&crate::color_de_extension::de(&format!("x.{ext}")))
 }
 
 /// La escala por defecto: la que manda el monitor, sin tocar.
@@ -1037,6 +1013,9 @@ mod pruebas_extension {
     fn cada_extension_tiene_siempre_el_mismo_color_y_distinto_del_vecino() {
         assert_eq!(color_de_extension("PDF"), color_de_extension("PDF"));
         assert_ne!(color_de_extension("PDF"), color_de_extension("HTML"));
+        // El de la tabla del movil (v0.98.4): los PDF, rojos.
+        let (r, g, b) = color_de_extension("PDF");
+        assert!(r > 0.85 && g < 0.35 && b < 0.35, "{r} {g} {b}");
         // Y ninguno sale negro ni blanco: el rotulo va en blanco encima.
         for ext in ["PDF", "HTML", "PNG", "DOCX", "ZIP", "TXT", ""] {
             let (r, g, b) = color_de_extension(ext);

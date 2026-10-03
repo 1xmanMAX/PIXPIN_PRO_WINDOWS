@@ -611,14 +611,24 @@ lector-grosor-normal = Regular
 lector-grosor-gruesa = Bold
 lector-quitar-tinta = Remove the notes
 lector-tinta-quitada = Notes removed (Ctrl+Z brings them back while you stay here)
-lector-ayuda-docs = Wheel to read · Ctrl+wheel zoom · A annotate · M bookmark · I contents · +/− size · T type · B weight · Esc to leave
+lector-ayuda-docs = Wheel to read · Ctrl+wheel zoom · L listen · A annotate · M bookmark · I contents · +/− size · T type · B weight · Esc to leave
 lector-pdf-titulo = PixPin PDF reader
 lector-pdf-no-se-abre = Could not open the PDF
 lector-pdf-abriendo = Opening the PDF…
 lector-exportando = Saving the annotated PDF… { $hechas } of { $total }
 lector-exportar-pdf = Save the PDF with the notes
 lector-anotado = annotated
-lector-ayuda-pdf = Wheel to turn pages · Ctrl+wheel zoom · Ctrl+[ Ctrl+] space to annotate · A annotate · M bookmark · Esc to leave
+lector-ayuda-pdf = Wheel to turn pages · Ctrl+wheel zoom · Ctrl+[ Ctrl+] space to annotate · L listen · A annotate · M bookmark · Esc to leave
+lector-escuchar = Listen (L)
+lector-sin-texto = This document has no text to read
+lector-leyendo-texto = Getting the text out of the PDF to read it…
+lector-sin-voz = Windows has no voice for “{ $idioma }”: add one in Settings > Time & language > Speech
+lector-voz-idioma = en-US
+lector-verde-aqui = Green bookmark here: reading will start from this point
+lector-espacio-tope = No more room on that side
+lector-espacio-nada = That side has no space left
+lector-sin-lado = Sideways locked: it only scrolls up and down
+lector-con-lado = It moves everywhere
 sinc-presencia-apagada = Presence is off in the settings ([sincro] presencia = false): you can sync from here, but the phone will not find this computer or be able to call it.
 bandeja-abrir-documento = Open a document…
 
@@ -709,6 +719,14 @@ mini-tarea-nueva = Something to do, then Enter · ↑↓ pick, Space ticks, F2 e
 mini-gasto-nuevo = Item and amount (Dinner 42.50), then Enter · ↑↓ pick, F2 edits
 mini-nombre-nuevo = A name, then Enter · Enter on empty spins, Del removes
 mini-limpiar-hechas = Clear the done ones
+mini-ocultar-hechas = Hide the done ones
+mini-mostrar-hechas = Show the done ones
+mini-avance = { $hechas } of { $de } done
+mini-tarea-edad = { $dias ->
+    [0] today
+    [one] 1 day ago
+   *[other] { $dias } days ago
+  }
 mini-arrancar = Start
 mini-parar = Stop
 mini-vuelta = Lap
@@ -1173,6 +1191,73 @@ nota-md-no-guardada = The note could not be saved. Close anyway and lose the cha
 nota-md-mayus = Shift
 nota-md-intro = Enter
 
+# H12, the new note editor window (header, toolbar, menus and tables)
+nota-md-compartir = Share
+nota-md-tabla = Table
+nota-md-imagen = Image
+nota-md-fecha = Today's date
+nota-md-pista-barra = Type / in the note for more
+nota-md-cambiar-titulo = Rename
+nota-md-fila-encima = Insert row above
+nota-md-fila-debajo = Insert row below
+nota-md-quitar-fila = Delete row
+nota-md-columna-izquierda = Insert column left
+nota-md-columna-derecha = Insert column right
+nota-md-quitar-columna = Delete column
+nota-md-quitar-tabla = Delete table
+nota-md-boton-fila-mas = + Row
+nota-md-boton-fila-menos = − Row
+nota-md-boton-columna-mas = + Column
+nota-md-boton-columna-menos = − Column
+nota-md-meses = Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+## Note tables: merge and colour cells (H12)
+nota-md-boton-combinar = Merge
+nota-md-boton-color = Colour
+nota-md-combinar-celdas = Merge cells
+nota-md-separar-celdas = Unmerge cells
+nota-md-color-fondo = Background colour
+nota-md-color-letra = Text colour
+nota-md-aplicar-a = Cells|Whole row|Whole column
+nota-md-nombres-fondo = No colour|Red|Green|Blue|Yellow
+nota-md-nombres-letra = Automatic|Red|Green|Blue|Orange
+nota-md-pista-color = Whole rows and columns: right-click
+nota-md-imagen-no-copiada = The image could not be copied next to the note.
+
+## Note comments (H12, Sep 30): the panel on the right
+nota-md-com-titulo = Comments
+nota-md-com-comentar = Comment
+nota-md-com-ninguno = No comments
+nota-md-com-pista = Select some text and press Comment (Ctrl+Alt+M)
+nota-md-com-sin-ancla = Their text is no longer in the note
+nota-md-com-responder-pista = Reply…
+nota-md-com-responder = Reply
+nota-md-com-guardar = Save
+nota-md-com-cancelar = Cancel
+nota-md-com-editar = Edit
+nota-md-com-borrar = Delete
+nota-md-com-resuelto = resolved
+nota-md-com-ver-resueltos = Show resolved
+nota-md-com-ocultar-resueltos = Hide resolved
+nota-md-com-editado = edited
+nota-md-com-borrar-hilo = Delete the comment and its replies?
+
+## Markdown notes: images and live pages (H12)
+nota-md-pagina-viva = Page from a project
+nota-md-enlace-hoja = Link to a sheet
+nota-md-captura = Screenshot
+nota-md-ver-grande = View full size
+nota-md-abrir-hoja = Open the sheet
+nota-md-foto-pequena = Small
+nota-md-foto-mediana = Medium
+nota-md-foto-grande = Large
+nota-md-foto-columna = Column width
+nota-md-quitar-foto = Remove image
+nota-md-hoja-borrada = The sheet is gone: this is the last copy
+nota-md-otros-proyectos = Other projects
+nota-md-sin-hojas = There are no project sheets to add to the note yet.
+nota-md-solo-imagenes = Only images can be dropped here.
+chat-insertar-en-nota = Insert into a note
+
 ## Canvas: weld vertices and number points (lienzo-geometria, 26-sep)
 herramientas-nudo = Weld vertices
 herramientas-bolita = Ball: sweep over to select
@@ -1297,3 +1382,98 @@ anotador-globo-copiado = Copied to the clipboard
 # Screen annotator: click-through in the toolbar (2026-09-29)
 anotador-boton-atravesar = Click through
 anotador-pista-atravesar = Click through (Space): the mouse goes to what is underneath and the drawing stays visible. Come back with the hand on the pill or with Alt + middle double-click
+
+# Share sheet: a document PDF with its annotations or clean (2026-09-29)
+compartir-con-anotaciones = With annotations
+compartir-con-anotaciones-detalle = Ink, margins and bookmarks on top of the PDF; off, the clean PDF
+
+# Share sheet: a PDF web page as lines or as images (2026-09-30, Android v0.98.1)
+compartir-texto-buscable = Searchable text
+compartir-texto-buscable-detalle = Pages as lines with their text; off, as images
+
+# Secret call: who is calling and call back later (2026-09-30, Android v0.98.6)
+chat-quien-llama = Who is calling: { $nombre }
+chat-quien-llama-barra = Who is calling:
+chat-quien-llama-teclas = Enter: pick the time · Esc leaves it
+llamada-volver-en = Call back in
+llamada-vuelve-a-las = It will call you back at { $hora }
+
+## H12: editing without marks, the floating toolbar and the note font (Sep 30)
+nota-md-texto-normal = Normal text
+nota-md-quitar-formato = Clear formatting
+nota-md-enlace-pista = Paste or type a link and press Enter
+nota-md-emojis = Smile|Laugh|Love it|Fine|Like|Dislike|Thanks|Applause|Party|Done|No|Warning|Heart|Fire|Star|Idea
+nota-md-letra-texto = Text font
+nota-md-letra-titulos = Heading font
+nota-md-tamano = Font size
+nota-md-tamanos = Small|Normal|Large|Extra large
+nota-md-solo-esta-nota = Only in this note
+nota-md-pista-tamano = Ctrl + wheel changes it one step at a time
+
+# --- Notes: embedded documents, chat messages and audio (H12, Oct 1) ---
+nota-md-documento = Document
+nota-md-del-chat = From the chat
+nota-md-audio = Audio
+nota-md-abrir = Open
+nota-md-quitar = Remove from the note
+nota-md-ir-al-mensaje = Go to the message in the chat
+nota-md-mensaje-borrado = Deleted message
+nota-md-no-esta = Not on this computer
+nota-md-pasar-a-texto = Transcribe
+nota-md-pasando-a-texto = Transcribing { $pct } %
+nota-md-sin-mensajes = This project's chat has no messages to insert (a standalone note has no chat).
+nota-md-nota-de-voz = Voice note
+
+## Export a note to Word (H12, 1-oct)
+nota-md-exportar-word = Export to Word…
+nota-md-tipo-word = Word document
+compartir-word = Word
+
+## Requests from other programs (Flow Launcher, scripts; docs/protocolo-pedidos.md)
+pedido-tareas = Tasks
+pedido-escrito = Written in “{ $proyecto }”.
+microfono-abriendo = Opening the microphone…
+microfono-guardando = Saving…
+microfono-parar = Click to stop · Esc discards it
+microfono-guardada = Voice note saved
+microfono-convertir = Turn into a call
+microfono-listo = Done
+microfono-cuando = What time should I call you?
+microfono-en-15-min = In 15 min
+microfono-en-1-hora = In 1 h
+microfono-manana = Tomorrow 9:00
+microfono-poner = Set the call
+microfono-volver = Back
+microfono-sonara = It will call you: { $cuando }
+microfono-puesta = Done: it will call you { $cuando }
+microfono-teclas = Type the time (18:30) or use the arrows · Enter sets it
+soltar-aqui = Drop here to add to “{ $proyecto }”
+soltar-anadiendo = Adding…
+soltar-anadido-uno = 1 added to the chat
+soltar-anadidos = { $n } added to the chat
+soltar-ninguno = Nothing could be added
+chat-anadir-arrastrando = Add by dragging…
+pedido-lista-hecha = List “{ $lista }” created in “{ $proyecto }”.
+pedido-tarea-anadida = “{ $tarea }” added to “{ $lista }”.
+pedido-tarea-hecha = “{ $tarea }” marked as done.
+pedido-tarea-pendiente = “{ $tarea }” is pending again.
+pedido-roto = A request from another program was missing something; nothing was done.
+pedido-sin-proyecto = That project is no longer in PixPin.
+pedido-sin-mensaje = That message is no longer in the chat.
+pedido-no-es-lista = That message isn't a to-do list.
+pedido-sin-tarea = The list has no task number { $indice }.
+pedido-tarea-vacia = A task with no text isn't added.
+pedido-sin-fichero = That file is no longer on disk.
+pedido-fallo-disco = What was asked couldn't be saved. Check PixPin's log.
+
+## Capture gallery (2-oct)
+galeria-titulo = Captures
+galeria-titulo-cuantas = Captures · { $cuantas }
+galeria-vacia = No captures yet. The ones you copy with Alt + drag will show up here.
+galeria-abrir-carpeta = Open folder
+galeria-copiada = Copied to the clipboard
+galeria-pineada = Pinned on screen
+galeria-borrada = Moved to PixPin's recycle bin
+galeria-no-se-pudo = Couldn't do it: { $motivo }
+bandeja-galeria-capturas = Capture gallery…
+chat-galeria-capturas = Capture gallery

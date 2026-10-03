@@ -26,6 +26,10 @@ use crate::trayecto_svg::{Tramo, analizar};
 /// Los iconos de Material que usa el chat del movil, copiados tal cual.
 pub mod material;
 
+/// El icono de un archivo: la hoja de su color con la esquina doblada
+/// (`IconoDeArchivo` del movil, v0.98.4).
+pub mod archivo;
+
 /// De que se pinta un relleno o un trazo.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pintura {

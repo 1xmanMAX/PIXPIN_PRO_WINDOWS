@@ -41,8 +41,14 @@ pub const FILA_ALTO: u32 = 32;
 pub const MARGEN: u32 = 12;
 /// El hueco entre dos botones de la misma fila.
 pub const HUECO_BOTON: u32 = 8;
-/// El aspa de borrar de cada fila, cuadrada y al final de la linea.
+/// El aspa de borrar de cada fila, cuadrada y al final de la linea. Los
+/// otros iconos de la fila (corregir, subir, bajar) miden lo mismo y van a su
+/// izquierda ([`Disposicion::icono_de_fila`]).
 pub const ASPA_ANCHO: u32 = 28;
+/// La casilla de una tarea, al principio de la fila: su icono y aire.
+pub const CASILLA_ANCHO: u32 = 28;
+/// La linea del avance de una lista de tareas: «3 de 7» y su barrita.
+pub const AVANCE_ALTO: u32 = 28;
 
 pub const TITULO_TAM: f32 = 15.0;
 pub const TABLERO_TAM: f32 = 40.0;
@@ -62,6 +68,9 @@ pub struct Reparto {
     pub filas_de_botones: u32,
     pub con_lista: bool,
     pub con_anadir: bool,
+    /// La linea fina de avance bajo los botones («3 de 7» y una barra). Solo
+    /// la lista de tareas la pide.
+    pub con_avance: bool,
 }
 
 impl Reparto {
@@ -72,6 +81,7 @@ impl Reparto {
             filas_de_botones: 1,
             con_lista: true,
             con_anadir: true,
+            con_avance: false,
         }
     }
 }
@@ -86,6 +96,8 @@ pub struct Disposicion {
     pub tablero: Rect,
     /// Todas las filas de botones juntas. Alto cero si no hay ninguna.
     pub botones: Rect,
+    /// La linea de avance, bajo los botones. Alto cero si no se pidio.
+    pub avance: Rect,
     /// Lo que queda: la lista, y lo unico que se desplaza.
     pub lista: Rect,
     /// La caja de escribir de abajo. Alto cero si no se puede anadir.
@@ -132,6 +144,19 @@ impl Disposicion {
         };
         queda -= alto_botones;
 
+        let alto_avance = if reparto.con_avance {
+            e(AVANCE_ALTO).min(queda)
+        } else {
+            0
+        };
+        let avance = Rect {
+            x: hueco.x,
+            y: botones.abajo(),
+            ancho: hueco.ancho,
+            alto: alto_avance,
+        };
+        queda -= alto_avance;
+
         // La caja de anadir se reserva ANTES que la lista: escribir tiene que
         // seguir siendo posible en una ventana baja, aunque no se vea ni una
         // linea de lo que ya hay.
@@ -145,7 +170,7 @@ impl Disposicion {
         let alto_lista = if reparto.con_lista { queda } else { 0 };
         let lista = Rect {
             x: hueco.x,
-            y: botones.abajo(),
+            y: avance.abajo(),
             ancho: hueco.ancho,
             alto: alto_lista,
         };
@@ -161,6 +186,7 @@ impl Disposicion {
             cabecera,
             tablero,
             botones,
+            avance,
             lista,
             anadir,
             filas_de_botones: reparto.filas_de_botones,
@@ -234,11 +260,34 @@ impl Disposicion {
 
     /// El aspa de borrar de una fila: un cuadrado al final de la linea.
     pub fn aspa(&self, fila: Rect, escala_por_cien: u32) -> Rect {
-        let lado = ASPA_ANCHO * escala_por_cien / 100;
+        self.icono_de_fila(fila, 0, escala_por_cien)
+    }
+
+    /// La casilla de una tarea: el cuadrado del principio de la fila. Es lo
+    /// unico que tacha, como el `Checkbox` del movil (`MiniActivity.kt`,
+    /// `DeTareas`): el resto de la fila elige la tarea para moverla o
+    /// corregirla, y tocarla para eso no puede tacharla de paso.
+    pub fn casilla(&self, fila: Rect, escala_por_cien: u32) -> Rect {
         Rect {
-            x: fila.derecha() - lado.min(fila.ancho) as i32,
+            ancho: (CASILLA_ANCHO * escala_por_cien / 100).min(fila.ancho),
+            ..fila
+        }
+    }
+
+    /// El icono `n` de una fila contando desde la derecha: el 0 es el aspa,
+    /// el 1 el que va a su izquierda, y asi. Todos cuadrados y del mismo
+    /// lado, para que la columna de iconos quede alineada fila a fila.
+    ///
+    /// Si ya no cabe, mide cero de ancho: un icono que no se ve no puede
+    /// seguir pulsandose encima del texto.
+    pub fn icono_de_fila(&self, fila: Rect, n: u32, escala_por_cien: u32) -> Rect {
+        let lado = ASPA_ANCHO * escala_por_cien / 100;
+        let derecha = fila.ancho.saturating_sub(lado.saturating_mul(n));
+        let ancho = lado.min(derecha);
+        Rect {
+            x: fila.x + (derecha - ancho) as i32,
             y: fila.y,
-            ancho: lado.min(fila.ancho),
+            ancho,
             alto: fila.alto,
         }
     }
@@ -294,12 +343,15 @@ mod pruebas {
                 filas_de_botones: 1,
                 con_lista: true,
                 con_anadir: true,
+                con_avance: true,
             },
         );
         assert_eq!(d.cabecera.y, 20);
         assert_eq!(d.tablero.y, d.cabecera.abajo());
         assert_eq!(d.botones.y, d.tablero.abajo());
-        assert_eq!(d.lista.y, d.botones.abajo());
+        assert_eq!(d.avance.y, d.botones.abajo());
+        assert_eq!(d.avance.alto, AVANCE_ALTO);
+        assert_eq!(d.lista.y, d.avance.abajo());
         assert_eq!(d.anadir.y, d.lista.abajo());
         assert_eq!(d.anadir.abajo(), hueco().abajo());
     }
@@ -314,10 +366,12 @@ mod pruebas {
                 filas_de_botones: 0,
                 con_lista: true,
                 con_anadir: false,
+                con_avance: false,
             },
         );
         assert_eq!(d.tablero.alto, 0);
         assert_eq!(d.botones.alto, 0);
+        assert_eq!(d.avance.alto, 0);
         assert_eq!(d.anadir.alto, 0);
         // La lista se queda con todo lo que no es cabecera.
         assert_eq!(d.lista.y, d.cabecera.abajo());
@@ -356,6 +410,7 @@ mod pruebas {
                 filas_de_botones: 0,
                 con_lista: true,
                 con_anadir: true,
+                con_avance: false,
             },
         );
         assert_eq!(d.anadir.alto, ANADIR_ALTO, "escribir no puede perderse");
@@ -438,6 +493,32 @@ mod pruebas {
             alto: 20,
         };
         assert_eq!(d.aspa(estrecha, 100).ancho, 10);
+    }
+
+    #[test]
+    fn los_iconos_de_la_fila_van_en_columna_desde_la_derecha() {
+        let d = Disposicion::calcular(hueco(), 100, Reparto::lista_con_botones());
+        let f = d.fila(0, 0, 100);
+        let aspa = d.icono_de_fila(f, 0, 100);
+        let lapiz = d.icono_de_fila(f, 1, 100);
+        assert_eq!(aspa, d.aspa(f, 100));
+        assert_eq!(lapiz.derecha(), aspa.x, "pegado a la izquierda del aspa");
+        assert_eq!(lapiz.ancho, ASPA_ANCHO);
+        // Caso negativo: en una fila estrecha el que no cabe mide cero y no
+        // se sale por la izquierda.
+        let estrecha = Rect {
+            x: 100,
+            y: 0,
+            ancho: 40,
+            alto: 20,
+        };
+        let tercero = d.icono_de_fila(estrecha, 2, 100);
+        assert_eq!(tercero.ancho, 0);
+        assert!(tercero.x >= estrecha.x);
+        // La casilla, al principio y sin salirse de la fila.
+        let c = d.casilla(f, 100);
+        assert_eq!((c.x, c.ancho, c.alto), (f.x, CASILLA_ANCHO, f.alto));
+        assert_eq!(d.casilla(estrecha, 100).ancho, CASILLA_ANCHO.min(40));
     }
 
     #[test]

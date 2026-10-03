@@ -1314,7 +1314,8 @@ pub fn alcance_de<D: Disco + ?Sized>(d: &D, chat: &str) -> io::Result<Vec<(Strin
         for rel in en_texto(&m.a_texto()) {
             poner(Some(rel), &etiqueta, &mut salida);
         }
-        if kotlin::cadena(&m, "ruta").is_some()
+        // De un adjunto o, desde el 30-sep, de una nota (sus comentarios).
+        if crate::anotado::lleva_anotado(&m)
             && let Some(l) = anotado.get(&kotlin::unico(&m))
         {
             for rel in l {
@@ -1377,6 +1378,12 @@ pub fn alcance_de<D: Disco + ?Sized>(d: &D, chat: &str) -> io::Result<Vec<(Strin
             poner(dibujo(kotlin::cadena(&h, "dibujo")), e, &mut salida);
             poner(tabla(kotlin::cadena(&h, "tabla")), e, &mut salida);
             poner(croquis(kotlin::cadena(&h, "croquis")), e, &mut salida);
+            // Los comentarios de una hoja `nota`, con el codigo de la hoja.
+            if let Some(l) = anotado.get(&kotlin::unico_de_hoja(&h)) {
+                for rel in l {
+                    poner(Some(rel.clone()), e, &mut salida);
+                }
+            }
         }
         for c in lista("croquis") {
             poner(croquis(c.como_cadena()), &nombre, &mut salida);

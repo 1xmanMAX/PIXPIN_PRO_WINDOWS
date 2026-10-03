@@ -357,18 +357,19 @@ pub enum EsquinaPila {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Capturas {
-    /// Segundos, contados desde la ULTIMA captura de la tanda, durante los
-    /// cuales la siguiente se suma a la misma pila: mientras se siga
-    /// capturando, se sigue apilando. **Cero apaga la pila entera.**
+    /// **Cero apaga la pila entera**; cualquier otro valor la enciende.
     ///
-    /// Diez son los que dijo el usuario, y son los que aguanta la paciencia:
-    /// mas tiempo y una captura de hace medio minuto se colaria en un pegado
-    /// que ya no tiene nada que ver.
+    /// Nacio como un plazo (segundos desde la ultima captura para que la
+    /// siguiente se apilara) y el 2-oct el usuario lo cambio por un
+    /// interruptor: un clic en el recuadro de la esquina lo arma y agrupa
+    /// sin plazo hasta otro clic. El numero ya no mide nada; se conserva el
+    /// nombre para no romper los TOML que ya lo llevan.
     pub apilar_segundos: u32,
     /// Donde se planta el icono, dentro del monitor donde se hizo la captura.
     pub esquina: EsquinaPila,
-    /// Segundos que el icono sigue ahi despues de cerrarse la tanda. Cero lo
-    /// deja hasta que el usuario lo quite o pegue.
+    /// Segundos que el recuadro SIN ARMAR sigue ahi despues de la ultima
+    /// captura. Cero lo deja hasta que el usuario lo quite. Armado no se va
+    /// solo nunca.
     ///
     /// Ocho porque son los justos para ver que la captura se hizo y decidir
     /// si se abre el montoncito, sin quedarse tapando la esquina.

@@ -18,10 +18,12 @@
 
 pub mod aligerar;
 pub mod cocido;
+pub mod con_anotaciones;
 pub mod escribir;
 pub mod letra;
 pub mod plano;
 pub mod plano_web;
+mod png;
 pub mod texto;
 pub mod union;
 

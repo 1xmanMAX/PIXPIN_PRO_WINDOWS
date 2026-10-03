@@ -503,6 +503,41 @@ pub fn medir(texto: &str, tam: f32, letra: &Letra) -> Option<(f32, f32)> {
     Some((ancho + sobra, alto))
 }
 
+/// **Las caras de una familia propia como fichero de fuente llano** (TTF u
+/// OTF, desempaquetado del woff2), para quien no pinta con DirectWrite: el
+/// `RichEdit` del editor de notas las registra en GDI
+/// (`AddFontMemResourceEx`, solo para el proceso) y las pide por su nombre.
+/// Vacio si la familia no es propia o este Windows no sabe desempaquetar.
+pub fn ficheros_llanos(familia: &str) -> Vec<Vec<u8>> {
+    let Some(dwrite) = fabrica_compartida() else {
+        return Vec::new();
+    };
+    let Ok(f5) = dwrite.cast::<IDWriteFactory5>() else {
+        return Vec::new();
+    };
+    let mut sal = Vec::new();
+    for (_, datos) in FICHEROS.iter().filter(|(f, _)| f.eq_ignore_ascii_case(familia.trim())) {
+        // SAFETY: el woff2 es una rebanada `'static`; el fragmento que presta
+        // DirectWrite se copia y se devuelve antes de soltar el flujo.
+        unsafe {
+            let Ok(flujo) = f5.UnpackFontFile(DWRITE_CONTAINER_TYPE_WOFF2, datos.as_ptr().cast(), datos.len() as u32)
+            else {
+                continue;
+            };
+            let Ok(largo) = flujo.GetFileSize() else {
+                continue;
+            };
+            let (mut trozo, mut contexto) = (std::ptr::null_mut(), std::ptr::null_mut());
+            if flujo.ReadFileFragment(&mut trozo, 0, largo, &mut contexto).is_err() || trozo.is_null() {
+                continue;
+            }
+            sal.push(std::slice::from_raw_parts(trozo as *const u8, largo as usize).to_vec());
+            flujo.ReleaseFileFragment(contexto);
+        }
+    }
+    sal
+}
+
 /// Cuanto sale la tinta por la derecha de un texto de ancho `ancho`.
 fn sobresale(dwrite: &IDWriteFactory, texto: &str, tam: f32, letra: &Letra, ancho: f32) -> Option<f32> {
     let formato = formato(dwrite, letra, tam)?;

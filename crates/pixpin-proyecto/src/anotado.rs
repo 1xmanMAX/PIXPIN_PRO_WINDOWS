@@ -47,6 +47,71 @@ impl Base {
     pub fn tinta(&self) -> PathBuf {
         self.fichero(".excalidraw.gz")
     }
+
+    /// La base de la tinta de la hoja `pagina` (desde 0) del adjunto `x`.
+    pub fn de_pagina(raiz: &Path, x: &Adjunto, pagina: u32) -> Base {
+        Base {
+            raiz: raiz.to_path_buf(),
+            chat: x.chat.clone(),
+            base: a::de_pagina(&x.uid, pagina),
+        }
+    }
+
+    /// El fichero del marco de su tinta (`<base>.hoja`).
+    pub fn marco(&self) -> PathBuf {
+        self.fichero(a::HOJA)
+    }
+
+    /// **El resumen entero de su tinta como lo cuenta la sincronizacion**
+    /// (`Disco::resumen_de_archivo`: SHA-256 del JSON canonico del texto
+    /// portatil), el mismo que saca el movil de la suya. `None` si no hay
+    /// tinta o no se lee. Su principio es la huella del marco
+    /// (`pixpin_sincro::anotado::huella_de_tinta`).
+    pub fn resumen_de_la_tinta(&self) -> Option<String> {
+        if !self.tinta().is_file() {
+            return None;
+        }
+        DiscoPc::nuevo(&self.raiz)
+            .resumen_de_archivo(&self.chat, &a::rel(&self.base, ".excalidraw.gz"))
+            .ok()
+    }
+
+    /// **Escribe el marco `m`** en las dos lineas de Android (`escribirMarco`),
+    /// por un temporal y **sin tocar el fichero si el que hay ya dice lo
+    /// mismo** (`casiIgual`, con sus decimales): una fecha nueva es un envio
+    /// mas. Uno que lo dice pero trae la huella del PC del 29-sep se deja en
+    /// dos lineas, con su primera tal cual, para que Android lo lea.
+    pub fn escribir_marco(&self, m: &a::MarcoDeLaHoja) -> std::io::Result<()> {
+        if let Some(texto) = leer(&self.marco())
+            && let Some((ya, huella)) = a::MarcoDeLaHoja::de_texto_con_huella(&texto)
+            && ya.casi_igual(m)
+        {
+            return match huella {
+                Some(_) => self.quitar_la_huella(),
+                None => Ok(()),
+            };
+        }
+        escribir(&self.marco(), &m.a_texto())
+    }
+
+    /// La huella de su tinta de ahora (ver [`Base::resumen_de_la_tinta`]):
+    /// con la que se comprueba un marco del PC del 29-sep que la trae.
+    pub fn huella(&self) -> Option<String> {
+        self.resumen_de_la_tinta().map(|r| r[..a::CIFRAS_DE_LA_HUELLA].to_string())
+    }
+
+    /// **Deja el marco que ya hay en las dos lineas de Android**, con su
+    /// primera linea tal cual (`MarcoDeLaHoja::sin_huella`). Si no hay marco
+    /// o no se entiende, nada.
+    pub fn quitar_la_huella(&self) -> std::io::Result<()> {
+        let Some(texto) = leer(&self.marco()) else {
+            return Ok(());
+        };
+        match a::MarcoDeLaHoja::sin_huella(&texto) {
+            Some(nuevo) => escribir(&self.marco(), &nuevo),
+            None => Ok(()),
+        }
+    }
 }
 
 /// El almacen al que pertenece un fichero: la carpeta de encima de
@@ -162,6 +227,156 @@ pub fn hoja_del_pdf(raiz: &Path, pdf: &Path, i: u32) -> Option<PathBuf> {
 pub fn marco_del_pdf(raiz: &Path, pdf: &Path, i: u32) -> Option<PathBuf> {
     let x = adjunto_de(raiz, pdf)?;
     Some(DiscoPc::nuevo(raiz).ruta(&x.chat, &a::rel(&a::de_pagina(&x.uid, i), a::HOJA)))
+}
+
+/// **Los adjuntos de un chat**: el codigo de cada mensaje que senala un
+/// fichero y donde esta ese fichero en este equipo (exista o no aun).
+pub fn adjuntos_del_chat(raiz: &Path, chat: &str, ficha: &str) -> Vec<(Adjunto, PathBuf)> {
+    let Ok(mensajes) = DiscoPc::nuevo(raiz).mensajes(chat) else {
+        return Vec::new();
+    };
+    mensajes
+        .iter()
+        .filter_map(|m| {
+            let real = vista::ruta_real(raiz, ficha, kotlin::cadena(m, "ruta")?)?;
+            Some((Adjunto { chat: chat.to_string(), uid: kotlin::unico(m) }, real))
+        })
+        .collect()
+}
+
+/// De que es una tinta `anot-<uid>…`, por su nombre.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueTinta {
+    /// `anot-<uid>-p<n>`: la hoja `n` (desde 0) de un PDF suelto del chat.
+    Pagina(u32),
+    /// `anot-<uid>`: un Word o un libro.
+    Documento,
+    /// `anot-<uid>-texto`: un PDF leido como texto (el PC no lo abre).
+    Texto,
+}
+
+/// Una tinta del mensaje que aun no tiene marco: con que calcularlo.
+#[derive(Debug, Clone)]
+pub struct TintaSinMarco {
+    pub base: Base,
+    pub adjunto: Adjunto,
+    pub que: QueTinta,
+    /// El documento del mensaje en este equipo, si el mensaje sigue ahi.
+    pub doc: Option<PathBuf>,
+}
+
+/// Lo que hizo una pasada de [`poner_marcos`].
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Pasada {
+    /// Tintas que no tenian marco y ahora lo tienen.
+    pub escritos: usize,
+    /// Marcos con la huella del PC del 29-sep, de su tinta, que pasan a las
+    /// dos lineas de Android (v0.98.0 rechaza un marco de tres) con sus
+    /// mismos numeros.
+    pub sin_huella: usize,
+    /// Tintas que ya tenian su marco en dos lineas: no se tocan.
+    pub ya_estaban: usize,
+    /// Tintas sin marco que no se pudieron calcular (sin documento, sin
+    /// columna fijada, un PDF leido como texto, o un marco que no se entiende).
+    pub sin_calcular: usize,
+    /// Lo que no fue bien, para el registro (este crate no registra).
+    pub avisos: Vec<String>,
+}
+
+/// El nombre de una tinta de un mensaje: su base, su codigo y de que es.
+fn tinta_del_nombre(rel: &str) -> Option<(String, String, QueTinta)> {
+    let nombre = rel.strip_prefix(a::CARPETA)?.strip_prefix('/')?;
+    let base = nombre.strip_suffix(".excalidraw.gz")?;
+    let uid = a::uid_del_nombre(nombre)?;
+    let resto = base.strip_prefix(a::PREFIJO)?.strip_prefix(uid)?;
+    let que = match resto {
+        "" => QueTinta::Documento,
+        "-texto" => QueTinta::Texto,
+        r => QueTinta::Pagina(r.strip_prefix("-p")?.parse().ok()?),
+    };
+    Some((base.to_string(), uid.to_string(), que))
+}
+
+/// **La pasada del marco de la tinta** (29-sep, «actualizar los archivos que
+/// ya estan anotados usando esta forma de marco»): cada tinta de un mensaje
+/// (`anot-<uid>[-p<n>]`) de cada chat que aun no tiene su `.hoja` recibe la
+/// que corresponde a como se lee hoy (la regla vieja, que calcula `calcular`
+/// porque pide el PDF y la maqueta, cosas de la app). **La tinta no se
+/// toca.** Es lo que hace Android al abrir (`tintaDeLaHoja` con `migrar`).
+///
+/// Desde el 30-sep (Android v0.98.0, marco de dos lineas): un marco en dos
+/// lineas se deja; uno con la huella del PC del 29-sep, si es la de su
+/// tinta, pasa a dos lineas con sus mismos numeros, y si no lo es, miente
+/// (la tinta se reescribio sin el) y se calcula de nuevo como si no hubiera.
+/// Uno que no se entiende (un formato nuevo del otro aparato) no se toca.
+/// Escribir lo mismo no toca el fichero, asi que repetirla no cambia nada ni
+/// provoca envios.
+pub fn poner_marcos(
+    raiz: &Path,
+    calcular: &mut dyn FnMut(&TintaSinMarco) -> Option<a::MarcoDeLaHoja>,
+) -> Pasada {
+    let d = DiscoPc::nuevo(raiz);
+    let mut p = Pasada::default();
+    for (chat, ficha) in d.mapa() {
+        let mut docs: Option<HashMap<String, PathBuf>> = None;
+        for rel in d.anotado(&chat) {
+            let Some((base, uid, que)) = tinta_del_nombre(&rel) else {
+                continue;
+            };
+            let b = Base { raiz: raiz.to_path_buf(), chat: chat.clone(), base };
+            if let Some(texto) = leer(&b.marco()) {
+                match a::MarcoDeLaHoja::de_texto_con_huella(&texto) {
+                    Some((_, None)) => {
+                        p.ya_estaban += 1;
+                        continue;
+                    }
+                    Some((_, Some(h)))
+                        if b.resumen_de_la_tinta().is_some_and(|r| a::huella_coincide(&h, &r)) =>
+                    {
+                        match b.quitar_la_huella() {
+                            Ok(()) => p.sin_huella += 1,
+                            Err(e) => {
+                                p.avisos.push(format!("{}: no se pudo quitar la huella al marco: {e}", b.base));
+                                p.sin_calcular += 1;
+                            }
+                        }
+                        continue;
+                    }
+                    // Con la huella de otra tinta: se calcula como sin marco.
+                    Some((_, Some(_))) => {}
+                    None => {
+                        p.avisos.push(format!("{}: marco que no se entiende, no se toca", b.base));
+                        p.sin_calcular += 1;
+                        continue;
+                    }
+                }
+            }
+            if que == QueTinta::Texto {
+                p.sin_calcular += 1;
+                continue;
+            }
+            let docs = docs.get_or_insert_with(|| {
+                adjuntos_del_chat(raiz, &chat, &ficha.id).into_iter().map(|(x, r)| (x.uid, r)).collect()
+            });
+            let t = TintaSinMarco {
+                doc: docs.get(&uid).cloned(),
+                adjunto: Adjunto { chat: chat.clone(), uid },
+                base: b,
+                que,
+            };
+            match calcular(&t).filter(a::MarcoDeLaHoja::valido) {
+                Some(m) => match t.base.escribir_marco(&m) {
+                    Ok(()) => p.escritos += 1,
+                    Err(e) => {
+                        p.avisos.push(format!("{}: no se pudo escribir el marco: {e}", t.base.base));
+                        p.sin_calcular += 1;
+                    }
+                },
+                None => p.sin_calcular += 1,
+            }
+        }
+    }
+    p
 }
 
 /// **Los marcadores de un lienzo del almacen, junto a su dibujo**
@@ -507,6 +722,74 @@ mod pruebas {
         marcar_tinta_pasada(&otro);
         std::fs::write(&nuevo, r#"{"elements":[]}"#).unwrap();
         assert!(!pasar_tinta_de_antes(&otro, &nuevo, 0.0));
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn la_pasada_pone_a_cada_tinta_sin_marco_el_suyo_en_dos_lineas_y_no_toca_la_tinta() {
+        let r = raiz("pasada");
+        let (_, doc, _) = con_un_word(&r);
+        let b = base_del_documento(&r, &doc).unwrap();
+        std::fs::create_dir_all(b.tinta().parent().unwrap()).unwrap();
+        let tinta = r#"{"elements":[{"id":"m1","type":"freedraw","x":300,"y":10,"width":4,"height":4,"points":[{"x":0.0,"y":0.0},{"x":4.0,"y":4.0}]}],"files":{}}"#;
+        std::fs::write(b.tinta(), tinta).unwrap();
+        // Lo de un PDF leido como texto: el PC no lo abre, no se inventa.
+        let texto = Base { base: format!("{}-texto", b.base), ..b.clone() };
+        std::fs::write(texto.tinta(), tinta).unwrap();
+        let regla_vieja = a::MarcoDeLaHoja::nuevo(256.0, 0.0, 640.0, 384.0);
+        let mut vistos = Vec::new();
+        let p = poner_marcos(&r, &mut |t| {
+            vistos.push((t.que, t.doc.clone()));
+            Some(regla_vieja)
+        });
+        assert_eq!((p.escritos, p.sin_calcular, p.ya_estaban), (1, 1, 0), "{p:?}");
+        assert_eq!(vistos, vec![(QueTinta::Documento, Some(doc.clone()))]);
+        // Dos lineas, como Android: una tercera la ignoraria.
+        assert_eq!(leer(&b.marco()).as_deref(), Some("256,0,640,384\nv1\n"));
+        assert_eq!(std::fs::read_to_string(b.tinta()).unwrap(), tinta, "la tinta, byte a byte");
+        assert!(!texto.marco().exists());
+        // Otra vez: nada que hacer, ni la fecha del marco cambia.
+        let fecha = std::fs::metadata(b.marco()).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let p = poner_marcos(&r, &mut |_| panic!("ya tiene marco"));
+        assert_eq!((p.escritos, p.sin_huella, p.ya_estaban), (0, 0, 1));
+        assert_eq!(std::fs::metadata(b.marco()).unwrap().modified().unwrap(), fecha);
+        // Uno con la huella del PC del 29-sep, de esta tinta: pasa a dos
+        // lineas con sus mismos numeros.
+        let h = a::huella_de_tinta(tinta);
+        escribir(&b.marco(), &format!("-1050.0,0.0,2450.0,4950.0\nv1\ntinta {h}\n")).unwrap();
+        let p = poner_marcos(&r, &mut |_| panic!("tiene marco que vale"));
+        assert_eq!(p.sin_huella, 1);
+        assert_eq!(leer(&b.marco()).as_deref(), Some("-1050.0,0.0,2450.0,4950.0\nv1\n"));
+        // Caso negativo: con la huella de otra tinta miente, y se calcula.
+        escribir(&b.marco(), "-1050,0,2450,4950\nv1\ntinta 0123456789abcdef\n").unwrap();
+        let p = poner_marcos(&r, &mut |_| Some(regla_vieja));
+        assert_eq!((p.escritos, p.sin_huella), (1, 0), "{p:?}");
+        assert_eq!(leer(&b.marco()).as_deref(), Some("256,0,640,384\nv1\n"));
+        // Casos negativos: uno que no se entiende no se toca, y si no se
+        // puede calcular no se escribe nada.
+        escribir(&b.marco(), "0,0,1,1\nv7\n").unwrap();
+        let p = poner_marcos(&r, &mut |_| None);
+        assert_eq!(p.sin_calcular, 2);
+        assert_eq!(leer(&b.marco()).as_deref(), Some("0,0,1,1\nv7\n"));
+        std::fs::remove_file(b.marco()).unwrap();
+        assert_eq!(poner_marcos(&r, &mut |_| None).escritos, 0);
+        assert!(!b.marco().exists());
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn la_huella_es_la_del_resumen_con_que_se_sincroniza_la_tinta() {
+        let r = raiz("huella");
+        let (ficha, doc, _) = con_un_word(&r);
+        let b = base_del_documento(&r, &doc).unwrap();
+        assert_eq!(b.resumen_de_la_tinta(), None, "sin tinta no hay huella");
+        std::fs::create_dir_all(b.tinta().parent().unwrap()).unwrap();
+        std::fs::write(b.tinta(), r#"{"elements":[],"files":{}}"#).unwrap();
+        let chat = vista::chat_de_ficha(&r, &ficha.id).unwrap();
+        let d = DiscoPc::nuevo(&r);
+        let rel = a::rel(&b.base, ".excalidraw.gz");
+        assert_eq!(b.resumen_de_la_tinta(), d.resumen_de_archivo(&chat, &rel).ok());
         let _ = std::fs::remove_dir_all(&r);
     }
 

@@ -464,6 +464,27 @@ fn un_rotulo_sale_con_lo_que_dice_donde_y_cuanto_ocupa() {
     assert_eq!(t.familia, "sans-serif");
 }
 
+/// **MacRoman** (Android v0.98.0): la «fi» de un articulo hecho en Mac es
+/// «fi» y no «Þ», o el Ctrl+F de la pagina web no encuentra «defined».
+#[test]
+fn en_macroman_la_ligadura_fi_sale_fi_y_en_winansi_sigue_siendo_thorn() {
+    let con = |encoding: &str| {
+        leer(&pagina_con(
+            b"BT /F1 10 Tf 20 100 Td (de\\336ned) Tj ET",
+            Pagina {
+                recursos: "/Font << /F1 5 0 R >>",
+                mas: vec![format!("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding {encoding} >>\nendobj\n").into_bytes()],
+                ..Default::default()
+            },
+        ))
+        .unwrap()
+    };
+    assert_eq!(con("/MacRomanEncoding").textos[0].texto, "defined");
+    assert_eq!(con("<< /BaseEncoding /MacRomanEncoding >>").textos[0].texto, "defined");
+    // Caso negativo: en WinAnsi (o sin decir nada) sigue siendo la thorn.
+    assert_eq!(con("/WinAnsiEncoding").textos[0].texto, "deÞned");
+}
+
 #[test]
 fn la_matriz_del_texto_lo_gira() {
     let p = con_fuente("BT /F1 10 Tf 0 1 -1 0 30 40 Tm <0003> Tj ET");
@@ -579,4 +600,129 @@ fn pasado_el_tope_de_puntos_la_lectura_se_corta_y_lo_dice() {
     let p = simple(&c);
     assert!(p.cortado);
     assert!(!p.se_manda_como_lineas());
+}
+
+// ---- Los renglones, juntos para que se busquen ----
+
+#[test]
+fn una_palabra_partida_por_el_interletrado_sale_en_un_solo_rotulo() {
+    // Word escribe «Beneficios» como `[(B)20(e)-15(ne)…] TJ`: sin juntar,
+    // el Ctrl+F del navegador no encuentra la palabra.
+    let p = con_fuente("BT /F1 10 Tf 20 100 Td [<0003> 20 <0004> -30 <0003>] TJ ET");
+    assert_eq!(p.textos.len(), 1, "{:?}", p.textos.iter().map(|t| &t.texto).collect::<Vec<_>>());
+    assert_eq!(p.textos[0].texto, "AÑA");
+    // Lo que ocupa es de la primera letra al final de la ultima.
+    let t = &p.textos[0];
+    assert!((t.x + t.a * t.ancho - (20.0 + 15.0 + 0.1)).abs() < 0.01, "ancho {}", t.ancho);
+}
+
+#[test]
+fn dos_palabras_separadas_por_un_hueco_de_espacio_llevan_su_espacio() {
+    let p = con_fuente("BT /F1 10 Tf 20 100 Td [<0003> -300 <0004>] TJ ET");
+    assert_eq!(p.textos.len(), 1);
+    assert_eq!(p.textos[0].texto, "A Ñ");
+}
+
+#[test]
+fn lo_de_otro_renglon_otro_tamano_o_muy_lejos_no_se_junta() {
+    assert_eq!(con_fuente("BT /F1 10 Tf 12 TL 20 100 Td <0003> Tj T* <0003> Tj ET").textos.len(), 2);
+    assert_eq!(con_fuente("BT /F1 10 Tf 20 100 Td <0003> Tj /F1 14 Tf <0003> Tj ET").textos.len(), 2);
+    // Una columna al lado: el hueco es de varias emes.
+    assert_eq!(con_fuente("BT /F1 10 Tf 20 100 Td [<0003> -3000 <0003>] TJ ET").textos.len(), 2);
+}
+
+// ---- Las imagenes que no son JPEG ----
+
+fn comprimido(datos: &[u8]) -> Vec<u8> {
+    use std::io::Write as _;
+    let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    z.write_all(datos).unwrap();
+    z.finish().unwrap()
+}
+
+fn con_imagen(dicc: &str, datos: &[u8], mas: Vec<Vec<u8>>) -> Plano {
+    let mut todo = vec![imagen(5, datos, dicc)];
+    todo.extend(mas);
+    leer(&pagina_con(
+        b"q 40 0 0 20 10 30 cm /Im1 Do Q 0 0 m 1 1 l S",
+        Pagina {
+            recursos: "/XObject << /Im1 5 0 R >>",
+            mas: todo,
+            ..Default::default()
+        },
+    ))
+    .unwrap()
+}
+
+#[test]
+fn una_imagen_en_flate_se_pasa_como_png_sin_mandar_la_hoja_como_foto() {
+    // Una captura de Word: RGB en Flate, sin predictor.
+    let p = con_imagen(
+        "/Width 2 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode",
+        &comprimido(&[255, 0, 0, 0, 0, 255]),
+        Vec::new(),
+    );
+    assert_eq!(p.sin_entender, 0);
+    assert_eq!(p.fotos.len(), 1);
+    assert_eq!(p.fotos[0].tipo, "image/png");
+    assert!(p.fotos[0].datos.starts_with(b"\x89PNG"));
+    assert!(p.fotos[0].mascara.is_none());
+}
+
+#[test]
+fn con_predictor_y_transparencia_la_imagen_sale_entera_en_un_png() {
+    // Predictor PNG «Sub» (tipo 1) en color, y su mascara en gris.
+    let filas = [1u8, 10, 20, 30, 5, 5, 5];
+    let p = con_imagen(
+        "/Width 2 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /DecodeParms << /Predictor 15 /Colors 3 /Columns 2 >> /SMask 6 0 R",
+        &comprimido(&filas),
+        vec![imagen(6, &comprimido(&[255, 0]), "/Width 2 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode")],
+    );
+    assert_eq!(p.sin_entender, 0);
+    let png = &p.fotos[0].datos;
+    // RGBA: el tipo de color 6 en la cabecera.
+    assert_eq!(png[25], 6, "sin su alfa");
+}
+
+#[test]
+fn una_imagen_en_jbig2_o_con_una_mascara_rara_sigue_mandando_la_hoja_como_foto() {
+    let p = con_imagen(
+        "/Width 8 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 1 /Filter /JBIG2Decode",
+        &[0xAA],
+        Vec::new(),
+    );
+    assert_eq!(p.sin_entender, 1);
+    let p = con_imagen(
+        "/Width 2 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /SMask 6 0 R",
+        &comprimido(&[1, 2, 3, 4, 5, 6]),
+        vec![imagen(6, &comprimido(&[1, 2, 3]), "/Width 3 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode")],
+    );
+    assert_eq!(p.sin_entender, 1, "una mascara de otro tamano no se estira");
+}
+
+#[test]
+fn la_silueta_de_un_bit_con_su_mascara_de_word_se_pasa_como_png() {
+    // Lo que escribe Word para una figura: un bit por pixel en gris y la
+    // forma de verdad en su mascara.
+    let p = con_imagen(
+        "/Width 8 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 1 /Filter /FlateDecode /SMask 6 0 R",
+        &comprimido(&[0x0F]),
+        vec![imagen(6, &comprimido(&[0, 255, 0, 255, 0, 255, 0, 255]), "/Width 8 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode")],
+    );
+    assert_eq!(p.sin_entender, 0);
+    assert_eq!(p.fotos[0].tipo, "image/png");
+    assert_eq!(p.fotos[0].datos[25], 4, "gris con alfa");
+}
+
+#[test]
+fn un_jpeg_con_su_mascara_en_flate_lleva_la_mascara_como_png() {
+    let jpeg = latin("\u{ff}\u{d8}\u{ff}\u{e0}FOTO");
+    let p = con_imagen(
+        "/Width 2 /Height 1 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /SMask 6 0 R",
+        &jpeg,
+        vec![imagen(6, &comprimido(&[255, 0]), "/Width 2 /Height 1 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode")],
+    );
+    assert_eq!(p.sin_entender, 0);
+    assert_eq!(p.fotos[0].tipo, "image/jpeg");
+    assert_eq!(p.fotos[0].tipo_mascara, Some("image/png"));
 }

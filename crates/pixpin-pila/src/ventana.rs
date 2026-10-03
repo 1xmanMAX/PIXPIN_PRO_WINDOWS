@@ -77,9 +77,12 @@ pub enum AccionPila {
     CopiarElegidas,
     /// Se pulso «Copiar todas».
     CopiarTodas,
-    /// La pila cambio (se marco, se desmarco o se quito una): hay que
-    /// repintar y, si quedo vacia, cerrar.
+    /// La pila cambio (se marco, se desmarco o se quito una, o se cerro el
+    /// panel): hay que repintar y, si quedo vacia, cerrar.
     Cambiada,
+    /// Un clic en el recuadro lo armo: bordes en azul y, desde ya, cada
+    /// captura se suma a la tanda. El segundo clic llega como `Cerrar`.
+    Armada,
     /// Se acabo el tiempo o se pulso «Quitar»: la pila se va.
     Cerrar,
 }
@@ -390,7 +393,11 @@ fn pintar_icono(p: &Pintor, pila: &Pila, bitmaps: &[ID2D1Bitmap1], d: &Disposici
     if let (Some(c), Some(b)) = (pila.ultima(), bitmaps.last()) {
         p.bitmap(b, encajar(dentro, c.miniatura.ancho, c.miniatura.alto), None, false);
     }
-    p.trazar(caja, 1.0 * e, BORDE);
+    if pila.armada() {
+        pintar_halo(p, caja, e);
+    } else {
+        p.trazar(caja, 1.0 * e, BORDE);
+    }
 
     // El numero, solo a partir de dos: con una sola no aporta nada y quita
     // sitio a la miniatura, que es lo que el usuario mira.
@@ -407,6 +414,29 @@ fn pintar_icono(p: &Pintor, pila: &Pila, bitmaps: &[ID2D1Bitmap1], d: &Disposici
             centro.1 - h / 2.0,
             tam,
             Color::BLANCO,
+        );
+    }
+}
+
+/// El halo azul del recuadro armado: un borde firme y dos difuminados hacia
+/// dentro. Va por dentro de la tarjeta porque la ventana mide justo lo que el
+/// icono: un brillo por fuera quedaria cortado por el borde de la ventana.
+fn pintar_halo(p: &Pintor, caja: RectF, e: f32) {
+    for (n, alfa) in [(2.0f32, 0.30f32), (1.0, 0.55), (0.0, 1.0)] {
+        let dentro = n * 2.5 * e;
+        let r = RectF {
+            x: caja.x + dentro,
+            y: caja.y + dentro,
+            ancho: caja.ancho - 2.0 * dentro,
+            alto: caja.alto - 2.0 * dentro,
+        };
+        p.trazar(
+            r,
+            if n == 0.0 { 3.0 * e } else { 2.5 * e },
+            Color {
+                a: alfa,
+                ..Color::ACENTO
+            },
         );
     }
 }
@@ -614,6 +644,27 @@ impl IconoPila {
         interno_de(self.hwnd).map(|i| i.abierto).unwrap_or(false)
     }
 
+    /// La escala del monitor para la que se hizo la ventana. Una tanda nueva
+    /// en un monitor con la MISMA escala reutiliza la ventana (crearla cuesta
+    /// una superficie de composicion entera, decenas de ms en el hilo de los
+    /// gestos); con otra escala hay que hacerla de nuevo.
+    pub fn escala_por_cien(&self) -> Option<u32> {
+        interno_de(self.hwnd).map(|i| i.escala_por_cien)
+    }
+
+    /// Vuelve del panel al recuadro, sin tocar la pila. Es lo que pasa tras
+    /// copiar con la tanda armada: se sigue agrupando.
+    pub fn cerrar_panel(&self) {
+        let Some(i) = interno_de(self.hwnd) else {
+            return;
+        };
+        if i.abierto {
+            i.abierto = false;
+            recolocar(self.hwnd, i);
+            pintar(i);
+        }
+    }
+
     /// Rehace las miniaturas, recoloca la ventana y repinta. Se llama cuando
     /// entra una captura nueva y cuando el panel se abre o se cierra.
     pub fn refrescar(&self) {
@@ -801,6 +852,12 @@ extern "system" fn procedimiento_pila(
             atender_clic(hwnd, lparam);
             LRESULT(0)
         }
+        // El clic derecho abre (o cierra) el panel para elegir cuales copiar:
+        // el izquierdo del recuadro es el interruptor de agrupar.
+        WM_RBUTTONUP => {
+            alternar_panel(hwnd);
+            LRESULT(0)
+        }
         WM_TIMER if wparam.0 == ID_TEMPORIZADOR => {
             // Lo primero, matarlo: de un disparo. Si no, la ventana seguiria
             // recibiendo un mensaje cada N segundos para siempre.
@@ -812,7 +869,9 @@ extern "system" fn procedimiento_pila(
                 // Con el panel abierto NO se va sola: el usuario esta
                 // mirandola y eligiendo, y desaparecer a media eleccion seria
                 // el peor momento posible.
-                if !i.abierto {
+                // Y armada tampoco: es el usuario quien la mantiene en
+                // trabajo, y solo el la suelta.
+                if !i.abierto && !i.pila.borrow().armada() {
                     (i.al_actuar)(AccionPila::Cerrar);
                 }
             }
@@ -846,6 +905,27 @@ extern "system" fn procedimiento_pila(
     }
 }
 
+/// Abre el panel desde el recuadro, o lo cierra de vuelta al recuadro.
+fn alternar_panel(hwnd: HWND) {
+    let Some(i) = interno_de(hwnd) else {
+        return;
+    };
+    if i.abierto {
+        i.abierto = false;
+        recolocar(hwnd, i);
+        pintar(i);
+        // Quien manda en el desvanecido lo vuelve a armar si toca.
+        (i.al_actuar)(AccionPila::Cambiada);
+    } else {
+        // Abrir el panel desarma el desvanecido: mientras se elige, la pila
+        // no se va sola.
+        i.abierto = true;
+        armar(hwnd, 0);
+        recolocar(hwnd, i);
+        pintar(i);
+    }
+}
+
 fn atender_clic(hwnd: HWND, lparam: LPARAM) {
     let Some(i) = interno_de(hwnd) else {
         return;
@@ -856,12 +936,17 @@ fn atender_clic(hwnd: HWND, lparam: LPARAM) {
     let d = disponer(i.abierto, cuantas, i.escala_por_cien);
     match zona_en(&d, x, y) {
         Zona::Icono => {
-            // Abrir el panel desarma el desvanecido: mientras se elige, la
-            // pila no se va sola.
-            i.abierto = true;
-            armar(hwnd, 0);
-            recolocar(hwnd, i);
-            pintar(i);
+            // El interruptor de agrupar (2-oct). Sin armar, el clic lo arma:
+            // bordes en azul, ya no se va solo y las capturas que vengan se
+            // suman. Armado, el clic lo suelta todo y el recuadro se va.
+            let armada = i.pila.borrow().armada();
+            if armada {
+                (i.al_actuar)(AccionPila::Cerrar);
+            } else if i.pila.borrow_mut().armar(true) {
+                armar(hwnd, 0);
+                pintar(i);
+                (i.al_actuar)(AccionPila::Armada);
+            }
         }
         Zona::Celda(n) => {
             i.pila.borrow_mut().alternar(n);

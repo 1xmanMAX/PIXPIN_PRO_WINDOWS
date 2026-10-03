@@ -220,8 +220,9 @@ impl Disco for DiscoAndroid {
             {
                 let _ = std::fs::remove_file(self.files.join(r));
             }
-            // Y lo anotado sobre el, que sin su mensaje ya no viaja (v0.96).
-            if kotlin::cadena(m, "ruta").is_some() {
+            // Y lo anotado sobre el, que sin su mensaje ya no viaja (v0.96);
+            // de una nota, sus comentarios (30-sep).
+            if crate::anotado::lleva_anotado(m) {
                 self.borrar_anotado(chat, &kotlin::unico(m));
             }
         }
@@ -308,6 +309,10 @@ impl Disco for DiscoAndroid {
             .iter()
             .position(|x| kotlin::cadena(x, "id") == Some(id.as_str()));
         let puesto = disco::actualizado(antes.map(|i| &lista[i]), &nuevo);
+        // Una hoja que ya no esta se lleva sus comentarios (30-sep).
+        for uid in crate::anotado::hojas_quitadas(antes.map(|i| &lista[i]), &puesto) {
+            self.borrar_anotado(&id, &uid);
+        }
         match antes {
             Some(i) => lista[i] = puesto,
             None => lista.push(puesto),

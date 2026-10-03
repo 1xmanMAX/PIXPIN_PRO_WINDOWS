@@ -293,6 +293,168 @@ fn en_una_linea(texto: &str) -> String {
         .to_string()
 }
 
+// --- La fecha de creacion de cada tarea -----------------------------------
+//
+// Ver `docs/investigacion/2026-10-02-tareas-con-fecha.md`. En corto: la fecha
+// va **dentro del texto de la tarea**, al final, con la marca de «creada» del
+// plugin Tasks de Obsidian:
+//
+//     - [ ] comprar pan ➕ 2026-10-02
+//
+// Dentro del texto porque es lo unico que el movil de hoy conserva: su
+// `Tareas.escribir` reescribe el documento entero desde su modelo
+// (`Tarea(texto, hecha)`), y cualquier linea o comentario aparte se perderia
+// al primer toque en el telefono. El texto, en cambio, viaja crudo en las dos
+// direcciones. Un lector viejo ensena «comprar pan ➕ 2026-10-02», que se
+// entiende; uno nuevo lo separa con [`partir`].
+//
+// Por eso [`Tarea::texto`] sigue siendo el texto **crudo**, con la fecha
+// dentro, igual que en Kotlin: marcar, mover o borrar no tienen que saber
+// nada de fechas para no perderlas.
+
+/// La marca que va delante de la fecha de creacion: `➕` (U+2795), la de
+/// «created» del plugin Tasks de Obsidian. Se usa la de alguien en vez de
+/// inventar una porque asi la lista se entiende tambien fuera de PixPin.
+pub const MARCA_DE_CREADA: char = '\u{2795}';
+
+/// Un dia del calendario, sin hora: lo justo para contar dias.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Fecha {
+    pub anio: i32,
+    pub mes: u8,
+    pub dia: u8,
+}
+
+impl Fecha {
+    /// El dia numero `dias` contado desde el 1-ene-1970 (algoritmo de
+    /// Hinnant, el mismo de `importar_hojas::civil`).
+    pub fn de_dias(dias: i64) -> Fecha {
+        let z = dias + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z - era * 146_097;
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let dia = (doy - (153 * mp + 2) / 5 + 1) as u8;
+        let mes = if mp < 10 { mp + 3 } else { mp - 9 } as u8;
+        let anio = (yoe + era * 400 + i64::from(mes <= 2)) as i32;
+        Fecha { anio, mes, dia }
+    }
+
+    /// El dia de un instante en milisegundos **ya corridos al huso** de
+    /// quien mira (`pixpin_shell::entorno::a_local`).
+    pub fn de_ms_locales(ms: i64) -> Fecha {
+        Fecha::de_dias(ms.div_euclid(86_400_000))
+    }
+
+    /// Cuantos dias van del 1-ene-1970 a este.
+    pub fn dias(self) -> i64 {
+        let y = i64::from(self.anio) - i64::from(self.mes <= 2);
+        let era = y.div_euclid(400);
+        let yoe = y - era * 400;
+        let m = i64::from(self.mes);
+        let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + i64::from(self.dia) - 1;
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        era * 146_097 + doe - 719_468
+    }
+
+    /// Lee `AAAA-MM-DD`, y solo eso: diez caracteres y una fecha que exista.
+    /// «2026-02-30» no es un dia, y leerlo como el 2 de marzo haria que la
+    /// cuenta de dias mintiera sin que se note.
+    pub fn leer(s: &str) -> Option<Fecha> {
+        let b = s.as_bytes();
+        if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+            return None;
+        }
+        let num = |r: &[u8]| -> Option<u32> {
+            r.iter().try_fold(0u32, |acc, c| {
+                c.is_ascii_digit().then(|| acc * 10 + u32::from(c - b'0'))
+            })
+        };
+        let f = Fecha {
+            anio: num(&b[0..4])? as i32,
+            mes: num(&b[5..7])? as u8,
+            dia: num(&b[8..10])? as u8,
+        };
+        (Fecha::de_dias(f.dias()) == f && (1..=12).contains(&f.mes) && f.dia >= 1).then_some(f)
+    }
+}
+
+impl std::fmt::Display for Fecha {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:04}-{:02}-{:02}", self.anio, self.mes, self.dia)
+    }
+}
+
+/// El texto de una tarea partido en **lo que se ensena** y su fecha de
+/// creacion, si la lleva.
+///
+/// Solo cuenta la marca **al final**: `➕ AAAA-MM-DD` detras de un blanco (o
+/// sola). Una marca en medio, o una fecha que no existe, se quedan como
+/// texto: mejor ensenar algo raro que comerse lo que alguien escribio.
+pub fn partir(texto: &str) -> (&str, Option<Fecha>) {
+    let t = texto.trim_end();
+    if t.len() < 10 || !t.is_char_boundary(t.len() - 10) {
+        return (texto.trim(), None);
+    }
+    let (antes, fecha) = t.split_at(t.len() - 10);
+    let Some(fecha) = Fecha::leer(fecha) else {
+        return (texto.trim(), None);
+    };
+    let antes = antes.trim_end();
+    let Some(resto) = antes.strip_suffix(MARCA_DE_CREADA) else {
+        return (texto.trim(), None);
+    };
+    // Pegada a una palabra («pan➕ 2026-...») no es la marca.
+    if !resto.is_empty() && !resto.ends_with(es_blanco) {
+        return (texto.trim(), None);
+    }
+    (resto.trim(), Some(fecha))
+}
+
+/// El texto crudo de una tarea con su fecha de creacion detras.
+pub fn con_fecha(visible: &str, creada: Fecha) -> String {
+    let visible = visible.trim();
+    if visible.is_empty() {
+        format!("{MARCA_DE_CREADA} {creada}")
+    } else {
+        format!("{visible} {MARCA_DE_CREADA} {creada}")
+    }
+}
+
+/// Cuantos dias lleva creada, contando por dias de calendario: creada ayer a
+/// las once de la noche es «hace 1 dia» a la una de la madrugada, que es lo
+/// que dice cualquiera.
+///
+/// Nunca negativo: una fecha del futuro (el reloj del otro aparato iba
+/// adelantado) se cuenta como de hoy, que es lo menos raro que se puede
+/// decir de ella.
+pub fn dias_desde(creada: Fecha, hoy: Fecha) -> u32 {
+    (hoy.dias() - creada.dias()).clamp(0, i64::from(u32::MAX)) as u32
+}
+
+/// Como [`anadir`], pero apuntando el dia en que se crea.
+///
+/// `anadir` a secas se queda sin fecha a proposito: lo llaman caminos que no
+/// tienen reloj a mano (una nota que se convierte en lista, las pruebas), y
+/// una fecha inventada seria peor que ninguna.
+pub fn anadir_el(documento: &str, texto: &str, hoy: Fecha) -> String {
+    let limpio = saneado(texto);
+    if limpio.is_empty() {
+        return documento.to_string();
+    }
+    let (visible, ya) = partir(&limpio);
+    if visible.is_empty() {
+        return documento.to_string();
+    }
+    let mut tareas = leer_tareas(documento);
+    tareas.push(Tarea {
+        texto: con_fecha(visible, ya.unwrap_or(hoy)),
+        hecha: false,
+    });
+    escribir_tareas(&titulo(documento), &tareas)
+}
+
 /// Cambia una tarea de estado y devuelve el documento nuevo.
 ///
 /// Se reescribe el documento entero a proposito: es corto, y tocar solo su
@@ -331,13 +493,24 @@ pub fn anadir(documento: &str, texto: &str) -> String {
 /// Si el texto nuevo queda vacio **no se toca**: vaciar una tarea no es la
 /// forma de borrarla —para eso esta su aspa— y una casilla en blanco que nadie
 /// pidio seguiria contando en el «3 de 7».
+///
+/// `texto` es lo que **se ve** (sin fecha): la fecha de creacion de la tarea
+/// se conserva, porque corregir una falta no la hace nueva.
 pub fn renombrar(documento: &str, cual: usize, texto: &str) -> String {
     let mut tareas = leer_tareas(documento);
-    let limpio = saneado(texto);
+    let mut limpio = saneado(texto);
     let Some(t) = tareas.get_mut(cual) else {
         return documento.to_string();
     };
-    if limpio.is_empty() || t.texto == limpio {
+    if partir(&limpio).0.is_empty() {
+        return documento.to_string();
+    }
+    if let (_, Some(creada)) = partir(&t.texto)
+        && partir(&limpio).1.is_none()
+    {
+        limpio = con_fecha(&limpio, creada);
+    }
+    if t.texto == limpio {
         return documento.to_string();
     }
     t.texto = limpio;
@@ -694,6 +867,104 @@ mod pruebas {
         );
         assert_eq!(mover(d, 5, 0), d);
         assert_eq!(mover(d, 1, 1), d);
+    }
+
+    fn f(anio: i32, mes: u8, dia: u8) -> Fecha {
+        Fecha { anio, mes, dia }
+    }
+
+    #[test]
+    fn la_fecha_va_y_vuelve_por_los_dias_y_el_texto() {
+        assert_eq!(Fecha::de_dias(0), f(1970, 1, 1));
+        for d in [-1000, 0, 59, 60, 10_957, 20_728, 20_729, 30_000] {
+            assert_eq!(Fecha::de_dias(d).dias(), d, "dia {d}");
+        }
+        assert_eq!(f(2026, 10, 2).to_string(), "2026-10-02");
+        assert_eq!(Fecha::leer("2026-10-02"), Some(f(2026, 10, 2)));
+        assert_eq!(Fecha::leer("2024-02-29"), Some(f(2024, 2, 29)), "bisiesto");
+        // Casos negativos: lo que no es un dia no se lee como otro.
+        for mal in ["2026-02-30", "2025-02-29", "2026-13-01", "2026-00-10", "2026-1-02", "26-10-02xx", "abcd-ef-gh"] {
+            assert_eq!(Fecha::leer(mal), None, "{mal}");
+        }
+        // Medianoche: el ultimo milisegundo del dia sigue siendo ese dia.
+        assert_eq!(Fecha::de_ms_locales(86_400_000 - 1), f(1970, 1, 1));
+        assert_eq!(Fecha::de_ms_locales(-1), f(1969, 12, 31));
+    }
+
+    #[test]
+    fn la_fecha_se_separa_solo_si_va_al_final_con_su_marca() {
+        assert_eq!(partir("pan ➕ 2026-10-02"), ("pan", Some(f(2026, 10, 2))));
+        assert_eq!(partir("➕ 2026-10-02"), ("", Some(f(2026, 10, 2))));
+        assert_eq!(partir("pan ➕2026-10-02"), ("pan", Some(f(2026, 10, 2))), "sin blanco tras la marca");
+        // Casos negativos: se queda todo como texto.
+        assert_eq!(partir("pan"), ("pan", None));
+        assert_eq!(partir("pan 2026-10-02"), ("pan 2026-10-02", None), "sin marca no");
+        assert_eq!(partir("pan➕ 2026-10-02"), ("pan➕ 2026-10-02", None), "pegada a la palabra");
+        assert_eq!(partir("➕ 2026-10-02 pan"), ("➕ 2026-10-02 pan", None), "en medio no");
+        assert_eq!(partir("pan ➕ 2026-02-30"), ("pan ➕ 2026-02-30", None), "un dia que no existe");
+        assert_eq!(partir("ñandú ★"), ("ñandú ★", None), "letras de varios bytes no revientan");
+        assert_eq!(con_fecha("pan", f(2026, 10, 2)), "pan ➕ 2026-10-02");
+    }
+
+    #[test]
+    fn los_dias_se_cuentan_por_calendario_y_nunca_hacia_atras() {
+        let hoy = f(2026, 10, 2);
+        assert_eq!(dias_desde(hoy, hoy), 0);
+        assert_eq!(dias_desde(f(2026, 10, 1), hoy), 1);
+        assert_eq!(dias_desde(f(2026, 9, 2), hoy), 30);
+        assert_eq!(dias_desde(f(2025, 10, 2), hoy), 365);
+        assert_eq!(dias_desde(f(2026, 10, 5), hoy), 0, "del futuro cuenta como hoy");
+    }
+
+    #[test]
+    fn una_tarea_nueva_lleva_su_fecha_y_el_movil_la_conserva() {
+        let hoy = f(2026, 10, 2);
+        let d = anadir_el("# Compra\n\n- [ ] sal", "pan", hoy);
+        assert_eq!(d, "# Compra\n\n- [ ] sal\n- [ ] pan ➕ 2026-10-02");
+        // El lector de casillas (el mismo regex que el movil) la sigue viendo
+        // como una tarea, con la fecha dentro de su texto crudo.
+        let t = leer_tareas(&d);
+        assert_eq!(t.len(), 2);
+        assert_eq!(t[1].texto, "pan ➕ 2026-10-02");
+        assert_eq!(partir(&t[1].texto), ("pan", Some(hoy)));
+        // Reescribir desde el modelo —lo que hace `Tareas.escribir` en cada
+        // toque del movil— no la pierde: ida y vuelta identica.
+        assert_eq!(escribir_tareas(&titulo(&d), &t), d);
+        // Marcar, mover y borrar otra tampoco.
+        let d2 = alternar(&d, 1);
+        assert_eq!(d2, "# Compra\n\n- [ ] sal\n- [x] pan ➕ 2026-10-02");
+        assert_eq!(mover(&d2, 1, 0), "# Compra\n\n- [x] pan ➕ 2026-10-02\n- [ ] sal");
+        // Lo vacio sigue sin entrar, ni siquiera con fecha.
+        assert_eq!(anadir_el(&d, "   ", hoy), d);
+        assert_eq!(anadir_el(&d, "➕ 2026-01-01", hoy), d);
+        // Pegar una tarea que ya trae su fecha conserva la suya.
+        let pegada = anadir_el("# L\n\n", "- [x] leche ➕ 2026-09-01", hoy);
+        assert_eq!(pegada, "# L\n\n- [ ] leche ➕ 2026-09-01");
+    }
+
+    #[test]
+    fn corregir_una_tarea_no_le_cambia_la_fecha() {
+        let d = "# L\n\n- [ ] pna ➕ 2026-09-01\n- [x] vieja";
+        assert_eq!(renombrar(d, 0, "pan"), "# L\n\n- [ ] pan ➕ 2026-09-01\n- [x] vieja");
+        // La misma palabra: nada que guardar.
+        assert_eq!(renombrar(d, 0, "pna"), d);
+        // Una de antes, sin fecha, sigue sin ella: no se inventa.
+        assert_eq!(renombrar(d, 1, "antigua"), "# L\n\n- [ ] pna ➕ 2026-09-01\n- [x] antigua");
+        assert_eq!(renombrar(d, 0, "  "), d);
+    }
+
+    #[test]
+    fn un_documento_de_antes_se_lee_y_se_escribe_igual() {
+        // Lo que ya hay en los cuadernos, sin ninguna fecha: ni se toca ni
+        // gana fechas por leerlo.
+        let viejo = "# Obra\n\n- [ ] medir\n- [x] pedir cemento";
+        let t = leer_tareas(viejo);
+        assert!(t.iter().all(|t| partir(&t.texto).1.is_none()));
+        assert_eq!(escribir_tareas("Obra", &t), viejo);
+        assert_eq!(resumen_tareas(viejo).texto, "1 de 2");
+        // Y una lista mixta cuenta igual las de antes y las nuevas.
+        let mixta = anadir_el(viejo, "lijar", f(2026, 10, 2));
+        assert_eq!(resumen_tareas(&mixta).texto, "1 de 3");
     }
 
     #[test]

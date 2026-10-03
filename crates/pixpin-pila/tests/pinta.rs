@@ -161,12 +161,11 @@ fn con(cuantas: usize, desmarcadas: &[usize]) -> Pila {
             1 => (90, 160),
             _ => (120, 120),
         };
-        p.anadir(
-            i as u64 * 1000,
-            captura(i, w, h, !desmarcadas.contains(&i)),
-            monitor(),
-            100,
-        );
+        p.anadir(captura(i, w, h, !desmarcadas.contains(&i)), monitor(), 100);
+        // Armada tras la primera: es el clic que agrupa las siguientes.
+        if i == 0 {
+            p.armar(true);
+        }
     }
     p
 }
@@ -196,5 +195,14 @@ fn el_panel_con_cinco_y_dos_desmarcadas() {
 #[ignore = "necesita GPU; ejecutar con --ignored"]
 fn el_panel_lleno() {
     let ruta = retrato("panel-lleno", &con(11, &[2]), true, 100);
+    assert!(ruta.exists());
+}
+
+#[test]
+#[ignore = "necesita GPU; ejecutar con --ignored"]
+fn el_icono_sin_armar_no_lleva_halo() {
+    let mut p = con(1, &[]);
+    p.armar(false);
+    let ruta = retrato("icono-1-sin-armar", &p, false, 150);
     assert!(ruta.exists());
 }

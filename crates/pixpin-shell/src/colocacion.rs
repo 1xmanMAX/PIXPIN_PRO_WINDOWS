@@ -105,6 +105,52 @@ pub fn ventanas_del_hilo(hilo: u32) -> Vec<isize> {
     v
 }
 
+/// Las ventanas de primer nivel de este proceso (de todos sus hilos).
+pub fn ventanas_del_proceso() -> Vec<isize> {
+    unsafe extern "system" fn cada(hwnd: HWND, l: LPARAM) -> windows::core::BOOL {
+        // SAFETY: `l` es el puntero al par que `ventanas_del_proceso` presta
+        // durante la llamada sincrona a EnumWindows.
+        let (yo, v) = unsafe { &mut *(l.0 as *mut (u32, Vec<isize>)) };
+        let mut suyo = 0u32;
+        // SAFETY: consulta de solo lectura; escribe en una variable local.
+        unsafe {
+            windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(hwnd, Some(&mut suyo));
+        }
+        if suyo == *yo {
+            v.push(hwnd.0 as isize);
+        }
+        true.into()
+    }
+    // SAFETY: sin argumentos; solo lee el id del proceso.
+    let yo = unsafe { windows::Win32::System::Threading::GetCurrentProcessId() };
+    let mut par: (u32, Vec<isize>) = (yo, Vec::new());
+    // SAFETY: el par vive hasta que EnumWindows vuelve.
+    unsafe {
+        let _ = windows::Win32::UI::WindowsAndMessaging::EnumWindows(Some(cada), LPARAM(&mut par as *mut _ as isize));
+    }
+    par.1
+}
+
+/// **Lo que se abra ahora, delante** (los pedidos de fuera, como el plugin
+/// de Flow Launcher): durante `espera` mira las ventanas nuevas de este
+/// proceso que no estaban en `antes`, y la primera que se vea como ventana
+/// la saca si nacio minimizada (un lienzo abierto con el chat minimizado
+/// salia asi, medido el 2-oct) y la trae al frente. En su hilo: no para a
+/// nadie. El permiso de pasar al frente lo da quien pidio
+/// (`AllowSetForegroundWindow`); sin el, Windows solo hace parpadear su boton.
+pub fn al_frente_lo_nuevo(antes: Vec<isize>, espera: std::time::Duration) {
+    let _ = std::thread::Builder::new().name("al-frente".into()).spawn(move || {
+        let desde = std::time::Instant::now();
+        while desde.elapsed() < espera {
+            if let Some(h) = ventanas_del_proceso().into_iter().find(|h| !antes.contains(h) && es_principal(*h)) {
+                crate::overlay::VentanaOverlay::restaurar_de_hwnd(HWND(h as *mut _));
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(80));
+        }
+    });
+}
+
 /// Si una ventana es de las que se ven como ventana: viva, visible, sin
 /// duena y no de herramientas (menus y paneles flotantes no cuentan).
 pub fn es_principal(h: isize) -> bool {

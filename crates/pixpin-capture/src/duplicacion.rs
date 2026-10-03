@@ -115,8 +115,14 @@ impl Duplicador {
             let r = unsafe {
                 self.duplicacion.AcquireNextFrame(
                     if fresco.is_none() && self.cache.is_none() {
-                        // Primera vez: esperar de verdad a que llegue algo.
-                        200
+                        // Primera vez: esperar a que llegue algo, pero poco.
+                        // Con la pantalla cambiando, el fotograma llega en
+                        // uno o dos refrescos; si no llega es que esta
+                        // quieta, y entonces esperar mas no lo trae: se cae
+                        // a WGC igual. Eran 200 ms, que con los ~160-200 de
+                        // WGC (medido el 2-oct en el equipo del usuario)
+                        // sacaban el overlay casi medio segundo tarde.
+                        50
                     } else {
                         0
                     },

@@ -1254,6 +1254,49 @@ v1
     assert!(b_w.fichero(".hoja").is_file());
 }
 
+/// **La pasada del marco** (29-sep; formato de Android v0.98.0 el 30-sep): lo
+/// que el movil anoto sin marco recibe en el PC su `.hoja` en las dos lineas
+/// que lee Android (`x0,y0,x1,y1` y `v1`); viaja una vez al movil y despues
+/// todo queda quieto.
+#[test]
+fn los_marcos_que_pone_la_pasada_viajan_una_vez_en_las_dos_lineas_de_android() {
+    use pixpin_proyecto::anotado;
+    use pixpin_sincro::anotado::MarcoDeLaHoja;
+    let p = montar("anotado-pasada");
+    let u = adjunto_movil(&p, "p", "7_plano.pdf", b"%PDF");
+    dibujo_movil(&p, &format!("anot-{u}-p0"), &["t1", "t2"]);
+    p.vuelta_desde_pc();
+    p.quieto(GENERAL);
+    let raiz = p.raiz();
+    let tinta = anotado::hoja_del_pdf(&raiz, &doc_en_pc(&p, "p"), 0).unwrap();
+    let antes = std::fs::read(&tinta).unwrap();
+
+    let pasada = anotado::poner_marcos(&raiz, &mut |_| Some(MarcoDeLaHoja::nuevo(-1050.0, 0.0, 2450.0, 4950.0)));
+    assert_eq!(pasada.escritos, 1, "{pasada:?}");
+    assert_eq!(std::fs::read(&tinta).unwrap(), antes, "la tinta no se toca");
+    let rel = format!("pins/draw/anot-{u}-p0.hoja");
+    let hecho = p.vuelta_desde_pc();
+    assert!(hecho.archivos >= 1, "{hecho:?}");
+    let llegado = leer_movil(&p, &rel).expect("el marco llega al movil");
+    // Exactamente lo que escribe `Marco.aTexto` de Android.
+    assert_eq!(llegado, "-1050,0,2450,4950\nv1\n");
+    // Y una vez alla, nada mas: ni otra pasada ni otra vuelta mueven nada.
+    assert_eq!(anotado::poner_marcos(&raiz, &mut |_| None).ya_estaban, 1);
+    p.quieto(GENERAL);
+    assert_eq!(p.vuelta_desde_pc().archivos, 0);
+
+    // El movil v0.98 anota la hoja en sus unidades (0..1400) y reescribe su
+    // marco: llega y el PC lo deja tal cual.
+    p.reloj.saltar(10_000);
+    dibujo_movil(&p, &format!("anot-{u}-p0"), &["t1", "t2", "t3"]);
+    escribir_movil(&p, &rel, "0,0,1400,1979.899\nv1\n");
+    p.vuelta_desde_pc();
+    let b = anotado::Base::de_pagina(&raiz, &anotado::adjunto_de(&raiz, &doc_en_pc(&p, "p")).unwrap(), 0);
+    assert_eq!(anotado::leer(&b.marco()).as_deref(), Some("0,0,1400,1979.899\nv1\n"));
+    let otra = anotado::poner_marcos(&raiz, &mut |_| panic!("ya tiene marco"));
+    assert_eq!((otra.ya_estaban, otra.escritos), (1, 0));
+}
+
 // ------------------------------- lo que el PC anota llega al movil (28-sep)
 
 /// Lo que hace el lector del PC al soltar un trazo (`lector_tinta::Capa::guardar`):
@@ -1369,4 +1412,213 @@ fn lo_que_el_pc_anota_en_un_pdf_que_el_movil_ya_tiene_le_llega_en_cada_vuelta() 
 fn leer_gz_movil(p: &Par, rel: &str) -> Option<String> {
     let f = p.movil.raiz().join(rel);
     f.is_file().then(|| de_gz(&f))
+}
+
+// ------------------------------------- los comentarios de las notas (30-sep)
+
+const COMENTARIOS: &str = r#"{"version":1,"comentarios":[{"id":"K7Q2-1-0","ancla":{"cita":"losa","antes":"La ","despues":" ya","pos":10},"autor":"Portátil","aparato":"K7Q2","cuando":1,"texto":"¿Cuando se cura?","resuelto":false,"respuestas":[]}]}
+"#;
+
+/// **Los comentarios de una nota del chat** (`anot-<codigo>.comentarios.json`,
+/// 30-sep) llegan al movil tal cual, vuelven con lo que alli se responda y
+/// se van con su nota en los dos aparatos. Los de otra nota se quedan.
+#[test]
+fn los_comentarios_de_una_nota_viajan_con_ella_y_se_van_con_ella() {
+    use pixpin_proyecto::comentarios_de_notas as cn;
+    let p = montar("comentarios-nota");
+    let g = p.guardados();
+    let n = p.nota_pc(&g, "# Obra\nLa losa ya esta hormigonada.");
+    let otra = p.nota_pc(&g, "otra nota");
+    let raiz = p.raiz();
+    let f = cn::de_la_nota(&raiz, &g.id, &n.codigo_unico()).unwrap();
+    let f_otra = cn::de_la_nota(&raiz, &g.id, &otra.codigo_unico()).unwrap();
+    cn::escribir(&f, COMENTARIOS).unwrap();
+    cn::escribir(&f_otra, "{\"version\":1,\"comentarios\":[]}\n").unwrap();
+    // Un temporal a medias no viaja.
+    std::fs::write(f.with_extension("json.tmp"), "?").unwrap();
+    p.vuelta_desde_pc();
+    let rel = format!("pins/draw/anot-{}.comentarios.json", n.codigo_unico());
+    let rel_otra = format!("pins/draw/anot-{}.comentarios.json", otra.codigo_unico());
+    assert_eq!(leer_movil(&p, &rel).as_deref(), Some(COMENTARIOS), "llega tal cual");
+    assert!(leer_movil(&p, &format!("{rel}.tmp")).is_none(), "el temporal no viaja");
+
+    // Respondido en el movil: vuelve al PC.
+    p.reloj.saltar(10_000);
+    let respondido = COMENTARIOS.replace(
+        "\"respuestas\":[]",
+        "\"respuestas\":[{\"id\":\"MOVI-2-0\",\"autor\":\"Teléfono\",\"aparato\":\"MOVI\",\"cuando\":2,\"texto\":\"El lunes\"}]",
+    );
+    escribir_movil(&p, &rel, &respondido);
+    adelantar(&p.movil.raiz().join(&rel));
+    p.vuelta_desde_pc();
+    assert_eq!(cn::leer(&f).as_deref(), Some(respondido.as_str()), "la respuesta llega al PC");
+    let leidos: serde_json::Value = serde_json::from_str(&cn::leer(&f).unwrap()).unwrap();
+    assert_eq!(leidos["comentarios"][0]["respuestas"][0]["texto"], "El lunes");
+
+    // Borrada la nota en el PC, como la borra su chat: fuera sus comentarios
+    // aqui y, tras la vuelta, en el movil.
+    let carpeta = almacen::carpeta(&raiz, &g.id);
+    let quedan: Vec<String> = std::fs::read_to_string(carpeta.join("guardados.jsonl"))
+        .unwrap()
+        .lines()
+        .filter(|l| !l.contains(&format!("\"id\":\"{}\"", n.id)))
+        .map(str::to_string)
+        .collect();
+    std::fs::write(carpeta.join("guardados.jsonl"), quedan.join("\n") + "\n").unwrap();
+    vista::anotar_borrados(&raiz, &g.id, std::slice::from_ref(&n), p.reloj.tic()).unwrap();
+    assert!(!f.exists(), "en el PC se van con su nota");
+    p.vuelta_desde_pc();
+    assert_eq!(leer_movil(&p, &rel), None, "y en el movil tambien");
+    // Caso negativo: los de la otra nota siguen en los dos.
+    assert!(f_otra.is_file());
+    assert!(leer_movil(&p, &rel_otra).is_some());
+    p.quieto(GENERAL);
+}
+
+fn proyecto_con_notas_en_el_movil(p: &Par, hojas: serde_json::Value, quitadas: &[&str], tocado: i64) {
+    p.movil
+        .guardar_proyecto(
+            &kotlin::normalizar_proyecto(&Json::de_valor(&json!({
+                "id": "pr-n", "nombre": "Casa Lima", "tocado": tocado, "hojas": hojas, "quitadas": quitadas,
+                "uid": "PPPPPPPPPP", "creado": 1_726_000_000_000_i64, "aparato": "MOVI",
+            })))
+            .unwrap(),
+        )
+        .unwrap();
+}
+
+/// **Los de una hoja `nota` del movil** van con el codigo de la hoja: llegan
+/// al PC junto a ella y, si el movil quita la hoja, se van en los dos.
+#[test]
+fn los_comentarios_de_una_hoja_nota_del_movil_viajan_y_se_van_con_la_hoja() {
+    use pixpin_proyecto::comentarios_de_notas as cn;
+    let p = montar("comentarios-hoja");
+    let dos = json!([
+        {"id": "n-1", "uid": "NNNNNNNNNN", "nota": "# Planta\nLa losa ya esta."},
+        {"id": "n-2", "uid": "OOOOOOOOOO", "nota": "otra"},
+    ]);
+    proyecto_con_notas_en_el_movil(&p, dos, &[], 5);
+    escribir_movil(&p, "pins/draw/anot-NNNNNNNNNN.comentarios.json", COMENTARIOS);
+    escribir_movil(&p, "pins/draw/anot-OOOOOOOOOO.comentarios.json", "{\"version\":1,\"comentarios\":[]}\n");
+    p.vuelta_desde_pc();
+    let raiz = p.raiz();
+    let ficha = p.pc.ficha_de("pr-n").unwrap();
+    let f = cn::de_la_nota(&raiz, &ficha.id, "NNNNNNNNNN").unwrap();
+    let f_otra = cn::de_la_nota(&raiz, &ficha.id, "OOOOOOOOOO").unwrap();
+    assert_eq!(cn::leer(&f).as_deref(), Some(COMENTARIOS), "llegan junto a su hoja");
+    assert!(f_otra.is_file());
+
+    // El movil quita la hoja n-1 a mano (con su marca `quitadas`, como su
+    // `Proyectos`): alli se van sus comentarios, y al PC le
+    // llega el proyecto sin ella y los quita tambien.
+    p.reloj.saltar(10_000);
+    let una = json!([{"id": "n-2", "uid": "OOOOOOOOOO", "nota": "otra"}]);
+    proyecto_con_notas_en_el_movil(&p, una, &["n-1"], p.reloj.tic());
+    assert_eq!(leer_movil(&p, "pins/draw/anot-NNNNNNNNNN.comentarios.json"), None, "en el movil");
+    p.vuelta_desde_pc();
+    assert!(!f.exists(), "en el PC tambien");
+    // Caso negativo: los de la hoja que sigue no se tocan.
+    assert!(f_otra.is_file());
+    assert!(leer_movil(&p, "pins/draw/anot-OOOOOOOOOO.comentarios.json").is_some());
+}
+
+/// Un adjunto `.md` en el chat de un proyecto nacido en el PC, como lo deja
+/// su chat al soltarlo: nombre con raya, tildes, espacios y parentesis.
+fn md_en_proyecto_del_pc(p: &Par, ficha: &Ficha, nombre: &str, texto: &str) -> Mensaje {
+    let raiz = p.raiz();
+    let ruta = almacen::guardar_adjunto(&raiz, &ficha.id, nombre, texto.as_bytes()).unwrap();
+    let carpeta = almacen::carpeta(&raiz, &ficha.id);
+    let numero = p.mensajes_pc(&ficha.id).len() as i64 + 1;
+    let m = Mensaje::adjunto(
+        Clase::Archivo,
+        nombre,
+        &ruta,
+        texto.len() as i64,
+        &Sello {
+            cuando: p.reloj.tic(),
+            numero,
+            aparato: p.aparato_pc(),
+            proyecto: ficha.id.clone(),
+        },
+    );
+    cuaderno::anadir(&carpeta, &m).unwrap();
+    m
+}
+
+/// Lo que abre el movil al pulsar el mensaje `id`: el fichero al que apunta
+/// su `ruta` (absoluta, la de su carpeta `files`).
+fn abrir_en_el_movil(p: &Par, id: &str) -> Option<Vec<u8>> {
+    let m = p
+        .movil
+        .leer_mensajes()
+        .into_iter()
+        .find(|m| kotlin::cadena(m, "id") == Some(id))
+        .expect("el mensaje llego al movil");
+    let ruta = kotlin::cadena(&m, "ruta").unwrap().to_string();
+    let rel = ruta.strip_prefix(&p.movil.absoluta("")).expect("ruta de su carpeta files");
+    std::fs::read(p.movil.raiz().join(rel)).ok()
+}
+
+#[test]
+fn los_md_con_parentesis_de_un_proyecto_del_pc_se_abren_en_el_movil() {
+    // La queja del 1-oct-2026 («TESIS RESERCH»): el mensaje llegaba pero el
+    // fichero no, y el movil decia «este archivo ya no esta». `en_texto`
+    // corta la ruta en `)` (lo hace igual `Rutas.enTexto` de Android, por
+    // los enlaces de Markdown), y «… (1).md» quedaba en «… (1», que no es
+    // un fichero: no entraba en lo que el PC manda.
+    let p = montar("md-parentesis");
+    let raiz = p.raiz();
+    let ficha = Ficha::nueva("TESIS RESERCH", p.reloj.tic(), &p.aparato_pc());
+    let mut i = Indice::leer(&raiz);
+    i.proyectos.push(ficha.clone());
+    i.guardar(&raiz).unwrap();
+    let uno = md_en_proyecto_del_pc(
+        &p,
+        &ficha,
+        "Objetivos e Indicadores — Versión para la segunda asesoría (1).md",
+        "# Objetivos\nuno",
+    );
+    let dos = md_en_proyecto_del_pc(
+        &p,
+        &ficha,
+        "Objetivos e Indicadores — Versión para la segunda asesoría (2).md",
+        "# Objetivos\ndos",
+    );
+    // Un tercero sin parentesis, de control.
+    let tres = md_en_proyecto_del_pc(&p, &ficha, "notas.md", "# Notas");
+    // Y un fichero suelto en `archivos/` que ningun mensaje senala: no viaja.
+    std::fs::write(almacen::carpeta(&raiz, &ficha.id).join("archivos/suelto (9).md"), "x").unwrap();
+
+    p.vuelta_desde_pc();
+
+    assert_eq!(abrir_en_el_movil(&p, &uno.id).as_deref(), Some(&b"# Objetivos\nuno"[..]));
+    assert_eq!(abrir_en_el_movil(&p, &dos.id).as_deref(), Some(&b"# Objetivos\ndos"[..]));
+    assert_eq!(abrir_en_el_movil(&p, &tres.id).as_deref(), Some(&b"# Notas"[..]));
+    let chat = vista::chat_de_ficha(&raiz, &ficha.id).unwrap();
+    assert!(
+        !p.movil.raiz().join(format!("guardados/pc/{chat}/archivos/suelto (9).md")).exists(),
+        "lo que no senala ningun mensaje no viaja"
+    );
+    // Mientras el movil no liste el fichero por su ruta exacta (ver
+    // docs/investigacion/2026-10-01-ficheros-de-proyectos-del-pc-android.md),
+    // el PC se lo vuelve a ofrecer en cada vuelta. Molesta pero no rompe:
+    // otra vuelta no borra nada en ningun lado y sigue abriendose.
+    p.vuelta_desde_pc();
+    assert_eq!(abrir_en_el_movil(&p, &uno.id).as_deref(), Some(&b"# Objetivos\nuno"[..]));
+    let en_pc = vista::ruta_real(&raiz, &ficha.id, uno.ruta.as_deref().unwrap()).unwrap();
+    assert_eq!(std::fs::read(en_pc).unwrap(), b"# Objetivos\nuno");
+}
+
+#[test]
+fn cuando_dirige_el_movil_tambien_se_lleva_los_md_con_parentesis() {
+    let p = montar("md-parentesis-movil");
+    let raiz = p.raiz();
+    let ficha = Ficha::nueva("Tesis", p.reloj.tic(), &p.aparato_pc());
+    let mut i = Indice::leer(&raiz);
+    i.proyectos.push(ficha.clone());
+    i.guardar(&raiz).unwrap();
+    let m = md_en_proyecto_del_pc(&p, &ficha, "capitulo (3).md", "# Tres");
+    let chat = vista::chat_de_ficha(&raiz, &ficha.id).unwrap();
+    p.desde_movil(&[chat.as_str()]);
+    assert_eq!(abrir_en_el_movil(&p, &m.id).as_deref(), Some(&b"# Tres"[..]));
 }

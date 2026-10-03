@@ -612,14 +612,24 @@ lector-grosor-normal = Normal
 lector-grosor-gruesa = Gruesa
 lector-quitar-tinta = Quitar lo anotado
 lector-tinta-quitada = Anotado quitado (Ctrl+Z lo devuelve mientras sigas aquí)
-lector-ayuda-docs = Rueda leer · Ctrl+rueda acercar · A anotar · M marcador · I índice · +/− letra · T tipo · B grosor · Esc salir
+lector-ayuda-docs = Rueda leer · Ctrl+rueda acercar · L escuchar · A anotar · M marcador · I índice · +/− letra · T tipo · B grosor · Esc salir
 lector-pdf-titulo = Lector de PDF de PixPin
 lector-pdf-no-se-abre = No se pudo abrir el PDF
 lector-pdf-abriendo = Abriendo el PDF…
 lector-exportando = Guardando el PDF anotado… { $hechas } de { $total }
 lector-exportar-pdf = Guardar el PDF con lo anotado
 lector-anotado = anotado
-lector-ayuda-pdf = Rueda pasar hojas · Ctrl+rueda acercar · Ctrl+[ Ctrl+] espacio para anotar · A anotar · M marcador · Esc salir
+lector-ayuda-pdf = Rueda pasar hojas · Ctrl+rueda acercar · Ctrl+[ Ctrl+] espacio para anotar · L escuchar · A anotar · M marcador · Esc salir
+lector-escuchar = Escuchar (L)
+lector-sin-texto = Este documento no tiene texto que leer
+lector-leyendo-texto = Sacando el texto del PDF para leerlo…
+lector-sin-voz = Windows no tiene voz para «{ $idioma }»: añade una en Configuración > Hora e idioma > Voz
+lector-voz-idioma = es-ES
+lector-verde-aqui = Marcador verde aquí: se leerá desde este punto
+lector-espacio-tope = Ya no cabe más espacio a ese lado
+lector-espacio-nada = Ese lado ya no tiene espacio
+lector-sin-lado = De lado, bloqueado: solo sube y baja
+lector-con-lado = Se mueve a todas partes
 sinc-presencia-apagada = La presencia está apagada en los ajustes ([sincro] presencia = false): desde aquí puedes sincronizar, pero el móvil no podrá encontrar este equipo ni llamarlo.
 bandeja-abrir-documento = Abrir documento…
 
@@ -710,6 +720,14 @@ mini-tarea-nueva = Algo que hacer e Intro · ↑↓ elegir, Espacio tachar, F2 c
 mini-gasto-nuevo = Concepto e importe (Cena 42,50) e Intro · ↑↓ elegir, F2 corregir
 mini-nombre-nuevo = Un nombre e Intro · Intro sin nada sortea, Supr quita
 mini-limpiar-hechas = Quitar las hechas
+mini-ocultar-hechas = Ocultar las hechas
+mini-mostrar-hechas = Ver las hechas
+mini-avance = { $hechas } de { $de } hechas
+mini-tarea-edad = { $dias ->
+    [0] hoy
+    [one] hace 1 día
+   *[other] hace { $dias } días
+  }
 mini-arrancar = Arrancar
 mini-parar = Parar
 mini-vuelta = Vuelta
@@ -1174,6 +1192,73 @@ nota-md-no-guardada = No se pudo guardar la nota. ¿Cerrar igualmente y perder l
 nota-md-mayus = Mayús
 nota-md-intro = Intro
 
+# H12, la ventana nueva del editor de notas (cabecera, barra, menus y tablas)
+nota-md-compartir = Compartir
+nota-md-tabla = Tabla
+nota-md-imagen = Imagen
+nota-md-fecha = Fecha de hoy
+nota-md-pista-barra = Escribe / en la nota para ver más
+nota-md-cambiar-titulo = Cambiar el título
+nota-md-fila-encima = Insertar fila encima
+nota-md-fila-debajo = Insertar fila debajo
+nota-md-quitar-fila = Quitar la fila
+nota-md-columna-izquierda = Insertar columna a la izquierda
+nota-md-columna-derecha = Insertar columna a la derecha
+nota-md-quitar-columna = Quitar la columna
+nota-md-quitar-tabla = Quitar la tabla
+nota-md-boton-fila-mas = + Fila
+nota-md-boton-fila-menos = − Fila
+nota-md-boton-columna-mas = + Columna
+nota-md-boton-columna-menos = − Columna
+nota-md-meses = ene feb mar abr may jun jul ago sept oct nov dic
+## Tablas de la nota: combinar y colorear celdas (H12)
+nota-md-boton-combinar = Combinar
+nota-md-boton-color = Color
+nota-md-combinar-celdas = Combinar celdas
+nota-md-separar-celdas = Separar celdas
+nota-md-color-fondo = Color de fondo
+nota-md-color-letra = Color de la letra
+nota-md-aplicar-a = Celdas|Fila entera|Columna entera
+nota-md-nombres-fondo = Sin color|Rojo|Verde|Azul|Amarillo
+nota-md-nombres-letra = Automático|Rojo|Verde|Azul|Naranja
+nota-md-pista-color = Filas y columnas enteras: clic derecho
+nota-md-imagen-no-copiada = No se pudo copiar la imagen junto a la nota.
+
+## Comentarios de la nota (H12, 30-sep): el panel de la derecha
+nota-md-com-titulo = Comentarios
+nota-md-com-comentar = Comentar
+nota-md-com-ninguno = No hay comentarios
+nota-md-com-pista = Elige un trozo del texto y pulsa Comentar (Ctrl+Alt+M)
+nota-md-com-sin-ancla = Su texto ya no está en la nota
+nota-md-com-responder-pista = Responder…
+nota-md-com-responder = Responder
+nota-md-com-guardar = Guardar
+nota-md-com-cancelar = Cancelar
+nota-md-com-editar = Editar
+nota-md-com-borrar = Borrar
+nota-md-com-resuelto = resuelto
+nota-md-com-ver-resueltos = Ver resueltos
+nota-md-com-ocultar-resueltos = Ocultar resueltos
+nota-md-com-editado = editado
+nota-md-com-borrar-hilo = ¿Borrar el comentario y sus respuestas?
+
+## Notas Markdown: fotos y paginas vivas (H12)
+nota-md-pagina-viva = Página de un proyecto
+nota-md-enlace-hoja = Enlace a una hoja
+nota-md-captura = Captura
+nota-md-ver-grande = Ver en grande
+nota-md-abrir-hoja = Abrir la hoja
+nota-md-foto-pequena = Pequeña
+nota-md-foto-mediana = Mediana
+nota-md-foto-grande = Grande
+nota-md-foto-columna = Al ancho de la columna
+nota-md-quitar-foto = Quitar la imagen
+nota-md-hoja-borrada = La hoja ya no está: es la última copia
+nota-md-otros-proyectos = Otros proyectos
+nota-md-sin-hojas = Aún no hay hojas en los proyectos para meter en la nota.
+nota-md-solo-imagenes = Aquí solo se pueden soltar imágenes.
+chat-insertar-en-nota = Insertar en una nota
+
 ## Lienzo: soldar vértices y numerar puntos (lienzo-geometria, 26-sep)
 herramientas-nudo = Soldar vértices
 herramientas-bolita = Bolita: pasa por encima para elegir
@@ -1298,3 +1383,98 @@ anotador-globo-copiado = Copiada al portapapeles
 # Anotador de pantalla: el clic a traves en la barra (2026-09-29)
 anotador-boton-atravesar = Clic a través
 anotador-pista-atravesar = Clic a través (Espacio): el ratón pasa a lo de debajo y lo dibujado se sigue viendo. Se vuelve con la mano de la pastilla o con Alt + doble clic central
+
+# Hoja de compartir: el PDF de un documento con lo anotado o limpio (2026-09-29)
+compartir-con-anotaciones = Con anotaciones
+compartir-con-anotaciones-detalle = Tinta, márgenes y marcadores encima del PDF; quitado, el PDF limpio
+
+# Hoja de compartir: la pagina web de un PDF en lineas o como imagen (2026-09-30, Android v0.98.1)
+compartir-texto-buscable = Texto buscable
+compartir-texto-buscable-detalle = Hojas en líneas y con su texto; quitado, como imagen
+
+# Llamada secreta: quien llama y volver a llamar (2026-09-30, Android v0.98.6)
+chat-quien-llama = Quién llama: { $nombre }
+chat-quien-llama-barra = Quién llama:
+chat-quien-llama-teclas = Intro: elegir la hora · Esc la deja
+llamada-volver-en = Volver a llamar en
+llamada-vuelve-a-las = Te vuelve a llamar a las { $hora }
+
+## H12: editar sin marcas, la barra flotante y la letra de la nota (30-sep)
+nota-md-texto-normal = Texto normal
+nota-md-quitar-formato = Quitar formato
+nota-md-enlace-pista = Pega o escribe un enlace y pulsa Intro
+nota-md-emojis = Sonrisa|Risa|Encanta|Bien|Me gusta|No me gusta|Gracias|Aplausos|Fiesta|Hecho|No|Atención|Corazón|Fuego|Estrella|Idea
+nota-md-letra-texto = Letra del texto
+nota-md-letra-titulos = Letra de los títulos
+nota-md-tamano = Tamaño de la letra
+nota-md-tamanos = Pequeña|Normal|Grande|Muy grande
+nota-md-solo-esta-nota = Solo en esta nota
+nota-md-pista-tamano = Con Ctrl + rueda, de uno en uno
+
+# --- Notas: documentos, mensajes del chat y audios incrustados (H12, 1-oct) ---
+nota-md-documento = Documento
+nota-md-del-chat = Del chat
+nota-md-audio = Audio
+nota-md-abrir = Abrir
+nota-md-quitar = Quitar de la nota
+nota-md-ir-al-mensaje = Ir al mensaje en el chat
+nota-md-mensaje-borrado = Mensaje borrado
+nota-md-no-esta = No está en este equipo
+nota-md-pasar-a-texto = Pasar a texto
+nota-md-pasando-a-texto = Pasando a texto { $pct } %
+nota-md-sin-mensajes = El chat de este proyecto no tiene mensajes que meter (una nota suelta no tiene chat).
+nota-md-nota-de-voz = Nota de voz
+
+## Exportar una nota a Word (H12, 1-oct)
+nota-md-exportar-word = Exportar a Word…
+nota-md-tipo-word = Documento de Word
+compartir-word = Word
+
+## Pedidos de otros programas (Flow Launcher, scripts; docs/protocolo-pedidos.md)
+pedido-tareas = Tareas
+pedido-escrito = Escrito en «{ $proyecto }».
+microfono-abriendo = Abriendo el micrófono…
+microfono-guardando = Guardando…
+microfono-parar = Clic para parar · Esc la descarta
+microfono-guardada = Nota de voz guardada
+microfono-convertir = Convertir en llamada
+microfono-listo = Listo
+microfono-cuando = ¿A qué hora te llamo?
+microfono-en-15-min = En 15 min
+microfono-en-1-hora = En 1 h
+microfono-manana = Mañana 9:00
+microfono-poner = Poner la llamada
+microfono-volver = Volver
+microfono-sonara = Te llamará: { $cuando }
+microfono-puesta = Listo: te llamará { $cuando }
+microfono-teclas = Escribe la hora (18:30) o usa las flechas · Intro la pone
+soltar-aqui = Suelta aquí para añadir a «{ $proyecto }»
+soltar-anadiendo = Añadiendo…
+soltar-anadido-uno = 1 añadido al chat
+soltar-anadidos = { $n } añadidos al chat
+soltar-ninguno = No se pudo añadir nada
+chat-anadir-arrastrando = Añadir arrastrando…
+pedido-lista-hecha = Lista «{ $lista }» creada en «{ $proyecto }».
+pedido-tarea-anadida = «{ $tarea }» añadida a «{ $lista }».
+pedido-tarea-hecha = «{ $tarea }» marcada como hecha.
+pedido-tarea-pendiente = «{ $tarea }» vuelve a estar pendiente.
+pedido-roto = Llegó un pedido de otro programa al que le falta algo; no se hizo nada.
+pedido-sin-proyecto = Ese proyecto ya no está en PixPin.
+pedido-sin-mensaje = Ese mensaje ya no está en el chat.
+pedido-no-es-lista = Ese mensaje no es una lista de tareas.
+pedido-sin-tarea = La lista no tiene la tarea número { $indice }.
+pedido-tarea-vacia = Una tarea sin texto no se apunta.
+pedido-sin-fichero = Ese fichero ya no está en el disco.
+pedido-fallo-disco = No se pudo guardar lo que se pidió. Mira el registro de PixPin.
+
+## Galeria de capturas (2-oct)
+galeria-titulo = Capturas
+galeria-titulo-cuantas = Capturas · { $cuantas }
+galeria-vacia = Todavía no hay capturas. Las que copies con Alt + arrastrar aparecerán aquí.
+galeria-abrir-carpeta = Abrir carpeta
+galeria-copiada = Copiada al portapapeles
+galeria-pineada = Pineada en la pantalla
+galeria-borrada = Llevada a la papelera de PixPin
+galeria-no-se-pudo = No se pudo: { $motivo }
+bandeja-galeria-capturas = Galería de capturas…
+chat-galeria-capturas = Galería de capturas

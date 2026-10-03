@@ -37,6 +37,23 @@ pub fn leer_tabla() -> Option<(Option<String>, Option<String>)> {
     Some((html, texto))
 }
 
+/// Como [`leer_tabla`], y ademas **el HTML entero** (fragmento, entero,
+/// texto): Excel pone el estilo de sus celdas en clases cuyo `<style>` va
+/// fuera del fragmento (lo usa el editor de notas para los colores).
+pub fn leer_tabla_con_estilos() -> Option<(Option<String>, Option<String>, Option<String>)> {
+    // SAFETY: si abre, el guardia garantiza el cierre.
+    unsafe { OpenClipboard(None) }.ok()?;
+    let _guardia = GuardiaPortapapeles;
+    let crudo = leer_html();
+    let texto = leer_texto();
+    if crudo.is_none() && texto.is_none() {
+        return None;
+    }
+    let fragmento = crudo.as_deref().map(fragmento_de);
+    let entero = crudo.map(|b| String::from_utf8_lossy(&b).into_owned());
+    Some((fragmento, entero, texto))
+}
+
 /// Los bytes de `HTML Format`, con el portapapeles ya abierto.
 fn leer_html() -> Option<Vec<u8>> {
     let formato = formato_html();

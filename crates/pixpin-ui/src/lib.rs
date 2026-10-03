@@ -11,6 +11,8 @@ pub mod ajustes;
 pub mod barra;
 pub mod caja_herramientas;
 pub mod chat;
+/// Un color por tipo de archivo (`ColorDeExtension` del movil, v0.98.4).
+pub mod color_de_extension;
 pub mod confirmar;
 pub mod evento_anotador;
 pub mod historial;

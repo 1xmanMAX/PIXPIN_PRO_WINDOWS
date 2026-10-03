@@ -423,7 +423,8 @@ pub fn anotar_borrados(
         .filter_map(|v| d.portatil_de(&chat, &Json::de_valor(&v)))
         .collect();
     // Lo anotado sobre ellos se va con ellos (`MensajesStore.borrarAdjunto(m)`, v0.96).
-    for m in portatiles.iter().filter(|m| kotlin::cadena(m, "ruta").is_some()) {
+    // De una nota, sus comentarios (30-sep).
+    for m in portatiles.iter().filter(|m| pixpin_sincro::anotado::lleva_anotado(m)) {
         d.borrar_anotado(&chat, &kotlin::unico(m));
     }
     disco::anotar_marcas_en(&d.sincro(), &disco::marcas_de(&chat, &portatiles, cuando))
@@ -546,6 +547,42 @@ impl Disco for DiscoPc {
         Ok(l.iter().filter_map(|m| self.portatil_de(chat, m)).collect())
     }
 
+    /// `Disco.alcance` y, ademas, la `ruta` EXACTA de cada mensaje y el
+    /// documento del proyecto.
+    ///
+    /// `en_texto` (como `Rutas.enTexto` del movil) corta una ruta en `)`
+    /// para no comerse el cierre de un enlace de Markdown, y aqui los
+    /// adjuntos guardan su nombre de siempre: «… asesoria (1).md» se quedaba
+    /// en «… asesoria (1», que no es un fichero, y el adjunto no viajaba. El
+    /// movil recibia el mensaje y, al pulsarlo, «este archivo ya no esta»
+    /// (1-oct-2026). El propio `guardar_adjunto` pone « (1)» al repetir
+    /// nombre, asi que pasa con cualquier fichero soltado dos veces.
+    fn alcance(&self, chat: &str) -> io::Result<Vec<(String, String)>> {
+        let mut salida = disco::alcance_de(self, chat)?;
+        let mut poner = |rel: &str, etiqueta: String| {
+            if disco::permitida(rel)
+                && !salida.iter().any(|(r, _)| r == rel)
+                && self.ruta(chat, rel).is_file()
+            {
+                salida.push((rel.to_string(), etiqueta));
+            }
+        };
+        for m in self.mensajes(chat)? {
+            if let Some(rel) = kotlin::cadena(&m, "ruta").and_then(|r| r.strip_prefix(PORTATIL)) {
+                poner(rel, disco::etiqueta_de(&m));
+            }
+        }
+        if let Some(p) = self.proyecto_portatil(chat)? {
+            let nombre = kotlin::cadena(&p, "nombre").unwrap_or_default().to_string();
+            for campo in ["pdfOrigen", "pdfLimpio"] {
+                if let Some(rel) = kotlin::cadena(&p, campo).and_then(|r| r.strip_prefix(PORTATIL)) {
+                    poner(rel, nombre.clone());
+                }
+            }
+        }
+        Ok(salida)
+    }
+
     fn aplicar_mensajes(
         &self,
         chat: &str,
@@ -577,7 +614,7 @@ impl Disco for DiscoPc {
         };
         self.marcas_tras_aplicar(chat, &llegan, borrar, &quitados, ahora)?;
         // Lo anotado sobre lo que se fue, con el (`Disco.aplicarMensajes`, v0.96).
-        for m in quitados.iter().filter(|m| kotlin::cadena(m, "ruta").is_some()) {
+        for m in quitados.iter().filter(|m| pixpin_sincro::anotado::lleva_anotado(m)) {
             self.borrar_anotado(chat, &kotlin::unico(m));
         }
         // La ficha, al dia: la lista del chat ensena lo ultimo.
@@ -668,6 +705,10 @@ impl Disco for DiscoPc {
         let puesto = disco::actualizado(antes.as_ref(), &nuevo);
         let dir = almacen::carpeta(&self.raiz, &ficha.id);
         escribir_atomico(&dir.join("proyecto.json"), puesto.a_texto().as_bytes())?;
+        // Una hoja que ya no esta se lleva sus comentarios (30-sep).
+        for uid in pixpin_sincro::anotado::hojas_quitadas(antes.as_ref(), &puesto) {
+            self.borrar_anotado(&chat, &uid);
+        }
         self.olvidar_mapa();
         let mut indice = Indice::leer(&self.raiz);
         if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == ficha.id) {

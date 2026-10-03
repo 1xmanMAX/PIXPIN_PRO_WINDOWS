@@ -51,11 +51,14 @@
 //!
 //! - [`reloj`] y [`picos`] y [`mezcla`]: aritmetica pura, sin Windows y sin
 //!   sonido. Es donde estan las pruebas de verdad.
+//! - [`realce`]: el paso alto, el control de ganancia y el limitador por
+//!   los que pasa toda grabacion antes de escribirse (tambien puro).
 //! - [`salida`] y [`entrada`]: lo que toca el sistema operativo, con su
 //!   `unsafe` acotado y comentado.
 
 pub mod mezcla;
 pub mod picos;
+pub mod realce;
 pub mod reloj;
 
 #[cfg(windows)]

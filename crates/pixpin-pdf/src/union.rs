@@ -65,7 +65,7 @@ pub(crate) fn en<'a>(d: &'a Dicc, clave: &[u8]) -> Option<&'a Valor> {
     d.iter().find(|(k, _)| k == clave).map(|(_, v)| v)
 }
 
-fn poner(d: &mut Dicc, clave: &[u8], v: Valor) {
+pub(crate) fn poner(d: &mut Dicc, clave: &[u8], v: Valor) {
     match d.iter_mut().find(|(k, _)| k == clave) {
         Some((_, viejo)) => *viejo = v,
         None => d.push((clave.to_vec(), v)),
@@ -84,7 +84,7 @@ pub(crate) fn entero(v: Option<&Valor>) -> Option<i64> {
     }
 }
 
-fn numero(n: i64) -> Valor {
+pub(crate) fn numero(n: i64) -> Valor {
     Valor::Numero(n.to_string().into_bytes())
 }
 
@@ -648,6 +648,11 @@ impl<'a> Archivo<'a> {
         }
     }
 
+    /// El trailer mas nuevo: donde esta el catalogo (`/Root`).
+    pub(crate) fn trailer(&self) -> &Dicc {
+        &self.trailer
+    }
+
     pub(crate) fn raiz(&self) -> Option<Dicc> {
         self.dicc_de(en(&self.trailer, b"Root"))
     }
@@ -689,7 +694,7 @@ impl<'a> Archivo<'a> {
         salida
     }
 
-    fn siguiente_libre(&self) -> u32 {
+    pub(crate) fn siguiente_libre(&self) -> u32 {
         let por_tamano = entero(en(&self.trailer, b"Size")).unwrap_or(0).max(0) as u32;
         let por_indice = self.ubic.keys().copied().max().map_or(1, |m| m + 1);
         por_tamano.max(por_indice).max(1)
@@ -1048,7 +1053,7 @@ fn anadir(primero: &[u8], segundo: &[u8], cuales: Option<&[usize]>) -> Option<Ve
 }
 
 /// Anade `nuevos` detras de `original` con su indice y su trailer.
-fn incremental(a: &Archivo, original: &[u8], nuevos: &[(u32, u16, Valor)], libre: u32) -> Vec<u8> {
+pub(crate) fn incremental(a: &Archivo, original: &[u8], nuevos: &[(u32, u16, Valor)], libre: u32) -> Vec<u8> {
     let mut s = original.to_vec();
     if !s.ends_with(b"\n") {
         s.push(b'\n');

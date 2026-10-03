@@ -56,6 +56,19 @@ pub struct Formato {
     /// Las paginas que admite, si no son todas (una nota no tiene SVG si el
     /// que genera no sabe hacerlo). `None`: todas.
     pub admite: Option<BTreeSet<String>>,
+    /// Un interruptor que cambia lo que sale (`Compartible.Interruptor` del
+    /// movil: «Con anotaciones» en el PDF de un documento). Nace puesto.
+    pub interruptor: Option<Interruptor>,
+}
+
+/// **Un interruptor de un formato**: puesto, se genera el formato; quitado,
+/// `id_apagado`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Interruptor {
+    pub nombre: String,
+    /// Debajo del nombre: que hace.
+    pub detalle: String,
+    pub id_apagado: String,
 }
 
 impl Formato {
@@ -83,6 +96,8 @@ pub struct Estado {
     /// La primera fila de la lista que se ve (la lista se corre con la
     /// rueda).
     pub primera_fila: usize,
+    /// Los formatos (por su posicion) cuyo interruptor se quito.
+    pub apagados: BTreeSet<usize>,
 }
 
 impl Estado {
@@ -95,7 +110,31 @@ impl Estado {
                 .clone()
                 .unwrap_or_else(|| c.paginas.iter().map(|p| p.clave.clone()).collect()),
             primera_fila: 0,
+            apagados: BTreeSet::new(),
         }
+    }
+
+    /// Si el formato puesto tiene interruptor, si esta puesto.
+    pub fn interruptor(&self, c: &Compartible) -> Option<bool> {
+        self.formato(c)?.interruptor.as_ref()?;
+        Some(!self.apagados.contains(&self.formato))
+    }
+
+    /// Pone o quita el interruptor del formato puesto; sin interruptor, nada.
+    pub fn alternar_interruptor(&mut self, c: &Compartible) {
+        if self.interruptor(c).is_some() && !self.apagados.remove(&self.formato) {
+            self.apagados.insert(self.formato);
+        }
+    }
+
+    /// **Lo que hay que generar**: el formato puesto, o lo que diga su
+    /// interruptor si esta quitado.
+    pub fn id_a_generar(&self, c: &Compartible) -> Option<String> {
+        let f = self.formato(c)?;
+        Some(match (&f.interruptor, self.interruptor(c)) {
+            (Some(i), Some(false)) => i.id_apagado.clone(),
+            _ => f.id.clone(),
+        })
     }
 
     pub fn formato<'a>(&self, c: &'a Compartible) -> Option<&'a Formato> {
@@ -238,6 +277,7 @@ pub enum Destino {
     Todas,
     Ninguna,
     Salida(Salida),
+    Interruptor,
 }
 
 // Medidas en pixeles logicos, las del movil donde las hay (dp).
@@ -278,6 +318,8 @@ pub struct Disposicion {
     pub filas: Vec<(String, Caja)>,
     /// Donde se escribe el peso.
     pub peso: Caja,
+    /// El interruptor del formato puesto, si lo tiene: encima del peso.
+    pub interruptor: Option<Caja>,
     pub salidas: Vec<(Salida, Caja)>,
 }
 
@@ -422,12 +464,25 @@ pub fn disponer(c: &Compartible, e: &Estado, escala: f32) -> Disposicion {
         ));
         bx -= HUECO_BOTON * k;
     }
-    let peso = Caja {
+    let mut peso = Caja {
         x: MARGEN * k,
         y,
         ancho: (bx - MARGEN * k).max(0.0),
         alto: ALTO_PIE * k,
     };
+    // Con interruptor el pie se parte: el interruptor arriba y el peso
+    // debajo. La ventana no cambia de tamano.
+    let interruptor = e.interruptor(c).map(|_| {
+        let arriba = Caja {
+            x: peso.x,
+            y: y + 6.0 * k,
+            ancho: peso.ancho,
+            alto: 28.0 * k,
+        };
+        peso.y = y + 34.0 * k;
+        peso.alto = (ALTO_PIE - 34.0) * k;
+        arriba
+    });
     Disposicion {
         ancho,
         alto,
@@ -440,6 +495,7 @@ pub fn disponer(c: &Compartible, e: &Estado, escala: f32) -> Disposicion {
         ninguna,
         filas,
         peso,
+        interruptor,
         salidas,
     }
 }
@@ -469,6 +525,9 @@ pub fn destino_en(d: &Disposicion, x: f32, y: f32) -> Destino {
         if caja.contiene(x, y) {
             return Destino::Salida(*s);
         }
+    }
+    if d.interruptor.is_some_and(|c| c.contiene(x, y)) {
+        return Destino::Interruptor;
     }
     Destino::Nada
 }
@@ -516,7 +575,36 @@ mod pruebas {
             nombre: id.into(),
             cuantas,
             admite: None,
+            interruptor: None,
         }
+    }
+
+    #[test]
+    fn el_interruptor_nace_puesto_y_quitado_se_genera_lo_otro() {
+        let mut c = compartible(2);
+        c.formatos[1].interruptor = Some(Interruptor {
+            nombre: "Con anotaciones".into(),
+            detalle: String::new(),
+            id_apagado: "pdf-limpio".into(),
+        });
+        let mut e = Estado::nuevo(&c);
+        e.elegir_formato(&c, 1);
+        assert_eq!(e.interruptor(&c), Some(true));
+        assert_eq!(e.id_a_generar(&c).as_deref(), Some("pdf"));
+        let d = disponer(&c, &e, 1.0);
+        let caja = d.interruptor.expect("se ve");
+        assert_eq!(destino_en(&d, caja.x + 10.0, caja.y + 10.0), Destino::Interruptor);
+        assert!(d.peso.y >= caja.y + caja.alto, "el peso va debajo");
+        e.alternar_interruptor(&c);
+        assert_eq!(e.id_a_generar(&c).as_deref(), Some("pdf-limpio"));
+        e.alternar_interruptor(&c);
+        assert_eq!(e.id_a_generar(&c).as_deref(), Some("pdf"));
+        // Caso negativo: un formato sin interruptor ni lo ensena ni cambia.
+        e.elegir_formato(&c, 2);
+        e.alternar_interruptor(&c);
+        assert_eq!(e.interruptor(&c), None);
+        assert_eq!(e.id_a_generar(&c).as_deref(), Some("web"));
+        assert!(disponer(&c, &e, 1.0).interruptor.is_none());
     }
 
     fn compartible(n: usize) -> Compartible {

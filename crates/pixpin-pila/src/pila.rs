@@ -6,14 +6,15 @@
 //! ventanas, los temporizadores y el portapapeles de verdad viven en
 //! `ventana.rs` y en `pixpin-codec`, y solo preguntan aqui.
 //!
-//! # Por que el tiempo llega como un numero y no como `Instant`
+//! # Agrupar es un interruptor, no un reloj (2-oct)
 //!
-//! Un `Instant` no se puede fabricar en una prueba: solo se puede pedir al
-//! reloj. Probar «una captura pasados once segundos NO se apila» obligaria a
-//! dormir once segundos de verdad en cada ejecucion de la suite. Con los
-//! milisegundos como `u64` la prueba es instantanea y el lado de Windows
-//! pasa `GetTickCount64()`, que es justo eso: milisegundos monotonos desde
-//! el arranque, sin saltos por cambios de hora ni de zona horaria.
+//! Nacio con una ventana de tiempo: lo que se capturaba dentro de N segundos
+//! desde la ultima se apilaba. El usuario la encontro corta («espera muy poco
+//! tiempo») y pidio otra cosa: tras la primera captura sale el recuadrito en
+//! la esquina; **un clic lo arma** (sus bordes se encienden de azul) y desde
+//! ahi TODAS las capturas se suman a la tanda, sin prisa, hasta que se vuelva
+//! a pulsar: el halo se apaga, la tanda se suelta y el recuadro se va. Sin
+//! armar, cada captura es la suya y el recuadro se va solo al rato.
 
 use std::path::PathBuf;
 
@@ -127,16 +128,13 @@ impl Copia {
 #[derive(Debug)]
 pub struct Pila {
     capturas: Vec<Captura>,
-    /// Milisegundos en que entro la ULTIMA de la tanda. Nacio contando desde
-    /// la primera, y la primera prueba del usuario lo tumbo: cada recorte
-    /// lleva dos o tres segundos de arrastrar, asi que en diez segundos desde
-    /// la primera solo cabian dos y la tercera empezaba tanda nueva («solo me
-    /// sale 1»). Contando desde la ultima, la tanda dura mientras se siga
-    /// capturando y se cierra tras la ventana entera sin capturar; que no sea
-    /// eterna lo garantiza `TOPE_CAPTURAS`.
-    ultima_ms: Option<u64>,
-    /// Ventana de apilado en milisegundos. Cero = apilar apagado.
-    ventana_ms: u64,
+    /// La pila existe (`apilar_segundos > 0` en el TOML). Apagada, cada
+    /// captura va suelta al portapapeles y no hay recuadro.
+    encendida: bool,
+    /// El usuario pulso el recuadro y sus bordes estan en azul: mientras
+    /// siga asi, cada captura se suma a la tanda, pase el tiempo que pase.
+    /// Que no crezca sin fin lo garantiza `TOPE_CAPTURAS`.
+    armada: bool,
     /// El monitor donde se hizo la PRIMERA de la tanda, en pixeles fisicos
     /// del escritorio virtual, y su escala. La tanda entera vive en ese
     /// monitor aunque las siguientes capturas se hagan en el otro: mover el
@@ -145,19 +143,32 @@ pub struct Pila {
 }
 
 impl Pila {
-    /// `ventana_segundos` a cero apaga el apilado: cada captura cierra la
-    /// anterior y la pila nunca tiene mas de una.
-    pub fn nueva(ventana_segundos: u32) -> Pila {
+    /// `apilar_segundos` a cero apaga la pila entera: cada captura cierra la
+    /// anterior y nunca hay mas de una. Cualquier otro valor la enciende; el
+    /// numero ya no es un plazo (agrupar es el interruptor del recuadro).
+    pub fn nueva(apilar_segundos: u32) -> Pila {
         Pila {
             capturas: Vec::new(),
-            ultima_ms: None,
-            ventana_ms: ventana_segundos as u64 * 1000,
+            encendida: apilar_segundos > 0,
+            armada: false,
             monitor: None,
         }
     }
 
     pub fn apilar_encendido(&self) -> bool {
-        self.ventana_ms > 0
+        self.encendida
+    }
+
+    /// Si el recuadro esta armado (bordes azules): las capturas se agrupan.
+    pub fn armada(&self) -> bool {
+        self.armada
+    }
+
+    /// Arma o desarma el agrupado. Armar una pila vacia o apagada no hace
+    /// nada: no hay recuadro que pulsar. Devuelve como queda.
+    pub fn armar(&mut self, armada: bool) -> bool {
+        self.armada = armada && self.encendida && !self.capturas.is_empty();
+        self.armada
     }
 
     pub fn capturas(&self) -> &[Captura] {
@@ -185,58 +196,25 @@ impl Pila {
 
     /// Mete una captura. `monitor` es el area fisica del monitor donde se
     /// hizo y `escala_por_cien` su escalado (150 en el monitor del usuario).
-    pub fn anadir(
-        &mut self,
-        ahora_ms: u64,
-        captura: Captura,
-        monitor: Rect,
-        escala_por_cien: u32,
-    ) -> Efecto {
-        let efecto = if self.sigue_abierta(ahora_ms) {
+    ///
+    /// Armada, se suma a la tanda. Sin armar, la tanda vieja se tira y esta
+    /// empieza otra: es la que el recuadro ensena y la que se arma con un clic.
+    pub fn anadir(&mut self, captura: Captura, monitor: Rect, escala_por_cien: u32) -> Efecto {
+        let efecto = if self.encendida && self.armada && !self.capturas.is_empty() {
             Efecto::Apilada
         } else {
-            // Cerrar es tirar lo anterior: la tanda vieja ya se pego o ya se
-            // ignoro, y mezclarla con la nueva daria un Ctrl+V con capturas
-            // de hace media hora.
+            // Tirar lo anterior: sin armar, la captura vieja ya se pego o ya
+            // se ignoro (sigue en la carpeta de capturas y en la galeria).
             self.capturas.clear();
+            self.armada = false;
             self.monitor = Some((monitor, escala_por_cien));
             Efecto::Empezada
         };
-        // Cada captura rearma la ventana, tambien las apiladas.
-        self.ultima_ms = Some(ahora_ms);
         self.capturas.push(captura);
         if self.capturas.len() > TOPE_CAPTURAS {
             self.capturas.remove(0);
         }
         efecto
-    }
-
-    /// Si la tanda abierta todavia admite mas capturas en `ahora_ms`.
-    fn sigue_abierta(&self, ahora_ms: u64) -> bool {
-        if self.ventana_ms == 0 || self.capturas.is_empty() {
-            return false;
-        }
-        match self.ultima_ms {
-            // Un reloj monotono no retrocede, pero `saturating_sub` evita que
-            // un salto raro (una maquina virtual suspendida, por ejemplo) se
-            // convierta en un desbordamiento en vez de en una tanda cerrada.
-            Some(ultima) => ahora_ms.saturating_sub(ultima) <= self.ventana_ms,
-            None => false,
-        }
-    }
-
-    /// Milisegundos que faltan para que la tanda deje de admitir capturas.
-    /// `None` si no hay tanda abierta o el apilado esta apagado.
-    ///
-    /// Es lo que arma el UNICO temporizador que llega a existir: sin pila no
-    /// hay temporizador, y por eso sin pila el consumo es cero.
-    pub fn falta_para_cerrar_ms(&self, ahora_ms: u64) -> Option<u64> {
-        if self.ventana_ms == 0 || self.capturas.is_empty() {
-            return None;
-        }
-        let ultima = self.ultima_ms?;
-        let pasado = ahora_ms.saturating_sub(ultima);
-        Some(self.ventana_ms.saturating_sub(pasado))
     }
 
     /// Marca o desmarca la captura `i`. Devuelve si quedo marcada; `None` si
@@ -257,17 +235,17 @@ impl Pila {
         }
         let fuera = self.capturas.remove(i);
         if self.capturas.is_empty() {
-            self.ultima_ms = None;
             self.monitor = None;
+            self.armada = false;
         }
         Some(fuera)
     }
 
-    /// Vacia la pila entera. Tampoco borra ficheros, por lo mismo.
+    /// Vacia la pila entera y la desarma. Tampoco borra ficheros.
     pub fn vaciar(&mut self) {
         self.capturas.clear();
-        self.ultima_ms = None;
         self.monitor = None;
+        self.armada = false;
     }
 
     /// Que copiar. `solo_elegidas` es el boton «Copiar las elegidas»; con
@@ -367,65 +345,63 @@ mod pruebas {
         }
     }
 
-    #[test]
-    fn dos_capturas_seguidas_se_apilan_en_la_misma_tanda() {
+    /// Una pila encendida con la primera captura dentro y ARMADA: el clic
+    /// del usuario en el recuadro.
+    fn armada_con(primera: &str) -> Pila {
         let mut p = Pila::nueva(10);
-        assert_eq!(
-            p.anadir(1_000, captura("a"), monitor(), 100),
-            Efecto::Empezada
-        );
-        assert_eq!(
-            p.anadir(4_000, captura("b"), monitor(), 100),
-            Efecto::Apilada
-        );
-        assert_eq!(p.cuantas(), 2);
+        assert_eq!(p.anadir(captura(primera), monitor(), 100), Efecto::Empezada);
+        assert!(p.armar(true));
+        p
     }
 
     #[test]
-    fn una_captura_pasado_el_tiempo_no_se_apila_y_empieza_otra_tanda() {
-        // El caso negativo que da sentido a toda la funcion: si esto fallara,
-        // el Ctrl+V de la tarde arrastraria las capturas de la manana.
+    fn sin_armar_cada_captura_empieza_su_tanda() {
+        // Lo que pidio el usuario: sin pulsar el recuadro no se agrupa nada,
+        // y la captura nueva sustituye a la vieja en el recuadro.
         let mut p = Pila::nueva(10);
-        p.anadir(0, captura("a"), monitor(), 100);
-        assert_eq!(
-            p.anadir(10_001, captura("b"), monitor(), 100),
-            Efecto::Empezada,
-            "pasados los diez segundos la tanda vieja se cierra"
-        );
-        assert_eq!(p.cuantas(), 1, "la nueva tanda empieza limpia");
+        assert_eq!(p.anadir(captura("a"), monitor(), 100), Efecto::Empezada);
+        assert_eq!(p.anadir(captura("b"), monitor(), 100), Efecto::Empezada);
+        assert_eq!(p.cuantas(), 1);
         assert_eq!(p.ultima().map(|c| c.ruta.clone()), Some(captura("b").ruta));
+        assert!(!p.armada());
     }
 
     #[test]
-    fn el_tiempo_se_cuenta_desde_la_ultima_y_no_desde_la_primera() {
-        // Lo que fallo en la primera prueba del usuario: tres recortes
-        // seguidos, el tercero a trece segundos del primero, y salia «1».
-        let mut p = Pila::nueva(10);
-        p.anadir(0, captura("a"), monitor(), 100);
-        p.anadir(8_500, captura("b"), monitor(), 100);
-        assert_eq!(
-            p.anadir(13_300, captura("c"), monitor(), 100),
-            Efecto::Apilada,
-            "trece segundos despues de la primera, pero cinco de la ultima"
-        );
+    fn armada_todas_las_capturas_se_suman_sin_plazo() {
+        let mut p = armada_con("a");
+        assert_eq!(p.anadir(captura("b"), monitor(), 100), Efecto::Apilada);
+        assert_eq!(p.anadir(captura("c"), monitor(), 100), Efecto::Apilada);
         assert_eq!(p.cuantas(), 3);
-        // Caso negativo: diez segundos largos SIN capturar si cierran.
-        assert_eq!(
-            p.anadir(23_301, captura("d"), monitor(), 100),
-            Efecto::Empezada
-        );
+        assert!(p.armada(), "sigue armada hasta que se vuelva a pulsar");
+    }
+
+    #[test]
+    fn desarmar_suelta_la_tanda_y_la_siguiente_empieza_otra() {
+        let mut p = armada_con("a");
+        p.anadir(captura("b"), monitor(), 100);
+        assert!(!p.armar(false));
+        // Caso negativo: desarmada, la siguiente ya no se cuela.
+        assert_eq!(p.anadir(captura("c"), monitor(), 100), Efecto::Empezada);
         assert_eq!(p.cuantas(), 1);
     }
 
     #[test]
-    fn justo_en_el_borde_de_la_ventana_todavia_se_apila() {
+    fn no_se_puede_armar_una_pila_vacia_ni_una_apagada() {
         let mut p = Pila::nueva(10);
-        p.anadir(500, captura("a"), monitor(), 100);
-        assert_eq!(
-            p.anadir(10_500, captura("b"), monitor(), 100),
-            Efecto::Apilada,
-            "el segundo diez exacto cuenta como dentro"
-        );
+        assert!(!p.armar(true), "sin recuadro no hay nada que armar");
+        let mut apagada = Pila::nueva(0);
+        apagada.anadir(captura("a"), monitor(), 100);
+        assert!(!apagada.armar(true));
+        assert_eq!(apagada.anadir(captura("b"), monitor(), 100), Efecto::Empezada);
+    }
+
+    #[test]
+    fn vaciar_desarma() {
+        let mut p = armada_con("a");
+        p.vaciar();
+        assert!(!p.armada());
+        assert!(p.vacia());
+        assert_eq!(p.anadir(captura("b"), monitor(), 100), Efecto::Empezada);
     }
 
     #[test]
@@ -434,10 +410,9 @@ mod pruebas {
         // de siempre: una captura, una imagen en el portapapeles.
         let mut p = Pila::nueva(0);
         assert!(!p.apilar_encendido());
-        p.anadir(0, captura("a"), monitor(), 100);
-        assert_eq!(p.anadir(1, captura("b"), monitor(), 100), Efecto::Empezada);
+        p.anadir(captura("a"), monitor(), 100);
+        assert_eq!(p.anadir(captura("b"), monitor(), 100), Efecto::Empezada);
         assert_eq!(p.cuantas(), 1);
-        assert_eq!(p.falta_para_cerrar_ms(1), None, "ni un temporizador");
     }
 
     #[test]
@@ -447,7 +422,6 @@ mod pruebas {
         let p = Pila::nueva(10);
         assert_eq!(p.que_copiar(false), None);
         assert_eq!(p.que_copiar(true), None);
-        assert_eq!(p.falta_para_cerrar_ms(0), None);
         assert_eq!(p.monitor(), None);
     }
 
@@ -455,7 +429,7 @@ mod pruebas {
     fn con_una_sola_captura_el_portapapeles_lleva_solo_la_imagen() {
         // El comportamiento de antes de que existiera la pila, intacto.
         let mut p = Pila::nueva(10);
-        p.anadir(0, captura("a"), monitor(), 100);
+        p.anadir(captura("a"), monitor(), 100);
         assert_eq!(
             p.que_copiar(false),
             Some(Copia::Imagen {
@@ -466,10 +440,9 @@ mod pruebas {
 
     #[test]
     fn con_varias_van_los_ficheros_y_la_imagen_de_la_ultima() {
-        let mut p = Pila::nueva(10);
-        p.anadir(0, captura("a"), monitor(), 100);
-        p.anadir(1_000, captura("b"), monitor(), 100);
-        p.anadir(2_000, captura("c"), monitor(), 100);
+        let mut p = armada_con("a");
+        p.anadir(captura("b"), monitor(), 100);
+        p.anadir(captura("c"), monitor(), 100);
         let copia = p.que_copiar(false).expect("hay tres");
         assert_eq!(copia.rutas().len(), 3);
         assert_eq!(copia.imagen(), &captura("c").ruta, "la ultima que se hizo");
@@ -477,10 +450,9 @@ mod pruebas {
 
     #[test]
     fn copiar_las_elegidas_deja_fuera_las_desmarcadas() {
-        let mut p = Pila::nueva(10);
-        p.anadir(0, captura("a"), monitor(), 100);
-        p.anadir(1_000, captura("b"), monitor(), 100);
-        p.anadir(2_000, captura("c"), monitor(), 100);
+        let mut p = armada_con("a");
+        p.anadir(captura("b"), monitor(), 100);
+        p.anadir(captura("c"), monitor(), 100);
         assert_eq!(p.alternar(1), Some(false), "la b se desmarca");
         let copia = p.que_copiar(true).expect("quedan dos");
         assert_eq!(
@@ -499,7 +471,7 @@ mod pruebas {
     fn desmarcarlas_todas_no_copia_nada() {
         // Caso negativo del boton «Copiar las elegidas» sin nada elegido.
         let mut p = Pila::nueva(10);
-        p.anadir(0, captura("a"), monitor(), 100);
+        p.anadir(captura("a"), monitor(), 100);
         p.alternar(0);
         assert_eq!(p.que_copiar(true), None);
     }
@@ -507,7 +479,7 @@ mod pruebas {
     #[test]
     fn alternar_o_quitar_una_que_no_existe_no_revienta() {
         let mut p = Pila::nueva(10);
-        p.anadir(0, captura("a"), monitor(), 100);
+        p.anadir(captura("a"), monitor(), 100);
         assert_eq!(p.alternar(7), None);
         assert_eq!(p.quitar(7), None);
         assert_eq!(p.cuantas(), 1, "y la que habia sigue ahi");
@@ -515,23 +487,20 @@ mod pruebas {
 
     #[test]
     fn quitar_la_ultima_deja_la_pila_como_recien_nacida() {
-        let mut p = Pila::nueva(10);
-        p.anadir(1_000, captura("a"), monitor(), 100);
+        let mut p = armada_con("a");
         assert!(p.quitar(0).is_some());
         assert!(p.vacia());
         assert_eq!(p.monitor(), None);
+        assert!(!p.armada(), "sin capturas no queda nada armado");
         // Y la siguiente empieza tanda, no se cuela en la que estaba abierta.
-        assert_eq!(
-            p.anadir(1_100, captura("b"), monitor(), 100),
-            Efecto::Empezada
-        );
+        assert_eq!(p.anadir(captura("b"), monitor(), 100), Efecto::Empezada);
     }
 
     #[test]
     fn la_pila_no_crece_sin_fin() {
-        let mut p = Pila::nueva(3600);
-        for i in 0..(TOPE_CAPTURAS + 5) {
-            p.anadir(i as u64, captura(&format!("c{i}")), monitor(), 100);
+        let mut p = armada_con("c0");
+        for i in 1..(TOPE_CAPTURAS + 5) {
+            p.anadir(captura(&format!("c{i}")), monitor(), 100);
         }
         assert_eq!(p.cuantas(), TOPE_CAPTURAS);
         assert_eq!(
@@ -539,25 +508,6 @@ mod pruebas {
             Some(captura(&format!("c{}", TOPE_CAPTURAS + 4)).ruta),
             "la ultima que entro sigue siendo la de arriba"
         );
-    }
-
-    #[test]
-    fn lo_que_falta_para_cerrar_va_bajando_y_llega_a_cero() {
-        let mut p = Pila::nueva(10);
-        p.anadir(1_000, captura("a"), monitor(), 100);
-        assert_eq!(p.falta_para_cerrar_ms(1_000), Some(10_000));
-        assert_eq!(p.falta_para_cerrar_ms(7_000), Some(4_000));
-        assert_eq!(p.falta_para_cerrar_ms(50_000), Some(0), "no se pasa de rosca");
-    }
-
-    #[test]
-    fn otra_captura_rearma_lo_que_falta_para_cerrar() {
-        // Es lo que rearma el desvanecido del icono: si no subiera, el icono
-        // se iria de la esquina con la tanda todavia abierta.
-        let mut p = Pila::nueva(10);
-        p.anadir(1_000, captura("a"), monitor(), 100);
-        p.anadir(7_000, captura("b"), monitor(), 100);
-        assert_eq!(p.falta_para_cerrar_ms(7_000), Some(10_000));
     }
 
     #[test]
@@ -570,9 +520,8 @@ mod pruebas {
             ancho: 2560,
             alto: 1440,
         };
-        let mut p = Pila::nueva(10);
-        p.anadir(0, captura("a"), monitor(), 100);
-        p.anadir(1_000, captura("b"), otro, 150);
+        let mut p = armada_con("a");
+        p.anadir(captura("b"), otro, 150);
         assert_eq!(p.monitor(), Some((monitor(), 100)));
     }
 

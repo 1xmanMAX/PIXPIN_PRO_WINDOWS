@@ -128,6 +128,202 @@ pub fn enviar_ficheros(rutas: &[PathBuf]) -> bool {
     respuesta.0 != 0
 }
 
+/// El identificador de los **pedidos** (`docs/protocolo-pedidos.md`): el
+/// siguiente de [`ABRIR_FICHEROS`]. Lo manda cualquier programa del equipo
+/// que quiera que PixPin haga algo (el plugin de Flow Launcher, un script).
+pub const PEDIDO_JSON: usize = 0x5049_5851;
+
+/// Lo mas que puede medir un pedido. Un pedido es una orden corta, no un
+/// documento: 64 KB caben de sobra en el texto mas largo que alguien escriba
+/// en un lanzador, y un tope evita copiar megas que nadie deberia mandar.
+pub const TOPE_PEDIDO: usize = 64 * 1024;
+
+/// La version del protocolo que entiende esta copia (`"pixpin": 1`).
+pub const VERSION_PEDIDO: u64 = 1;
+
+/// Las respuestas inmediatas a un pedido (el `LRESULT` de `WM_COPYDATA`).
+/// El `0` no esta: es lo que contesta Windows cuando no hay nadie o el
+/// mensaje no era para nosotros.
+pub mod respuesta {
+    /// Aceptado: queda en la cola y el bucle lo hara enseguida.
+    pub const ACEPTADO: isize = 1;
+    /// Se pidio con una version del protocolo que esta copia no conoce.
+    pub const VERSION_NO: isize = 2;
+    /// JSON roto, demasiado grande o con una accion que no existe.
+    pub const NO_SE_ENTIENDE: isize = 3;
+}
+
+/// Las acciones que existen en la version 1. Viven aqui, y no en la
+/// aplicacion, porque la ventana tiene que contestar `3` en el acto a una
+/// accion desconocida sin esperar al bucle. La aplicacion tiene una prueba
+/// que comprueba que entiende todas (`pedidos.rs`): si una se anade aqui y
+/// no alli, falla.
+pub const ACCIONES: [&str; 12] = [
+    "abrir",
+    "chat",
+    "nota_nueva",
+    "lienzo_nuevo",
+    "grabar",
+    "lista_nueva",
+    "anadir_tarea",
+    "marcar_tarea",
+    "ventana_principal",
+    "pinear",
+    "iconos",
+    "soltar",
+];
+
+/// Mira un pedido por encima: lo justo para contestar en el acto.
+///
+/// Solo comprueba que es un objeto JSON con `"pixpin": 1` y una `accion`
+/// conocida; que los campos de esa accion esten bien lo mira la aplicacion
+/// despues, en su bucle, y si falta algo lo dice con su aviso. Asi el
+/// procedimiento de ventana no hace trabajo de verdad, pero un pedido
+/// escrito a mano con una errata en la accion no se da por bueno.
+///
+/// Una version que no es un numero (o falta) es un pedido roto, no una
+/// version distinta: sin `pixpin` no es un pedido nuestro.
+pub fn validar_pedido(json: &str) -> isize {
+    let Ok(serde_json::Value::Object(pedido)) = serde_json::from_str::<serde_json::Value>(json)
+    else {
+        return respuesta::NO_SE_ENTIENDE;
+    };
+    match pedido.get("pixpin").and_then(|v| v.as_u64()) {
+        Some(VERSION_PEDIDO) => {}
+        Some(_) => return respuesta::VERSION_NO,
+        None => return respuesta::NO_SE_ENTIENDE,
+    }
+    match pedido.get("accion").and_then(|v| v.as_str()) {
+        Some(a) if ACCIONES.contains(&a) => respuesta::ACEPTADO,
+        _ => respuesta::NO_SE_ENTIENDE,
+    }
+}
+
+/// Los bytes de un pedido, ya mirados: el texto si vale, o la respuesta con
+/// la que se rechaza. Pura y aparte para probarla sin ventanas.
+pub fn leer_pedido(bytes: &[u8]) -> Result<String, isize> {
+    if bytes.len() > TOPE_PEDIDO {
+        return Err(respuesta::NO_SE_ENTIENDE);
+    }
+    let Ok(texto) = std::str::from_utf8(bytes) else {
+        return Err(respuesta::NO_SE_ENTIENDE);
+    };
+    // Un nulo final no lo pide el protocolo, pero un script en C lo pondria
+    // sin pensar; quitarlo cuesta nada y evita rechazarle el pedido.
+    let texto = texto.trim_end_matches('\0');
+    match validar_pedido(texto) {
+        respuesta::ACEPTADO => Ok(texto.to_string()),
+        otra => Err(otra),
+    }
+}
+
+/// Lee un pedido de un `WM_COPYDATA` recibido.
+///
+/// `None` si el mensaje no es un pedido (otro `dwData`): entonces lo mira
+/// quien sigue, que puede ser [`ficheros_de_copydata`]. Si lo es, el texto
+/// **copiado** o la respuesta con que se rechaza.
+///
+/// # Safety
+///
+/// Igual que [`ficheros_de_copydata`]: `lparam` tiene que ser el de un
+/// `WM_COPYDATA` recien recibido, con su `COPYDATASTRUCT` vivo. Se copia
+/// aqui y no se guarda el puntero.
+pub unsafe fn pedido_de_copydata(lparam: LPARAM) -> Option<Result<String, isize>> {
+    if lparam.0 == 0 {
+        return None;
+    }
+    // SAFETY: el llamante garantiza que viene de un WM_COPYDATA vivo.
+    let paquete = unsafe { &*(lparam.0 as *const COPYDATASTRUCT) };
+    if paquete.dwData != PEDIDO_JSON {
+        return None;
+    }
+    let cuantos = paquete.cbData as usize;
+    // El tope se mira ANTES de leer: un pedido enorme se rechaza sin
+    // copiarlo.
+    if cuantos > TOPE_PEDIDO {
+        return Some(Err(respuesta::NO_SE_ENTIENDE));
+    }
+    if cuantos == 0 || paquete.lpData.is_null() {
+        return Some(Err(respuesta::NO_SE_ENTIENDE));
+    }
+    // SAFETY: el otro proceso escribio `cbData` bytes en esa direccion y
+    // Windows los ha copiado a nuestro espacio mientras dura el mensaje;
+    // `leer_pedido` hace su propia copia antes de volver.
+    let bytes = unsafe { std::slice::from_raw_parts(paquete.lpData as *const u8, cuantos) };
+    Some(leer_pedido(bytes))
+}
+
+/// La ventana de mensajes de la copia que corre, si hay una.
+///
+/// Primero `FindWindowW`, que es lo que usa todo lo demas y lo que se midio
+/// en este equipo; si no da nada, se busca entre las ventanas de solo
+/// mensajes (`HWND_MESSAGE`), que es donde Windows dice que viven y donde
+/// `FindWindowW` no tiene por que mirar.
+fn ventana_de_la_copia() -> Option<windows::Win32::Foundation::HWND> {
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowExW, HWND_MESSAGE};
+    // SAFETY: la clase es un literal estatico terminado en cero; una
+    // ventana nula significa que no hay ninguna.
+    if let Ok(h) = unsafe { FindWindowW(w!("PixPinMaxVentanaMensajes"), None) }
+        && !h.0.is_null()
+    {
+        return Some(h);
+    }
+    // SAFETY: igual que arriba; HWND_MESSAGE es el padre valido para buscar
+    // entre las ventanas de solo mensajes.
+    let h = unsafe {
+        FindWindowExW(Some(HWND_MESSAGE), None, w!("PixPinMaxVentanaMensajes"), None)
+    }
+    .ok()?;
+    (!h.0.is_null()).then_some(h)
+}
+
+/// Manda un pedido a la copia que corre. Devuelve la respuesta inmediata
+/// ([`respuesta`]), o `0` si no hay nadie escuchando.
+///
+/// Es lo que usan el plugin de Flow Launcher y quien quiera escribir el
+/// suyo en Rust; esta aqui para que el que manda y el que recibe compartan
+/// el mismo identificador y el mismo empaquetado.
+pub fn enviar_pedido(json: &str) -> isize {
+    match ventana_de_la_copia() {
+        Some(destino) => enviar_pedido_a(destino, json),
+        None => 0,
+    }
+}
+
+/// Lo de [`enviar_pedido`] a una ventana concreta. Aparte para las pruebas,
+/// que mandan a su propia ventana: buscarla por la clase encontraria la de
+/// la PixPin del usuario si esta abierta, y le haria cosas de verdad.
+pub fn enviar_pedido_a(destino: windows::Win32::Foundation::HWND, json: &str) -> isize {
+    use windows::Win32::UI::WindowsAndMessaging::WM_COPYDATA;
+    // El que manda tambien respeta el tope: mandar algo que se va a
+    // rechazar es copiar megas entre procesos para nada.
+    if json.len() > TOPE_PEDIDO {
+        return respuesta::NO_SE_ENTIENDE;
+    }
+    let paquete = COPYDATASTRUCT {
+        dwData: PEDIDO_JSON,
+        cbData: json.len() as u32,
+        lpData: json.as_ptr() as *mut _,
+    };
+    // SAFETY: SendMessageW es SINCRONO: `json` y `paquete` siguen vivos
+    // durante toda la llamada, que es lo que exige WM_COPYDATA (ver
+    // `enviar_ficheros`). El otro lado solo lee.
+    let r = unsafe {
+        SendMessageW(
+            destino,
+            WM_COPYDATA,
+            Some(WPARAM(0)),
+            Some(LPARAM(&paquete as *const _ as isize)),
+        )
+    };
+    // El toque a la cola, por lo mismo que en `enviar_ficheros`: el pedido
+    // entra directo al procedimiento y el bucle esta dormido.
+    if r.0 != 0 {
+        crate::ventana::despertar(destino);
+    }
+    r.0
+}
+
 /// Lee las rutas de un `WM_COPYDATA` recibido.
 ///
 /// Devuelve vacio si el mensaje no es nuestro. Otro programa puede mandarle
@@ -201,6 +397,72 @@ mod pruebas {
         assert!(empaquetar(&[]).is_empty());
         assert!(desempaquetar(&[]).is_empty());
         assert!(desempaquetar(&[0, 0, 0]).is_empty());
+    }
+
+    #[test]
+    fn un_pedido_bueno_se_acepta_con_campos_de_mas() {
+        // Lo que no se conoce se ignora: un campo nuevo no sube la version.
+        let json = r#"{"pixpin":1,"accion":"chat","texto":"hola","de_futuro":[1,2]}"#;
+        assert_eq!(validar_pedido(json), respuesta::ACEPTADO);
+        assert_eq!(leer_pedido(json.as_bytes()), Ok(json.to_string()));
+    }
+
+    #[test]
+    fn todas_las_acciones_de_la_tabla_se_aceptan() {
+        for a in ACCIONES {
+            let json = format!(r#"{{"pixpin":1,"accion":"{a}"}}"#);
+            assert_eq!(validar_pedido(&json), respuesta::ACEPTADO, "{a}");
+        }
+    }
+
+    #[test]
+    fn otra_version_se_contesta_con_dos() {
+        assert_eq!(
+            validar_pedido(r#"{"pixpin":2,"accion":"chat"}"#),
+            respuesta::VERSION_NO
+        );
+    }
+
+    #[test]
+    fn lo_roto_o_desconocido_se_contesta_con_tres() {
+        // Casos negativos: cada uno es una forma distinta de no ser un
+        // pedido, y ninguno puede llegar al bucle.
+        for json in [
+            "",
+            "no es json",
+            "[1,2]",
+            r#"{"accion":"chat"}"#,
+            r#"{"pixpin":"1","accion":"chat"}"#,
+            r#"{"pixpin":1}"#,
+            r#"{"pixpin":1,"accion":"borrar_todo"}"#,
+            r#"{"pixpin":1,"accion":7}"#,
+        ] {
+            assert_eq!(validar_pedido(json), respuesta::NO_SE_ENTIENDE, "{json}");
+        }
+    }
+
+    #[test]
+    fn un_pedido_demasiado_grande_o_sin_utf8_no_se_lee() {
+        let mut grande = br#"{"pixpin":1,"accion":"chat","texto":""#.to_vec();
+        grande.extend(std::iter::repeat_n(b'a', TOPE_PEDIDO));
+        grande.extend(br#""}"#);
+        assert_eq!(leer_pedido(&grande), Err(respuesta::NO_SE_ENTIENDE));
+        assert_eq!(leer_pedido(&[0xFF, 0xFE, b'{']), Err(respuesta::NO_SE_ENTIENDE));
+    }
+
+    #[test]
+    fn el_nulo_final_de_un_script_en_c_no_estorba() {
+        let json = "{\"pixpin\":1,\"accion\":\"ventana_principal\"}\0";
+        assert_eq!(
+            leer_pedido(json.as_bytes()),
+            Ok(json.trim_end_matches('\0').to_string())
+        );
+    }
+
+    #[test]
+    fn un_texto_con_acentos_llega_entero() {
+        let json = r#"{"pixpin":1,"accion":"anadir_tarea","texto":"comprar pan y ñoquis — 2 kg"}"#;
+        assert_eq!(leer_pedido(json.as_bytes()), Ok(json.to_string()));
     }
 
     #[test]

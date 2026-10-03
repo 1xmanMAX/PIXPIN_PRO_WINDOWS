@@ -457,7 +457,7 @@ fn num(archivo: &Archivo, v: Option<&Valor>) -> Option<f64> {
 }
 
 /// Los bytes de una cadena del PDF, sin sus delimitadores y sin escapes.
-fn bytes_de_cadena(c: &[u8]) -> Vec<u8> {
+pub(crate) fn bytes_de_cadena(c: &[u8]) -> Vec<u8> {
     if c.first() == Some(&b'<') {
         return de_hex(&c[1..]);
     }
@@ -471,7 +471,7 @@ fn bytes_de_cadena(c: &[u8]) -> Vec<u8> {
 }
 
 /// Una cadena del PDF a texto: UTF-16 con su marca, o Latin-1.
-fn texto_de_cadena(b: &[u8]) -> String {
+pub(crate) fn texto_de_cadena(b: &[u8]) -> String {
     if b.len() >= 2 && b[0] == 0xFE && b[1] == 0xFF {
         let u: Vec<u16> = b[2..]
             .chunks_exact(2)
@@ -1502,11 +1502,18 @@ impl<'a, 'b> Interprete<'a, 'b> {
                 let Some((filtro, datos)) = sin_el_ultimo_filtro(a, d, crudo) else {
                     return false;
                 };
-                if filtro != b"DCTDecode" && filtro != b"DCT" {
-                    return false;
-                }
+                let es_jpeg = filtro == b"DCTDecode" || filtro == b"DCT";
+                // Lo que no es JPEG, como PNG sin perder nada si se deja (`png`).
+                let (datos, con_su_mascara) = if es_jpeg {
+                    (datos, false)
+                } else {
+                    match self.como_png(d, &filtro, &datos) {
+                        Some(p) => (p, true),
+                        None => return false,
+                    }
+                };
                 let mut mascara = None;
-                if let Some(v) = en(d, b"SMask") {
+                if let Some(v) = en(d, b"SMask").filter(|_| !con_su_mascara) {
                     let Some(Valor::Flujo(md, mcrudo)) = a.resolver(Some(v)) else {
                         return false;
                     };
@@ -1519,11 +1526,18 @@ impl<'a, 'b> Interprete<'a, 'b> {
                     let Some((fm, dm)) = sin_el_ultimo_filtro(a, &md, &mcrudo) else {
                         return false;
                     };
-                    if fm != b"DCTDecode" && fm != b"DCT" {
-                        return false;
-                    }
+                    // La mascara de un JPEG de Word suele ir en Flate: va
+                    // como PNG en gris, que el visor lee igual.
+                    let (dm, tipo) = if fm == b"DCTDecode" || fm == b"DCT" {
+                        (dm, "image/jpeg")
+                    } else {
+                        match self.como_png(&md, &fm, &dm) {
+                            Some(p) => (p, "image/png"),
+                            None => return false,
+                        }
+                    };
                     self.peso_de_fotos += dm.len();
-                    mascara = Some((Arc::new(dm), "image/jpeg"));
+                    mascara = Some((Arc::new(dm), tipo));
                 }
                 self.peso_de_fotos += datos.len();
                 let sena = self.senas_de_foto.len();
@@ -1545,7 +1559,7 @@ impl<'a, 'b> Interprete<'a, 'b> {
         self.fotos.push(Imagen {
             capa: self.capa_actual(),
             alfa: e.alfa_relleno,
-            tipo: "image/jpeg",
+            tipo: if datos.starts_with(b"\x89PNG") { "image/png" } else { "image/jpeg" },
             datos,
             a: c.vector_x(ux, uy),
             b: c.vector_y(ux, uy),
@@ -1562,6 +1576,106 @@ impl<'a, 'b> Interprete<'a, 'b> {
 
     /// Si la mascara mide lo mismo que su imagen: juntarlas pixel a pixel lo
     /// exige, y estirar aqui seria rasterizar.
+    /// **Una imagen en Flate, como PNG** (ver `crate::png`): 8 bits por
+    /// canal, en gris, color, CMYK (que se pasa a color) o paleta, con su
+    /// transparencia (`/SMask` en Flate y del mismo tamano) ya dentro.
+    /// `filtro` es su ultimo filtro y `datos` lo que queda sin deshacer de
+    /// el. `None` con cualquier otra cosa: la hoja ira como foto.
+    fn como_png(&self, d: &Dicc, filtro: &[u8], datos: &[u8]) -> Option<Vec<u8>> {
+        /// Tope de pixeles de una imagen que se pasa: una de 16 Mpx ya pesa
+        /// mas en la pagina que la foto de la hoja entera.
+        const TOPE_DE_PIXELES: usize = 16_000_000;
+        let a = self.archivo;
+        if filtro != b"FlateDecode" && filtro != b"Fl" || en(d, b"Decode").is_some() {
+            return None;
+        }
+        let lado = |d: &Dicc, k: &[u8]| num(a, en(d, k)).map(|v| v as i64).filter(|v| *v > 0);
+        let (ancho, alto) = (lado(d, b"Width")? as usize, lado(d, b"Height")? as usize);
+        let bits = lado(d, b"BitsPerComponent")? as usize;
+        if ancho * alto > TOPE_DE_PIXELES || !matches!(bits, 1 | 2 | 4 | 8) {
+            return None;
+        }
+        // Sin espacio de color solo puede ser una mascara, que es gris.
+        let espacio = match a.resolver(en(d, b"ColorSpace")) {
+            None => Espacio::Gris,
+            Some(Valor::Nombre(n)) => por_nombre(&String::from_utf8_lossy(&n))?,
+            Some(v @ Valor::Lista(_)) => self.de_la_lista(&v, 0),
+            _ => return None,
+        };
+        let canales = match espacio {
+            Espacio::Gris | Espacio::Indexado(_) => 1,
+            Espacio::Rgb => 3,
+            Espacio::Cmyk => 4,
+            _ => return None,
+        };
+        // Menos de 8 bits (un escaneo en blanco y negro, la silueta de una
+        // figura de Word) solo en gris o con paleta, que es lo que la norma deja.
+        if bits < 8 && canales != 1 {
+            return None;
+        }
+        let pixeles = |d: &Dicc, datos: &[u8], canales: usize, bits: usize| -> Option<Vec<u8>> {
+            let crudo = crate::png::inflar(datos)?;
+            let n = filtros_de(a, d)?.len().saturating_sub(1);
+            let predictor = parametros_de(a, d, n).and_then(|p| entero(en(&p, b"Predictor"))).unwrap_or(1);
+            let fila = (ancho * canales * bits).div_ceil(8);
+            let mut px = if predictor >= 10 {
+                crate::png::desfiltrar(&crudo, fila, (canales * bits / 8).max(1))?
+            } else if predictor <= 1 {
+                crudo
+            } else {
+                return None;
+            };
+            if px.len() < fila * alto {
+                return None;
+            }
+            px.truncate(fila * alto);
+            Some(if bits < 8 { crate::png::a_ocho_bits(&px, ancho, bits, matches!(espacio, Espacio::Indexado(_))) } else { px })
+        };
+        let mut color = pixeles(d, datos, canales, bits)?;
+        let mut canales = canales;
+        let mut paleta: Option<Vec<u8>> = None;
+        match &espacio {
+            Espacio::Cmyk => {
+                color = color
+                    .chunks_exact(4)
+                    .flat_map(|p| {
+                        let c = |i: usize| p[i] as f64 / 255.0;
+                        let v = cmyk(c(0), c(1), c(2), c(3));
+                        [(v >> 16) as u8, (v >> 8) as u8, v as u8]
+                    })
+                    .collect();
+                canales = 3;
+            }
+            Espacio::Indexado(p) => {
+                paleta = Some(p.iter().flat_map(|v| [(*v >> 16) as u8, (*v >> 8) as u8, *v as u8]).collect());
+            }
+            _ => {}
+        }
+        if let Some(m) = en(d, b"SMask") {
+            let Some(Valor::Flujo(md, mcrudo)) = a.resolver(Some(m)) else {
+                return None;
+            };
+            if lado(&md, b"Width") != Some(ancho as i64) || lado(&md, b"Height") != Some(alto as i64) {
+                return None;
+            }
+            if lado(&md, b"BitsPerComponent") != Some(8) || en(&md, b"Decode").is_some() {
+                return None;
+            }
+            let (fm, dm) = sin_el_ultimo_filtro(a, &md, &mcrudo)?;
+            if fm != b"FlateDecode" && fm != b"Fl" {
+                return None;
+            }
+            let alfa = pixeles(&md, &dm, 1, 8)?;
+            if let Some(p) = paleta.take() {
+                color = crate::png::sin_paleta(&color, &p);
+                canales = 3;
+            }
+            color = crate::png::con_alfa(&color, canales, &alfa)?;
+            canales += 1;
+        }
+        crate::png::escribir(ancho as u32, alto as u32, canales as u8, &color, paleta.as_deref())
+    }
+
     fn mismo_tamano(&self, imagen: &Dicc, mascara: &Dicc) -> bool {
         let a = self.archivo;
         let lado = |d: &Dicc, k: &[u8]| num(a, en(d, k)).map(|v| v as i64);
@@ -1755,7 +1869,7 @@ impl<'a, 'b> Interprete<'a, 'b> {
             alto: self.caja.alto(),
             capas: self.capas,
             brochas,
-            textos: self.textos,
+            textos: juntar_renglones(self.textos),
             fotos: self.fotos,
             sin_entender: self.sin_entender,
             cortado: self.cortado,
@@ -2237,6 +2351,17 @@ impl Fuente {
         if let Some(Valor::Dicc(e)) = &enc {
             leer_diferencias(a, e, &mut a_texto);
         }
+        // **MacRoman** (Android v0.98.0): de 128 en adelante no es Latin-1;
+        // sin esto la «fi» de un articulo hecho en Mac salia «Þ» y el Ctrl+F
+        // de la pagina web no encontraba «defined». Solo donde no hayan
+        // dicho nada el `ToUnicode` ni las `Differences`.
+        if !tipo0 && crate::texto::es_mac_roman(a, d) {
+            for b in 128u8..=255 {
+                if let Some(t) = crate::texto::mac_roman(b) {
+                    a_texto.entry(u32::from(b)).or_insert_with(|| t.to_string());
+                }
+            }
+        }
         let minus = base.to_lowercase();
         // **Las estrechas se reconocen y se dicen**: un cajetin las usa a
         // mansalva, y sustituidas por una normal la letra sale aplastada.
@@ -2422,3 +2547,69 @@ fn de_nombre_de_glifo(n: &str) -> Option<String> {
 #[cfg(test)]
 #[path = "plano/pruebas.rs"]
 pub(crate) mod pruebas;
+
+/// Hasta que hueco (en emes) dos trozos seguidos de un renglon son de la
+/// misma frase. Un espacio ronda un cuarto de eme, y en un parrafo
+/// justificado se estira hasta media; a partir de casi una eme ya es otra
+/// cosa (una columna, un tabulador, una cota al lado).
+const HUECO_DE_LA_MISMA_FRASE: f64 = 0.8;
+/// Desde que hueco se pone un espacio entre los dos trozos: el
+/// interletrado de Word (`[(B)20(e)-15(ne)] TJ`) mueve centesimas de eme.
+const HUECO_DE_UN_ESPACIO: f64 = 0.12;
+
+/// **Los trozos de un mismo renglon, juntos.** Word y los procesadores de
+/// texto escriben cada palabra en trozos para ajustar el interletrado
+/// (`[(B)20(e)-15(ne)] TJ`), y cada trozo salia como un rotulo aparte: la
+/// pagina web se veia igual, pero el Ctrl+F del navegador no encontraba
+/// «Beneficios» porque no estaba escrita entera en ningun sitio. Se juntan
+/// los seguidos que van en la misma direccion, con la misma letra y el mismo
+/// color, y cuyo hueco es de interletrado o de espacio; el rotulo junto
+/// ocupa del principio del primero al final del ultimo, que es lo que el
+/// visor estira.
+fn juntar_renglones(textos: Vec<Texto>) -> Vec<Texto> {
+    let mut salida: Vec<Texto> = Vec::with_capacity(textos.len());
+    for t in textos {
+        if let Some(p) = salida.last_mut()
+            && let Some(hueco) = hueco_entre(p, &t)
+        {
+            let espacio = hueco > HUECO_DE_UN_ESPACIO
+                && !p.texto.ends_with(char::is_whitespace)
+                && !t.texto.starts_with(char::is_whitespace);
+            if espacio {
+                p.texto.push(' ');
+            }
+            p.texto.push_str(&t.texto);
+            p.ancho += hueco + t.ancho;
+            continue;
+        }
+        salida.push(t);
+    }
+    salida
+}
+
+/// El hueco en emes entre el final de `p` y el principio de `t` si `t` sigue
+/// a `p` en su renglon; `None` si no es de la misma frase.
+fn hueco_entre(p: &Texto, t: &Texto) -> Option<f64> {
+    let misma_letra = p.capa == t.capa
+        && p.color == t.color
+        && (p.alfa - t.alfa).abs() < 1e-3
+        && p.familia == t.familia
+        && p.negrita == t.negrita
+        && p.cursiva == t.cursiva;
+    let eme2 = p.a * p.a + p.b * p.b;
+    if !misma_letra || eme2 < 1e-6 {
+        return None;
+    }
+    let tol = 1e-3 * eme2.sqrt();
+    let igual = |x: f64, y: f64| (x - y).abs() <= tol;
+    if !(igual(p.a, t.a) && igual(p.b, t.b) && igual(p.c, t.c) && igual(p.d, t.d)) {
+        return None;
+    }
+    // Del final de `p` al principio de `t`, a lo largo del renglon y de
+    // traves, en emes.
+    let (fx, fy) = (p.x + p.a * p.ancho, p.y + p.b * p.ancho);
+    let (gx, gy) = (t.x - fx, t.y - fy);
+    let largo = (gx * p.a + gy * p.b) / eme2;
+    let traves = (gy * p.a - gx * p.b) / eme2;
+    (traves.abs() < 0.2 && largo > -0.3 && largo < HUECO_DE_LA_MISMA_FRASE).then_some(largo)
+}

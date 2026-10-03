@@ -108,6 +108,10 @@ pub enum Evento {
     /// Otra copia del programa recibio ficheros («Abrir con», o arrastrar
     /// sobre el icono) y nos los pasa, porque solo puede correr una.
     AbrirFicheros(Vec<std::path::PathBuf>),
+    /// Otro programa pide algo (`docs/protocolo-pedidos.md`): el JSON del
+    /// pedido, ya mirado por encima (`mensajero::validar_pedido`). Lo
+    /// interpreta y lo hace la aplicacion, en su bucle.
+    Pedido(String),
 }
 
 /// Que hacer despues de atender un evento.
@@ -268,6 +272,20 @@ extern "system" fn procedimiento(
         WM_HOTKEY => Some(Evento::Atajo(wparam.0 as u32)),
         // Ficheros que nos manda una segunda copia antes de irse.
         WM_COPYDATA => {
+            // Un pedido de otro programa. Se contesta en el acto (1, 2 o 3)
+            // y el trabajo queda para el bucle: quien manda esta parado en
+            // su SendMessage hasta que volvamos.
+            // SAFETY: dentro del procesamiento del mensaje, con la
+            // estructura viva; la funcion copia el texto y no guarda nada.
+            if let Some(leido) = unsafe { crate::mensajero::pedido_de_copydata(lparam) } {
+                return match leido {
+                    Ok(json) => {
+                        PENDIENTES.with(|p| p.borrow_mut().push(Evento::Pedido(json)));
+                        LRESULT(crate::mensajero::respuesta::ACEPTADO)
+                    }
+                    Err(rechazo) => LRESULT(rechazo),
+                };
+            }
             // SAFETY: estamos DENTRO del procesamiento del mensaje, que es
             // exactamente cuando Windows garantiza que la estructura sigue
             // viva. La funcion copia lo que necesita y no guarda el puntero.
@@ -420,6 +438,36 @@ pub fn tomar_atajos_pendientes() -> Vec<u32> {
 mod pruebas {
     use super::*;
     use windows::Win32::UI::WindowsAndMessaging::IsWindow;
+
+    /// Un pedido de verdad, por `WM_COPYDATA`, a una ventana de mensajes de
+    /// la prueba: contesta en el acto y deja el JSON en la cola del hilo.
+    ///
+    /// Se manda con `enviar_pedido_a` a la ventana PROPIA y no con
+    /// `enviar_pedido`, que busca por la clase: con la PixPin del usuario
+    /// abierta, la prueba le escribiria en el chat.
+    #[test]
+    fn un_pedido_llega_por_copydata_y_queda_en_la_cola() {
+        use crate::mensajero::{enviar_pedido_a, respuesta};
+        let v = VentanaMensajes::nueva().expect("deberia poder crearse");
+        // Lo que hubiera de otra prueba en este hilo no cuenta.
+        PENDIENTES.with(|p| p.borrow_mut().clear());
+
+        let bueno = r#"{"pixpin":1,"accion":"chat","texto":"hola ñu"}"#;
+        assert_eq!(enviar_pedido_a(v.handle(), bueno), respuesta::ACEPTADO);
+        // Casos negativos: se rechazan en el acto y NO llegan al bucle.
+        assert_eq!(
+            enviar_pedido_a(v.handle(), r#"{"pixpin":9,"accion":"chat"}"#),
+            respuesta::VERSION_NO
+        );
+        assert_eq!(
+            enviar_pedido_a(v.handle(), r#"{"pixpin":1,"accion":"nada"}"#),
+            respuesta::NO_SE_ENTIENDE
+        );
+        assert_eq!(enviar_pedido_a(v.handle(), "{roto"), respuesta::NO_SE_ENTIENDE);
+
+        let en_cola: Vec<Evento> = PENDIENTES.with(|p| p.borrow_mut().drain(..).collect());
+        assert_eq!(en_cola, vec![Evento::Pedido(bueno.to_string())]);
+    }
 
     #[test]
     fn se_crea_y_se_destruye_sin_fugas() {
