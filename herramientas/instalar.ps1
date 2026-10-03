@@ -16,6 +16,12 @@
 #
 # Los datos no se mueven: sin pixpinmax.toml junto al .exe la app va en modo
 # instalado y guarda todo en %APPDATA%\PixPinMax.
+#
+# Y si esta Flow Launcher (%APPDATA%\FlowLauncher\Plugins), pone al dia su
+# plugin `pp` (apps/pixpin-lanzador): compila pixpin-lanzador.exe en la misma
+# carpeta, lo copia con plugin.json e Images\ a Plugins\PixPin Max\ (quitando
+# cualquier otra carpeta con el mismo ID: con dos, Flow no carga ninguna) y,
+# si Flow estaba abierto, lo reinicia para que lo cargue.
 
 param([string]$Origen)
 
@@ -27,7 +33,9 @@ $compresor = 'pixpin-aligerar.exe'
 
 if (-not $Origen) {
     # La mas nueva de todas las carpetas de compilacion (release, entrega-N...).
-    $Origen = Get-ChildItem (Join-Path $repo 'target') -Directory |
+    # `target\release` es la de `cargo build --release` a secas; las demas,
+    # `target\<carpeta>\release` (CARGO_TARGET_DIR = target\<carpeta>).
+    $Origen = @((Get-Item (Join-Path $repo 'target'))) + @(Get-ChildItem (Join-Path $repo 'target') -Directory) |
         ForEach-Object { Join-Path $_.FullName 'release\pixpinmax.exe' } |
         Where-Object { Test-Path $_ } |
         Sort-Object { (Get-Item $_).LastWriteTime } -Descending |
@@ -62,6 +70,99 @@ if (-not (Test-Path $origenCompresor) -or $viejo) {
 if (-not (Test-Path $origenCompresor)) {
     Write-Warning "Falta $origenCompresor : se instala pixpinmax.exe solo y los PDF se aligeran con el plan B"
     $origenCompresor = $null
+}
+
+# El plugin de Flow Launcher, de la MISMA carpeta de compilacion. Se compila
+# si falta o si es mas viejo que pixpinmax.exe o que sus propias fuentes.
+$lanzador = 'pixpin-lanzador.exe'
+$fuenteLanzador = Join-Path $repo 'apps\pixpin-lanzador'
+$pluginsFlow = Join-Path $env:APPDATA 'FlowLauncher\Plugins'
+$origenLanzador = Join-Path $origenDir $lanzador
+if (Test-Path $pluginsFlow) {
+    $fuentesNuevas = Get-ChildItem $fuenteLanzador -Recurse -File |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $viejoLanzador = (Test-Path $origenLanzador) -and (
+        ((Get-Item $origenLanzador).LastWriteTime -lt (Get-Item $Origen).LastWriteTime.AddHours(-1)) -or
+        ($fuentesNuevas -and (Get-Item $origenLanzador).LastWriteTime -lt $fuentesNuevas.LastWriteTime))
+    if (-not (Test-Path $origenLanzador) -or $viejoLanzador) {
+        Write-Host "Compilando $lanzador en $(Split-Path -Parent $origenDir)..."
+        $antes = $env:CARGO_TARGET_DIR
+        try {
+            $env:CARGO_TARGET_DIR = Split-Path -Parent $origenDir
+            $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+            Push-Location $repo
+            & cargo build --release -p pixpin-lanzador
+        } catch {
+            Write-Warning "No se pudo compilar ${lanzador}: $_"
+        } finally {
+            Pop-Location
+            $env:CARGO_TARGET_DIR = $antes
+        }
+    }
+}
+
+function Instalar-PluginFlow {
+    # Sin Flow, o sin el exe compilado, no hay nada que hacer.
+    if (-not (Test-Path $pluginsFlow)) { return }
+    if (-not (Test-Path $origenLanzador)) {
+        Write-Warning "Falta $origenLanzador : no se instala el plugin de Flow Launcher"
+        return
+    }
+    $fuente = Join-Path $fuenteLanzador 'plugin'
+    $id = (Get-Content (Join-Path $fuente 'plugin.json') -Raw | ConvertFrom-Json).ID
+    $destinoPlugin = Join-Path $pluginsFlow 'PixPin Max'
+    # Todas las carpetas con nuestro ID, se llamen como se llamen.
+    $mismas = @(Get-ChildItem $pluginsFlow -Directory | Where-Object {
+        $pj = Join-Path $_.FullName 'plugin.json'
+        try { (Test-Path $pj) -and ((Get-Content $pj -Raw | ConvertFrom-Json).ID -eq $id) } catch { $false }
+    })
+    $pares = @(
+        @{ De = $origenLanzador; A = (Join-Path $destinoPlugin $lanzador) },
+        @{ De = (Join-Path $fuente 'plugin.json'); A = (Join-Path $destinoPlugin 'plugin.json') }
+    )
+    Get-ChildItem (Join-Path $fuente 'Images') -File -ErrorAction SilentlyContinue | ForEach-Object {
+        $pares += @{ De = $_.FullName; A = (Join-Path $destinoPlugin "Images\$($_.Name)") }
+    }
+    $alDia = ($mismas.Count -eq 1) -and ($mismas[0].FullName -eq $destinoPlugin)
+    foreach ($p in $pares) {
+        if (-not ((Test-Path $p.A) -and ((Get-FileHash $p.A).Hash -eq (Get-FileHash $p.De).Hash))) { $alDia = $false }
+    }
+    if ($alDia) { Write-Host "El plugin de Flow Launcher ya esta al dia: $destinoPlugin"; return }
+
+    # Flow tiene el exe abierto (y lo mata con su Job al cerrarse).
+    $flow = @(Get-Process Flow.Launcher -ErrorAction SilentlyContinue)
+    if ($flow.Count -gt 0) {
+        $flow | Stop-Process -Force
+        for ($i = 0; $i -lt 25 -and (Get-Process Flow.Launcher -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 200 }
+    }
+    Get-Process pixpin-lanzador -ErrorAction SilentlyContinue | Stop-Process -Force
+    $carpetas = @($mismas | ForEach-Object { $_.FullName }) + @($destinoPlugin) | Select-Object -Unique
+    foreach ($c in $carpetas) {
+        for ($i = 0; $i -lt 20 -and (Test-Path $c); $i++) {
+            try { Remove-Item $c -Recurse -Force -ErrorAction Stop } catch { Start-Sleep -Milliseconds 500 }
+        }
+        if (Test-Path $c) { Write-Warning "No se pudo quitar $c (sigue en uso)" }
+    }
+    try {
+        New-Item -ItemType Directory -Force (Join-Path $destinoPlugin 'Images') | Out-Null
+        foreach ($p in $pares) { Copy-Item $p.De $p.A -Force -ErrorAction Stop }
+        Write-Host "Plugin de Flow Launcher instalado: $destinoPlugin (escribe p)"
+    } catch {
+        Write-Warning "No se pudo instalar el plugin de Flow Launcher: $_"
+    }
+    # La palabra clave guardada en los ajustes de Flow manda sobre la de
+    # plugin.json: se pone al dia con Flow cerrado (ya lo esta aqui).
+    if (-not (Get-Process Flow.Launcher -ErrorAction SilentlyContinue)) {
+        $palabra = Join-Path $repo 'apps\pixpin-lanzador\instalar-palabra-clave.ps1'
+        if (Test-Path $palabra) {
+            & powershell -NoProfile -ExecutionPolicy Bypass -File $palabra
+            if ($LASTEXITCODE -ne 0) { Write-Warning "No se pudo poner la palabra clave p en Flow (salida $LASTEXITCODE)" }
+        }
+    }
+    if ($flow.Count -gt 0) {
+        $exeFlow = Join-Path $env:LOCALAPPDATA 'FlowLauncher\Flow.Launcher.exe'
+        if (Test-Path $exeFlow) { Start-Process $exeFlow; Write-Host "Flow Launcher reiniciado" }
+    }
 }
 
 # Pares origen -> destino que hay que copiar.
@@ -103,6 +204,10 @@ function Cerrar-Compresor {
     }
     Get-Process pixpin-aligerar -ErrorAction SilentlyContinue | Stop-Process -Force
 }
+
+# El plugin de Flow va aparte de la app: se pone al dia aunque PixPin ya sea
+# la ultima, y un fallo suyo no impide instalar PixPin.
+try { Instalar-PluginFlow } catch { Write-Warning "Plugin de Flow Launcher: $_" }
 
 $corriendo = Get-Process pixpinmax -ErrorAction SilentlyContinue
 $yaEsLaBuena = $igual -and $corriendo -and

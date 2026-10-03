@@ -1,0 +1,26 @@
+# El plugin de Flow Launcher de PixPin Max (`pp`), en su propio ejecutable.
+#
+# Flow lo mantiene vivo todo el tiempo y le habla JSON-RPC por stdin/stdout
+# (`Executable_V2`), asi que tiene que ser pequeno y no cargar nada de la app:
+# lee el disco de PixPin con sus propios structs de solo lectura y, para
+# cambiar algo, le manda un pedido a la app (docs/protocolo-pedidos.md). Por
+# eso no depende de pixpin-proyecto ni de pixpin-shell: arrastrarian D3D, zip y
+# un crate `windows` de cuarenta features para leer tres JSON.
+[package]
+name = "pixpin-lanzador"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "pixpin-lanzador"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_DataExchange", "Win32_System_Time"] }
