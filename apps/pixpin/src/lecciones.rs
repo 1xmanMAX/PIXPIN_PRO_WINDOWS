@@ -23,7 +23,7 @@ pub mod almacen;
 mod dictar;
 pub mod ficha;
 pub mod lista;
-mod ui;
+pub(crate) mod ui;
 
 use pixpin_lecciones::buscador;
 use pixpin_store::{Idioma, Ubicacion};

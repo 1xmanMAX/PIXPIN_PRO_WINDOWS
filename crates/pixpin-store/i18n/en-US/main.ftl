@@ -2046,3 +2046,20 @@ bandeja2-borrada = Moved to the bin
 bandeja2-devuelta = Restored
 bandeja2-deshacer = Undo
 bandeja2-no-se-pudo = Couldn't do it: { $motivo }
+
+## tareas-v3
+tareas3-buscar = Search tasks, their lists and chats… ("today", "yesterday")
+tareas3-encontradas = { $n ->
+    [one] 1 task found
+   *[other] { $n } tasks found
+  }
+tareas3-pendientes = { $n ->
+    [0] nothing pending
+    [one] 1 pending
+   *[other] { $n } pending
+  }
+tareas3-sin-resultados = Nothing matches "{ $busqueda }"
+tareas3-sin-resultados-pista = Searches each task's text and the name of its list and chat, ignoring accents and case. Try fewer words, or "today" or "yesterday".
+tareas3-vaciar-busqueda = Clear search
+tareas3-mover-intro = move
+tareas3-mover-esc = close

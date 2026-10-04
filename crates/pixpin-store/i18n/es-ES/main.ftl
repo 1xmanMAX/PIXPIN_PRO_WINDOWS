@@ -2047,3 +2047,20 @@ bandeja2-borrada = A la papelera
 bandeja2-devuelta = Devuelta
 bandeja2-deshacer = Deshacer
 bandeja2-no-se-pudo = No se pudo: { $motivo }
+
+## tareas-v3
+tareas3-buscar = Busca en las tareas, sus listas y chats… («hoy», «ayer»)
+tareas3-encontradas = { $n ->
+    [one] 1 tarea encontrada
+   *[other] { $n } tareas encontradas
+  }
+tareas3-pendientes = { $n ->
+    [0] nada pendiente
+    [one] 1 pendiente
+   *[other] { $n } pendientes
+  }
+tareas3-sin-resultados = Nada coincide con «{ $busqueda }»
+tareas3-sin-resultados-pista = Se busca en el texto de cada tarea y en el nombre de su lista y de su chat, sin mirar tildes ni mayúsculas. Prueba con menos palabras, o con «hoy» o «ayer».
+tareas3-vaciar-busqueda = Vaciar la búsqueda
+tareas3-mover-intro = mover
+tareas3-mover-esc = cerrar

@@ -1,13 +1,25 @@
-//! La ventana de Tareas: arriba la caja para apuntar en «Mensajes
-//! guardados», y debajo una tarjeta por lista con lo pendiente y, plegado,
-//! lo hecho.
+//! La ventana de Tareas (tareas-v3): arriba del todo el buscador, debajo la
+//! caja para apuntar en el Inbox de «Mensajes guardados», y debajo las
+//! tareas, **una tarjeta por tarea**, agrupadas por su lista con un
+//! encabezado (la lista · su chat · cuantas quedan): lo pendiente primero y,
+//! plegado en «Hechas (N)», lo hecho, atenuado y tachado.
 //!
-//! Cada fila es como la del movil (`DeTareas` de `MiniActivity.kt`) y la del
-//! panel del chat: la casilla, el texto (tachado y gris si esta hecha) y a la
-//! derecha, pequeno y gris, cuantos dias lleva. **La casilla es lo unico que
-//! tacha**, como alli. Lo que se acaba de tachar se queda unos segundos en su
-//! sitio antes de irse a «Hechas»: un clic sin querer se deshace con otro en
-//! el mismo sitio.
+//! Cada tarjeta es como la fila del movil (`DeTareas` de `MiniActivity.kt`)
+//! y la del panel del chat, en grande: la casilla, el texto entero en los
+//! renglones que haga falta, sus imagenes y cuantos dias lleva. **La casilla
+//! es lo unico que tacha**, como alli. Lo que se acaba de tachar se queda
+//! unos segundos en su sitio antes de irse a «Hechas»: un clic sin querer se
+//! deshace con otro en el mismo sitio.
+//!
+//! **Buscar** filtra al instante las tareas de todas las listas (ver
+//! [`super::tarjetas`]); buscando, cada tarjeta lleva la chapita de su lista
+//! y su chat, porque los grupos se mezclan, y lo hecho que coincide se ve.
+//!
+//! **Teclado**: Ctrl+F al buscador; Tab da la vuelta buscador, caja,
+//! tarjetas; las flechas pasan de tarjeta en tarjeta, Espacio marca la del
+//! foco e Intro abre su «Mover a…» (y en la eleccion, las flechas eligen e
+//! Intro mueve). Esc va por capas: cierra la eleccion, vacia lo escrito,
+//! vacia la busqueda y, por ultimo, cierra la ventana.
 //!
 //! Una sola ventana, en su propio hilo, como la galeria de capturas. Se pone
 //! al dia sola mirando cada segundo la huella de los cuadernos
@@ -29,45 +41,67 @@ use pixpin_render::{Color, Pintor, RectF, Superficie};
 use pixpin_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pixpin_store::{Catalogo, Idioma, Ubicacion};
 
-use super::{Fila, Lista};
+use super::{Fila, Lista, tarjetas};
 use crate::caja_dibujo::hex;
+use crate::lecciones::ui;
 use crate::overlay::Recursos;
-use crate::ventanita::{APAGADO, Botones, CRISTAL, FONDO, TEXTO, centrado, dentro};
+use crate::ventanita::{Botones, TEXTO, centrado, dentro};
 
-/// El acento: el azul del boton de enviar del chat (tema oscuro), el mismo
-/// que lleva la casilla marcada del panel de tareas.
-const ACENTO: Color = hex(0x5288c1);
-/// Fondo de una fila o boton con el raton encima.
-const ENCIMA: Color = hex(0x2e2e36);
-/// El carril de la barra de avance.
-const CARRIL: Color = hex(0x3a3a44);
+// Los colores del rediseno v2 (los de la galeria y las lecciones). Como las
+// demas ventanitas, la de tareas es oscura: no tiene tema claro.
+const FONDO_V: Color = hex(0x1C1C1E);
+const TEXTO_V: Color = hex(0xF5F5F7);
+const GRIS: Color = hex(0x98989D);
+/// Lo elegido y el foco.
+const AZUL_V: Color = hex(0x0A84FF);
+/// Lo buscado, resaltado en el texto de la tarea.
+const RESALTE: Color = Color {
+    a: 0.38,
+    ..hex(0xB38F00)
+};
 /// La ficha `[img 01]` de una imagen pegada: letra azul clara sobre el
-/// acento muy aguado, para que se vea que no es texto.
+/// azul muy aguado, para que se vea que no es texto.
 const FICHA_LETRA: Color = hex(0x9cc4f0);
-const FICHA_FONDO: Color = Color { a: 0.24, ..ACENTO };
-/// Lado de la miniatura de una imagen de tarea, en la fila.
-const MINI: f32 = 28.0;
+const FICHA_FONDO: Color = Color { a: 0.24, ..AZUL_V };
+/// Lado de la miniatura de una imagen de tarea, en su tarjeta.
+const MINI: f32 = 48.0;
 /// Lado mayor de la vista de una ficha con el raton encima.
 const VISTA: f32 = 160.0;
 
 const VK_RETROCESO: u32 = 0x08;
+const VK_TAB: u32 = 0x09;
 const VK_ENTRAR: u32 = 0x0D;
 const VK_ESCAPE: u32 = 0x1B;
+const VK_ESPACIO: u32 = 0x20;
 const VK_FIN: u32 = 0x23;
 const VK_INICIO: u32 = 0x24;
 const VK_IZQUIERDA: u32 = 0x25;
+const VK_ARRIBA: u32 = 0x26;
 const VK_DERECHA: u32 = 0x27;
+const VK_ABAJO: u32 = 0x28;
 const VK_SUPRIMIR: u32 = 0x2E;
+const VK_F: u32 = 0x46;
 const VK_V: u32 = 0x56;
 
+/// El tamano de la ventana, en pixeles logicos.
+const ANCHO_VENTANA: u32 = 660;
+const ALTO_VENTANA: u32 = 800;
+
 /// Medidas, en pixeles logicos.
-const CABECERA: f32 = 64.0;
+const CABECERA: f32 = 56.0;
 const CAJA: f32 = 44.0;
 const MARGEN: f32 = 16.0;
-const RELLENO: f32 = 12.0;
+/// Lo que baja la rueda por muesca, en «filas» de este alto (x1,5).
 const FILA: f32 = 36.0;
-const PLIEGUE: f32 = 32.0;
-const HUECO: f32 = 10.0;
+const ENCABEZADO: f32 = 40.0;
+const PLIEGUE: f32 = 40.0;
+const HUECO: f32 = 8.0;
+const ENTRE_GRUPOS: f32 = 18.0;
+/// El objetivo de la casilla (el dibujo, de 24, va en medio).
+const CASILLA: f32 = 40.0;
+const TARJETA_MIN: f32 = 56.0;
+/// La letra del texto de una tarea.
+const TAM_TAREA: f32 = 15.0;
 
 /// Cuanto se queda arriba, tachada, una tarea recien marcada.
 const SE_QUEDA: Duration = Duration::from_secs(5);
@@ -408,6 +442,14 @@ enum Accion {
     Cerrar,
     Fondo,
     Apuntar,
+    /// Pulsar el buscador: el foco a el.
+    EnfocarBuscar,
+    /// Pulsar la caja de apuntar: el foco a ella.
+    EnfocarApuntar,
+    /// La ✕ del buscador (o el boton del estado vacio de la busqueda).
+    VaciarBusqueda,
+    /// Pulsar una tarjeta fuera de sus botones: el foco a ella.
+    Enfocar(usize, usize),
     /// La casilla de la tarea `.1` (su `Fila::indice`, que es tambien su
     /// sitio en `Lista::filas`) de la lista `.0`.
     Marcar(usize, usize),
@@ -421,9 +463,20 @@ enum Accion {
     Destino(usize),
     /// Cerrar la eleccion del grupo sin mover nada.
     SoltarMenu,
-    /// La imagen `.2` de la tarea `.1` de la lista `.0`: sacarla a la
-    /// pantalla como pin, como «Sacar a la pantalla» del chat.
+    /// La imagen `.2` de la tarea `.1` de la lista `.0`: pinearla, como
+    /// «Pinear» del chat.
     Imagen(usize, usize, usize),
+}
+
+/// Donde va lo que se teclea.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Foco {
+    Buscar,
+    /// La caja de apuntar: el foco al abrir, como siempre.
+    Apuntar,
+    /// La tarjeta de la tarea `.1` de la lista `.0`: Espacio la marca, Intro
+    /// abre «Mover a…».
+    Tarjeta(usize, usize),
 }
 
 struct Estado {
@@ -436,12 +489,17 @@ struct Estado {
     /// La tarea del Inbox que se esta repartiendo (lista y `Fila::indice`),
     /// con la eleccion del grupo abierta encima.
     repartiendo: Option<(usize, usize)>,
+    /// El renglon de la eleccion del grupo que eligen las flechas.
+    destino_elegido: usize,
     /// Los chats que se miraron, para la huella.
     proyectos: Vec<String>,
     firma: Vec<Option<(SystemTime, u64)>>,
     campo: Campo,
+    /// Lo que se busca (una linea; Ctrl+V solo pega texto).
+    buscar: ui::Campo,
+    foco: Foco,
     /// Las listas con las hechas a la vista (por su clave). Empiezan todas
-    /// plegadas.
+    /// plegadas; buscando se abren todas, para ver lo encontrado.
     abiertas: HashSet<String>,
     /// Las recien tachadas (clave de la lista y texto crudo) y cuando: se
     /// quedan arriba hasta [`SE_QUEDA`].
@@ -449,6 +507,14 @@ struct Estado {
     hoy: pixpin_proyecto::mini::Fecha,
     scroll: f32,
     alto_contenido: f32,
+    /// Lo colocado en el ultimo fotograma (desde lo alto del contenido): por
+    /// donde van las flechas y que hay bajo el raton.
+    colocadas: Vec<tarjetas::Colocada>,
+    /// La pieza bajo el raton en el ultimo fotograma.
+    encima: Option<tarjetas::Pieza>,
+    /// Desplazar en el proximo fotograma lo justo para ver la tarjeta con
+    /// el foco (se movio con las flechas).
+    seguir_foco: bool,
     botones: Botones<Accion>,
     aviso: Option<(String, Instant)>,
     /// Arrastrando la ventana por su cabecera: donde se pulso, en pantalla,
@@ -470,14 +536,20 @@ impl Estado {
             listas: Vec::new(),
             destinos: Vec::new(),
             repartiendo: None,
+            destino_elegido: 0,
             proyectos: Vec::new(),
             firma: Vec::new(),
             campo: Campo::default(),
+            buscar: ui::Campo::default(),
+            foco: Foco::Apuntar,
             abiertas: HashSet::new(),
             recien: HashMap::new(),
             hoy: super::hoy(),
             scroll: 0.0,
             alto_contenido: 0.0,
+            colocadas: Vec::new(),
+            encima: None,
+            seguir_foco: false,
             botones: Botones::default(),
             aviso: None,
             moviendo: None,
@@ -516,7 +588,22 @@ impl Estado {
             .filter(|l| !super::es_inbox(l))
             .cloned()
             .collect();
+        // La tarea con el foco, por lo que es y no por su numero: releida,
+        // puede estar en otro sitio.
+        let con_foco = match self.foco {
+            Foco::Tarjeta(li, fi) => self
+                .listas
+                .get(li)
+                .and_then(|l| Some((l.clave(), l.filas.get(fi)?.crudo.clone()))),
+            _ => None,
+        };
         self.listas = todas.into_iter().filter(|l| !l.filas.is_empty()).collect();
+        if let Some((clave, crudo)) = con_foco {
+            self.foco = match tarjetas::reubicar(&self.listas, &clave, &crudo) {
+                Some((li, fi)) => Foco::Tarjeta(li, fi),
+                None => Foco::Apuntar,
+            };
+        }
         // Releida, la tarea que se repartia puede estar en otro sitio.
         self.repartiendo = None;
         self.proyectos = proyectos;
@@ -527,8 +614,19 @@ impl Estado {
         self.aviso = Some((t, Instant::now()));
     }
 
-    fn sigue_arriba(&self, lista: &Lista, f: &Fila) -> bool {
-        self.recien.contains_key(&(lista.clave(), f.crudo.clone()))
+    fn buscando(&self) -> bool {
+        !self.buscar.texto.trim().is_empty()
+    }
+
+    fn fila(&self, li: usize, fi: usize) -> Option<(&Lista, &Fila)> {
+        let l = self.listas.get(li)?;
+        Some((l, l.filas.get(fi)?))
+    }
+
+    /// Si la tarea tiene «Mover a…»: lo pendiente del Inbox.
+    fn se_reparte(&self, li: usize, fi: usize) -> bool {
+        self.fila(li, fi)
+            .is_some_and(|(l, f)| super::es_inbox(l) && !f.hecha)
     }
 
     /// Donde esta la imagen `k` de la tarea `f` de la lista `l`.
@@ -546,6 +644,12 @@ impl Estado {
         v.extend(self.rutas.values().flatten().cloned());
         v
     }
+
+    fn vaciar_busqueda(&mut self) {
+        self.buscar.poner("");
+        self.scroll = 0.0;
+        self.seguir_foco = true;
+    }
 }
 
 fn bucle(
@@ -561,7 +665,12 @@ fn bucle(
         .context("sin monitor")?
         .to_owned();
     let escala = monitor.escala_por_cien as f32 / 100.0;
-    let mut marco = centrado(monitor.area_trabajo, 620, 760, monitor.escala_por_cien);
+    let mut marco = centrado(
+        monitor.area_trabajo,
+        ANCHO_VENTANA,
+        ALTO_VENTANA,
+        monitor.escala_por_cien,
+    );
     let mut ventana = VentanaOverlay::nueva_normal(marco, &textos.t("tareas-titulo"))
         .context("no se pudo abrir la ventana de tareas")?;
     let motor = recursos.motor();
@@ -622,37 +731,10 @@ fn bucle(
                 }
                 // La rueda llega en 120 por muesca (y en trozos desde un panel tactil).
                 EventoOverlay::Rueda(m) => e.scroll -= m as f32 / 120.0 * FILA * 1.5 * escala,
-                // Lo que se escribe va siempre a la caja de apuntar.
-                EventoOverlay::Caracter(c) => {
-                    e.campo.letra(c);
-                }
-                EventoOverlay::Tecla { vk: VK_ESCAPE, .. } if e.repartiendo.is_some() => {
-                    e.repartiendo = None;
-                }
-                EventoOverlay::Tecla { vk: VK_ESCAPE, .. } => {
-                    if e.campo.texto.is_empty() {
-                        vivo = false;
-                    } else {
-                        e.campo.vaciar();
-                    }
-                }
-                EventoOverlay::Tecla { vk: VK_ENTRAR, .. } => {
-                    vivo = hacer(&mut e, Accion::Apuntar, textos, ubicacion, aparato);
-                }
-                EventoOverlay::Tecla { vk, ctrl, .. } => {
-                    e.campo.tecla(vk, ctrl);
-                    if let Some(clave) = e.campo.aviso.take() {
-                        let aviso = match e.campo.aviso_ficha.take() {
-                            Some(ficha) => {
-                                let mut args = fluent_bundle::FluentArgs::new();
-                                args.set("ficha", ficha);
-                                textos.t_args(clave, &args)
-                            }
-                            None => textos.t(clave),
-                        };
-                        e.decir(aviso);
-                    }
-                }
+                EventoOverlay::Caracter(c) => letra(&mut e, c),
+                EventoOverlay::Tecla {
+                    vk, ctrl, shift, ..
+                } => vivo = tecla(&mut e, vk, ctrl, shift, textos, ubicacion, aparato),
                 _ => {}
             }
         }
@@ -719,6 +801,154 @@ fn bucle(
     Ok(())
 }
 
+/// Una letra escrita (`WM_CHAR`): a la caja con el foco. Con el foco en una
+/// tarjeta, el blanco es el de Espacio (ya marco) y se traga; lo demas va al
+/// buscador si se esta buscando y si no a la caja de apuntar, como siempre.
+fn letra(e: &mut Estado, c: char) {
+    match e.foco {
+        Foco::Buscar => {
+            if e.buscar.letra(c) {
+                e.scroll = 0.0;
+            }
+        }
+        Foco::Apuntar => {
+            e.campo.letra(c);
+        }
+        Foco::Tarjeta(..) if c == ' ' || c.is_control() => {}
+        Foco::Tarjeta(..) if e.buscando() => {
+            e.foco = Foco::Buscar;
+            e.buscar.cursor = e.buscar.texto.len();
+            e.buscar.letra(c);
+            e.scroll = 0.0;
+        }
+        Foco::Tarjeta(..) => {
+            e.foco = Foco::Apuntar;
+            e.campo.letra(c);
+        }
+    }
+}
+
+/// Una tecla (`WM_KEYDOWN`). Devuelve si la ventana sigue.
+#[allow(clippy::too_many_arguments)] // estado, tecla, modificadores, textos y donde escribir
+fn tecla(
+    e: &mut Estado,
+    vk: u32,
+    ctrl: bool,
+    shift: bool,
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+    aparato: &str,
+) -> bool {
+    // Con la eleccion del grupo abierta, las teclas son suyas.
+    if e.repartiendo.is_some() {
+        match vk {
+            VK_ESCAPE => e.repartiendo = None,
+            VK_ARRIBA => e.destino_elegido = e.destino_elegido.saturating_sub(1),
+            VK_ABAJO => {
+                e.destino_elegido = (e.destino_elegido + 1).min(e.destinos.len().saturating_sub(1))
+            }
+            VK_ENTRAR if !e.destinos.is_empty() => {
+                let d = e.destino_elegido.min(e.destinos.len() - 1);
+                return hacer(e, Accion::Destino(d), textos, ubicacion, aparato);
+            }
+            _ => {}
+        }
+        return true;
+    }
+    let orden = tarjetas::en_orden(&e.colocadas);
+    let buscando = e.buscando();
+    let a_tarjeta = |e: &mut Estado, t: Option<(usize, usize)>| {
+        if let Some((li, fi)) = t {
+            e.foco = Foco::Tarjeta(li, fi);
+            e.seguir_foco = true;
+        }
+    };
+    match (vk, e.foco) {
+        (VK_F, _) if ctrl => {
+            e.foco = Foco::Buscar;
+            e.buscar.cursor = e.buscar.texto.len();
+        }
+        (VK_ESCAPE, _) => {
+            match tarjetas::escape(
+                false,
+                e.foco == Foco::Apuntar,
+                e.campo.texto.is_empty(),
+                e.buscar.texto.is_empty(),
+            ) {
+                tarjetas::Escape::Cerrar => return false,
+                tarjetas::Escape::VaciarCaja => e.campo.vaciar(),
+                tarjetas::Escape::VaciarBusqueda => e.vaciar_busqueda(),
+                tarjetas::Escape::SoltarMenu => {}
+            }
+        }
+        // Tab da la vuelta: buscador, caja, tarjetas.
+        (VK_TAB, f) => {
+            let primera = orden.first().copied();
+            e.foco = match (f, shift) {
+                (Foco::Buscar, false) => Foco::Apuntar,
+                (Foco::Apuntar, false) => {
+                    primera.map_or(Foco::Buscar, |(l, f)| Foco::Tarjeta(l, f))
+                }
+                (Foco::Tarjeta(..), false) => Foco::Buscar,
+                (Foco::Buscar, true) => primera.map_or(Foco::Apuntar, |(l, f)| Foco::Tarjeta(l, f)),
+                (Foco::Apuntar, true) => Foco::Buscar,
+                (Foco::Tarjeta(..), true) => Foco::Apuntar,
+            };
+            e.seguir_foco = true;
+        }
+        (VK_ABAJO, Foco::Buscar) if buscando => a_tarjeta(e, orden.first().copied()),
+        (VK_ABAJO, Foco::Buscar) => e.foco = Foco::Apuntar,
+        (VK_ABAJO, Foco::Apuntar) => a_tarjeta(e, orden.first().copied()),
+        (VK_ARRIBA, Foco::Apuntar) => e.foco = Foco::Buscar,
+        (VK_ABAJO | VK_ARRIBA, Foco::Tarjeta(li, fi)) => {
+            let paso = if vk == VK_ABAJO { 1 } else { -1 };
+            match tarjetas::vecina(&orden, Some((li, fi)), paso) {
+                Some(t) => a_tarjeta(e, Some(t)),
+                None if buscando => e.foco = Foco::Buscar,
+                None => e.foco = Foco::Apuntar,
+            }
+        }
+        (VK_INICIO, Foco::Tarjeta(..)) => a_tarjeta(e, orden.first().copied()),
+        (VK_FIN, Foco::Tarjeta(..)) => a_tarjeta(e, orden.last().copied()),
+        (VK_ESPACIO, Foco::Tarjeta(li, fi)) => {
+            return hacer(e, Accion::Marcar(li, fi), textos, ubicacion, aparato);
+        }
+        (VK_ENTRAR, Foco::Tarjeta(li, fi)) => {
+            if e.se_reparte(li, fi) {
+                return hacer(e, Accion::Repartir(li, fi), textos, ubicacion, aparato);
+            }
+        }
+        // Intro en el buscador lleva a lo primero encontrado.
+        (VK_ENTRAR, Foco::Buscar) => a_tarjeta(e, orden.first().copied()),
+        (VK_ENTRAR, Foco::Apuntar) => {
+            return hacer(e, Accion::Apuntar, textos, ubicacion, aparato);
+        }
+        (_, Foco::Buscar) => {
+            let antes = e.buscar.texto.clone();
+            e.buscar.tecla(vk, ctrl, shift, false);
+            if e.buscar.texto != antes {
+                e.scroll = 0.0;
+            }
+        }
+        (_, Foco::Apuntar) => {
+            e.campo.tecla(vk, ctrl);
+            if let Some(clave) = e.campo.aviso.take() {
+                let aviso = match e.campo.aviso_ficha.take() {
+                    Some(ficha) => {
+                        let mut args = fluent_bundle::FluentArgs::new();
+                        args.set("ficha", ficha);
+                        textos.t_args(clave, &args)
+                    }
+                    None => textos.t(clave),
+                };
+                e.decir(aviso);
+            }
+        }
+        _ => {}
+    }
+    true
+}
+
 /// Lo que hace un clic (o Intro). Devuelve si la ventana sigue.
 fn hacer(
     e: &mut Estado,
@@ -731,6 +961,13 @@ fn hacer(
     match a {
         Accion::Mover | Accion::Fondo => {}
         Accion::Cerrar => return false,
+        Accion::EnfocarBuscar => e.foco = Foco::Buscar,
+        Accion::EnfocarApuntar => e.foco = Foco::Apuntar,
+        Accion::VaciarBusqueda => {
+            e.vaciar_busqueda();
+            e.foco = Foco::Buscar;
+        }
+        Accion::Enfocar(li, fi) => e.foco = Foco::Tarjeta(li, fi),
         Accion::Plegar(i) => {
             if let Some(l) = e.listas.get(i) {
                 let clave = l.clave();
@@ -760,14 +997,9 @@ fn hacer(
             }
         }
         Accion::Imagen(li, fi, k) => {
-            let ruta = e
-                .listas
-                .get(li)
-                .and_then(|l| Some((l, l.filas.get(fi)?)))
-                .and_then(|(l, f)| e.ruta_de(l, f, k));
+            let ruta = e.fila(li, fi).and_then(|(l, f)| e.ruta_de(l, f, k));
             match ruta {
-                // Al `main`, como «Sacar a la pantalla» del chat: es quien
-                // tiene los pines.
+                // Al `main`, como «Pinear» del chat: es quien tiene los pines.
                 Some(r) if pixpin_shell::mensajero::enviar_ficheros(std::slice::from_ref(&r)) => {
                     e.decir(textos.t("chat-pineado"));
                 }
@@ -777,7 +1009,11 @@ fn hacer(
                 None => e.decir(textos.t("tareas-imagen-no-esta")),
             }
         }
-        Accion::Repartir(li, fi) => e.repartiendo = Some((li, fi)),
+        Accion::Repartir(li, fi) => {
+            e.foco = Foco::Tarjeta(li, fi);
+            e.repartiendo = Some((li, fi));
+            e.destino_elegido = 0;
+        }
         Accion::SoltarMenu => e.repartiendo = None,
         Accion::Destino(di) => {
             let Some((li, fi)) = e.repartiendo.take() else {
@@ -839,9 +1075,28 @@ fn hacer(
 
 // ---------------------------------------------------------------- pintar
 
+fn blanco(a: f32) -> Color {
+    Color { a, ..Color::BLANCO }
+}
+
+/// Un recuadro redondeado con borde: el borde es el mismo recuadro un poco
+/// mayor por debajo (como en la galeria).
+fn con_borde(p: &Pintor, r: RectF, radio: f32, fondo: Color, borde: Color, grosor: f32) {
+    p.rellenar_redondeado(r, radio, borde);
+    p.rellenar_redondeado(encoger(r, grosor), (radio - grosor).max(0.0), fondo);
+}
+
+/// Donde empieza el contenido desplazable y donde van el buscador y la
+/// caja, ya con la escala: `(buscador, caja, contenido)`.
+fn alturas(s: f32) -> (f32, f32, f32) {
+    let buscador = CABECERA * s;
+    let caja = buscador + CAJA * s + 10.0 * s;
+    (buscador, caja, caja + CAJA * s + 16.0 * s)
+}
+
 fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalogo) {
     let (w, h) = (marco.ancho as f32, marco.alto as f32);
-    p.limpiar(FONDO);
+    p.limpiar(FONDO_V);
     e.botones.vaciar();
     e.botones.zona(
         RectF {
@@ -854,29 +1109,105 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
     );
     let m = MARGEN * s;
     let ancho = w - 2.0 * m;
-    let arriba = (CABECERA + CAJA + 12.0) * s;
+    let (y_buscar, y_caja, arriba) = alturas(s);
 
-    // El contenido, desplazable, ANTES que lo de arriba: asi la cabecera y
-    // la caja se apuntan despues y le ganan a una tarjeta que asome por
-    // debajo.
+    // Lo que sale y donde: agrupar, medir cada tarjeta y colocarlas.
+    let palabras = tarjetas::palabras(&e.buscar.texto);
+    let buscando = !palabras.is_empty();
+    let grupos = {
+        let recien = &e.recien;
+        tarjetas::agrupar(&e.listas, &palabras, e.hoy, &|l, f| {
+            recien.contains_key(&(l.clave(), f.crudo.clone()))
+        })
+    };
+    let (colocadas, total) = {
+        let abierta = |li: usize| {
+            buscando
+                || e.listas
+                    .get(li)
+                    .is_some_and(|l| e.abiertas.contains(&l.clave()))
+        };
+        let est: &Estado = e;
+        tarjetas::disponer(
+            &grupos,
+            &abierta,
+            &mut |li, fi| hechura(est, p, li, fi, ancho, s, buscando, textos).alto,
+            tarjetas::Medidas {
+                encabezado: ENCABEZADO * s,
+                pliegue: PLIEGUE * s,
+                hueco: HUECO * s,
+                entre_grupos: ENTRE_GRUPOS * s,
+            },
+        )
+    };
+    e.colocadas = colocadas;
+    e.alto_contenido = total + 24.0 * s;
     let area = RectF {
         x: 0.0,
         y: arriba,
         ancho: w,
         alto: (h - arriba).max(0.0),
     };
+    if std::mem::take(&mut e.seguir_foco) {
+        match e.foco {
+            Foco::Tarjeta(li, fi) => {
+                if let Some(c) = tarjetas::sitio_de(&e.colocadas, li, fi) {
+                    e.scroll =
+                        tarjetas::a_la_vista(c.y - 8.0 * s, c.alto + 16.0 * s, e.scroll, area.alto);
+                }
+            }
+            _ => e.scroll = 0.0,
+        }
+    }
     e.scroll = e.scroll.clamp(0.0, (e.alto_contenido - area.alto).max(0.0));
-    let mut total = 0.0;
+    e.encima = if dentro(area, e.botones.raton) && e.repartiendo.is_none() {
+        tarjetas::pieza_en(&e.colocadas, e.botones.raton.1 - arriba + e.scroll)
+    } else {
+        None
+    };
+
+    // El contenido, desplazable, ANTES que lo de arriba: asi la cabecera y
+    // las cajas se apuntan despues y le ganan a una tarjeta que asome por
+    // debajo.
     p.con_recorte(area, |p| {
         let y0 = arriba - e.scroll;
-        let fin = if e.listas.is_empty() {
-            pintar_vacia(p, m, y0, ancho, s, textos)
+        if e.listas.is_empty() {
+            pintar_vacia(p, m, y0, ancho, s, textos);
+        } else if grupos.is_empty() {
+            pintar_sin_resultados(e, p, m, y0, ancho, s, textos);
         } else {
-            pintar_listas(e, p, m, y0, ancho, area, s, textos)
-        };
-        total = fin - y0 + 20.0 * s;
+            let colocadas = e.colocadas.clone();
+            for c in colocadas {
+                let y = y0 + c.y;
+                if y + c.alto < area.y || y > area.y + area.alto {
+                    continue;
+                }
+                match c.pieza {
+                    tarjetas::Pieza::Encabezado(li) => {
+                        if let Some(g) = grupos.iter().find(|g| g.lista == li) {
+                            pintar_encabezado(e, p, g, m, y, ancho, s, textos);
+                        }
+                    }
+                    tarjetas::Pieza::Pliegue(li) => {
+                        let n = grupos
+                            .iter()
+                            .find(|g| g.lista == li)
+                            .map_or(0, |g| g.hechas.len());
+                        pintar_pliegue(e, p, li, n, m, y, ancho, s, buscando, textos);
+                    }
+                    tarjetas::Pieza::Tarjeta(li, fi) => {
+                        let r = RectF {
+                            x: m,
+                            y,
+                            ancho,
+                            alto: c.alto,
+                        };
+                        pintar_tarjeta(e, p, li, fi, r, s, &palabras, textos);
+                    }
+                }
+            }
+        }
     });
-    e.alto_contenido = total;
 
     // Lo de arriba, tapando lo que se desplazo bajo ello.
     p.rellenar(
@@ -886,7 +1217,7 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
             ancho: w,
             alto: arriba,
         },
-        FONDO,
+        FONDO_V,
     );
     let cab = RectF {
         x: 0.0,
@@ -895,29 +1226,44 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
         alto: CABECERA * s,
     };
     e.botones.zona(cab, Accion::Mover);
-    p.texto(&textos.t("tareas-titulo"), m, 10.0 * s, 20.0 * s, TEXTO);
-    let pendientes: usize = e.listas.iter().map(Lista::cuantas_pendientes).sum();
-    let mut args = fluent_bundle::FluentArgs::new();
-    args.set("pendientes", pendientes as i64);
-    args.set("listas", e.listas.len() as i64);
-    p.texto(
-        &textos.t_args("tareas-resumen", &args),
-        m,
-        38.0 * s,
-        12.5 * s,
-        APAGADO,
-    );
+    let titulo = textos.t("tareas-titulo");
+    ui::negrita(p, &titulo, m, 14.0 * s, 20.0 * s, 300.0 * s, TEXTO_V);
+    let (tw, _) = ui::medir_negrita(p, &titulo, 20.0 * s, 300.0 * s);
+    let resumen = if buscando {
+        let n: usize = grupos.iter().map(|g| g.arriba.len() + g.hechas.len()).sum();
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("n", n as i64);
+        textos.t_args("tareas3-encontradas", &args)
+    } else {
+        let pendientes: usize = e.listas.iter().map(Lista::cuantas_pendientes).sum();
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("pendientes", pendientes as i64);
+        args.set("listas", e.listas.len() as i64);
+        textos.t_args("tareas-resumen", &args)
+    };
     let lado = 40.0 * s;
+    p.texto_linea(
+        &resumen,
+        m + tw + 12.0 * s,
+        21.0 * s,
+        13.0 * s,
+        (w - 2.0 * m - tw - 12.0 * s - lado - 8.0 * s).max(0.0),
+        GRIS,
+    );
     let cerrar = RectF {
-        x: w - m - lado,
-        y: 12.0 * s,
+        x: w - m - lado + 6.0 * s,
+        y: 8.0 * s,
         ancho: lado,
         alto: lado,
     };
-    e.botones.boton(p, cerrar, Accion::Cerrar, "", None, s);
-    p.icono(&mi::CLOSE, encoger(cerrar, 9.0 * s), TEXTO);
+    if dentro(cerrar, e.botones.raton) {
+        p.rellenar_redondeado(cerrar, 10.0 * s, blanco(0.08));
+    }
+    p.icono(&mi::CLOSE, encoger(cerrar, 10.0 * s), GRIS);
+    e.botones.zona(cerrar, Accion::Cerrar);
 
-    pintar_caja(e, p, m, CABECERA * s, ancho, s, textos);
+    pintar_buscador(e, p, m, y_buscar, ancho, s, textos);
+    pintar_caja(e, p, m, y_caja, ancho, s, textos);
 
     if e.repartiendo.is_some() {
         pintar_eleccion(e, p, w, h, s, textos);
@@ -946,8 +1292,103 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
     }
 }
 
-/// La caja para apuntar, siempre con el foco: lo que se escribe en esta
-/// ventana va a ella, e Intro lo apunta.
+/// El buscador, arriba del todo: la lupa, lo escrito (o la pista) y a la
+/// derecha la chapita «Ctrl F» o, con algo escrito, la ✕ que lo vacia.
+fn pintar_buscador(
+    e: &mut Estado,
+    p: &Pintor,
+    x: f32,
+    y: f32,
+    ancho: f32,
+    s: f32,
+    textos: &Catalogo,
+) {
+    let lado = CAJA * s;
+    let caja = RectF {
+        x,
+        y,
+        ancho,
+        alto: lado,
+    };
+    let foco = e.foco == Foco::Buscar;
+    let borde = if foco {
+        AZUL_V
+    } else if dentro(caja, e.botones.raton) {
+        blanco(0.2)
+    } else {
+        blanco(0.1)
+    };
+    con_borde(p, caja, 12.0 * s, hex(0x2A2A2D), borde, 1.0 * s);
+    e.botones.zona(caja, Accion::EnfocarBuscar);
+    let li = 18.0 * s;
+    p.icono(
+        &mi::SEARCH,
+        RectF {
+            x: x + 14.0 * s,
+            y: y + (lado - li) / 2.0,
+            ancho: li,
+            alto: li,
+        },
+        if foco { AZUL_V } else { GRIS },
+    );
+    let derecha = if e.buscar.texto.is_empty() {
+        let cw = ui::ancho_de_chapa(p, "Ctrl F", s);
+        ui::chapa(
+            p,
+            "Ctrl F",
+            x + ancho - 12.0 * s - cw,
+            y + lado / 2.0,
+            hex(0xD1D1D6),
+            hex(0x2E2E31),
+            s,
+        );
+        cw + 20.0 * s
+    } else {
+        let l = 36.0 * s;
+        let b = RectF {
+            x: x + ancho - 4.0 * s - l,
+            y: y + (lado - l) / 2.0,
+            ancho: l,
+            alto: l,
+        };
+        if dentro(b, e.botones.raton) {
+            p.rellenar_redondeado(b, 9.0 * s, blanco(0.1));
+        }
+        p.icono(&mi::CLOSE, encoger(b, 9.0 * s), GRIS);
+        e.botones.zona(b, Accion::VaciarBusqueda);
+        l + 8.0 * s
+    };
+    let tx = x + 44.0 * s;
+    let tam = 15.0 * s;
+    let (_, th) = p.medir_texto("Ag", tam);
+    let campo = RectF {
+        x: tx,
+        y,
+        ancho: (x + ancho - derecha - tx).max(0.0),
+        alto: lado,
+    };
+    let pista = textos.t("tareas3-buscar");
+    let buscar = &e.buscar;
+    p.con_recorte(campo, |p| {
+        // Sin el cursor de las lecciones (amarillo): el azul del foco de
+        // esta ventana, como en la caja de apuntar.
+        let ty = y + (lado - th) / 2.0;
+        buscar.pintar_texto(p, tx, ty, 100_000.0, tam, false, &pista, s);
+        if foco {
+            let mut con_marca = buscar.texto.clone();
+            con_marca.insert(buscar.cursor, '\u{200B}');
+            let i = buscar.texto[..buscar.cursor].encode_utf16().count() as u32;
+            let cx = p
+                .cajas_de_trozo(&con_marca, tam, 100_000.0, &[], i, 1)
+                .first()
+                .map_or(0.0, |b| b.x);
+            p.linea((tx + cx, ty), (tx + cx, ty + th), 1.5 * s, AZUL_V);
+        }
+    });
+}
+
+/// La caja para apuntar: con el foco, lo que se escribe va a ella e Intro
+/// lo apunta en el Inbox.
 fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, textos: &Catalogo) {
     let caja = RectF {
         x,
@@ -955,7 +1396,16 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
         ancho,
         alto: CAJA * s,
     };
-    p.rellenar_redondeado(caja, CAJA * s / 2.0, CRISTAL);
+    let foco = e.foco == Foco::Apuntar;
+    let borde = if foco {
+        AZUL_V
+    } else if dentro(caja, e.botones.raton) {
+        blanco(0.2)
+    } else {
+        blanco(0.1)
+    };
+    con_borde(p, caja, 12.0 * s, hex(0x2A2A2D), borde, 1.0 * s);
+    e.botones.zona(caja, Accion::EnfocarApuntar);
     let tam = 15.0 * s;
     let (_, alto_linea) = p.medir_texto("Ag", tam);
     let ty = y + (caja.alto - alto_linea) / 2.0;
@@ -966,36 +1416,45 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
         x + 16.0 * s,
         y + (caja.alto - mh) / 2.0,
         18.0 * s,
-        ACENTO,
+        AZUL_V,
     );
     let tx = x + 16.0 * s + mw + 10.0 * s;
-    // A la derecha, con algo escrito, el boton de apuntar para el raton.
+    // A la derecha, con algo escrito, el boton de apuntar con su «Intro».
     let mut fin = x + ancho - 18.0 * s;
     if !e.campo.texto.trim().is_empty() {
         let rotulo = textos.t("tareas-apuntar-boton");
-        let (rw, _) = p.medir_texto(&rotulo, 13.5 * s);
+        let bw = ui::ancho_de_boton(p, false, &rotulo, Some("Intro"), s);
         let b = RectF {
-            x: x + ancho - rw - 28.0 * s - 6.0 * s,
-            y: y + 6.0 * s,
-            ancho: rw + 28.0 * s,
-            alto: caja.alto - 12.0 * s,
+            x: x + ancho - bw - 5.0 * s,
+            y: y + 5.0 * s,
+            ancho: bw,
+            alto: caja.alto - 10.0 * s,
         };
-        let fondo = if dentro(b, e.botones.raton) {
-            hex(0x6497cc)
-        } else {
-            ACENTO
-        };
-        p.rellenar_redondeado(b, b.alto / 2.0, fondo);
-        let (_, rh) = p.medir_texto(&rotulo, 13.5 * s);
-        p.texto(
+        ui::boton_v2(
+            p,
+            &mut e.botones,
+            b,
+            Accion::Apuntar,
+            None,
             &rotulo,
-            b.x + 14.0 * s,
-            b.y + (b.alto - rh) / 2.0,
-            13.5 * s,
-            TEXTO,
+            Some("Intro"),
+            Some(ui::v2::AZUL),
+            ui::v2::BLANCO,
+            s,
         );
-        e.botones.zona(b, Accion::Apuntar);
         fin = b.x - 8.0 * s;
+    } else if foco {
+        let cw = ui::ancho_de_chapa(p, "Intro", s);
+        ui::chapa(
+            p,
+            "Intro",
+            x + ancho - 12.0 * s - cw,
+            y + caja.alto / 2.0,
+            hex(0xD1D1D6),
+            hex(0x2E2E31),
+            s,
+        );
+        fin = x + ancho - 20.0 * s - cw;
     }
     let hueco = (fin - tx).max(10.0);
     let recorte = RectF {
@@ -1006,8 +1465,10 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
     };
     e.fichas_pintadas.clear();
     if e.campo.texto.is_empty() {
-        p.texto_linea(&textos.t("tareas-apuntar"), tx, ty, tam, hueco, APAGADO);
-        p.linea((tx, ty), (tx, ty + alto_linea), 1.5 * s, ACENTO);
+        p.texto_linea(&textos.t("tareas-apuntar"), tx, ty, tam, hueco, GRIS);
+        if foco {
+            p.linea((tx, ty), (tx, ty + alto_linea), 1.5 * s, AZUL_V);
+        }
         return;
     }
     // Donde va el cursor: una marca de ancho cero en su sitio, y la caja que
@@ -1058,7 +1519,7 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
             };
             let x0 = tx - corrido + b.x;
             match ruta {
-                None => p.texto(&texto[r.clone()], x0, ty, tam, TEXTO),
+                None => p.texto(&texto[r.clone()], x0, ty, tam, TEXTO_V),
                 Some(ruta) => {
                     let chapa = RectF {
                         x: x0 - 3.0 * s,
@@ -1072,8 +1533,10 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
                 }
             }
         }
-        let c = tx - corrido + cx;
-        p.linea((c, ty), (c, ty + alto_linea), 1.5 * s, ACENTO);
+        if foco {
+            let c = tx - corrido + cx;
+            p.linea((c, ty), (c, ty + alto_linea), 1.5 * s, AZUL_V);
+        }
     });
     e.fichas_pintadas = pintadas;
 }
@@ -1102,7 +1565,7 @@ fn pintar_vista_de_ficha(e: &Estado, p: &Pintor, w: f32, s: f32) {
         ancho: dw + 2.0 * pad,
         alto: dh + 2.0 * pad,
     };
-    p.rellenar_redondeado(marco, 10.0 * s, hex(0x24242c));
+    p.rellenar_redondeado(marco, 10.0 * s, hex(0x2C2C2E));
     p.bitmap_con(
         b,
         RectF {
@@ -1118,16 +1581,14 @@ fn pintar_vista_de_ficha(e: &Estado, p: &Pintor, w: f32, s: f32) {
 
 /// La eleccion del grupo adonde mover una tarea del Inbox: un velo que la
 /// cierra al pulsarlo y, encima, una tarjeta con un renglon por grupo (su
-/// titulo y su chat).
+/// titulo y su chat). Las flechas eligen e Intro mueve.
 fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &Catalogo) {
     let Some((li, fi)) = e.repartiendo else {
         return;
     };
     let tarea = e
-        .listas
-        .get(li)
-        .and_then(|l| l.filas.get(fi))
-        .map(|f| f.texto.clone())
+        .fila(li, fi)
+        .map(|(_, f)| f.texto.clone())
         .unwrap_or_default();
     let todo = RectF {
         x: 0.0,
@@ -1147,15 +1608,16 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
     let pad = 16.0 * s;
     let ancho = (w - 2.0 * MARGEN * s).min(460.0 * s);
     let cabeza = 52.0 * s;
+    let pie = 40.0 * s;
     let cuantos = e.destinos.len().max(1);
-    let alto = (cabeza + cuantos as f32 * renglon + pad).min(h - 80.0 * s);
+    let alto = (cabeza + cuantos as f32 * renglon + pie).min(h - 80.0 * s);
     let caja = RectF {
         x: (w - ancho) / 2.0,
         y: ((h - alto) / 2.0).max(40.0 * s),
         ancho,
         alto,
     };
-    p.rellenar_redondeado(caja, 14.0 * s, hex(0x24242c));
+    con_borde(p, caja, 14.0 * s, hex(0x2C2C2E), blanco(0.1), 1.0 * s);
     // La tarjeta se traga sus clics: fuera de un renglon no cierra.
     e.botones.zona(caja, Accion::Fondo);
     let mut args = fluent_bundle::FluentArgs::new();
@@ -1166,8 +1628,23 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
         caja.y + 16.0 * s,
         15.0 * s,
         caja.ancho - 2.0 * pad,
-        TEXTO,
+        TEXTO_V,
     );
+    // Abajo, los atajos: «↑↓ Intro» elige, «Esc» cierra.
+    let yc = caja.y + caja.alto - pie / 2.0;
+    let mut xx = caja.x + pad;
+    for (t, rotulo) in [
+        ("↑↓", None),
+        ("Intro", Some(textos.t("tareas3-mover-intro"))),
+        ("Esc", Some(textos.t("tareas3-mover-esc"))),
+    ] {
+        xx += ui::chapa(p, t, xx, yc, hex(0xD1D1D6), hex(0x2E2E31), s) + 6.0 * s;
+        if let Some(r) = rotulo {
+            let (rw, rh) = p.medir_texto(&r, 12.5 * s);
+            p.texto(&r, xx, yc - rh / 2.0, 12.5 * s, GRIS);
+            xx += rw + 14.0 * s;
+        }
+    }
     if e.destinos.is_empty() {
         p.texto_ajustado(
             &textos.t("tareas-sin-grupos"),
@@ -1175,28 +1652,33 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
             caja.y + cabeza,
             13.5 * s,
             caja.ancho - 2.0 * pad,
-            APAGADO,
+            GRIS,
         );
         return;
     }
     let vista = RectF {
         y: caja.y + cabeza,
-        alto: caja.alto - cabeza - pad / 2.0,
+        alto: caja.alto - cabeza - pie,
         ..caja
     };
+    let elegido = e.destino_elegido.min(e.destinos.len() - 1);
+    // Lo elegido con las flechas siempre a la vista.
+    let corrido = ((elegido + 1) as f32 * renglon - vista.alto).max(0.0);
     p.con_recorte(vista, |p| {
         for (di, d) in e.destinos.iter().enumerate() {
             let r = RectF {
                 x: caja.x + 6.0 * s,
-                y: vista.y + di as f32 * renglon,
+                y: vista.y + di as f32 * renglon - corrido,
                 ancho: caja.ancho - 12.0 * s,
                 alto: renglon,
             };
-            if r.y > vista.y + vista.alto {
-                break;
+            if r.y > vista.y + vista.alto || r.y + r.alto < vista.y {
+                continue;
             }
-            if dentro(r, e.botones.raton) {
-                p.rellenar_redondeado(r, 8.0 * s, ENCIMA);
+            if di == elegido {
+                p.rellenar_redondeado(r, 8.0 * s, Color { a: 0.22, ..AZUL_V });
+            } else if dentro(r, e.botones.raton) {
+                p.rellenar_redondeado(r, 8.0 * s, blanco(0.06));
             }
             p.texto_linea(
                 &d.titulo,
@@ -1204,7 +1686,7 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
                 r.y + 6.0 * s,
                 14.5 * s,
                 r.ancho - 2.0 * pad,
-                TEXTO,
+                TEXTO_V,
             );
             p.texto_linea(
                 &d.chat,
@@ -1212,212 +1694,360 @@ fn pintar_eleccion(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos: &
                 r.y + 26.0 * s,
                 12.0 * s,
                 r.ancho - 2.0 * pad,
-                APAGADO,
+                GRIS,
             );
         }
     });
     for di in 0..e.destinos.len() {
         let r = RectF {
             x: caja.x + 6.0 * s,
-            y: vista.y + di as f32 * renglon,
+            y: vista.y + di as f32 * renglon - corrido,
             ancho: caja.ancho - 12.0 * s,
             alto: renglon,
         };
-        if r.y + r.alto > vista.y + vista.alto + 1.0 {
-            break;
+        if r.y < vista.y - 1.0 || r.y + r.alto > vista.y + vista.alto + 1.0 {
+            continue;
         }
         e.botones.zona(r, Accion::Destino(di));
     }
 }
 
-fn pintar_vacia(p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, textos: &Catalogo) -> f32 {
-    let y = y + 60.0 * s;
+/// Sin ninguna tarea: que se ve y como se empieza.
+fn pintar_vacia(p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, textos: &Catalogo) {
+    let lado = 44.0 * s;
+    let y = y + 56.0 * s;
+    p.icono(
+        &mi::CHECKLIST,
+        RectF {
+            x: x + (ancho - lado) / 2.0,
+            y,
+            ancho: lado,
+            alto: lado,
+        },
+        GRIS,
+    );
     let t = textos.t("tareas-vacia");
     let anch = ancho.min(440.0 * s);
-    let (_, th) = p.medir_texto_ajustado(&t, 15.0 * s, anch);
-    p.texto_ajustado(&t, x + (ancho - anch) / 2.0, y, 15.0 * s, anch, APAGADO);
-    y + th
+    let (tw, _) = p.medir_texto_ajustado(&t, 15.0 * s, anch);
+    p.texto_ajustado(
+        &t,
+        x + (ancho - tw) / 2.0,
+        y + lado + 16.0 * s,
+        15.0 * s,
+        anch,
+        GRIS,
+    );
 }
 
-/// Las tarjetas, una por lista. Solo se pinta lo que cae a la vista; lo
-/// demas solo se cuenta, para saber hasta donde se desplaza.
-#[allow(clippy::too_many_arguments)] // estado, pintor, sitio, ancho, vista, escala y textos
-fn pintar_listas(
+/// Buscando sin nada que coincida: lo que se busco, como buscar mejor y un
+/// boton para vaciar la busqueda (o Esc).
+fn pintar_sin_resultados(
     e: &mut Estado,
     p: &Pintor,
     x: f32,
     y: f32,
     ancho: f32,
-    vista: RectF,
-    s: f32,
-    textos: &Catalogo,
-) -> f32 {
-    let mut y = y;
-    for li in 0..e.listas.len() {
-        let lista = e.listas[li].clone();
-        let (arriba, plegadas) = lista.a_la_vista(&|f| e.sigue_arriba(&lista, f));
-        let abierta = e.abiertas.contains(&lista.clave());
-        let cabecera = (RELLENO + 22.0 + 18.0 + 12.0) * s;
-        let alto = cabecera
-            + arriba.len() as f32 * FILA * s
-            + if plegadas.is_empty() {
-                0.0
-            } else {
-                PLIEGUE * s
-            }
-            + if abierta {
-                plegadas.len() as f32 * FILA * s
-            } else {
-                0.0
-            }
-            + 8.0 * s;
-        let caja = RectF { x, y, ancho, alto };
-        if caja.y + caja.alto >= vista.y && caja.y <= vista.y + vista.alto {
-            p.rellenar_redondeado(caja, 14.0 * s, CRISTAL);
-            pintar_cabecera(p, &lista, caja, s, textos);
-            let mut fy = y + cabecera;
-            for f in &arriba {
-                pintar_fila(e, p, li, f, x, fy, ancho, vista, s, textos);
-                fy += FILA * s;
-            }
-            if !plegadas.is_empty() {
-                let pliegue = RectF {
-                    x: x + 4.0 * s,
-                    y: fy,
-                    ancho: ancho - 8.0 * s,
-                    alto: PLIEGUE * s,
-                };
-                if dentro(pliegue, e.botones.raton) {
-                    p.rellenar_redondeado(pliegue, 8.0 * s, ENCIMA);
-                }
-                let flecha = if abierta {
-                    &mi::KEYBOARD_ARROW_UP
-                } else {
-                    &mi::KEYBOARD_ARROW_DOWN
-                };
-                p.icono(
-                    flecha,
-                    RectF {
-                        x: x + RELLENO * s - 2.0 * s,
-                        y: fy + (PLIEGUE * s - 22.0 * s) / 2.0,
-                        ancho: 22.0 * s,
-                        alto: 22.0 * s,
-                    },
-                    APAGADO,
-                );
-                let mut args = fluent_bundle::FluentArgs::new();
-                args.set("n", plegadas.len() as i64);
-                let rotulo = textos.t_args("tareas-hechas", &args);
-                let (_, rh) = p.medir_texto(&rotulo, 13.5 * s);
-                p.texto(
-                    &rotulo,
-                    x + (RELLENO + 28.0) * s,
-                    fy + (PLIEGUE * s - rh) / 2.0,
-                    13.5 * s,
-                    APAGADO,
-                );
-                e.botones.zona(pliegue, Accion::Plegar(li));
-                fy += PLIEGUE * s;
-                if abierta {
-                    for f in &plegadas {
-                        pintar_fila(e, p, li, f, x, fy, ancho, vista, s, textos);
-                        fy += FILA * s;
-                    }
-                }
-            }
-        }
-        y += alto + HUECO * s;
-    }
-    y
-}
-
-/// El titulo de la lista, su chat y cuantas van hechas, con su barra (como
-/// la linea de avance del movil y del panel del chat).
-fn pintar_cabecera(p: &Pintor, lista: &Lista, caja: RectF, s: f32, textos: &Catalogo) {
-    let pad = RELLENO * s;
-    let hechas = lista.cuantas_hechas();
-    let de = lista.filas.len();
-    let mut args = fluent_bundle::FluentArgs::new();
-    args.set("hechas", hechas as i64);
-    args.set("de", de as i64);
-    let avance = textos.t_args("mini-avance", &args);
-    let (aw, _) = p.medir_texto(&avance, 12.5 * s);
-    let y = caja.y + pad;
-    p.texto(
-        &avance,
-        caja.x + caja.ancho - pad - aw,
-        y + 3.0 * s,
-        12.5 * s,
-        APAGADO,
-    );
-    let interior = caja.ancho - 2.0 * pad - aw - 12.0 * s;
-    p.texto_linea(&lista.titulo, caja.x + pad, y, 16.0 * s, interior, TEXTO);
-    p.texto_linea(
-        &lista.chat,
-        caja.x + pad,
-        y + 22.0 * s,
-        12.5 * s,
-        interior,
-        APAGADO,
-    );
-    let barra = RectF {
-        x: caja.x + pad,
-        y: y + 44.0 * s,
-        ancho: caja.ancho - 2.0 * pad,
-        alto: 3.0 * s,
-    };
-    p.rellenar_redondeado(barra, 1.5 * s, CARRIL);
-    if de > 0 && hechas > 0 {
-        p.rellenar_redondeado(
-            RectF {
-                ancho: barra.ancho * hechas as f32 / de as f32,
-                ..barra
-            },
-            1.5 * s,
-            ACENTO,
-        );
-    }
-}
-
-/// Una tarea: la casilla (lo unico que tacha), su texto y cuantos dias
-/// lleva.
-#[allow(clippy::too_many_arguments)] // estado, pintor, lista, fila, sitio, vista, escala y textos
-fn pintar_fila(
-    e: &mut Estado,
-    p: &Pintor,
-    li: usize,
-    f: &Fila,
-    x: f32,
-    y: f32,
-    ancho: f32,
-    vista: RectF,
     s: f32,
     textos: &Catalogo,
 ) {
-    let fila = RectF {
+    let lado = 44.0 * s;
+    let mut y = y + 48.0 * s;
+    p.icono(
+        &mi::SEARCH,
+        RectF {
+            x: x + (ancho - lado) / 2.0,
+            y,
+            ancho: lado,
+            alto: lado,
+        },
+        GRIS,
+    );
+    y += lado + 16.0 * s;
+    let anch = ancho.min(460.0 * s);
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("busqueda", ui::corto(e.buscar.texto.trim(), 40));
+    let titulo = textos.t_args("tareas3-sin-resultados", &args);
+    let (tw, th) = ui::medir_negrita(p, &titulo, 16.0 * s, anch);
+    ui::negrita(
+        p,
+        &titulo,
+        x + (ancho - tw) / 2.0,
+        y,
+        16.0 * s,
+        anch,
+        TEXTO_V,
+    );
+    y += th + 8.0 * s;
+    let pista = textos.t("tareas3-sin-resultados-pista");
+    let (pw, ph) = p.medir_texto_ajustado(&pista, 13.5 * s, anch);
+    p.texto_ajustado(&pista, x + (ancho - pw) / 2.0, y, 13.5 * s, anch, GRIS);
+    y += ph + 18.0 * s;
+    let rotulo = textos.t("tareas3-vaciar-busqueda");
+    let bw = ui::ancho_de_boton(p, false, &rotulo, Some("Esc"), s);
+    let b = RectF {
+        x: x + (ancho - bw) / 2.0,
+        y,
+        ancho: bw,
+        alto: 40.0 * s,
+    };
+    ui::boton_v2(
+        p,
+        &mut e.botones,
+        b,
+        Accion::VaciarBusqueda,
+        None,
+        &rotulo,
+        Some("Esc"),
+        Some(hex(0x2C2C2E)),
+        TEXTO_V,
+        s,
+    );
+}
+
+/// El encabezado de un grupo: el nombre de la lista en negrita, «· su
+/// chat» en gris y a la derecha cuantas quedan pendientes.
+#[allow(clippy::too_many_arguments)] // estado, pintor, grupo, sitio, escala y textos
+fn pintar_encabezado(
+    e: &Estado,
+    p: &Pintor,
+    g: &tarjetas::Grupo,
+    x: f32,
+    y: f32,
+    ancho: f32,
+    s: f32,
+    textos: &Catalogo,
+) {
+    let Some(l) = e.listas.get(g.lista) else {
+        return;
+    };
+    let tam = 15.0 * s;
+    let (_, th) = p.medir_texto("Ag", tam);
+    let ty = y + ENCABEZADO * s - th - 8.0 * s;
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("n", g.pendientes(l) as i64);
+    let cuenta = textos.t_args("tareas3-pendientes", &args);
+    let (cw, ch) = p.medir_texto(&cuenta, 12.5 * s);
+    p.texto(
+        &cuenta,
+        x + ancho - cw - 4.0 * s,
+        ty + (th - ch) / 2.0,
+        12.5 * s,
+        GRIS,
+    );
+    let libre = (ancho - cw - 20.0 * s).max(0.0);
+    let (nw, _) = ui::medir_negrita(p, &l.titulo, tam, libre);
+    let nw = nw.min(libre * 0.7);
+    p.con_recorte(
+        RectF {
+            x,
+            y,
+            ancho: nw + 6.0 * s,
+            alto: ENCABEZADO * s,
+        },
+        |p| ui::negrita(p, &l.titulo, x + 4.0 * s, ty, tam, 100_000.0, TEXTO_V),
+    );
+    p.texto_linea(
+        &format!("·  {}", l.chat),
+        x + 4.0 * s + nw + 8.0 * s,
+        ty + 1.0 * s,
+        13.5 * s,
+        (libre - nw - 12.0 * s).max(0.0),
+        GRIS,
+    );
+}
+
+/// «Hechas (N)» con su flecha: abre y cierra lo hecho de la lista. Buscando
+/// esta abierto siempre (lo encontrado se ve), y es solo un rotulo.
+#[allow(clippy::too_many_arguments)] // estado, pintor, lista, cuantas, sitio, escala, si se busca y textos
+fn pintar_pliegue(
+    e: &mut Estado,
+    p: &Pintor,
+    li: usize,
+    n: usize,
+    x: f32,
+    y: f32,
+    ancho: f32,
+    s: f32,
+    buscando: bool,
+    textos: &Catalogo,
+) {
+    let r = RectF {
         x,
         y,
         ancho,
-        alto: FILA * s,
+        alto: PLIEGUE * s,
     };
-    if fila.y + fila.alto < vista.y || fila.y > vista.y + vista.alto {
-        return;
+    let abierta = buscando
+        || e.listas
+            .get(li)
+            .is_some_and(|l| e.abiertas.contains(&l.clave()));
+    if !buscando && e.encima == Some(tarjetas::Pieza::Pliegue(li)) {
+        p.rellenar_redondeado(r, 10.0 * s, blanco(0.05));
     }
-    let pad = RELLENO * s;
-    let lado = 20.0 * s;
-    // La zona de la casilla, mas ancha que el dibujo: atinarle no puede
-    // costar.
-    let casilla = RectF {
-        x: x + 4.0 * s,
-        y,
-        ancho: pad + lado + 6.0 * s,
-        alto: fila.alto,
+    let mut tx = x + 8.0 * s;
+    if !buscando {
+        let flecha = if abierta {
+            &mi::KEYBOARD_ARROW_UP
+        } else {
+            &mi::KEYBOARD_ARROW_DOWN
+        };
+        p.icono(
+            flecha,
+            RectF {
+                x: tx,
+                y: y + (r.alto - 22.0 * s) / 2.0,
+                ancho: 22.0 * s,
+                alto: 22.0 * s,
+            },
+            GRIS,
+        );
+        tx += 28.0 * s;
+        e.botones.zona(r, Accion::Plegar(li));
+    }
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("n", n as i64);
+    let rotulo = textos.t_args("tareas-hechas", &args);
+    let (_, rh) = p.medir_texto(&rotulo, 13.5 * s);
+    p.texto(&rotulo, tx, y + (r.alto - rh) / 2.0, 13.5 * s, GRIS);
+}
+
+/// Lo que ocupa una tarjeta y donde va cada cosa dentro (desde su esquina).
+/// La misma cuenta mide (para colocar) y pinta.
+struct Hechura {
+    alto: f32,
+    /// Donde empieza el texto, desde el borde izquierdo de la tarjeta.
+    texto_x: f32,
+    texto_ancho: f32,
+    /// Donde van las miniaturas, desde arriba; `None` si no tiene.
+    minis_y: Option<f32>,
+    /// Donde va la chapita de la lista y el chat (buscando).
+    chapa_y: Option<f32>,
+}
+
+/// El rotulo de la edad de una tarea («hace 2 días»), si tiene fecha.
+fn edad(f: &Fila, hoy: pixpin_proyecto::mini::Fecha, textos: &Catalogo) -> Option<String> {
+    let creada = f.creada?;
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set(
+        "dias",
+        i64::from(pixpin_proyecto::mini::dias_desde(creada, hoy)),
+    );
+    Some(textos.t_args("mini-tarea-edad", &args))
+}
+
+#[allow(clippy::too_many_arguments)] // estado, pintor, tarea, ancho, escala, si se busca y textos
+fn hechura(
+    e: &Estado,
+    p: &Pintor,
+    li: usize,
+    fi: usize,
+    ancho: f32,
+    s: f32,
+    buscando: bool,
+    textos: &Catalogo,
+) -> Hechura {
+    let Some((_, f)) = e.fila(li, fi) else {
+        return Hechura {
+            alto: 0.0,
+            texto_x: 0.0,
+            texto_ancho: 0.0,
+            minis_y: None,
+            chapa_y: None,
+        };
     };
-    if dentro(casilla, e.botones.raton) {
+    let pad = 16.0 * s;
+    let texto_x = 8.0 * s + CASILLA * s + 10.0 * s;
+    let mut reserva = edad(f, e.hoy, textos).map_or(0.0, |t| p.medir_texto(&t, 12.0 * s).0);
+    if e.se_reparte(li, fi) {
+        let b = ui::ancho_de_boton(p, true, &textos.t("tareas-mover"), Some("Intro"), s);
+        reserva = reserva.max(b);
+    }
+    if reserva > 0.0 {
+        reserva += 12.0 * s;
+    }
+    let texto_ancho = (ancho - texto_x - pad - reserva).max(40.0 * s);
+    let texto_alto = if f.texto.is_empty() {
+        0.0
+    } else {
+        p.medir_texto_ajustado(&f.texto, TAM_TAREA * s, texto_ancho)
+            .1
+    };
+    let mut y = 18.0 * s + texto_alto;
+    let minis_y = (!f.imagenes.is_empty()).then(|| {
+        let en = if texto_alto > 0.0 {
+            y + 10.0 * s
+        } else {
+            12.0 * s
+        };
+        y = en + MINI * s;
+        en
+    });
+    let chapa_y = buscando.then(|| {
+        let en = y + 10.0 * s;
+        y = en + 22.0 * s;
+        en
+    });
+    Hechura {
+        alto: (y + 16.0 * s).max(TARJETA_MIN * s),
+        texto_x,
+        texto_ancho,
+        minis_y,
+        chapa_y,
+    }
+}
+
+/// Una tarea en su tarjeta: la casilla grande (lo unico que tacha), el
+/// texto entero en los renglones que haga falta (lo buscado resaltado), sus
+/// imagenes (un clic las pinea), buscando la chapita de su lista y su chat,
+/// y arriba a la derecha cuantos dias lleva o, con el raton encima o el
+/// foco, «Mover a…» si es del Inbox.
+#[allow(clippy::too_many_arguments)] // estado, pintor, tarea, sitio, escala, palabras y textos
+fn pintar_tarjeta(
+    e: &mut Estado,
+    p: &Pintor,
+    li: usize,
+    fi: usize,
+    r: RectF,
+    s: f32,
+    palabras: &[String],
+    textos: &Catalogo,
+) {
+    let Some((lista, f)) = e.fila(li, fi).map(|(l, f)| (l.clone(), f.clone())) else {
+        return;
+    };
+    let buscando = !palabras.is_empty();
+    let hc = hechura(e, p, li, fi, r.ancho, s, buscando, textos);
+    let encima = e.encima == Some(tarjetas::Pieza::Tarjeta(li, fi));
+    let foco = e.foco == Foco::Tarjeta(li, fi);
+    let fondo = match (f.hecha, encima) {
+        (false, false) => hex(0x2A2A2D),
+        (false, true) => hex(0x313135),
+        (true, false) => hex(0x222225),
+        (true, true) => hex(0x29292C),
+    };
+    if foco {
+        con_borde(p, r, 12.0 * s, fondo, AZUL_V, 1.5 * s);
+    } else {
+        con_borde(p, r, 12.0 * s, fondo, blanco(0.06), 1.0 * s);
+    }
+    // La tarjeta entera da el foco; lo de dentro se apunta despues y gana.
+    e.botones.zona(r, Accion::Enfocar(li, fi));
+
+    // La casilla: un objetivo de 40 px con el dibujo de 24 en medio.
+    let objetivo = RectF {
+        x: r.x + 8.0 * s,
+        y: r.y + 8.0 * s,
+        ancho: CASILLA * s,
+        alto: CASILLA * s,
+    };
+    if dentro(objetivo, e.botones.raton) {
         p.circulo(
-            (x + pad + lado / 2.0, y + fila.alto / 2.0),
-            lado * 0.8,
-            ENCIMA,
+            (
+                objetivo.x + objetivo.ancho / 2.0,
+                objetivo.y + objetivo.alto / 2.0,
+            ),
+            18.0 * s,
+            blanco(0.1),
         );
     }
     let icono = if f.hecha {
@@ -1427,128 +2057,141 @@ fn pintar_fila(
     };
     p.icono(
         icono,
-        RectF {
-            x: x + pad,
-            y: y + (fila.alto - lado) / 2.0,
-            ancho: lado,
-            alto: lado,
-        },
-        if f.hecha { ACENTO } else { APAGADO },
+        encoger(objetivo, (CASILLA - 24.0) / 2.0 * s),
+        if f.hecha { AZUL_V } else { hex(0xAEAEB2) },
     );
-    // `filas` tiene todas las tareas en el orden del documento, asi que su
-    // sitio en ella es su `indice`.
-    e.botones.zona(casilla, Accion::Marcar(li, f.indice));
+    e.botones.zona(objetivo, Accion::Marcar(li, fi));
 
-    let tam = 15.0 * s;
-    let (_, alto_t) = p.medir_texto("Ag", tam);
-    let ty = y + (fila.alto - alto_t) / 2.0;
-    let mut derecha = x + ancho - pad;
-    // En el Inbox, lo pendiente lleva su «Mover a…»: de ahi se reparte a
-    // cada grupo (el usuario, 3-oct).
-    let en_inbox = e.listas.get(li).is_some_and(super::es_inbox);
-    if en_inbox && !f.hecha {
-        let rotulo = textos.t("tareas-mover");
-        let tam_b = 12.5 * s;
-        let (rw, rh) = p.medir_texto(&rotulo, tam_b);
-        let b = RectF {
-            x: derecha - rw - 20.0 * s,
-            y: y + (fila.alto - 26.0 * s) / 2.0,
-            ancho: rw + 20.0 * s,
-            alto: 26.0 * s,
-        };
-        let fondo = if dentro(b, e.botones.raton) {
-            hex(0x6497cc)
-        } else {
-            ACENTO
-        };
-        p.rellenar_redondeado(b, b.alto / 2.0, fondo);
-        p.texto(
-            &rotulo,
-            b.x + 10.0 * s,
-            b.y + (b.alto - rh) / 2.0,
-            tam_b,
-            TEXTO,
-        );
-        e.botones.zona(b, Accion::Repartir(li, f.indice));
-        derecha = b.x - 10.0 * s;
-    }
-    // Cuantos dias lleva, nunca la fecha (lo pidio el usuario): pequeno y
-    // gris, que es un dato de contexto y no la tarea.
-    if let Some(creada) = f.creada {
-        let mut args = fluent_bundle::FluentArgs::new();
-        args.set(
-            "dias",
-            i64::from(pixpin_proyecto::mini::dias_desde(creada, e.hoy)),
-        );
-        let edad = textos.t_args("mini-tarea-edad", &args);
-        let tam_e = 12.0 * s;
-        let (ew, eh) = p.medir_texto(&edad, tam_e);
-        p.texto(
-            &edad,
-            derecha - ew,
-            y + (fila.alto - eh) / 2.0,
-            tam_e,
-            APAGADO,
-        );
-        derecha -= ew + 12.0 * s;
-    }
-    let tx = x + pad + lado + 12.0 * s;
-    // Sus imagenes, en pequeno detras del texto: el texto cede su sitio.
-    let mini = MINI * s;
-    let paso = mini + 4.0 * s;
-    let ancho_minis = if f.imagenes.is_empty() {
-        0.0
-    } else {
-        f.imagenes.len() as f32 * paso + 6.0 * s
-    };
-    let hueco = (derecha - tx - ancho_minis).max(0.0);
-    let color = if f.hecha { APAGADO } else { TEXTO };
-    p.texto_linea(&f.texto, tx, ty, tam, hueco, color);
-    let (tw, _) = if f.texto.is_empty() {
-        (0.0, 0.0)
-    } else {
-        p.medir_texto(&f.texto, tam)
-    };
-    // Lo hecho se tacha, como en el movil (`TextDecoration.LineThrough`).
-    if f.hecha && tw > 0.0 {
-        let ly = ty + alto_t * 0.55;
-        p.linea((tx, ly), (tx + tw.min(hueco), ly), 1.2 * s, APAGADO);
-    }
-    let Some(lista) = e.listas.get(li).cloned() else {
-        return;
-    };
-    let mut mx = tx + tw.min(hueco) + if tw > 0.0 { 8.0 * s } else { 0.0 };
-    for k in 0..f.imagenes.len() {
-        let r = RectF {
-            x: mx,
-            y: y + (fila.alto - mini) / 2.0,
-            ancho: mini,
-            alto: mini,
-        };
-        match e
-            .ruta_de(&lista, f, k)
-            .as_deref()
-            .and_then(|ruta| e.minis.ya(ruta))
-        {
-            Some((b, iw, ih)) => {
-                crate::miniaturas::pintar_recortado(p, b, r, iw, ih);
-                if f.hecha {
-                    // Apagada como el texto tachado.
-                    p.rellenar(r, Color { a: 0.45, ..FONDO });
+    // El texto, partido en renglones; lo buscado con un fondo amarillo
+    // debajo, en las mismas cajas que pinta DirectWrite.
+    let tx = r.x + hc.texto_x;
+    let ty = r.y + 18.0 * s;
+    let tam = TAM_TAREA * s;
+    if !f.texto.is_empty() {
+        for palabra in palabras {
+            for t in pixpin_ui::resaltado::coincidencias(&f.texto, palabra) {
+                let (inicio, largo) = t.en_utf16(&f.texto);
+                if largo == 0 {
+                    continue;
+                }
+                for b in p.cajas_de_trozo(&f.texto, tam, hc.texto_ancho, &[], inicio, largo) {
+                    p.rellenar_redondeado(
+                        RectF {
+                            x: tx + b.x - 1.0 * s,
+                            y: ty + b.y,
+                            ancho: b.ancho + 2.0 * s,
+                            alto: b.alto,
+                        },
+                        3.0 * s,
+                        RESALTE,
+                    );
                 }
             }
-            // Aun no llego del movil (o no se pudo leer): su hueco con el
-            // dibujo de una imagen, para que se sepa que hay una.
-            None => {
-                p.rellenar_redondeado(r, 4.0 * s, ENCIMA);
-                p.icono(&mi::IMAGE, encoger(r, 5.0 * s), APAGADO);
+        }
+        let color = if f.hecha { GRIS } else { TEXTO_V };
+        p.texto_ajustado(&f.texto, tx, ty, tam, hc.texto_ancho, color);
+        // Lo hecho se tacha, renglon a renglon, como en el movil.
+        if f.hecha {
+            let largo = f.texto.encode_utf16().count() as u32;
+            for b in p.cajas_de_trozo(&f.texto, tam, hc.texto_ancho, &[], 0, largo) {
+                let ly = ty + b.y + b.alto * 0.55;
+                p.linea((tx + b.x, ly), (tx + b.x + b.ancho, ly), 1.2 * s, GRIS);
             }
         }
-        if dentro(r, e.botones.raton) {
-            p.trazar(r, 1.5 * s, ACENTO);
+    }
+
+    // Arriba a la derecha: la edad, o «Mover a…» con el raton o el foco.
+    let derecha = r.x + r.ancho - 16.0 * s;
+    if e.se_reparte(li, fi) && (encima || foco) && e.repartiendo.is_none() {
+        let rotulo = textos.t("tareas-mover");
+        let tecla = foco.then_some("Intro");
+        let bw = ui::ancho_de_boton(p, true, &rotulo, tecla, s);
+        let b = RectF {
+            x: r.x + r.ancho - 8.0 * s - bw,
+            y: r.y + 8.0 * s,
+            ancho: bw,
+            alto: 40.0 * s,
+        };
+        ui::boton_v2(
+            p,
+            &mut e.botones,
+            b,
+            Accion::Repartir(li, fi),
+            Some(&mi::FORWARD),
+            &rotulo,
+            tecla,
+            Some(ui::v2::AZUL),
+            ui::v2::BLANCO,
+            s,
+        );
+    } else if let Some(t) = edad(&f, e.hoy, textos) {
+        let (ew, eh) = p.medir_texto(&t, 12.0 * s);
+        p.texto(&t, derecha - ew, r.y + 28.0 * s - eh / 2.0, 12.0 * s, GRIS);
+    }
+
+    // Sus imagenes, en una fila debajo del texto: un clic la pinea.
+    if let Some(my) = hc.minis_y {
+        let mini = MINI * s;
+        let mut mx = tx;
+        for k in 0..f.imagenes.len() {
+            let c = RectF {
+                x: mx,
+                y: r.y + my,
+                ancho: mini,
+                alto: mini,
+            };
+            if c.x + c.ancho > r.x + r.ancho - 16.0 * s {
+                break;
+            }
+            match e
+                .ruta_de(&lista, &f, k)
+                .as_deref()
+                .and_then(|ruta| e.minis.ya(ruta))
+            {
+                Some((b, iw, ih)) => {
+                    crate::miniaturas::pintar_recortado(p, b, c, iw, ih);
+                    if f.hecha {
+                        // Apagada como el texto tachado.
+                        p.rellenar(c, Color { a: 0.45, ..fondo });
+                    }
+                }
+                // Aun no llego del movil (o no se pudo leer): su hueco con el
+                // dibujo de una imagen, para que se sepa que hay una.
+                None => {
+                    p.rellenar_redondeado(c, 6.0 * s, blanco(0.06));
+                    p.icono(&mi::IMAGE, encoger(c, 12.0 * s), GRIS);
+                }
+            }
+            if dentro(c, e.botones.raton) {
+                p.trazar(c, 2.0 * s, AZUL_V);
+            }
+            e.botones.zona(c, Accion::Imagen(li, fi, k));
+            mx += mini + 8.0 * s;
         }
-        e.botones.zona(r, Accion::Imagen(li, f.indice, k));
-        mx += paso;
+    }
+
+    // Buscando se mezclan grupos: de que lista y chat es cada una.
+    if let Some(cy) = hc.chapa_y {
+        let t = format!("{}  ·  {}", lista.titulo, lista.chat);
+        let tam_c = 12.0 * s;
+        let max = (r.ancho - hc.texto_x - 16.0 * s - 16.0 * s).max(0.0);
+        let (cw, ch) = p.medir_texto(&t, tam_c);
+        let cw = cw.min(max);
+        let chapa = RectF {
+            x: tx,
+            y: r.y + cy,
+            ancho: cw + 16.0 * s,
+            alto: 22.0 * s,
+        };
+        p.rellenar_redondeado(chapa, 6.0 * s, blanco(0.07));
+        p.texto_linea(
+            &t,
+            chapa.x + 8.0 * s,
+            chapa.y + (chapa.alto - ch) / 2.0,
+            tam_c,
+            cw,
+            hex(0xC7C7CC),
+        );
     }
 }
 
@@ -1780,14 +2423,21 @@ mod pruebas {
                 "Mensajes guardados",
                 super::super::INBOX,
                 30,
-                "- [ ] llamar al fontanero ➕ 2026-09-28\n- [ ] comprar pan ➕ 2026-10-03\n- [x] pagar la luz ➕ 2026-09-20\n- [ ] sin fecha",
+                "- [ ] llamar al fontanero por la fuga del baño ➕ 2026-09-28\n- [ ] comprar pan ➕ 2026-10-03\n- [x] pagar la luz ➕ 2026-09-20\n- [ ] repasar el presupuesto de la cocina con Ana antes del viernes y mandarle las dudas sobre los muebles altos ➕ 2026-10-02\n- [ ] sin fecha",
             ),
             lista(
                 "o",
                 "Obra Miraflores",
                 "Pendientes de obra",
                 20,
-                "- [ ] revisar puntales ➕ 2026-10-01\n- [x] pedir yeso\n- [x] pedir arena",
+                "- [ ] revisar puntales del segundo piso ➕ 2026-10-01\n- [x] pedir yeso ➕ 2026-10-02\n- [x] pedir arena",
+            ),
+            lista(
+                "t",
+                "Tesis",
+                "Lecturas",
+                10,
+                "- [ ] leer el capítulo 3 de Fontana ➕ 2026-10-03",
             ),
         ];
         e.listas[0].guardados = true;
@@ -1810,12 +2460,8 @@ mod pruebas {
             Some(foto("muro.png", [220, 120, 60])),
         );
         e.rutas.insert(("g".into(), enlace("b.png")), None);
-        e.destinos = vec![e.listas[1].clone(), lista("t", "Tesis", "Lecturas", 10, "")];
+        e.destinos = vec![e.listas[1].clone(), e.listas[2].clone()];
         e.abiertas.insert(e.listas[1].clave());
-        e.campo.escribir("regar las plantas");
-        e.campo
-            .meter_imagen(foto("maceta.png", [60, 160, 90]), false, 0);
-        e.campo.escribir("y abonar");
         e
     }
 
@@ -1828,33 +2474,143 @@ mod pruebas {
         while e.minis.asegurar(&rutas, motor) {}
     }
 
+    /// Las piezas colocadas como lo haria un fotograma, con tarjetas de alto
+    /// fijo: para probar el teclado sin pintar.
+    fn colocar(e: &mut Estado) {
+        let palabras = tarjetas::palabras(&e.buscar.texto);
+        let g = tarjetas::agrupar(&e.listas, &palabras, e.hoy, &|_, _| false);
+        e.colocadas = tarjetas::disponer(
+            &g,
+            &|_| false,
+            &mut |_, _| 60.0,
+            tarjetas::Medidas {
+                encabezado: 40.0,
+                pliegue: 40.0,
+                hueco: 8.0,
+                entre_grupos: 18.0,
+            },
+        )
+        .0;
+    }
+
+    #[test]
+    fn el_teclado_lleva_el_foco_del_buscador_a_las_tarjetas_y_esc_va_por_capas() {
+        let textos = Catalogo::nuevo(Idioma::Espanol);
+        let u = Ubicacion::Portable {
+            raiz: std::env::temp_dir().join("pixpin-tareas-teclado-no-existe"),
+        };
+        let mut e = muestra_estado();
+        colocar(&mut e);
+        let t =
+            |e: &mut Estado, vk: u32, ctrl: bool| tecla(e, vk, ctrl, false, &textos, &u, "PC01");
+        assert_eq!(e.foco, Foco::Apuntar, "al abrir se apunta, como siempre");
+        // Ctrl+F al buscador; lo escrito va a el y no a la caja.
+        assert!(t(&mut e, VK_F, true));
+        assert_eq!(e.foco, Foco::Buscar);
+        for c in "PAN".chars() {
+            letra(&mut e, c);
+        }
+        assert_eq!(
+            (e.buscar.texto.as_str(), e.campo.texto.as_str()),
+            ("PAN", "")
+        );
+        colocar(&mut e);
+        // Abajo, a lo primero encontrado; Espacio no se escribe en ningun sitio.
+        t(&mut e, VK_ABAJO, false);
+        assert_eq!(e.foco, Foco::Tarjeta(0, 2), "comprar pan");
+        letra(&mut e, ' ');
+        assert_eq!(e.buscar.texto, "PAN");
+        // Arriba de la primera vuelve al buscador (se esta buscando).
+        t(&mut e, VK_ARRIBA, false);
+        assert_eq!(e.foco, Foco::Buscar);
+        // Esc: primero vacia la busqueda, luego cierra.
+        assert!(t(&mut e, VK_ESCAPE, false));
+        assert!(e.buscar.texto.is_empty());
+        colocar(&mut e);
+        // Sin buscar: la caja, y bajando las tarjetas en orden.
+        t(&mut e, VK_TAB, false);
+        assert_eq!(e.foco, Foco::Apuntar);
+        t(&mut e, VK_ABAJO, false);
+        let orden = tarjetas::en_orden(&e.colocadas);
+        assert_eq!(e.foco, Foco::Tarjeta(orden[0].0, orden[0].1));
+        t(&mut e, VK_ABAJO, false);
+        assert_eq!(e.foco, Foco::Tarjeta(orden[1].0, orden[1].1));
+        // Intro en una del Inbox abre «Mover a…» y las flechas eligen.
+        assert!(e.se_reparte(orden[1].0, orden[1].1));
+        t(&mut e, VK_ENTRAR, false);
+        assert_eq!(e.repartiendo, Some(orden[1]));
+        t(&mut e, VK_ABAJO, false);
+        t(&mut e, VK_ABAJO, false);
+        assert_eq!(e.destino_elegido, 1, "no se pasa del ultimo");
+        assert!(t(&mut e, VK_ESCAPE, false));
+        assert_eq!(e.repartiendo, None);
+        // Caso negativo: Intro en una tarea de otra lista no abre nada, y
+        // Esc sin nada escrito ni buscado cierra.
+        e.foco = Foco::Tarjeta(1, 0);
+        t(&mut e, VK_ENTRAR, false);
+        assert_eq!(e.repartiendo, None);
+        assert!(!t(&mut e, VK_ESCAPE, false));
+    }
+
+    /// Las capturas de la ventana, en `PIXPIN_MUESTRAS` (o en el temporal).
     #[test]
     #[ignore = "necesita GPU; ejecutar con --ignored y mirar el PNG"]
     fn muestra_de_la_ventana() {
         let textos = Catalogo::nuevo(Idioma::Espanol);
-        let mut e = muestra_estado();
+        let (w, h) = (ANCHO_VENTANA, ALTO_VENTANA);
         let marco = Rect {
             x: 0,
             y: 0,
-            ancho: 620,
-            alto: 760,
+            ancho: w,
+            alto: h,
         };
-        crate::ventanita::muestra("tareas", 620, 760, |p, motor| {
+        let mut e = muestra_estado();
+        // Sin buscar, con el raton encima de la tarea con imagenes del Inbox.
+        crate::ventanita::muestra("tareas-v3-sin-buscar", w, h, |p, motor| {
             cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos);
+            let c = tarjetas::sitio_de(&e.colocadas, 0, 1).expect("la grieta");
+            let (_, _, arriba) = alturas(1.0);
+            e.botones.raton = (300.0, arriba - e.scroll + c.y + 20.0);
             pintar_todo(&mut e, p, marco, 1.0, &textos)
         });
-        // Con el raton encima de la ficha pegada: su imagen debajo.
-        let (chapa, _) = e.fichas_pintadas[0].clone();
-        crate::ventanita::muestra("tareas-ficha", 620, 760, |p, motor| {
-            cargar_minis(&mut e, motor);
-            e.botones.raton = (chapa.x + chapa.ancho / 2.0, chapa.y + chapa.alto / 2.0);
-            pintar_todo(&mut e, p, marco, 1.0, &textos)
-        });
+        // Buscando «fontan»: el fontanero del Inbox y el libro de la tesis,
+        // con su chapita.
         e.botones.raton = (0.0, 0.0);
-        e.repartiendo = Some((0, 2));
-        crate::ventanita::muestra("tareas-mover", 620, 760, |p, motor| {
+        e.buscar.poner("fontan");
+        e.foco = Foco::Buscar;
+        crate::ventanita::muestra("tareas-v3-buscando", w, h, |p, motor| {
             cargar_minis(&mut e, motor);
             pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+        e.buscar.poner("ayer pedir");
+        crate::ventanita::muestra("tareas-v3-buscando-ayer", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+        e.buscar.poner("ventanas");
+        crate::ventanita::muestra("tareas-v3-sin-resultados", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+        // Teclado: el foco en la tarjeta de la grieta, y luego su «Mover a…».
+        e.buscar.poner("");
+        e.foco = Foco::Tarjeta(0, 1);
+        e.campo.escribir("regar las plantas");
+        crate::ventanita::muestra("tareas-v3-foco", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+        e.repartiendo = Some((0, 1));
+        crate::ventanita::muestra("tareas-v3-mover", w, h, |p, motor| {
+            cargar_minis(&mut e, motor);
+            pintar_todo(&mut e, p, marco, 1.0, &textos)
+        });
+        e.campo.vaciar();
+        // Sin ninguna tarea.
+        let mut v = Estado::nuevo();
+        crate::ventanita::muestra("tareas-v3-vacia", w, h, |p, _| {
+            pintar_todo(&mut v, p, marco, 1.0, &textos)
         });
     }
 }

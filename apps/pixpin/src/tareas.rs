@@ -30,9 +30,12 @@
 //! `docs/investigacion/2026-10-03-tareas-con-imagenes-android.md`.
 //!
 //! - [`ventana`]: la ventana, en su propio hilo como la galeria de capturas.
+//! - [`tarjetas`]: lo puro de su vista en tarjetas: buscar, agrupar, colocar
+//!   y el foco.
 
 #![forbid(unsafe_code)]
 
+mod tarjetas;
 mod ventana;
 
 use std::path::{Path, PathBuf};
@@ -97,10 +100,6 @@ impl Lista {
 
     pub fn cuantas_pendientes(&self) -> usize {
         self.filas.iter().filter(|f| !f.hecha).count()
-    }
-
-    pub fn cuantas_hechas(&self) -> usize {
-        self.filas.iter().filter(|f| f.hecha).count()
     }
 
     /// Lo que se ve de la lista, en dos montones: arriba lo pendiente
