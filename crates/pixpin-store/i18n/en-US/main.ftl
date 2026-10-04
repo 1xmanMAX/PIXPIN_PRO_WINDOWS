@@ -1476,3 +1476,59 @@ tareas-pegar-repetida = That image is already in as { $ficha }.
 
 # Opening a photo that Windows can only read with a Microsoft Store extension.
 abrir-falta-extension = Can't open { $nombre }: Windows needs "{ $extension }", free in the Microsoft Store. Install it and open the file again.
+
+## v2-bandeja
+# The tray panel (left click on the icon). The right-click menu keeps its
+# usual keys.
+bandeja2-sincronizar = Sync now
+bandeja2-sincronizado = Synced { $cuando }
+bandeja2-sin-sincronizar = Not synced yet
+bandeja2-hace-nada = just now
+bandeja2-hace-min = { $n } min ago
+bandeja2-hace-h = { $n } h ago
+bandeja2-ayer = yesterday
+bandeja2-hace-dias = { $n } days ago
+bandeja2-buscar = Search an action… (just type)
+bandeja2-buscar-favorito = Search what to add as a favourite…
+bandeja2-sin-resultados = No action is called that
+bandeja2-capturar = Capture
+bandeja2-capturar-sub = Pick the area with the mouse
+bandeja2-modo-zona = Area
+bandeja2-modo-scroll = Scroll
+bandeja2-modo-gif = GIF
+bandeja2-modo-texto = Text
+bandeja2-modo-retardo = Delay
+bandeja2-modo-color = Colour
+bandeja2-favoritos = Favourites
+bandeja2-editar = Edit
+bandeja2-anadir = Add
+bandeja2-elige-favoritos = Pick your favourites ({ $n } of { $tope })
+bandeja2-favoritos-llenos = There are already { $tope } favourites: remove one first.
+bandeja2-hecho = Done
+bandeja2-fav-pinear-copiado = Pin copied
+bandeja2-fav-anotar = Annotate screen
+bandeja2-fav-pin-vivo = Live pin
+bandeja2-pines = Pins · { $n } on screen
+bandeja2-ocultar-pines = Hide the pins
+bandeja2-paso-clic = Let clicks through
+bandeja2-atajos = Shortcuts
+bandeja2-silenciar = Mute the shortcuts
+bandeja2-silenciar-sub = for games or talks
+bandeja2-ultimas = Latest captures
+bandeja2-ver-galeria = See the gallery
+bandeja2-sin-capturas = No captures yet
+bandeja2-abrir-pixpin = Open PixPin
+bandeja2-tareas = Tasks
+bandeja2-lecciones = Lessons
+bandeja2-nueva-leccion = New lesson
+bandeja2-galeria = Capture gallery
+bandeja2-documento = Open document…
+bandeja2-grupos = Window groups
+bandeja2-para-hoy = { $n } for today
+bandeja2-salir = Quit PixPin
+bandeja2-salir-sub = pins will close
+bandeja2-copiada = Copied
+bandeja2-borrada = Moved to the bin
+bandeja2-devuelta = Restored
+bandeja2-deshacer = Undo
+bandeja2-no-se-pudo = Couldn't do it: { $motivo }

@@ -97,8 +97,11 @@ pub enum Evento {
     /// Un pin dejo algo pendiente y pide una vuelta del bucle. No hay nada
     /// que hacer con el evento en si: el trabajo va tras el match.
     Despertar,
-    /// Clic izquierdo en el icono de la bandeja.
+    /// Clic DERECHO en el icono de la bandeja: el menu de siempre.
     IconoPulsado,
+    /// Clic IZQUIERDO en el icono de la bandeja: el panel de la bandeja
+    /// (rediseno v2). El menu del derecho queda de respaldo.
+    PanelBandeja,
     /// Alt + boton pulsado en la pantalla (gancho de raton): abrir la
     /// captura ya con el arrastre en marcha desde `punto` (fisico).
     Gesto {
@@ -396,12 +399,12 @@ fn evento_de_menu(id: u32) -> Option<Evento> {
 /// `mensaje_raton` es lo que Windows deja en `lParam` con la semantica
 /// «clasica» de `Shell_NotifyIconW`: el mensaje del raton tal cual.
 ///
-/// **Los dos botones abren el menu, y el derecho no es un capricho:** en
-/// Windows el menu contextual de un icono de bandeja se pide con el derecho,
-/// y esa es la mano que va sola. Durante un tiempo aqui solo se atendio el
-/// izquierdo, asi que quien hacia lo que hace todo el mundo no obtenia nada
-/// -ni menu, ni error, ni pista- y el programa parecia muerto. El izquierdo
-/// se conserva porque tambien es costumbre y porque ya habia quien lo usaba.
+/// **El derecho abre el menu, y no es un capricho:** en Windows el menu
+/// contextual de un icono de bandeja se pide con el derecho, y esa es la
+/// mano que va sola. Durante un tiempo aqui solo se atendio el izquierdo,
+/// asi que quien hacia lo que hace todo el mundo no obtenia nada -ni menu,
+/// ni error, ni pista- y el programa parecia muerto. El izquierdo abre el
+/// panel de la bandeja (rediseno v2), como el centro de control de Windows.
 ///
 /// Cualquier otro mensaje -pasar por encima, mover, doble clic- no es
 /// asunto nuestro: se devuelve `None` y lo atiende el procedimiento por
@@ -412,10 +415,10 @@ fn evento_de_menu(id: u32) -> Option<Evento> {
 /// pura sobre un numero.
 fn evento_de_bandeja(mensaje_raton: u32) -> Option<Evento> {
     use windows::Win32::UI::WindowsAndMessaging::{WM_LBUTTONUP, WM_RBUTTONUP};
-    if mensaje_raton == WM_LBUTTONUP || mensaje_raton == WM_RBUTTONUP {
-        Some(Evento::IconoPulsado)
-    } else {
-        None
+    match mensaje_raton {
+        WM_RBUTTONUP => Some(Evento::IconoPulsado),
+        WM_LBUTTONUP => Some(Evento::PanelBandeja),
+        _ => None,
     }
 }
 
@@ -600,7 +603,7 @@ mod pruebas {
     /// hace en Windows -pedir el menu contextual con el derecho- no obtenia
     /// nada: ni menu, ni error, ni pista. El programa parecia muerto.
     #[test]
-    fn los_dos_botones_de_la_bandeja_abren_el_menu() {
+    fn el_derecho_abre_el_menu_y_el_izquierdo_el_panel() {
         use windows::Win32::UI::WindowsAndMessaging::{WM_LBUTTONUP, WM_MOUSEMOVE, WM_RBUTTONUP};
 
         assert_eq!(
@@ -610,8 +613,8 @@ mod pruebas {
         );
         assert_eq!(
             evento_de_bandeja(WM_LBUTTONUP),
-            Some(Evento::IconoPulsado),
-            "y el izquierdo seguia funcionando: no se puede quitar"
+            Some(Evento::PanelBandeja),
+            "el izquierdo abre el panel de la bandeja (v2); el menu sigue en el derecho"
         );
         // Pasar el raton por encima llega como mensaje igual que un clic, y
         // abrir el menu al pasar por encima seria peor que no abrirlo nunca.

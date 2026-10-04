@@ -1477,3 +1477,59 @@ tareas-pegar-repetida = Esa imagen ya está como { $ficha }.
 
 # Abrir una foto que Windows solo lee con una extension de Microsoft Store.
 abrir-falta-extension = No se puede abrir { $nombre }: Windows necesita «{ $extension }», gratis en Microsoft Store. Instálala y vuelve a abrirla.
+
+## v2-bandeja
+# El panel de la bandeja (clic izquierdo en el icono). El menu del clic
+# derecho sigue con sus claves de siempre.
+bandeja2-sincronizar = Sincronizar ahora
+bandeja2-sincronizado = Sincronizado { $cuando }
+bandeja2-sin-sincronizar = Sin sincronizar todavía
+bandeja2-hace-nada = ahora mismo
+bandeja2-hace-min = hace { $n } min
+bandeja2-hace-h = hace { $n } h
+bandeja2-ayer = ayer
+bandeja2-hace-dias = hace { $n } días
+bandeja2-buscar = Buscar una acción… (escribe sin más)
+bandeja2-buscar-favorito = Buscar qué poner de favorito…
+bandeja2-sin-resultados = Ninguna acción se llama así
+bandeja2-capturar = Capturar
+bandeja2-capturar-sub = Elige la zona con el ratón
+bandeja2-modo-zona = Zona
+bandeja2-modo-scroll = Scroll
+bandeja2-modo-gif = GIF
+bandeja2-modo-texto = Texto
+bandeja2-modo-retardo = Retardo
+bandeja2-modo-color = Color
+bandeja2-favoritos = Favoritos
+bandeja2-editar = Editar
+bandeja2-anadir = Añadir
+bandeja2-elige-favoritos = Elige tus favoritos ({ $n } de { $tope })
+bandeja2-favoritos-llenos = Ya hay { $tope } favoritos: quita uno antes.
+bandeja2-hecho = Hecho
+bandeja2-fav-pinear-copiado = Pinear copiado
+bandeja2-fav-anotar = Anotar pantalla
+bandeja2-fav-pin-vivo = Pin en vivo
+bandeja2-pines = Pines · { $n } a la vista
+bandeja2-ocultar-pines = Ocultar los pines
+bandeja2-paso-clic = Dejar pasar el clic
+bandeja2-atajos = Atajos
+bandeja2-silenciar = Silenciar los atajos
+bandeja2-silenciar-sub = para jugar o presentar
+bandeja2-ultimas = Últimas capturas
+bandeja2-ver-galeria = Ver la galería
+bandeja2-sin-capturas = Aún no hay capturas
+bandeja2-abrir-pixpin = Abrir PixPin
+bandeja2-tareas = Tareas
+bandeja2-lecciones = Lecciones
+bandeja2-nueva-leccion = Nueva lección
+bandeja2-galeria = Galería de capturas
+bandeja2-documento = Abrir documento…
+bandeja2-grupos = Grupos de ventanas
+bandeja2-para-hoy = { $n } para hoy
+bandeja2-salir = Salir de PixPin
+bandeja2-salir-sub = los pines se cierran
+bandeja2-copiada = Copiada
+bandeja2-borrada = A la papelera
+bandeja2-devuelta = Devuelta
+bandeja2-deshacer = Deshacer
+bandeja2-no-se-pudo = No se pudo: { $motivo }
