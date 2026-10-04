@@ -1476,3 +1476,129 @@ tareas-pegar-repetida = That image is already in as { $ficha }.
 
 # Opening a photo that Windows can only read with a Microsoft Store extension.
 abrir-falta-extension = Can't open { $nombre }: Windows needs "{ $extension }", free in the Microsoft Store. Install it and open the file again.
+
+## v2-ajustes
+ajustes2-titulo = Settings
+ajustes2-buscar = Search settings…
+ajustes2-nota = Saved when you close with Done or Esc.
+ajustes2-nota-punto = = different from the default.
+ajustes2-deshacer = Undo
+ajustes2-listo = Done
+ajustes2-restablecer = Reset { $seccion }
+ajustes2-resultados = Results for “{ $busqueda }”
+ajustes2-resultados-sub = { $n ->
+    [one] 1 setting found across all sections.
+   *[other] { $n } settings found across all sections.
+  }
+ajustes2-sin-resultados = No setting mentions “{ $busqueda }”. Try another word.
+ajustes2-sec-general = General
+ajustes2-sec-general-sub = How PixPin starts and what it does with PDFs in the chat.
+ajustes2-sec-captura = Capture
+ajustes2-sec-captura-sub = How a capture is taken and what happens to it afterwards.
+ajustes2-sec-lienzo = Canvas and tools
+ajustes2-sec-lienzo-sub = The magnet, freehand strokes and which tools show in the toolbar.
+ajustes2-sec-voz = Voice and transcription
+ajustes2-sec-voz-sub = Turning voice notes with two languages into text.
+ajustes2-sec-atajos = Shortcuts
+ajustes2-sec-atajos-sub = Click a box, then press the keys. Delete leaves it without a shortcut; Esc cancels.
+ajustes2-sec-sincro = Sync
+ajustes2-sec-sincro-sub = How this computer finds the phone.
+ajustes2-sec-apps = Default apps
+ajustes2-sec-apps-sub = Open images and videos with PixPin from File Explorer.
+ajustes2-sec-apariencia = Appearance
+ajustes2-sec-apariencia-sub = How the chat looks.
+ajustes2-sec-avanzado = Advanced
+ajustes2-sec-avanzado-sub = Performance, the pen filter and the settings file.
+ajustes2-g-arranque = On startup
+ajustes2-g-pdf = PDF documents
+ajustes2-g-al-capturar = When capturing
+ajustes2-g-gif = GIF recording
+ajustes2-g-guardar = Saving and cleanup
+ajustes2-g-pila = The capture stack
+ajustes2-g-ignorados = Ignored programs
+ajustes2-g-regiones = Saved regions
+ajustes2-g-iman = Magnet
+ajustes2-g-trazo = Freehand
+ajustes2-g-voz = Voice notes
+ajustes2-g-atajos = Global shortcuts
+ajustes2-g-sincro = On the local network
+ajustes2-g-apps = Opening images and videos
+ajustes2-g-tema = Theme
+ajustes2-g-rendimiento = Performance
+ajustes2-g-lapiz = Pen filter (Natural mode)
+ajustes2-g-fichero = The settings file
+ajustes2-ayuda-arranque = Stays in the tray without opening any window. Not available in portable mode.
+ajustes2-ayuda-idioma = Applies from the next start.
+ajustes2-ayuda-pdf-aligerar = After it enters the chat, in the background.
+ajustes2-pdf-nivel = How much lighter
+ajustes2-ayuda-pdf-nivel = On entry only Exact and Medium are used; Small and Max. are for “Make PDF lighter” by hand.
+ajustes2-retardo = Delayed capture
+ajustes2-ayuda-retardo = Countdown to open a menu or a tooltip before capturing.
+ajustes2-color = Color format
+ajustes2-ayuda-color = How the eyedropper copies the color.
+ajustes2-scroll = Maximum scrolling height
+ajustes2-ayuda-scroll = Limit for long captures, so an endless page does not use up memory.
+ajustes2-gif-ritmo = Frames per second
+ajustes2-ayuda-gif-ritmo = Fewer = lighter file. 10 or 15 is enough for tutorials.
+ajustes2-gif-retardo = Delay before recording
+ajustes2-ayuda-gif-retardo = Seconds between pressing “Record” and the first frame.
+ajustes2-carpeta = Captures folder
+ajustes2-abrir = Open
+ajustes2-caducidad = Days until deleted
+ajustes2-ayuda-caducidad = After this they go to the Windows Recycle Bin, except the kept ones.
+ajustes2-apilar = Stack in the corner
+ajustes2-ayuda-apilar = Each capture leaves a box in the corner; click it to gather the next ones and paste them all with one Ctrl+V.
+ajustes2-esquina = Box corner
+ajustes2-ayuda-esquina = On the monitor where the capture was taken.
+ajustes2-icono = Time on screen
+ajustes2-ayuda-icono = How long the unarmed box stays after the last capture.
+ajustes2-ayuda-ignorado = While this one is in front, PixPin shortcuts do nothing.
+ajustes2-anadir-programa = Add a program
+ajustes2-ayuda-anadir-programa = Type the executable name and press Enter.
+ajustes2-anadir = Add
+ajustes2-ayuda-region = { $x }, { $y } · { $ancho } × { $alto } px
+ajustes2-ayuda-iman = While drawing, the cursor snaps to what is already there.
+ajustes2-ayuda-iman-esquinas = Shape corners and line ends.
+ajustes2-ayuda-iman-medios = The midpoint of each side.
+ajustes2-ayuda-iman-centros = The center of each shape.
+ajustes2-iman-radio = Snapping distance
+ajustes2-ayuda-iman-radio = In screen pixels.
+ajustes2-suavizado = Stroke smoothing
+ajustes2-ayuda-suavizado = Natural removes the shake of a still hand without delaying the tip.
+ajustes2-ayuda-voz-segundo = Whisper also understands this language inside the same note.
+ajustes2-ayuda-voz-modo = What to do with what is said in the second language.
+ajustes2-presencia = Let the phone find me
+ajustes2-ayuda-presencia = The phone sees this computer as soon as it opens Sync. Off, no port is opened on the network.
+ajustes2-lo-mio = Mine wins
+ajustes2-ayuda-lo-mio = When syncing, this computer wins: only what does not exist here comes from the other side.
+ajustes2-abrir-con = Offer PixPin for images and videos
+ajustes2-ayuda-abrir-con = Shows in “Open with” and in Default apps. Turning it off removes what was written to the registry.
+ajustes2-predeterminada = Default app
+ajustes2-ayuda-predeterminada = Windows only lets you choose it in Settings: there, PixPin Max → Set default.
+ajustes2-hacer-predeterminada = Make PixPin the default app…
+ajustes2-ayuda-cosmos = Starry sky behind the chat project list. Applies from the next chat.
+ajustes2-nivel = Performance level
+ajustes2-ayuda-nivel = Automatic measures the computer at startup. Applies from the next start.
+ajustes2-medir = Measure editor frames
+ajustes2-ayuda-medir = Logs how long each frame takes. Only for diagnostics.
+ajustes2-ritmo = Paint right before the refresh
+ajustes2-ayuda-ritmo = The pen tip lags less; a missed calculation loses one refresh.
+ajustes2-paneo = Scroll without repainting
+ajustes2-ayuda-paneo = The Windows compositor moves and zooms the canvas. Off, every frame is repainted.
+ajustes2-corte = Cutoff with the pen still
+ajustes2-ayuda-corte = Lower = less shake and more lag when starting. Auto = 1 Hz.
+ajustes2-beta = How much it follows speed
+ajustes2-ayuda-beta = Higher = tip closer to the cursor and more shake. Auto = 0.007.
+ajustes2-fichero = Settings file
+ajustes2-ayuda-fichero = Whatever is not here is still there, with its comments. Hand edits apply after a restart.
+ajustes2-abrir-fichero = Open the file
+ajustes2-u-s = { $n } s
+ajustes2-u-px = { $n } px
+ajustes2-u-dias = { $n ->
+    [one] 1 day
+   *[other] { $n } days
+  }
+ajustes2-u-hz = { $n } Hz
+ajustes2-nunca = Never
+ajustes2-siempre = Always
+ajustes2-auto = Auto

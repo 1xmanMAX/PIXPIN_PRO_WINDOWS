@@ -323,12 +323,14 @@ fn arrancar(
         }
     };
 
-    // Las capturas se van solas a la semana salvo las conservadas: se barre
-    // ahora y cada hora, en su hilo (`caducidad_capturas`).
-    caducidad_capturas::vigilar(ubicacion.raiz().to_path_buf());
-
     // 4. Que nos han configurado.
     let mut config = ajustes::cargar(&ubicacion).context("no se pudieron leer los ajustes")?;
+
+    // Las capturas se van solas a los `[capturas] dias_caducidad` dias salvo
+    // las conservadas: se barre ahora y cada hora, en su hilo
+    // (`caducidad_capturas`).
+    caducidad_capturas::fijar_dias(config.capturas.dias_caducidad);
+    caducidad_capturas::vigilar(ubicacion.raiz().to_path_buf());
     // Como se siente el lapiz (`[tinta]`). Va por aqui y no como parametro de
     // `ventana_editor::abrir` porque el editor se abre desde cinco sitios
     // distintos (la bandeja, el «abrir con», el chat, las lecciones) y ninguno

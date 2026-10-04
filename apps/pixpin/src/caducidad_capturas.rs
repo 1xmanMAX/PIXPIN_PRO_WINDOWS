@@ -31,9 +31,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::galeria_capturas::{self, Entrada};
 
-/// Lo que aguanta una captura antes de irse sola.
+/// Lo que aguanta una captura antes de irse sola, de fabrica. Lo que vale
+/// de verdad es `[capturas] dias_caducidad` (ventana de ajustes), que se
+/// pasa con [`fijar_dias`].
 pub const DIAS: i64 = 7;
 const DIA_MS: i64 = 86_400_000;
+
+/// Los dias que valen ahora. Cero: no se va ninguna.
+static DIAS_ACTUALES: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(DIAS);
+
+/// Lo que diga `[capturas] dias_caducidad`: al arrancar y al cerrar los
+/// ajustes. Vale desde el siguiente barrido y el siguiente pintado de la
+/// galeria.
+pub fn fijar_dias(dias: u32) {
+    DIAS_ACTUALES.store(dias as i64, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn dias() -> i64 {
+    DIAS_ACTUALES.load(std::sync::atomic::Ordering::Relaxed)
+}
 /// Cada cuanto se barre con la aplicacion abierta.
 const CADA: Duration = Duration::from_secs(60 * 60);
 const FICHERO: &str = "capturas-caducidad.json";
@@ -113,10 +129,15 @@ pub fn ms_de(t: SystemTime) -> i64 {
 
 /// Cuando se va una captura hecha en `cuando` (ms UTC). `None`: no se va.
 pub fn se_va_el(r: &Registro, e: &Entrada) -> Option<i64> {
-    if r.conservadas.contains(&nombre(&e.ruta)) {
+    se_va_el_con(r, e, dias())
+}
+
+/// [`se_va_el`] con un plazo dado. Con cero o menos no se va ninguna.
+pub fn se_va_el_con(r: &Registro, e: &Entrada, dias: i64) -> Option<i64> {
+    if dias <= 0 || r.conservadas.contains(&nombre(&e.ruta)) {
         return None;
     }
-    Some(ms_de(e.cuando).max(r.desde) + DIAS * DIA_MS)
+    Some(ms_de(e.cuando).max(r.desde) + dias * DIA_MS)
 }
 
 /// Las que ya tocan.
@@ -205,6 +226,16 @@ mod pruebas {
         let vieja = entrada("vieja.png", 3 * DIA_MS);
         assert!(caducadas(&r, std::slice::from_ref(&vieja), 100 * DIA_MS).is_empty(), "el primer dia no");
         assert_eq!(se_va_el(&r, &vieja), Some(107 * DIA_MS));
+    }
+
+    #[test]
+    fn el_plazo_lo_pone_el_ajuste_y_cero_es_nunca() {
+        let r = registro(0);
+        let e = entrada("a.png", 10 * DIA_MS);
+        assert_eq!(se_va_el_con(&r, &e, 30), Some(40 * DIA_MS));
+        assert_eq!(se_va_el_con(&r, &e, 1), Some(11 * DIA_MS));
+        // Caso negativo: con cero no se va, por vieja que sea.
+        assert_eq!(se_va_el_con(&r, &e, 0), None);
     }
 
     #[test]
