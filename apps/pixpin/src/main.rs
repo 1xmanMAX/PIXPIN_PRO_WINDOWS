@@ -56,6 +56,7 @@ mod anotador_al_chat;
 mod audio;
 mod biblioteca_audio;
 mod buscador;
+mod buscar_todo;
 mod caja_dibujo;
 mod capa;
 mod cielo;
@@ -857,6 +858,12 @@ fn arrancar(
                 // En su propio hilo, como el chat: esperar al movil no puede
                 // dejar sordos los atajos ni los gestos.
                 recibir::lanzar(lengua, ubicacion.clone());
+                Continuar::Si
+            }
+            _ if comando == Some(comandos::Comando::Buscar) => {
+                // En su propio hilo, como la galeria; si ya esta abierto
+                // lo trae delante (lo vigila `buscar_todo::abrir`).
+                buscar_todo::abrir(lengua, ubicacion.clone(), buscar_todo::Opciones::de(&config, hwnd.0 as isize));
                 Continuar::Si
             }
             _ if comando == Some(comandos::Comando::Sincronizar) => {
