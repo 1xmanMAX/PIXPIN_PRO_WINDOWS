@@ -190,6 +190,7 @@ pub struct Recursos {
 impl Recursos {
     pub fn nuevos() -> Result<Recursos> {
         let dispositivo = Dispositivo::nuevo().context("sin dispositivo de captura")?;
+        tracing::info!(grafica = %dispositivo.adaptador(), "dispositivo grafico creado");
         let motor = MotorRender::nuevo(dispositivo.d3d()).context("sin motor de dibujo")?;
         Ok(Recursos {
             dispositivo,

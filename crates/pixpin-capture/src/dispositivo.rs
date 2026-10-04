@@ -12,12 +12,14 @@
 
 use windows::Graphics::DirectX::Direct3D11::IDirect3DDevice;
 use windows::Win32::Foundation::HMODULE;
-use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP};
+use windows::Win32::Graphics::Direct3D::{
+    D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_UNKNOWN, D3D_DRIVER_TYPE_WARP,
+};
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CREATE_DEVICE_VIDEO_SUPPORT, D3D11_SDK_VERSION,
     D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11Multithread,
 };
-use windows::Win32::Graphics::Dxgi::IDXGIDevice;
+use windows::Win32::Graphics::Dxgi::{IDXGIAdapter, IDXGIDevice};
 use windows::Win32::System::WinRT::Direct3D11::CreateDirect3D11DeviceFromDXGIDevice;
 use windows::core::Interface;
 
@@ -45,6 +47,51 @@ pub enum ErrorCaptura {
     },
 }
 
+/// El adaptador que tiene conectada la pantalla principal (la del punto
+/// 0,0), o `None` si no se encuentra: entonces decide Windows, como antes.
+fn adaptador_de_la_pantalla_principal() -> Option<IDXGIAdapter> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1};
+    use windows::Win32::Graphics::Gdi::{MONITOR_DEFAULTTOPRIMARY, MonitorFromPoint};
+    // SAFETY: consultas de solo lectura a DXGI y a GDI; las interfaces que se
+    // devuelven tienen su propia cuenta de referencias.
+    unsafe {
+        let principal = MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY);
+        let fabrica: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
+        let mut i = 0;
+        while let Ok(adaptador) = fabrica.EnumAdapters1(i) {
+            let mut j = 0;
+            while let Ok(salida) = adaptador.EnumOutputs(j) {
+                if salida.GetDesc().is_ok_and(|d| d.Monitor == principal) {
+                    return adaptador.cast().ok();
+                }
+                j += 1;
+            }
+            i += 1;
+        }
+    }
+    None
+}
+
+/// El nombre de la grafica en la que vive el dispositivo, para el registro.
+fn nombre_del_adaptador(d3d: &ID3D11Device) -> String {
+    // SAFETY: consultas de solo lectura sobre un dispositivo vivo.
+    unsafe {
+        d3d.cast::<IDXGIDevice>()
+            .and_then(|x| x.GetAdapter())
+            .and_then(|a| a.GetDesc())
+            .map(|d| {
+                let fin = d
+                    .Description
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(d.Description.len());
+                String::from_utf16_lossy(&d.Description[..fin])
+            })
+            .unwrap_or_default()
+    }
+}
+
 pub struct Dispositivo {
     d3d: ID3D11Device,
     contexto: ID3D11DeviceContext,
@@ -67,13 +114,28 @@ impl Dispositivo {
         // Primero con soporte de video (D66); si el driver lo rechaza, sin
         // el: capturar es mas importante que reproducir, y un driver raro
         // no puede dejar la aplicacion sin capturas.
+        // En un portatil con dos graficas (Intel + NVIDIA) el adaptador por
+        // defecto puede ser la NVIDIA, que no tiene la pantalla: la
+        // Duplicacion de Escritorio no la encuentra (cada captura cae a WGC,
+        // ~180 ms) y, cuando la NVIDIA se apaga para ahorrar, el dispositivo
+        // se pierde (0x887A0005, «GPU device instance has been suspended»):
+        // ni pines ni capturas hasta reiniciar. Medido el 4-oct-2026. Primero,
+        // el adaptador de la pantalla principal, que nunca se apaga.
+        let principal = adaptador_de_la_pantalla_principal();
         let intentos = [
-            (D3D_DRIVER_TYPE_HARDWARE, true),
-            (D3D_DRIVER_TYPE_HARDWARE, false),
-            (D3D_DRIVER_TYPE_WARP, true),
-            (D3D_DRIVER_TYPE_WARP, false),
+            (principal.clone(), D3D_DRIVER_TYPE_UNKNOWN, true),
+            (principal, D3D_DRIVER_TYPE_UNKNOWN, false),
+            (None, D3D_DRIVER_TYPE_HARDWARE, true),
+            (None, D3D_DRIVER_TYPE_HARDWARE, false),
+            (None, D3D_DRIVER_TYPE_WARP, true),
+            (None, D3D_DRIVER_TYPE_WARP, false),
         ];
-        for (tipo, con_video) in intentos {
+        for (adaptador, tipo, con_video) in intentos {
+            // Con adaptador explicito el tipo tiene que ser UNKNOWN; sin el,
+            // ese intento no existe.
+            if tipo == D3D_DRIVER_TYPE_UNKNOWN && adaptador.is_none() {
+                continue;
+            }
             let mut d3d: Option<ID3D11Device> = None;
             let mut contexto: Option<ID3D11DeviceContext> = None;
             let flags = if con_video {
@@ -88,7 +150,7 @@ impl Dispositivo {
             // ninguna referencia a nuestras variables tras devolver.
             let resultado = unsafe {
                 D3D11CreateDevice(
-                    None,
+                    adaptador.as_ref(),
                     tipo,
                     // El modulo de rasterizador software solo aplica a
                     // D3D_DRIVER_TYPE_SOFTWARE; para HARDWARE y WARP va nulo.
@@ -142,6 +204,11 @@ impl Dispositivo {
         Err(ErrorCaptura::SinDispositivo(
             windows::core::Error::from_thread(),
         ))
+    }
+
+    /// El nombre de la grafica donde vive (para el registro de la app).
+    pub fn adaptador(&self) -> String {
+        nombre_del_adaptador(&self.d3d)
     }
 
     pub fn d3d(&self) -> &ID3D11Device {
