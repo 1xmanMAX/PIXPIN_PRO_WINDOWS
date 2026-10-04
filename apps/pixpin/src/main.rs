@@ -59,6 +59,7 @@ mod buscador;
 mod buscar_todo;
 mod caja_dibujo;
 mod capa;
+mod captura2;
 mod cielo;
 mod compartir;
 mod conversacion;
@@ -1071,11 +1072,16 @@ fn arrancar(
                 let anotar_al_pinear = comando == Some(comandos::Comando::CapturarYAnotar);
                 tracing::info!(?modo, ?inicio, anotar_al_pinear, "abrir captura");
                 let etiquetas_barra = TextosBarra {
-                    copiar: textos.t("barra-copiar"),
-                    guardar: textos.t("barra-guardar"),
-                    guardar_como: textos.t("barra-guardar-como"),
-                    descartar: textos.t("barra-descartar"),
                     todo: textos.t("barra-todo"),
+                };
+                // La captura v2: rotulos, la ultima zona para «Repetir» y
+                // donde estan los proyectos para «Al chat».
+                let contexto_captura = captura2::Contexto {
+                    textos: captura2::Textos::de(&textos),
+                    ultima_region,
+                    raiz: Some(ubicacion.raiz().to_path_buf()),
+                    aparato: identidad_equipo.clone(),
+                    gestos: gancho.is_some(),
                 };
                 let formato = match config.formato_color {
                     ajustes::FormatoColor::Hex => FormatoColorLupa::Hex,
@@ -1100,6 +1106,7 @@ fn arrancar(
                         formato,
                         inicio,
                         desde_ms,
+                        contexto_captura,
                     )
                 });
                 if let Some(g) = &gancho {
@@ -1322,6 +1329,29 @@ fn arrancar(
                         if anotar_al_pinear {
                             p.anotar_pin(nuevo)?;
                         }
+                        Ok(None)
+                    }
+                    // Al chat de un proyecto, elegido en la captura (v2).
+                    AccionFinal::AlChat {
+                        imagen,
+                        region,
+                        proyecto,
+                        comentario,
+                    } => {
+                        ultima_region = Some(region);
+                        let nombre = captura2::al_chat::mandar(
+                            ubicacion.raiz(),
+                            &proyecto,
+                            &identidad_equipo,
+                            &imagen,
+                            &comentario,
+                        )?;
+                        let mut args = fluent_bundle::FluentArgs::new();
+                        args.set("proyecto", nombre);
+                        let _ = bandeja.avisar(
+                            &textos.t("app-nombre"),
+                            &textos.t_args("captura2-enviada", &args),
+                        );
                         Ok(None)
                     }
                     // Copiar pasa por la pila de capturas, que necesita los
@@ -2274,7 +2304,8 @@ fn ejecutar_accion(
         | AccionFinal::Pinear { .. }
         | AccionFinal::Scroll { .. }
         | AccionFinal::Gif { .. }
-        | AccionFinal::PinEnVivo { .. } => {
+        | AccionFinal::PinEnVivo { .. }
+        | AccionFinal::AlChat { .. } => {
             // El bucle los intercepta antes de llamar aqui, porque necesitan
             // el gestor o los recursos de captura; llegar seria un error de
             // cableado.
