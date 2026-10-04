@@ -374,6 +374,17 @@ pub struct Capturas {
     /// Ocho porque son los justos para ver que la captura se hizo y decidir
     /// si se abre el montoncito, sin quedarse tapando la esquina.
     pub icono_segundos: u32,
+    /// **Dias que aguanta una captura antes de irse sola** a la papelera de
+    /// Windows (`apps/pixpin/src/caducidad_capturas.rs`), salvo las
+    /// conservadas. Cero = no se va ninguna. Siete de fabrica: lo que pidio
+    /// el usuario el 3-oct («por ejemplo 1 semana»). Un fichero de antes,
+    /// sin esta clave, sigue en siete.
+    #[serde(default = "dias_caducidad_de_fabrica")]
+    pub dias_caducidad: u32,
+}
+
+fn dias_caducidad_de_fabrica() -> u32 {
+    7
 }
 
 impl Default for Capturas {
@@ -382,6 +393,7 @@ impl Default for Capturas {
             apilar_segundos: 10,
             esquina: EsquinaPila::default(),
             icono_segundos: 8,
+            dias_caducidad: dias_caducidad_de_fabrica(),
         }
     }
 }
@@ -649,6 +661,7 @@ mod pruebas {
                 apilar_segundos: 25,
                 esquina: EsquinaPila::ArribaIzquierda,
                 icono_segundos: 3,
+                dias_caducidad: 30,
             },
             pdf: Pdf {
                 aligerar_al_entrar: false,
@@ -843,6 +856,19 @@ arranque_con_windows = true
         // pila encendida: es la funcion nueva, no una migracion.
         let viejo: Ajustes = toml::from_str("limite_scroll_px = 100").unwrap();
         assert_eq!(viejo.capturas, Capturas::default());
+    }
+
+    #[test]
+    fn las_capturas_caducan_a_los_siete_dias_y_un_fichero_viejo_sigue_igual() {
+        assert_eq!(Ajustes::default().capturas.dias_caducidad, 7);
+        // Un fichero de antes, con `[capturas]` pero sin la clave nueva.
+        let viejo: Ajustes = toml::from_str("[capturas]\napilar_segundos = 25").unwrap();
+        assert_eq!(viejo.capturas.dias_caducidad, 7);
+        let a: Ajustes = toml::from_str("[capturas]\ndias_caducidad = 30").unwrap();
+        assert_eq!(a.capturas.dias_caducidad, 30);
+        // Caso negativo: cero no cae al de fabrica, es «no se va ninguna».
+        let nunca: Ajustes = toml::from_str("[capturas]\ndias_caducidad = 0").unwrap();
+        assert_eq!(nunca.capturas.dias_caducidad, 0);
     }
 
     #[test]

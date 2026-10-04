@@ -1506,3 +1506,128 @@ v2menus-envio-archivos = { $cuantos ->
     [one] 1 archivo
    *[other] { $cuantos } archivos
 } · a { $proyecto }
+## v2-ajustes
+ajustes2-titulo = Ajustes
+ajustes2-buscar = Buscar un ajuste…
+ajustes2-nota = Se guardan al cerrar con Listo o Esc.
+ajustes2-nota-punto = = distinto del valor de fábrica.
+ajustes2-deshacer = Deshacer
+ajustes2-listo = Listo
+ajustes2-restablecer = Restablecer { $seccion }
+ajustes2-resultados = Resultados para «{ $busqueda }»
+ajustes2-resultados-sub = { $n ->
+    [one] 1 ajuste encontrado en todas las secciones.
+   *[other] { $n } ajustes encontrados en todas las secciones.
+  }
+ajustes2-sin-resultados = Ningún ajuste habla de «{ $busqueda }». Prueba con otra palabra.
+ajustes2-sec-general = General
+ajustes2-sec-general-sub = Cómo arranca PixPin y qué hace con los PDF del chat.
+ajustes2-sec-captura = Captura
+ajustes2-sec-captura-sub = Cómo se hace una captura y qué pasa con ella después.
+ajustes2-sec-lienzo = Lienzo y herramientas
+ajustes2-sec-lienzo-sub = El imán, el trazo a mano y qué herramientas salen en la barra.
+ajustes2-sec-voz = Voz y transcripción
+ajustes2-sec-voz-sub = Pasar a texto las notas de voz con dos idiomas.
+ajustes2-sec-atajos = Atajos
+ajustes2-sec-atajos-sub = Pulsa una caja y luego la combinación. Supr la deja sin atajo; Esc cancela.
+ajustes2-sec-sincro = Sincronizar
+ajustes2-sec-sincro-sub = Cómo se encuentra este equipo con el móvil.
+ajustes2-sec-apps = Apps predeterminadas
+ajustes2-sec-apps-sub = Abrir imágenes y vídeos con PixPin desde el Explorador.
+ajustes2-sec-apariencia = Apariencia
+ajustes2-sec-apariencia-sub = El aspecto del chat.
+ajustes2-sec-avanzado = Avanzado
+ajustes2-sec-avanzado-sub = Rendimiento, el filtro del lápiz y el archivo de ajustes.
+ajustes2-g-arranque = Al arrancar
+ajustes2-g-pdf = Documentos PDF
+ajustes2-g-al-capturar = Al capturar
+ajustes2-g-gif = Grabar GIF
+ajustes2-g-guardar = Guardar y limpiar
+ajustes2-g-pila = La pila de capturas
+ajustes2-g-ignorados = Programas ignorados
+ajustes2-g-regiones = Regiones guardadas
+ajustes2-g-iman = Imán
+ajustes2-g-trazo = Trazo a mano
+ajustes2-g-voz = Notas de voz
+ajustes2-g-atajos = Atajos generales
+ajustes2-g-sincro = En la red local
+ajustes2-g-apps = Abrir imágenes y vídeos
+ajustes2-g-tema = Tema
+ajustes2-g-rendimiento = Rendimiento
+ajustes2-g-lapiz = Filtro del lápiz (modo Natural)
+ajustes2-g-fichero = El archivo de ajustes
+ajustes2-ayuda-arranque = Se queda en la bandeja sin abrir ninguna ventana. En modo portable no se puede.
+ajustes2-ayuda-idioma = Vale desde el próximo arranque.
+ajustes2-ayuda-pdf-aligerar = Después de meterlo al chat, en segundo plano.
+ajustes2-pdf-nivel = Cuánto se aligera
+ajustes2-ayuda-pdf-nivel = Al entrar solo se usan Exacto y Medio; Chico y Máx. quedan para «Aligerar el PDF» a mano.
+ajustes2-retardo = Captura con retardo
+ajustes2-ayuda-retardo = Cuenta atrás para abrir un menú o un tooltip antes de capturar.
+ajustes2-color = Formato del color
+ajustes2-ayuda-color = Cómo se copia el color con el cuentagotas.
+ajustes2-scroll = Alto máximo con scroll
+ajustes2-ayuda-scroll = Tope de la captura larga, para que una página infinita no agote la memoria.
+ajustes2-gif-ritmo = Fotogramas por segundo
+ajustes2-ayuda-gif-ritmo = Menos = archivo más ligero. Para tutoriales basta con 10 o 15.
+ajustes2-gif-retardo = Cortesía antes de grabar
+ajustes2-ayuda-gif-retardo = Segundos entre pulsar «Grabar» y el primer fotograma.
+ajustes2-carpeta = Carpeta de las capturas
+ajustes2-abrir = Abrir
+ajustes2-caducidad = Días hasta borrar
+ajustes2-ayuda-caducidad = Pasado el plazo se van a la papelera de Windows, salvo las conservadas.
+ajustes2-apilar = Apilar en la esquina
+ajustes2-ayuda-apilar = Cada captura deja un recuadro en la esquina; un clic en él junta las siguientes y un Ctrl+V las pega todas.
+ajustes2-esquina = Esquina del recuadro
+ajustes2-ayuda-esquina = En el monitor donde se hizo la captura.
+ajustes2-icono = Tiempo a la vista
+ajustes2-ayuda-icono = Lo que se queda el recuadro sin armar después de la última captura.
+ajustes2-ayuda-ignorado = Con este en primer plano, los atajos de PixPin no hacen nada.
+ajustes2-anadir-programa = Añadir un programa
+ajustes2-ayuda-anadir-programa = Escribe el nombre del ejecutable y pulsa Intro.
+ajustes2-anadir = Añadir
+ajustes2-ayuda-region = { $x }, { $y } · { $ancho } × { $alto } px
+ajustes2-ayuda-iman = Al dibujar, el cursor se pega a lo que ya hay.
+ajustes2-ayuda-iman-esquinas = Las esquinas de las formas y los extremos de las líneas.
+ajustes2-ayuda-iman-medios = El punto medio de cada lado.
+ajustes2-ayuda-iman-centros = El centro de cada forma.
+ajustes2-iman-radio = Distancia a la que agarra
+ajustes2-ayuda-iman-radio = En píxeles de pantalla.
+ajustes2-suavizado = Suavizado del trazo
+ajustes2-ayuda-suavizado = Natural quita el temblor de la mano parada sin retrasar la punta.
+ajustes2-ayuda-voz-segundo = Whisper entiende también este idioma dentro de la misma nota.
+ajustes2-ayuda-voz-modo = Qué hacer con lo dicho en el segundo idioma.
+ajustes2-presencia = Dejarse encontrar
+ajustes2-ayuda-presencia = El móvil ve este equipo en cuanto abre Sincronizar. Apagado no se abre ninguna puerta en la red.
+ajustes2-lo-mio = Lo mío manda
+ajustes2-ayuda-lo-mio = Al sincronizar, lo de este equipo se impone: del otro lado solo llega lo que aquí no existe.
+ajustes2-abrir-con = Ofrecer PixPin para imágenes y vídeos
+ajustes2-ayuda-abrir-con = Sale en «Abrir con» y en Aplicaciones predeterminadas. Apagarlo borra lo escrito en el registro.
+ajustes2-predeterminada = App predeterminada
+ajustes2-ayuda-predeterminada = Windows solo deja elegirla en Configuración: allí, PixPin Max → Establecer como predeterminada.
+ajustes2-hacer-predeterminada = Hacer PixPin la app predeterminada…
+ajustes2-ayuda-cosmos = Cielo estrellado detrás de la lista de proyectos del chat. Vale desde el siguiente chat.
+ajustes2-nivel = Nivel de rendimiento
+ajustes2-ayuda-nivel = Automático mide el equipo al arrancar. Vale desde el próximo arranque.
+ajustes2-medir = Medir los fotogramas del editor
+ajustes2-ayuda-medir = Apunta en el registro cuánto tarda cada fotograma. Solo para diagnosticar.
+ajustes2-ritmo = Pintar justo antes del refresco
+ajustes2-ayuda-ritmo = La punta del lápiz va menos retrasada; un cálculo fallado pierde un refresco.
+ajustes2-paneo = Desplazar sin repintar
+ajustes2-ayuda-paneo = Mover y acercar el lienzo lo hace el compositor de Windows. Apagado, se repinta cada fotograma.
+ajustes2-corte = Corte con el lápiz quieto
+ajustes2-ayuda-corte = Más bajo = menos temblor y más retraso al arrancar. Auto = 1 Hz.
+ajustes2-beta = Cuánto sigue a la velocidad
+ajustes2-ayuda-beta = Más alto = punta más pegada al cursor y más temblor. Auto = 0,007.
+ajustes2-fichero = Archivo de ajustes
+ajustes2-ayuda-fichero = Lo que no está aquí sigue ahí, con sus comentarios. Lo cambiado a mano vale al reiniciar.
+ajustes2-abrir-fichero = Abrir el archivo
+ajustes2-u-s = { $n } s
+ajustes2-u-px = { $n } px
+ajustes2-u-dias = { $n ->
+    [one] 1 día
+   *[other] { $n } días
+  }
+ajustes2-u-hz = { $n } Hz
+ajustes2-nunca = Nunca
+ajustes2-siempre = Siempre
+ajustes2-auto = Auto
