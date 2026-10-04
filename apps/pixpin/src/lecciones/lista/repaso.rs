@@ -90,7 +90,7 @@ pub fn cuando_vuelve(tx: &Catalogo, dias: i64) -> String {
     if dias <= 1 {
         tx.t("lec2-vuelve-manana")
     } else {
-        t1(&tx, "lec2-vuelve-en", "dias", dias)
+        t1(tx, "lec2-vuelve-en", "dias", dias)
     }
 }
 
@@ -107,10 +107,10 @@ pub fn situacion(tx: &Catalogo, l: &Leccion) -> String {
         .collect::<Vec<_>>()
         .join(" ");
     if !t.is_empty() {
-        return t1(&tx, "lec2-repaso-cuando", "pista", t);
+        return t1(tx, "lec2-repaso-cuando", "pista", t);
     }
     if !l.area.trim().is_empty() {
-        return t1(&tx, "lec2-repaso-cuando", "pista", l.area.clone());
+        return t1(tx, "lec2-repaso-cuando", "pista", l.area.clone());
     }
     tx.t("lec2-repaso-recuerda")
 }

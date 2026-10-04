@@ -568,6 +568,8 @@ fn escape_cierra(es_lienzo: bool, sin_presentar: bool, gesto_en_reposo: bool) ->
 /// F5: presentar (G5), como en PowerPoint.
 const VK_F5: u32 = 0x74;
 
+// Cada modo de abrir el editor pone lo suyo; agruparlo no aclara nada.
+#[allow(clippy::too_many_arguments)]
 fn abrir_en_modo(
     escena: Escena,
     ajustes_iman: pixpin_motor2d::enganche::Ajustes,
@@ -3107,7 +3109,7 @@ fn abrir_en_modo(
     // **Sin almacen** (no pasa desde `main`, que siempre lo da) queda la
     // salida de antes: una foto de la pantalla con lo anotado, SIN barra ni
     // panel ni marco de lo elegido (D59), que `main` ofrece pinear (D54).
-    if let Some(pa) = pantalla.as_deref_mut()
+    if let Some(pa) = pantalla
         && !con_almacen
         && escena.cuantos_visibles() > 0
     {

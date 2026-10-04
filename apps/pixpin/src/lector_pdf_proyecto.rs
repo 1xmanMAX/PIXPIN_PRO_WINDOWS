@@ -147,6 +147,7 @@ impl DondeVa {
     /// hoja: no hay que adivinarlo) y si no, la regla de antes con los
     /// `espacios` de ahora ([`DondeVa::unidades`]). `alto` es el de la hoja
     /// en unidades del lector (`Hojas::altos`).
+    #[cfg(test)]
     pub fn unidades_de(&self, i: usize, espacios: u8, alto: f32) -> crate::lector_tinta::Unidades {
         self.marco(i)
             .and_then(|b| crate::anotado_del_adjunto::unidades_del_marco(&b, &hoja_propia(alto)))

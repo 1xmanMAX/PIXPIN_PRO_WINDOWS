@@ -56,7 +56,7 @@ fn proyecto(raiz: &Path) -> FichaProyecto {
     std::fs::create_dir_all(c.join("archivos")).unwrap();
     std::fs::write(c.join("archivos").join("voz-1.m4a"), b"m4a").unwrap();
     std::fs::write(c.join("archivos").join("Plano.pdf"), b"%PDF-1.4").unwrap();
-    let mensajes = vec![
+    let mensajes = [
         Mensaje {
             clase: Some(Clase::Voz),
             ruta: Some("archivos/voz-1.m4a".into()),

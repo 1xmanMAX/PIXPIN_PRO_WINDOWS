@@ -618,6 +618,9 @@ pub fn mostrar(
 /// pediria el dialogo para una vista de `ancho` x `alto` DIP con `papel`,
 /// y devuelve sus pixeles RGBA. Es el mismo camino de `MakePage` sin el
 /// dialogo: para las muestras y las pruebas.
+// Los mismos datos que monta el dialogo, uno por campo de `Estado`; la tupla
+// de vuelta es la de `MakePage` (pagina, (ancho, alto, pixeles)).
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn miniatura_rgba(
     documento: Box<dyn Documento>,
     motor: MotorRender,

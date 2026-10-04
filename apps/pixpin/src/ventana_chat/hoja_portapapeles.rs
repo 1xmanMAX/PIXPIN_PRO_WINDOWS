@@ -20,7 +20,7 @@ pub(super) fn pegar(h: &mut HojaAbierta) {
     };
     if let Some(edicion) = h.edicion.as_mut() {
         if let Some(t) = texto {
-            edicion.push_str(&t.replace(['\r', '\n', '\t'], " ").trim_end().to_string());
+            edicion.push_str(t.replace(['\r', '\n', '\t'], " ").trim_end());
         }
         return;
     }

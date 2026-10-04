@@ -121,6 +121,8 @@ pub fn elementos(p: &Peticion, estilo: &Estilo, medir: Medir<'_>) -> Result<Vec<
 /// partes, alta por su llave, bajaba hasta el eje x y tapaba sus numeros, y
 /// cualquier leyenda se montaba sobre las curvas. Fuera no pisa nada y se
 /// sigue leyendo junto a su curva por el color.
+// `!(a > b)` es a proposito: tambien rechaza los NaN.
+#[allow(clippy::neg_cmp_op_on_partial_ord)]
 pub fn partes(
     p: &Peticion,
     estilo: &Estilo,

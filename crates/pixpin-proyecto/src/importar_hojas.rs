@@ -1321,21 +1321,19 @@ fn de_ods(bytes: &[u8], ahora: i64) -> Result<Vec<HojaImportada>, NoSeLee> {
                 }
                 fila = fila.saturating_add(repite_fila);
             }
-            "table" => {
-                if !celdas.is_empty() {
-                    let mut propias = std::mem::take(&mut celdas);
-                    let como_valor = con_valores_donde_no_cuadra(&mut propias, &guardados);
-                    salida.push(HojaImportada {
+            "table" if !celdas.is_empty() => {
+                let mut propias = std::mem::take(&mut celdas);
+                let como_valor = con_valores_donde_no_cuadra(&mut propias, &guardados);
+                salida.push(HojaImportada {
+                    nombre: nombre.clone(),
+                    tabla: Tabla {
                         nombre: nombre.clone(),
-                        tabla: Tabla {
-                            nombre: nombre.clone(),
-                            celdas: propias,
-                            tocado: ahora,
-                            ..Default::default()
-                        },
-                        formulas_como_valor: como_valor,
-                    });
-                }
+                        celdas: propias,
+                        tocado: ahora,
+                        ..Default::default()
+                    },
+                    formulas_como_valor: como_valor,
+                });
             }
             _ => {}
         },

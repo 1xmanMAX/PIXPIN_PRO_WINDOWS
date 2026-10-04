@@ -418,6 +418,7 @@ mod con_datos_reales {
     /// `como_al_abrir` hace lo que hace el lector al abrir cada hoja (la
     /// migracion de lo del PC de antes del 29-sep), para comparar despues
     /// solo lo que cambia el marco.
+    #[allow(clippy::type_complexity)]
     fn cajas(raiz: &Path, como_al_abrir: bool) -> Vec<(String, Option<(f32, f32, f32, f32)>)> {
         let mut salida = Vec::new();
         for (chat, ficha) in DiscoPc::nuevo(raiz).mapa() {

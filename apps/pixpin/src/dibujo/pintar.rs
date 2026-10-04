@@ -640,6 +640,8 @@ fn capsula(desde: f32, hasta: f32, radio: f32) -> Vec<(f32, f32)> {
     v
 }
 
+// Lo que hace falta para pintar encima del lienzo; agruparlo no aclara nada.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn pintar_encima(
     p: &pixpin_render::Pintor<'_>,
     gesto: &pixpin_motor2d::gesto::Gesto,

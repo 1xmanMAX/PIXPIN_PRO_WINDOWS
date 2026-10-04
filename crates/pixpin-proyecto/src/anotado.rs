@@ -416,9 +416,7 @@ pub fn marcas_del_lienzo(lienzo: &Path) -> Option<PathBuf> {
         .parent()?;
     let ficha = carpeta.file_name()?.to_str()?;
     let raiz = raiz_de(carpeta)?;
-    if Indice::leer(&raiz).buscar(ficha).is_none() {
-        return None;
-    }
+    Indice::leer(&raiz).buscar(ficha)?;
     let chat = vista::chat_de_ficha(&raiz, ficha)?;
     Some(DiscoPc::nuevo(&raiz).ruta(&chat, &format!("{}/{d}.marcas", a::CARPETA)))
 }

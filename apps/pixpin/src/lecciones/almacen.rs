@@ -158,7 +158,7 @@ pub fn listar(raiz: &Path) -> Vec<Entrada> {
             });
         }
     }
-    salida.sort_by(|a, b| b.leccion.tocada.cmp(&a.leccion.tocada));
+    salida.sort_by_key(|x| std::cmp::Reverse(x.leccion.tocada));
     salida
 }
 
@@ -278,6 +278,8 @@ pub const NOMBRE_FOTO: &str = "Foto de la lección";
 /// **responde** al de la leccion (asi el chat no la ensena y el movil la
 /// reconoce como suya), y por ultimo la leccion otra vez con los ids de esos
 /// mensajes en `adjuntos`. Sin fotos es [`guardar`].
+// `numero` sale de `?` antes del bucle; el contador a mano se lee mejor.
+#[allow(clippy::explicit_counter_loop)]
 pub fn guardar_con_fotos(
     raiz: &Path,
     l: &Leccion,

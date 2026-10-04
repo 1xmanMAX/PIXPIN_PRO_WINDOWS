@@ -175,6 +175,8 @@ fn nombre_real(familia: &str) -> &str {
 }
 
 /// La coleccion propia de este hilo, montada la primera vez.
+// La clave (familia, negrita, cursiva) se lee mejor en linea que tras un alias.
+#[allow(clippy::type_complexity)]
 struct Propias {
     coleccion: IDWriteFontCollection,
     /// `(ascenso, descenso)` en fracciones de em, por familia y marcas: la

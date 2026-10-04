@@ -342,6 +342,7 @@ impl Capa {
     /// margen izquierdo, `Maqueta.izq`). El lector del PC cuenta desde el
     /// borde de la columna, asi que al leer todo se corre `dx` a la izquierda
     /// y al guardar ([`Capa::guardar_corrida`]) se devuelve.
+    #[cfg(test)]
     pub fn leer_corrida(ruta: &Path, dx: f32) -> Capa {
         Capa::leer_en(ruta, Unidades::corridas(dx))
     }
@@ -373,6 +374,7 @@ impl Capa {
 
     /// Lo mismo, devolviendo lo corrido: en el fichero la columna empieza
     /// `dx` mas alla (ver [`Capa::leer_corrida`]).
+    #[cfg(test)]
     pub fn guardar_corrida(&mut self, ruta: &Path, dx: f32) -> std::io::Result<()> {
         self.guardar_en(ruta, Unidades::corridas(dx))
     }

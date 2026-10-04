@@ -96,6 +96,7 @@ pub struct Referencia {
 }
 
 impl Referencia {
+    #[cfg(test)]
     pub fn puesta(&self) -> bool {
         self.puesta.is_some()
     }

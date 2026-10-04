@@ -694,6 +694,8 @@ pub(crate) fn resumen(texto: &str, n: usize) -> Option<String> {
 }
 
 /// `0:15`, `12:03`, `1:02:03`.
+// `!(ms > 0.0)` es a proposito: tambien atrapa un NaN.
+#[allow(clippy::neg_cmp_op_on_partial_ord)]
 fn duracion(ms: f64) -> String {
     if !(ms > 0.0) {
         return String::new();
@@ -1674,7 +1676,7 @@ fn verbo(
                 let sin_fichas = quitar_fichas(resto);
                 let todas = crate::lecciones::todas(proyectos);
                 let mut parecidas = crate::lecciones::buscar(&todas, &sin_fichas);
-                parecidas.sort_by(|a, b| b.0.cmp(&a.0));
+                parecidas.sort_by_key(|x| std::cmp::Reverse(x.0));
                 v.extend(
                     parecidas
                         .iter()

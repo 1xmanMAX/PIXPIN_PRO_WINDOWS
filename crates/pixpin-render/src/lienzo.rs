@@ -1626,6 +1626,8 @@ impl Pintor<'_> {
 
     /// El halo de siempre (24 copias) y la letra, para medir contra el nuevo.
     #[cfg(test)]
+    // Mismos parametros que el texto con halo real, para medir uno contra otro.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn texto_con_halo_de_copias_para_medir(
         &self,
         texto: &str,
@@ -1828,8 +1830,8 @@ mod pruebas {
             unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED) }.expect("DirectWrite");
         let (disposicion, _, _) =
             disposicion_dwrite(&dwrite, texto, 13.0, 300.0, &[], una_linea).expect("disposicion");
-        // SAFETY: disposicion viva; solo se leen sus medidas.
         let mut m = DWRITE_TEXT_METRICS::default();
+        // SAFETY: disposicion viva; solo se leen sus medidas.
         unsafe { disposicion.GetMetrics(&mut m) }.expect("medidas");
         m.lineCount
     }

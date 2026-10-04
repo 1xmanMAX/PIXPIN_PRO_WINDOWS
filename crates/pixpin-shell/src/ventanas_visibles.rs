@@ -36,6 +36,8 @@ pub fn ventanas_visibles() -> Vec<VentanaVisible> {
         // SAFETY: `l` es el puntero al Vec que `ventanas_visibles` presta
         // durante la llamada sincrona a EnumWindows.
         let v = unsafe { &mut *(l.0 as *mut Vec<VentanaVisible>) };
+        // SAFETY: `hwnd` lo da EnumWindows; `leer` solo hace consultas de
+        // lectura que aceptan un handle muerto.
         if let Some(w) = unsafe { leer(hwnd) } {
             v.push(w);
         }
@@ -59,6 +61,8 @@ pub fn ventanas_visibles() -> Vec<VentanaVisible> {
 /// `hwnd` puede haber muerto: todas las llamadas son de solo lectura y
 /// Windows contesta «no» a un handle muerto.
 unsafe fn leer(hwnd: HWND) -> Option<VentanaVisible> {
+    // SAFETY: solo consultas de lectura sobre `hwnd` (ver arriba) y buferes
+    // locales con su tamano.
     unsafe {
         if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
             return None;

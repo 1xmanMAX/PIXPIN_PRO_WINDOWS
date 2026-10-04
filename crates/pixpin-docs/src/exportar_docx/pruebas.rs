@@ -927,7 +927,7 @@ fn muestra_para_word() {
 
 #[test]
 fn el_titulo_de_una_tabla_tumbada_se_va_con_ella_a_su_pagina() {
-    let fila = |t: &str| format!("|{}|", vec![t; 7].join("|"));
+    let fila = |t: &str| format!("|{}|", [t; 7].join("|"));
     let md = format!(
         "Intro\n\n## Tabla grande\n\n{}\n{}\n{}\n\nFin",
         fila("Contabilidad"),

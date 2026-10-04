@@ -406,6 +406,8 @@ fn es_valla(r: &str) -> bool {
 }
 
 /// **La nota partida en bloques.**
+// `x` indexa a la vez `inicio` y la funcion `limpio`: el bucle por rango es lo claro.
+#[allow(clippy::needless_range_loop)]
 pub(crate) fn modelo(md: &str) -> Modelo {
     let renglones: Vec<&str> = md.split('\n').collect();
     // Donde empieza cada renglon (UTF-16), con su salto.

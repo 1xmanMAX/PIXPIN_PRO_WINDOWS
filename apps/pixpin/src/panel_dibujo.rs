@@ -132,7 +132,7 @@ pub fn tecla_del_hex(ev: &EventoOverlay, gesto: &mut Gesto, escena: &mut Escena)
         return None;
     }
     let editar = |f: &mut dyn FnMut(&mut EdicionHex) -> bool| {
-        HEX.with(|h| h.borrow_mut().as_mut().is_some_and(|e| f(e)))
+        HEX.with(|h| h.borrow_mut().as_mut().is_some_and(f))
     };
     Some(match *ev {
         // Los mandos (Intro, Esc, Retroceso) llegan tambien como caracter;

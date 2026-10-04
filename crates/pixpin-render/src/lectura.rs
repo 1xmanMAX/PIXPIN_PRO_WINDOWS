@@ -341,9 +341,9 @@ pub(crate) fn medir(
 }
 
 /// Cada renglon con su disposicion y su y: lo que se pinta y se toca.
-fn disposiciones<'t>(
+fn disposiciones(
     dwrite: &IDWriteFactory,
-    texto: &'t str,
+    texto: &str,
     tam: f32,
     ancho_max: f32,
     tramos: &[Tramo],

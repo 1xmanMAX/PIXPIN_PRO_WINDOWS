@@ -69,7 +69,7 @@ pub fn todas(proyectos: &[Proyecto]) -> Vec<LeccionEn> {
             });
         }
     }
-    v.sort_by(|a, b| b.leccion.tocada.cmp(&a.leccion.tocada));
+    v.sort_by_key(|x| std::cmp::Reverse(x.leccion.tocada));
     let mut vistas = std::collections::HashSet::new();
     v.retain(|l| vistas.insert(l.leccion.id.clone()));
     v
@@ -286,7 +286,7 @@ pub fn lista(
     }
     let mut halladas = buscar(&todas, texto);
     // Estable: lo que el buscador puso antes, a igualdad, sigue antes.
-    halladas.sort_by(|a, b| b.0.cmp(&a.0));
+    halladas.sort_by_key(|x| std::cmp::Reverse(x.0));
     v.extend(halladas.iter().map(|(_, l)| resultado(l, proyectos, ctx)));
     if halladas.is_empty() {
         v.push(Resultado::nuevo(

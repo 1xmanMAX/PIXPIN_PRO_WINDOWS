@@ -322,7 +322,7 @@ mod pruebas {
         };
         let mut m = mensaje("sintetico", Clase::Pagina);
         m.uid = Some("H1".into());
-        assert!(Senas::de(&[p.clone()], &[]).esta(&m));
+        assert!(Senas::de(std::slice::from_ref(&p), &[]).esta(&m));
         m.uid = Some("H2".into());
         assert!(!Senas::de(&[p], &[]).esta(&m));
     }

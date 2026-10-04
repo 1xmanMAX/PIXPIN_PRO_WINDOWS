@@ -192,7 +192,7 @@ fn is_leftover(obj: &Object) -> bool {
 }
 
 fn write_indirect(out: &mut Vec<u8>, id: ObjectId, obj: &Object) {
-    write!(out, "{} {} obj\n", id.0, id.1).unwrap();
+    writeln!(out, "{} {} obj", id.0, id.1).unwrap();
     write_object(out, obj);
     out.extend_from_slice(b"\nendobj\n");
 }

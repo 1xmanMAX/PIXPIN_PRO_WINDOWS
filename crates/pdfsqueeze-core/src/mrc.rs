@@ -32,6 +32,8 @@ impl MrcLayers {
     }
 }
 
+// El indice `t` es tambien el umbral que se devuelve: el bucle por rango es lo claro.
+#[allow(clippy::needless_range_loop)]
 fn otsu(hist: &[u64; 256]) -> u8 {
     let total: u64 = hist.iter().sum();
     let sum_all: f64 = hist
@@ -122,6 +124,9 @@ pub fn segment(luma: &[u8], w: usize, h: usize) -> Vec<u8> {
     clean
 }
 
+// Los canales indexan a la vez varios arreglos planos (acc, fg, img.data), y el
+// `if n > 0` guarda tambien `filled`: los bucles por indice se leen mejor.
+#[allow(clippy::needless_range_loop, clippy::manual_checked_ops)]
 pub fn build(img: &RawImage, opts: &Options, effort: Effort) -> Option<MrcLayers> {
     let t0 = std::time::Instant::now();
     if img.channels == 4 || img.is_mask || img.width < 400 || img.height < 400 {
@@ -170,11 +175,10 @@ pub fn build(img: &RawImage, opts: &Options, effort: Effort) -> Option<MrcLayers
             );
             let n = keep.sum(x0, y0, x1, y1);
             for c in 0..ch {
-                bg[(y * w + x) * ch + c] = if n == 0 {
-                    255
-                } else {
-                    (chan_integrals[c].sum(x0, y0, x1, y1) / n) as u8
-                };
+                bg[(y * w + x) * ch + c] = chan_integrals[c]
+                    .sum(x0, y0, x1, y1)
+                    .checked_div(n)
+                    .map_or(255, |v| v as u8);
             }
         }
     }

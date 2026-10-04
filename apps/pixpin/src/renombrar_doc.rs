@@ -97,6 +97,8 @@ fn con_su_extension(nuevo: &str, antes: &str) -> String {
 }
 
 /// De que es el documento que se esta leyendo.
+// Uno por documento abierto; meter el mensaje en Box no gana nada.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Default)]
 pub enum Dueno {
     /// Un mensaje del chat: `carpeta` es la del proyecto, donde esta su

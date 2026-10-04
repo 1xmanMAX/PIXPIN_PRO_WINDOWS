@@ -770,6 +770,8 @@ pub fn cuenta_de_la_cabecera(mensajes: &[cuaderno::Mensaje]) -> (usize, i64) {
 /// **El punto rojo del movil**: el mensaje se unio al proyecto y su hoja ya
 /// no esta (se quito, o la quito la sincronizacion). Lee `proyecto.json`
 /// solo cuando cambia: se pregunta en cada fotograma.
+// La cache interna es de un solo uso; un alias no aclara nada.
+#[allow(clippy::type_complexity)]
 pub fn sin_su_hoja(carpeta: &Path, m: &cuaderno::Mensaje) -> bool {
     if m.resto.get("unido").and_then(|v| v.as_bool()) != Some(true) {
         return false;

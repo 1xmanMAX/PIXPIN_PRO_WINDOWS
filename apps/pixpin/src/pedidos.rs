@@ -1373,7 +1373,7 @@ mod pruebas {
             &f.id,
             "PC01",
             "mira esto [img 01]",
-            &[png.clone()],
+            std::slice::from_ref(&png),
             5,
         )
         .unwrap();

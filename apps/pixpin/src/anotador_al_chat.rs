@@ -247,6 +247,7 @@ impl EnElChat {
 
     /// Espera a que acabe lo lanzado y dice donde quedo (para las pruebas y
     /// para quien quiera saberlo; el anotador no espera).
+    #[cfg(test)]
     pub fn esperar(&mut self) -> Option<Guardado> {
         let g = self.hilo.take()?.join().ok().flatten();
         // Lo sabido sigue valiendo para la siguiente puesta al dia.

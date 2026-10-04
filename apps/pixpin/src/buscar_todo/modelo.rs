@@ -864,8 +864,10 @@ mod pruebas {
 
     #[test]
     fn la_captura_se_pinea_se_copia_como_imagen_y_supr_la_borra() {
-        let mut e = Estado::default();
-        e.consulta = "g".into();
+        let mut e = Estado {
+            consulta: "g".into(),
+            ..Estado::default()
+        };
         e.poner_resultados(vec![captura("muro.png")]);
         let r = e.elegido().cloned().unwrap();
         assert_eq!(rotulo_principal(&r.accion), "buscar-todo-accion-pinear");

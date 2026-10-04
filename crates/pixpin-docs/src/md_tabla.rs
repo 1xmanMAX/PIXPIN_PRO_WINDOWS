@@ -581,7 +581,7 @@ impl Tabla {
         let (mut a, mut b) = (f.min(n.saturating_sub(1)), (f + 1).min(n));
         loop {
             let antes = (a, b);
-            for g in a..b {
+            for g in antes.0..antes.1 {
                 for c in 0..self.columnas() {
                     let (af, ac) = self.ancla(g, c);
                     a = a.min(af);
@@ -600,7 +600,7 @@ impl Tabla {
         let (mut a, mut b) = (c.min(n - 1), (c + 1).min(n));
         loop {
             let antes = (a, b);
-            for d in a..b {
+            for d in antes.0..antes.1 {
                 for f in 0..self.filas.len() {
                     let (af, ac) = self.ancla(f, d);
                     a = a.min(ac);

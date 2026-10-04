@@ -277,10 +277,10 @@ pub fn analyze(doc: &Document, file_bytes: u64) -> Analysis {
             detail,
         });
     }
-    large.sort_by(|x, y| y.bytes.cmp(&x.bytes));
+    large.sort_by_key(|x| std::cmp::Reverse(x.bytes));
     large.truncate(15);
     a.largest = large;
-    a.images.sort_by(|x, y| y.bytes.cmp(&x.bytes));
+    a.images.sort_by_key(|x| std::cmp::Reverse(x.bytes));
     let accounted: u64 = a.budget.values().sum();
     if file_bytes > accounted {
         a.budget

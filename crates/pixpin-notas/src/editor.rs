@@ -150,6 +150,8 @@ pub struct Rotulos {
 }
 
 /// Lo que necesita la ventana para abrirse.
+// Los cierres que pone la aplicacion se leen mejor con su firma a la vista.
+#[allow(clippy::type_complexity)]
 pub struct Pedido {
     pub texto: String,
     pub rotulos: Rotulos,
@@ -467,6 +469,8 @@ struct Estilos {
     tamano: i32,
 }
 
+// Guarda los cierres del `Pedido` tal cual, con su firma a la vista.
+#[allow(clippy::type_complexity)]
 struct Estado {
     marco: HWND,
     edit: HWND,
@@ -3219,12 +3223,15 @@ fn actualizar_en_tabla(e: &mut Estado) {
 
 /// Abre la ventana y no vuelve hasta que se cierra. `al_nacer` recibe la
 /// ventana en cuanto existe; `guardar` escribe el texto y dice si pudo.
+// Los `else if` vacios son a proposito: cada condicion ya atendio la tecla
+// y solo cortan la cadena antes de despacharla.
+#[allow(clippy::if_same_then_else)]
 pub fn correr(
     p: Pedido,
     al_nacer: &mut dyn FnMut(isize),
     guardar: &mut dyn FnMut(&str) -> bool,
 ) -> windows::core::Result<()> {
-    let colocacion = p.colocacion.clone();
+    let colocacion = p.colocacion;
     let mut estado = montar(p, Opciones::default())?;
     let (marco, edit) = (estado.marco, estado.edit);
     al_nacer(marco.0 as isize);

@@ -262,6 +262,7 @@ struct Estado {
     filtro: Filtro,
     proyecto: Option<String>,
     visibles: Vec<usize>,
+    #[allow(clippy::type_complexity)]
     mirado: Option<(String, Filtro, Option<String>, usize, Option<String>)>,
     sel: Option<String>,
     foco: Option<Foco>,
@@ -404,7 +405,7 @@ impl Estado {
         self.aprendido = etiquetador::aprender(&lecciones);
         let indice = pixpin_proyecto::almacen::Indice::leer(&raiz);
         let mut proyectos: Vec<_> = indice.proyectos.iter().collect();
-        proyectos.sort_by(|a, b| b.tocado.cmp(&a.tocado));
+        proyectos.sort_by_key(|x| std::cmp::Reverse(x.tocado));
         self.general = proyectos
             .iter()
             .find(|f| f.es_guardados())

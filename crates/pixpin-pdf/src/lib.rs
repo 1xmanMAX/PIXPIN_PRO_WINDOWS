@@ -1113,7 +1113,7 @@ mod pruebas {
     fn una_pagina_girada_mide_lo_que_se_ve_y_no_lo_que_dice_su_papel() {
         // Papel apaisado (200x100) girado un cuarto de vuelta: en pantalla
         // es vertical, y eso es lo que el lector tiene que reservarle.
-        let objetos = vec![
+        let objetos = [
             "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
             "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
             "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Rotate 90 \

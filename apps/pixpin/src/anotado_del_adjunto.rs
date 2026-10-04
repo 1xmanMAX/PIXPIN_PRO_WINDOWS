@@ -43,7 +43,7 @@ use pixpin_docs::lectura::{self, Ajustes};
 use pixpin_docs::{vista, voz_alta};
 use pixpin_proyecto::anotado::{self as an, Base};
 use pixpin_sincro::anotado::{
-    CIFRAS_DE_LA_HUELLA, HOJA, Maqueta, MarcoDeLaHoja, huella_coincide, margen_de,
+    CIFRAS_DE_LA_HUELLA, Maqueta, MarcoDeLaHoja, huella_coincide, margen_de,
 };
 
 use crate::lector_tinta::{self, Capa, Unidades};
@@ -868,7 +868,7 @@ pub(crate) mod pruebas {
         .unwrap();
         let mut capa = leer_capa(&doc);
         let e = capa.escena.visibles().next().unwrap().clone();
-        assert!((e.x - (10.123456789 - 256.0)).abs() < 1e-3, "{}", e.x);
+        assert!((e.x - (10.123_457 - 256.0)).abs() < 1e-3, "{}", e.x);
         // Un trazo nuevo del PC, en el margen de la izquierda.
         let mut nuevo = e.clone();
         nuevo.x = -100.0;
@@ -1157,6 +1157,7 @@ mod pruebas_del_marco {
     use super::*;
     use crate::lector_pdf_proyecto::DondeVa;
     use pixpin_motor2d::elemento::Figura;
+    use pixpin_sincro::anotado::HOJA;
 
     /// Los puntos de cada trazo vivo, en unidades del lector.
     fn puntos(c: &Capa) -> Vec<Vec<(f32, f32)>> {

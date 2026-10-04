@@ -405,6 +405,8 @@ fn terminar(
     *vivo = false;
 }
 
+// `i` da a la vez la columna, la fila y su color de `COLORES`.
+#[allow(clippy::needless_range_loop)]
 fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, escala: f32, textos: &Catalogo) {
     let (w, h) = (marco.ancho as f32, marco.alto as f32);
     p.limpiar(FONDO);

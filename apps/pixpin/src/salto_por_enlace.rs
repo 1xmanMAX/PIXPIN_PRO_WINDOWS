@@ -28,6 +28,8 @@ use pixpin_proyecto::{Proyecto, almacen, cuaderno};
 use std::path::Path;
 
 /// La hoja que hay que abrir para seguir un enlace.
+// Vive lo que tarda en abrirse la hoja; meterla en Box no gana nada.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub(crate) enum HojaDelEnlace {
     /// Ya esta en la lista que tenia quien abrio el lienzo, en este sitio.

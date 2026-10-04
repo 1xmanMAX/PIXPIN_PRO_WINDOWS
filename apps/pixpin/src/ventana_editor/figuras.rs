@@ -817,6 +817,8 @@ pub(super) fn formulario_de_tabla(
 }
 
 /// La peticion que dice el cajetin, o el aviso de lo que falla.
+// `!(b > a)` es a proposito: tambien rechaza los NaN.
+#[allow(clippy::neg_cmp_op_on_partial_ord)]
 pub(super) fn peticion_de(f: &Formulario, t: &Catalogo) -> Result<Peticion, String> {
     let formulas: Vec<String> = f.campos[0]
         .texto
@@ -1972,11 +1974,8 @@ pub(super) fn aplicar_cronograma(
                 t.nombre = n.clone();
             }
         }
-        loop {
-            let n = match &e.figura {
-                pixpin_motor2d::Figura::Cronograma { tareas, .. } => tareas.len(),
-                _ => break,
-            };
+        while let pixpin_motor2d::Figura::Cronograma { tareas, .. } = &e.figura {
+            let n = tareas.len();
             if n < filas {
                 pixpin_motor2d::cronograma::con_tarea_nueva(e, "");
             } else if n > filas {

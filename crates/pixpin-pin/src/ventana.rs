@@ -1537,10 +1537,10 @@ fn guias_para(hwnd: HWND, i: &PinInterno, rect: Rect) -> crate::guias::Ajuste {
         // SAFETY: consultas puras sobre ventanas que existen ahora.
         let mismo_hilo =
             unsafe { GetWindowThreadProcessId(h, None) == GetWindowThreadProcessId(*yo, None) };
-        // SAFETY: consulta pura.
         if es_pin
             && mismo_hilo
             && h != *yo
+            // SAFETY: consulta pura.
             && unsafe { IsWindowVisible(h) }.as_bool()
             && let Some(o) = interno_de(h)
         {

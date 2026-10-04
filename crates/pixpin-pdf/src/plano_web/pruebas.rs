@@ -37,6 +37,7 @@ fn plano(brochas: Vec<Brocha>) -> Plano {
 
 /// Deshace el paquete como `crearPlano`: base64, DEFLATE crudo y varints
 /// en zigzag. Devuelve, por brocha, sus ordenes y sus puntos.
+#[allow(clippy::type_complexity)]
 fn deshacer(json: &str) -> (serde_json::Value, Vec<(Vec<u8>, Vec<(i32, i32)>)>) {
     let v: serde_json::Value = serde_json::from_str(json).expect("es JSON");
     let datos = de_base64(v["datos"].as_str().unwrap());

@@ -48,6 +48,8 @@ pub(crate) struct Informe {
 /// `foto` da los bytes de una entrada de `files` (por su `path` o su
 /// `dataURL`); sin bytes la entrada se quita, porque un `SceneFile` sin
 /// `path` ni `mimeType` tambien tira la escena.
+// Las firmas del cierre y de la vuelta se leen mejor en linea que tras un alias.
+#[allow(clippy::type_complexity)]
 pub(crate) fn escena_para_el_movil(
     json: &str,
     foto: &dyn Fn(&str, &Map<String, Value>) -> Option<Vec<u8>>,

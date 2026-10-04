@@ -217,7 +217,7 @@ pub fn parecidas(
                 .filter(|n| suyas.contains(*n) || suyas.iter().any(|s| casa(n, s) >= 0.8))
                 .count();
             let a = comunes as f64 / nuevas.len() as f64;
-            let b = comunes as f64 / suyas.len().min(12).max(1) as f64;
+            let b = comunes as f64 / suyas.len().clamp(1, 12) as f64;
             let s = (2.0 * a * b) / (a + b).max(1e-9);
             (s >= minimo).then(|| Resultado {
                 leccion: ix.leccion.clone(),
@@ -261,7 +261,7 @@ pub fn relacionadas(indices: &[Indice], l: &Leccion, cuantas: usize) -> Vec<Lecc
         })
         .filter(|(_, n)| *n >= 3)
         .collect();
-    v.sort_by(|a, b| b.1.cmp(&a.1));
+    v.sort_by_key(|x| std::cmp::Reverse(x.1));
     v.into_iter().take(cuantas).map(|(l, _)| l).collect()
 }
 

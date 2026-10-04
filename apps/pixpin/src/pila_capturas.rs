@@ -535,8 +535,8 @@ fn miniatura_rapida(imagen: &ImagenRgba) -> ImagenRgba {
                     let sy = ((y as u64 * 6 + j * 2 + 1) * imagen.alto as u64 / (alto as u64 * 6))
                         .min(imagen.alto as u64 - 1);
                     let k = ((sy * imagen.ancho as u64 + sx) * 4) as usize;
-                    for c in 0..4 {
-                        suma[c] += imagen.pixeles[k + c] as u32;
+                    for (c, s) in suma.iter_mut().enumerate() {
+                        *s += imagen.pixeles[k + c] as u32;
                     }
                 }
             }

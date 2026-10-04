@@ -27,9 +27,9 @@ fn generar(ruta: &std::path::Path, tramos: usize) {
     };
     let mut hechos = 0;
     for capa in 0..20 {
-        let _ = write!(
+        let _ = writeln!(
             c,
-            "/OC /oc{capa} BDC {} {} {} RG {} w\n",
+            "/OC /oc{capa} BDC {} {} {} RG {} w",
             (capa % 3) as f64 / 3.0,
             (capa % 5) as f64 / 5.0,
             (capa % 7) as f64 / 7.0,
@@ -45,7 +45,7 @@ fn generar(ruta: &std::path::Path, tramos: usize) {
                     (x + (azar() - 0.5) * 400.0).clamp(0.0, an / 0.12),
                     (y + (azar() - 0.5) * 400.0).clamp(0.0, al / 0.12),
                 );
-                let _ = write!(c, "{x:.1} {y:.1} m {nx:.1} {ny:.1} l S\n");
+                let _ = writeln!(c, "{x:.1} {y:.1} m {nx:.1} {ny:.1} l S");
                 (x, y) = (nx, ny);
                 n += 1;
                 hechos += 1;
@@ -89,7 +89,7 @@ fn generar(ruta: &std::path::Path, tramos: usize) {
     let inicio = s.len();
     let mut t = format!("xref\n0 {}\n0000000000 65535 f \n", objetos.len() + 1);
     for d in donde {
-        let _ = write!(t, "{d:010} 00000 n \n");
+        let _ = writeln!(t, "{d:010} 00000 n ");
     }
     let _ = write!(
         t,

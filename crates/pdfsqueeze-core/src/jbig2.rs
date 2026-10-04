@@ -511,18 +511,18 @@ mod tests {
 
     #[test]
     fn mq_round_trip_random_bits() {
-        let mut cx = vec![Cx::default(); 4];
+        let mut cx = [Cx::default(); 4];
         let mut enc = MqEncoder::new();
         let mut seed = 12345u64;
         let mut bits = Vec::new();
         for i in 0..20000 {
             seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-            let b = ((seed >> 33) % 7 == 0) as u8; // skewed source
+            let b = (seed >> 33).is_multiple_of(7) as u8; // skewed source
             bits.push(b);
             enc.encode(&mut cx[i % 4], b);
         }
         let data = enc.flush();
-        let mut cx = vec![Cx::default(); 4];
+        let mut cx = [Cx::default(); 4];
         let mut dec = MqDecoder::new(&data);
         for (i, &b) in bits.iter().enumerate() {
             assert_eq!(dec.decode(&mut cx[i % 4]), b, "bit {i}");

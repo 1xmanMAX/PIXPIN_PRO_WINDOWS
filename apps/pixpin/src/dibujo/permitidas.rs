@@ -172,6 +172,7 @@ pub fn secciones_de_ajustes() -> Vec<(Option<pixpin_ui::GrupoBarra>, Vec<&'stati
 }
 
 /// La herramienta de un nombre del TOML (para la ventana de ajustes).
+#[cfg(test)]
 pub fn de_nombre(nombre: &str) -> Option<Herramienta> {
     BOTONES_EDITOR.iter().find_map(|b| match b {
         BotonCaja::Elegir(h) if nombre_de(*h) == Some(nombre) => Some(*h),
@@ -180,6 +181,7 @@ pub fn de_nombre(nombre: &str) -> Option<Herramienta> {
 }
 
 /// El boton de un nombre del TOML: herramienta o accion.
+#[cfg(test)]
 pub fn boton_de_nombre(nombre: &str) -> Option<BotonCaja> {
     BOTONES_EDITOR
         .iter()

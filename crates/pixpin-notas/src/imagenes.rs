@@ -111,6 +111,8 @@ pub const BARRA_COGER_PX: i32 = 14;
 /// Las fotos leidas, por la ruta tal como va en el Markdown y el tamano en
 /// que caben. `None` si no se pudo (no esta, o no es una foto que se sepa
 /// leer): ese renglon se queda a la vista como texto.
+// La clave (ruta, tamano, oscuro) se lee mejor en linea que tras un alias.
+#[allow(clippy::type_complexity)]
 #[derive(Default)]
 pub struct Fotos {
     leidas: HashMap<(String, (i32, i32), bool), Option<Rc<Foto>>>,

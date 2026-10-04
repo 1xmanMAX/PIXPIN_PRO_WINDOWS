@@ -37,6 +37,8 @@ pub const CORRIMIENTO_PX: f32 = 24.0;
 
 /// A cuantos pixeles por unidad del dibujo se saca la foto de `caja`: entre
 /// uno y cuatro, como el movil.
+// `!(lado > 0.0)` es a proposito: tambien atrapa un NaN.
+#[allow(clippy::neg_cmp_op_on_partial_ord)]
 pub fn escala_de_la_foto(caja: (f32, f32, f32, f32)) -> f32 {
     let lado = (caja.2 - caja.0).max(caja.3 - caja.1);
     if !(lado > 0.0) {

@@ -370,7 +370,7 @@ mod pruebas {
     #[test]
     fn una_tabla_enorme_se_queda_en_el_tope_sin_partir_palabras() {
         let celda = "uno dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce";
-        let fila = vec![celda; 8].join(" | ");
+        let fila = [celda; 8].join(" | ");
         let t = leer_gfm(&format!(
             "|{}\n|{}\n| {fila} |",
             " h |".repeat(8),

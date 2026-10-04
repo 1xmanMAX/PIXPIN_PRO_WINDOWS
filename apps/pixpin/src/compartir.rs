@@ -61,6 +61,8 @@ pub(crate) struct LienzoSuelto {
 
 /// **Lo que se comparte.** Cada sitio que ofrece «Compartir…» dice que es, y
 /// de aqui en adelante todo va igual.
+// Una sola por ventana de compartir y se consume enseguida; meterla en Box no gana nada.
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Cosa {
     /// El lienzo del editor.
     Lienzo(LienzoSuelto),

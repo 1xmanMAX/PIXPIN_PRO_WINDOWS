@@ -802,7 +802,7 @@ impl Fichero {
         let mut posiciones = Vec::with_capacity(self.objetos.len());
         for (i, o) in self.objetos.iter().enumerate() {
             posiciones.push(salida.len());
-            let _ = write!(salida, "{} 0 obj\n", i + 1);
+            let _ = writeln!(salida, "{} 0 obj", i + 1);
             salida.extend_from_slice(o);
             salida.extend_from_slice(b"\nendobj\n");
         }
@@ -813,7 +813,7 @@ impl Fichero {
             self.objetos.len() + 1
         );
         for p in posiciones {
-            let _ = write!(salida, "{p:010} 00000 n \n");
+            let _ = writeln!(salida, "{p:010} 00000 n ");
         }
         let _ = write!(
             salida,
@@ -939,6 +939,8 @@ pub fn de_hojas_a_medida(
     )
 }
 
+// La cache guarda lo que da `partes_de` con sus medidas; un alias no aclara nada.
+#[allow(clippy::type_complexity)]
 fn escribir_hojas(
     hojas: &[Hoja],
     fondo: Option<ColorRgba>,
@@ -986,7 +988,6 @@ fn escribir_hojas(
         let c = contenido(hoja, tam, fondo, &mut hay, &mut r, letra_propia, margen);
         paginas.push((tam, c, r));
     }
-    drop(hay);
 
     let mut f = Fichero {
         objetos: Vec::new(),
@@ -1012,15 +1013,15 @@ fn escribir_hojas(
     let mut estados: BTreeMap<u8, usize> = BTreeMap::new();
     for (_, _, r) in &paginas {
         for &a in &r.alfas {
-            if !estados.contains_key(&a) {
+            estados.entry(a).or_insert_with(|| {
                 let o = f.reservar();
                 let v = a as f32 / 255.0;
                 f.poner(
                     o,
                     format!("<< /Type /ExtGState /ca {} /CA {} >>", n(v), n(v)).into_bytes(),
                 );
-                estados.insert(a, o);
-            }
+                o
+            });
         }
     }
     // Y un objeto por imagen, con su mascara si la lleva.

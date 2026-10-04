@@ -12025,6 +12025,7 @@ mod pruebas_lienzo_vivo {
 /// - **Trabajos terminados**: el mensaje queda `unido` (como `unir` del
 ///   movil) y el proyecto se relee para que la galeria ensene las hojas.
 /// - **Trabajos en marcha**: el aviso dice por que pagina van.
+///
 /// Lo que llega de la cola de aligerar PDF (`crate::aligerar`): el peso
 /// nuevo de cada mensaje, al cuaderno y a la pantalla, y el aviso de como
 /// acabo. Al entrar solo se avisa si se gano algo (como el movil); pedido a
@@ -12449,6 +12450,7 @@ fn guardar_hoja_dibujada(
 /// como al cerrar. Devuelve la escena tal como se abrio, sus fotos y si se
 /// guardo algo.
 #[cfg(test)]
+#[allow(clippy::type_complexity)]
 pub(crate) fn hoja_abierta_y_guardada(
     raiz: &std::path::Path,
     proyecto: &str,
@@ -15617,7 +15619,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         Accion::AbrirAqui(i) => match ruta_de(a, i) {
             Some(ruta) => {
                 let nombre = pixpin_docs::nombre(&ruta);
-                crate::lector::abrir_en_su_lector(cx.idioma, &cx.ubicacion, &ruta, &nombre);
+                crate::lector::abrir_en_su_lector(cx.idioma, cx.ubicacion, &ruta, &nombre);
                 Efecto::Nada
             }
             None => Efecto::Aviso(cx.textos.t("chat-sin-archivo")),
@@ -15682,7 +15684,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         }
         Accion::InsertarEnNota(i) => {
             if let Some(m) = a.mensajes.get(i) {
-                crate::notas_md::paginas_vivas::insertar_en_nota(cx.idioma, &cx.ubicacion, &a.ficha.id, m);
+                crate::notas_md::paginas_vivas::insertar_en_nota(cx.idioma, cx.ubicacion, &a.ficha.id, m);
             }
             Efecto::Nada
         }

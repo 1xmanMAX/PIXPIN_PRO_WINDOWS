@@ -359,6 +359,8 @@ impl Reference {
 
 /// Lowest JPEG quality that still satisfies `min_ssim`, by binary search
 /// (SSIM is monotone enough in quality for this to be sound).
+// Vive un instante en la pila y se consume enseguida; meterlo en Box no gana nada.
+#[allow(clippy::large_enum_variant)]
 enum Search {
     Found(Encoded, f64),
     OverBudget,

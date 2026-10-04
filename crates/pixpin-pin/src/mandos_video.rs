@@ -78,7 +78,7 @@ pub fn mandos_en(caja: RectF, escala: f32) -> Option<Mandos> {
         alto: lado,
     };
     let con_tiempo = caja.ancho >= ANCHO_CON_TIEMPO_LOGICO * e;
-    let tiempo = con_tiempo.then(|| RectF {
+    let tiempo = con_tiempo.then_some(RectF {
         x: boton.x + lado + margen,
         y: franja.y,
         ancho: TIEMPO_LOGICO * e,

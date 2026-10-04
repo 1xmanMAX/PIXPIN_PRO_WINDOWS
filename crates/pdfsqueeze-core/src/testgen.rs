@@ -295,7 +295,7 @@ pub fn scanned_text_seeded(w: u32, h: u32, seed: u64) -> RawImage {
         let mut x = w / 12;
         while x + glyph_w < w * 11 / 12 {
             let r = lcg(&mut seed);
-            if r % 6 != 0 {
+            if !r.is_multiple_of(6) {
                 let gh = line_h / 2 + (r % 4);
                 for yy in y0..(y0 + gh).min(h) {
                     for xx in x..(x + glyph_w * 3 / 4).min(w) {
@@ -357,7 +357,9 @@ pub fn bilevel_lineart_seeded(w: u32, h: u32, seed: u64) -> RawImage {
     let mut data = Vec::with_capacity((w * h) as usize);
     for y in 0..h {
         for x in 0..w {
-            let on = ((x + s) / 9 + y / 9) % 7 == 0 || ((x + s * 5) % 97 < 3) || (y % (61 + s) < 2);
+            let on = ((x + s) / 9 + y / 9).is_multiple_of(7)
+                || ((x + s * 5) % 97 < 3)
+                || (y % (61 + s) < 2);
             data.push(if on { 0 } else { 255 });
         }
     }

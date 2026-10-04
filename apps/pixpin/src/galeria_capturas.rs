@@ -39,7 +39,7 @@ mod logica;
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicIsize, Ordering};
-use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result};
@@ -774,25 +774,20 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
         }
 
         // Las miniaturas que llegaron del hilo.
-        loop {
-            match hechas.try_recv() {
-                Ok((ruta, mini, medidas)) => {
-                    if let Some(m) = medidas {
-                        e.medidas.insert(ruta.clone(), m);
-                    }
-                    let m = match mini {
-                        Some(imagen) => Mini::Lista {
-                            bitmap: None,
-                            imagen,
-                            visto: e.fotograma,
-                        },
-                        None => Mini::Imposible,
-                    };
-                    e.minis.insert(ruta, m);
-                    pintar = true;
-                }
-                Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
+        while let Ok((ruta, mini, medidas)) = hechas.try_recv() {
+            if let Some(m) = medidas {
+                e.medidas.insert(ruta.clone(), m);
             }
+            let m = match mini {
+                Some(imagen) => Mini::Lista {
+                    bitmap: None,
+                    imagen,
+                    visto: e.fotograma,
+                },
+                None => Mini::Imposible,
+            };
+            e.minis.insert(ruta, m);
+            pintar = true;
         }
         // Y los textos.
         while let Ok(l) = leidos.try_recv() {
@@ -2377,11 +2372,7 @@ fn pintar_celda(
     } else if elegida {
         p.rellenar_redondeado(encoger(c, -3.0 * escala), radio + 3.0 * escala, AZUL_V);
     } else if encima {
-        p.rellenar_redondeado(
-            encoger(c, -1.0 * escala),
-            radio + 1.0 * escala,
-            blanco(0.35),
-        );
+        p.rellenar_redondeado(encoger(c, -escala), radio + 1.0 * escala, blanco(0.35));
     }
     p.rellenar_redondeado(c, radio, hex(0x2A2A2E));
     match e.minis.get(&entrada.ruta) {

@@ -132,6 +132,8 @@ pub fn reparar(documento: &Path) -> Option<PathBuf> {
 ///
 /// Se recuerda por ruta, tamano y fecha: el documento se lee entero (el del
 /// usuario, 11 MB) una vez, no en cada lienzo que se abre.
+// La memoria interna ya usa el alias `Clave`; el resto es de un solo uso.
+#[allow(clippy::type_complexity)]
 pub fn sin_lo_cocido(raiz: &Path, documento: &Path, pagina: u32) -> PathBuf {
     type Clave = (PathBuf, u64, Option<std::time::SystemTime>);
     static RECUERDO: OnceLock<Mutex<HashMap<Clave, Option<(PathBuf, u32)>>>> = OnceLock::new();

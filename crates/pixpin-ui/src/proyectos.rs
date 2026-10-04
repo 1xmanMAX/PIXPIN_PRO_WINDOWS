@@ -667,9 +667,9 @@ mod pruebas {
         assert!(t.apaisada);
         let columna = (936 - 28) * 42 / 100;
         assert_eq!(t.texto.x, 24);
-        assert_eq!(t.menu.derecha(), 24 + columna as i32);
+        assert_eq!(t.menu.derecha(), 24 + columna);
         assert_eq!(t.rejilla.derecha(), t.menu.x);
-        assert_eq!(t.hojas.x, 24 + columna as i32 + 12);
+        assert_eq!(t.hojas.x, 24 + columna + 12);
         assert_eq!(t.hojas.alto, 650 - 28, "la portada tiene todo el alto");
         assert_eq!(t.tira.y, t.texto.abajo() + 8);
         assert_eq!(t.tira.abajo(), t.contenido.abajo());

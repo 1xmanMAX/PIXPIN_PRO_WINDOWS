@@ -740,6 +740,8 @@ pub fn abrir(
                         vivo = false;
                     }
                 }
+                // Llevar a la guarda una llamada que cambia `e` la esconderia.
+                #[allow(clippy::collapsible_match)]
                 EventoOverlay::Caracter(c) => {
                     if !caracter_de_las_cajas(&mut e, c, ruta) {
                         caracter(&mut e, c, ruta);
@@ -788,11 +790,10 @@ pub fn abrir(
         if e.anotando
             && let Some(i) = e.tinta.hoja
             && let Some(capa) = e.capas.get_mut(&i)
+            && e.tinta.forma_rapida(capa, s)
         {
-            if e.tinta.forma_rapida(capa, s) {
-                e.ultimo_trazo = ahora;
-                hay_que_pintar = true;
-            }
+            e.ultimo_trazo = ahora;
+            hay_que_pintar = true;
         }
         let sucias = e.capas.values().any(|c| c.sucia) && !e.tinta.trazando();
         if sucias && ahora > e.ultimo_trazo + MS_PARA_GUARDAR {
@@ -1719,7 +1720,6 @@ fn caracter(e: &mut Estado, c: char, ruta: &Path) {
         if let Some(i) = lector::emoji_de_cifra(c) {
             poner_marca(e, i, ruta);
         }
-        return;
     }
     // Anotando, las cifras son de la tinta (el grosor, como en el lienzo) y
     // ya las atendio ella en el bucle.

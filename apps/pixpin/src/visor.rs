@@ -527,6 +527,8 @@ pub fn abrir(
                         vivo = false;
                     }
                 }
+                // Llevar a la guarda una llamada que cambia `e` la esconderia.
+                #[allow(clippy::collapsible_match)]
                 EventoOverlay::Caracter(c) => {
                     if !caracter_de_las_cajas(&mut e, c) {
                         caracter(&mut e, c, ruta);
@@ -2716,8 +2718,10 @@ mod pruebas {
 
     #[test]
     fn el_tamano_base_crece_con_el_tanto_por_ciento() {
-        let mut a = lectura::Ajustes::default();
-        a.tamano = 100;
+        let mut a = lectura::Ajustes {
+            tamano: 100,
+            ..Default::default()
+        };
         assert!((tamano_base(&a) - 16.0).abs() < 0.01);
         a.tamano = 200;
         assert!((tamano_base(&a) - 32.0).abs() < 0.01);

@@ -336,6 +336,10 @@ enum Ubic {
     EnFlujo(u32, u32),
 }
 
+/// Un flujo de objetos ya descomprimido: sus datos, donde empieza el primer
+/// objeto y la tabla de (numero, desplazamiento).
+type FlujoDeObjetos = std::rc::Rc<(Vec<u8>, usize, Vec<(u32, usize)>)>;
+
 /// Un PDF leido lo justo para ir a buscar sus objetos.
 pub(crate) struct Archivo<'a> {
     b: &'a [u8],
@@ -346,7 +350,7 @@ pub(crate) struct Archivo<'a> {
     ultimo_indice: usize,
     /// Si el indice mas nuevo es un flujo (PDF 1.5+).
     indice_en_flujo: bool,
-    flujos: std::cell::RefCell<HashMap<u32, std::rc::Rc<(Vec<u8>, usize, Vec<(u32, usize)>)>>>,
+    flujos: std::cell::RefCell<HashMap<u32, FlujoDeObjetos>>,
 }
 
 impl<'a> Archivo<'a> {
@@ -620,7 +624,7 @@ impl<'a> Archivo<'a> {
         }
     }
 
-    fn flujo_de_objetos(&self, s: u32) -> Option<std::rc::Rc<(Vec<u8>, usize, Vec<(u32, usize)>)>> {
+    fn flujo_de_objetos(&self, s: u32) -> Option<FlujoDeObjetos> {
         if let Some(f) = self.flujos.borrow().get(&s) {
             return Some(f.clone());
         }
@@ -1083,7 +1087,7 @@ pub(crate) fn incremental(
     let mut sitios: Vec<(u32, u16, usize)> = Vec::with_capacity(nuevos.len() + 1);
     for (n, g, v) in nuevos {
         sitios.push((*n, *g, s.len()));
-        let _ = write!(s, "{n} {g} obj\n");
+        let _ = writeln!(s, "{n} {g} obj");
         escribir(v, &mut s);
         s.extend_from_slice(b"\nendobj\n");
     }
@@ -1120,7 +1124,7 @@ pub(crate) fn incremental(
             Valor::Lista(vec![numero(1), numero(4), numero(2)]),
         ));
         d.push((b"Index".to_vec(), Valor::Lista(index)));
-        let _ = write!(s, "{propio} 0 obj\n");
+        let _ = writeln!(s, "{propio} 0 obj");
         escribir(&Valor::Flujo(d, datos), &mut s);
         s.extend_from_slice(b"\nendobj\n");
         let _ = write!(s, "startxref\n{inicio}\n%%EOF\n");
@@ -1157,7 +1161,7 @@ pub fn de_imagenes(paginas: &[pixpin_codec::imagen::ImagenRgba]) -> Option<Vec<u
     let objeto = |s: &mut Vec<u8>, sitios: &mut Vec<usize>, v: Valor| {
         sitios.push(s.len());
         let n = sitios.len();
-        let _ = write!(s, "{n} 0 obj\n");
+        let _ = writeln!(s, "{n} 0 obj");
         escribir(&v, s);
         s.extend_from_slice(b"\nendobj\n");
     };

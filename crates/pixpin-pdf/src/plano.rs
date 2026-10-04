@@ -775,6 +775,8 @@ impl BrochaViva {
 /// programa de una maquina de pila: `100 200 m` deja la pluma en (100,200),
 /// `300 400 l S` traza una raya. Esto lo ejecuta y en vez de encender
 /// pixeles apunta la geometria.
+// La sena de cada foto (numero, datos, mascara) es de un solo uso aqui.
+#[allow(clippy::type_complexity)]
 struct Interprete<'a, 'b> {
     archivo: &'a Archivo<'b>,
     caja: Caja,

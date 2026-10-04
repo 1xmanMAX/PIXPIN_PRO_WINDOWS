@@ -566,8 +566,7 @@ impl Lector {
 
     fn termino(&mut self) -> Option<Nodo> {
         let mut izq = self.unario()?;
-        loop {
-            let Some(f) = self.mira() else { break };
+        while let Some(f) = self.mira() {
             let explicito = matches!(f, Ficha::Signo('*' | '/' | '%'));
             // Implicita: lo que puede empezar un factor, sin signo en medio.
             // El «|» no: cerraria un valor absoluto abierto.

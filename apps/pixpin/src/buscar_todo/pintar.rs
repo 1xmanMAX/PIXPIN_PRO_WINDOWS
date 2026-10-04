@@ -323,7 +323,7 @@ pub fn icono_de_glifo(g: &str) -> &'static Icono {
 
 /// La extension del fichero de un resultado, si tiene («PDF»).
 fn extension(r: &Resultado) -> Option<String> {
-    let f = r.fichero.as_deref().or_else(|| r.ayuda_titulo.as_deref())?;
+    let f = r.fichero.as_deref().or(r.ayuda_titulo.as_deref())?;
     let ext = std::path::Path::new(f).extension()?.to_str()?;
     (ext.len() <= 4).then(|| ext.to_uppercase())
 }

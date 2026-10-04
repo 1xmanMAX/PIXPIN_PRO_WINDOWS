@@ -376,7 +376,7 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, pend: &Pendientes, marco: Rect, proy
         pintar_foto(n, rr, 1.0);
         // La primera lleva la descripcion: va marcada en azul.
         if n == 0 {
-            p.trazar(encoger(rr, -1.0 * e), 2.0 * e, hex(0x0a84ff));
+            p.trazar(encoger(rr, -e), 2.0 * e, hex(0x0a84ff));
         }
         // El numero de orden, arriba a la izquierda.
         let lado = NUMERO as f32 * e;

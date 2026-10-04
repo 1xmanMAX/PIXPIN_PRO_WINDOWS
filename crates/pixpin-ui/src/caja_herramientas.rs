@@ -1169,7 +1169,7 @@ mod pruebas {
         assert_eq!(b.filas(), 2);
         assert!(b.marco.derecha() <= estrecha.derecha(), "{b:?}");
         let botones = b.botones().to_vec();
-        for i in 0..botones.len() {
+        for (i, &boton) in botones.iter().enumerate() {
             let r = b.rect_de(i);
             assert!(b.marco.contiene(Punto { x: r.x, y: r.y }), "{i}");
             assert_eq!(
@@ -1177,7 +1177,7 @@ mod pruebas {
                     x: r.x + 2,
                     y: r.y + 2
                 }),
-                DestinoClic::Boton(botones[i])
+                DestinoClic::Boton(boton)
             );
             for j in 0..i {
                 assert!(r.interseccion(b.rect_de(j)).is_none(), "{i} pisa {j}");

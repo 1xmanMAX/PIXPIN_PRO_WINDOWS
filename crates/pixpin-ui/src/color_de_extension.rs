@@ -189,6 +189,8 @@ mod pruebas {
     use super::*;
 
     #[test]
+    // Las constantes de la tabla tambien se comprueban: es lo que se prueba.
+    #[allow(clippy::assertions_on_constants)]
     fn cada_familia_tiene_su_color_como_en_el_movil() {
         assert_eq!(de("Tesis final.PDF"), PDF);
         assert_eq!(de("informe.docx"), WORD);

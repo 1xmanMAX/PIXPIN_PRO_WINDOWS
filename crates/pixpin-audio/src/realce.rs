@@ -279,7 +279,7 @@ mod pruebas {
     fn el_limitador_nunca_llega_al_techo_y_es_simetrico() {
         for x in [0.0f32, 0.5, 0.85, 0.9, 1.0, 2.0, 15.0, 1.0e6] {
             let y = limitar(x);
-            assert!(y < 1.0 && y >= 0.0, "{x} -> {y}");
+            assert!((0.0..1.0).contains(&y), "{x} -> {y}");
             assert_eq!(limitar(-x), -y);
         }
         assert_eq!(limitar(0.5), 0.5, "por debajo del umbral no toca nada");

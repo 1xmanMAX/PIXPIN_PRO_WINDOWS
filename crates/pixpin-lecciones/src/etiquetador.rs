@@ -822,7 +822,7 @@ impl Aprendido {
                 (comunes >= 2).then(|| (etiqueta.clone(), comunes))
             })
             .collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1));
+        v.sort_by_key(|x| std::cmp::Reverse(x.1));
         v.into_iter().map(|(e, _)| e).take(3).collect()
     }
 }
@@ -865,7 +865,7 @@ pub fn proponer(texto_entero: &str, aprendido: &Aprendido, quitadas: &[String]) 
         .map(|c| (c, raices.iter().filter(|r| c.raices.contains(r)).count()))
         .filter(|(_, n)| *n > 0)
         .collect();
-    por_concepto.sort_by(|a, b| b.1.cmp(&a.1));
+    por_concepto.sort_by_key(|x| std::cmp::Reverse(x.1));
     let del_usuario = aprendido.proponer(&raices);
     let fuera: Vec<String> = quitadas.iter().map(|q| q.to_lowercase()).collect();
     let mut etiquetas: Vec<String> = Vec::new();

@@ -41,7 +41,7 @@ fn raw_photo_is_flate_compressed_losslessly() {
     // Pixel-exact round trip.
     let d = lopdf::Document::load_mem(&out).unwrap();
     let mut found = false;
-    for (_, o) in &d.objects {
+    for o in d.objects.values() {
         if let lopdf::Object::Stream(st) = o {
             if st
                 .dict
@@ -168,7 +168,7 @@ fn trailing_junk_is_repaired() {
     s.text_page(5);
     let mut input = s.finish();
     input.extend_from_slice(b"\n% mail gateway junk ");
-    input.extend(std::iter::repeat(b'x').take(20000));
+    input.extend(std::iter::repeat_n(b'x', 20000));
     let (out, rep) = compress(&input, &Options::from_profile(Profile::Lossless)).unwrap();
     assert!(rep.verified, "{:?}", rep.warnings);
     assert!(rep.warnings.iter().any(|w| w.contains("repaired")));

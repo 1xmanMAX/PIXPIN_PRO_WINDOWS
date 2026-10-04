@@ -1691,7 +1691,7 @@ mod pruebas {
                 Orden::Polilinea { puntos, grosor, .. } if grosor < 2.0 => Some(puntos),
                 _ => None,
             })
-            .last()
+            .next_back()
             .expect("hay tachado");
         assert!((raya[0].x - 22.4).abs() < 1e-3, "{raya:?}");
     }

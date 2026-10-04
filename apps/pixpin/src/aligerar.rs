@@ -84,7 +84,7 @@ static CUIDADOSO: AtomicBool = AtomicBool::new(false);
 /// Es el `ComprimirPdf.nivel` del movil.
 pub fn configurar(pdf: &Pdf) {
     if let Ok(mut a) = AJUSTES.lock() {
-        *a = Some(pdf.clone());
+        *a = Some(*pdf);
     }
 }
 
@@ -133,7 +133,7 @@ pub fn nivel_para_entrar(elegido: NivelPdf) -> NivelPdf {
 
 /// El nivel con el que se aligera al entrar, o `None` si esta apagado.
 fn nivel_al_entrar() -> Option<NivelPdf> {
-    let a = AJUSTES.lock().ok()?.clone()?;
+    let a = (*AJUSTES.lock().ok()?)?;
     a.aligerar_al_entrar.then_some(nivel_para_entrar(a.nivel))
 }
 

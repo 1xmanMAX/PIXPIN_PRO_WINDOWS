@@ -378,7 +378,7 @@ impl Escritor<'_> {
         } else if let Some(c) = celda.color.filter(|_| !web) {
             pr.push_str(&format!(
                 r#"<w:color w:val="{}"/>"#,
-                &hex(c)[1..].to_ascii_uppercase()
+                hex(c)[1..].to_ascii_uppercase()
             ));
         }
         if let Some(t) = celda.tam {

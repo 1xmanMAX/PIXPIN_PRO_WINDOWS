@@ -14,6 +14,8 @@ use rayon::prelude::*;
 use std::collections::HashSet;
 use std::time::Instant;
 
+// Una decision por imagen, consumida enseguida; meterla en Box no gana nada.
+#[allow(clippy::large_enum_variant)]
 enum Decision {
     Keep,
     Replace(crate::images::encode::Encoded),
@@ -362,7 +364,7 @@ fn apply_encoded(doc: &mut Document, id: ObjectId, enc: &crate::images::encode::
 /// "fixed" by appending) and junk before the `%PDF-` header.
 pub fn load_lenient(input: &[u8]) -> Result<(Document, Vec<String>)> {
     match Document::load_mem(input) {
-        Ok(d) => return Ok((d, vec![])),
+        Ok(d) => Ok((d, vec![])),
         Err(first) => {
             let mut notes = Vec::new();
             let start = find(input, b"%PDF-").unwrap_or(0);

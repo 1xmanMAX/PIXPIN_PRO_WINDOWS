@@ -458,6 +458,8 @@ fn etiqueta(
 
 // --------------------------------------------------------------- lista
 
+// Las fichas de filtro (nombre, color, elegida, accion, cuenta) son de un solo uso.
+#[allow(clippy::type_complexity)]
 fn columna_lista(e: &mut Estado, p: &Pintor, r: RectF, s: f32) {
     let tx = e.textos.clone();
     p.rellenar(r, v2::COLUMNA);
@@ -2121,11 +2123,7 @@ fn menu(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32) {
         y = (e.ancla.y - alto - 4.0 * s).max(8.0 * s);
     }
     let caja = RectF { x, y, ancho, alto };
-    p.rellenar_redondeado(
-        ui::encoger(caja, -1.0 * s),
-        13.0 * s,
-        con_alfa(v2::BLANCO, 0.14),
-    );
+    p.rellenar_redondeado(ui::encoger(caja, -s), 13.0 * s, con_alfa(v2::BLANCO, 0.14));
     p.rellenar_redondeado(caja, 12.0 * s, hex(0x2a2a2d));
     e.botones.zona(caja, Accion::AbrirMenu(m));
     for (i, (t, valor)) in opciones.iter().enumerate() {

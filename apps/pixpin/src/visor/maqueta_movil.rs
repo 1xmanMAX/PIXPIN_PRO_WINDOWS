@@ -812,6 +812,8 @@ pub(crate) fn repartir_columnas(minimo: &[f32], maximo: &[f32], disponible: f32)
 }
 
 /// Coloca las filas `desde..hasta` como una tabla del movil.
+// Parrafos y celdas intermedios, de un solo uso; un alias no aclara nada.
+#[allow(clippy::type_complexity)]
 fn tabla(o: &mut Obra, doc: &Documento, desde: usize, hasta: usize) {
     let base = o.base;
     let cuerpo = o.cuerpo;

@@ -1209,10 +1209,12 @@ alto = 200
     #[test]
     fn el_ajuste_del_pdf_va_y_vuelve_por_el_fichero() {
         let donde = temporal("pdf");
-        let mut a = Ajustes::default();
-        a.pdf = Pdf {
-            aligerar_al_entrar: false,
-            nivel: NivelPdf::SinPerdida,
+        let a = Ajustes {
+            pdf: Pdf {
+                aligerar_al_entrar: false,
+                nivel: NivelPdf::SinPerdida,
+            },
+            ..Ajustes::default()
         };
         guardar_conservando(&donde, &a).unwrap();
         let texto = fs::read_to_string(donde.fichero_ajustes()).unwrap();

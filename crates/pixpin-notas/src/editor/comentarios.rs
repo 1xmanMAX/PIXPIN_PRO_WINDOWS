@@ -33,6 +33,8 @@ use crate::panel_comentarios::{self as panel, Accion, Compositor, Entrada, Tarje
 use crate::tema::bgr;
 
 /// Lo que da la aplicacion: quien escribe y donde estan los comentarios.
+// Los cierres que pone la aplicacion se leen mejor con su firma a la vista.
+#[allow(clippy::type_complexity)]
 #[derive(Default)]
 pub struct DeComentarios {
     /// El nombre de este aparato (se ensena junto a cada comentario).
@@ -55,6 +57,8 @@ pub(super) enum Borrador {
 }
 
 /// El estado de los comentarios dentro del editor.
+// Guarda los cierres de `DeComentarios` tal cual.
+#[allow(clippy::type_complexity)]
 pub(super) struct Comentarios {
     pub(super) datos: md::Comentarios,
     /// Lo leido o lo ultimo guardado: con que se junta lo de disco.

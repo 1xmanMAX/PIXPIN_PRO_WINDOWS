@@ -63,7 +63,8 @@ pub fn nombre_gdi(familia: &str, reserva: &str) -> String {
                     f.as_ptr().cast(),
                     f.len() as u32,
                     None,
-                    &mut cuantas,
+                    // Puntero de salida: Windows escribe aqui cuantas letras puso.
+                    &raw mut cuantas,
                 )
             };
             if !h.is_invalid() && cuantas > 0 && nombre.is_none() {

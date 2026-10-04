@@ -72,6 +72,8 @@ pub enum Viva {
 }
 
 /// Lo que la aplicacion pone para que la nota este integrada.
+// Cada cierre se lee mejor con su firma a la vista que tras un alias.
+#[allow(clippy::type_complexity)]
 #[derive(Default)]
 pub struct Integracion {
     /// Las hojas que se pueden meter, por proyecto.

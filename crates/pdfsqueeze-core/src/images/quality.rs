@@ -136,6 +136,21 @@ fn psnr_to_pseudo_ssim(p: f64) -> f64 {
     ((p - 20.0) / 30.0).clamp(0.0, 1.0)
 }
 
+/// SSIM on planes that may be large: both are box-downscaled to ≤ ~1.5 MP
+/// first so memory stays bounded and the cost is predictable.
+pub fn ssim_capped(a: &[u8], b: &[u8], w: u32, h: u32) -> f64 {
+    const CAP: u64 = 1_500_000;
+    let n = w as u64 * h as u64;
+    if n <= CAP {
+        return ssim(a, b, w as usize, h as usize);
+    }
+    let f = ((n as f64 / CAP as f64).sqrt()).ceil() as u32;
+    let (nw, nh) = ((w / f).max(8), (h / f).max(8));
+    let a2 = super::resample::resize(a, w, h, 1, nw, nh, image::imageops::FilterType::Triangle);
+    let b2 = super::resample::resize(b, w, h, 1, nw, nh, image::imageops::FilterType::Triangle);
+    ssim(&a2, &b2, nw as usize, nh as usize)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,19 +170,4 @@ mod tests {
         let s = ssim(&a, &b, 64, 64);
         assert!(s < 0.9, "{}", s);
     }
-}
-
-/// SSIM on planes that may be large: both are box-downscaled to ≤ ~1.5 MP
-/// first so memory stays bounded and the cost is predictable.
-pub fn ssim_capped(a: &[u8], b: &[u8], w: u32, h: u32) -> f64 {
-    const CAP: u64 = 1_500_000;
-    let n = w as u64 * h as u64;
-    if n <= CAP {
-        return ssim(a, b, w as usize, h as usize);
-    }
-    let f = ((n as f64 / CAP as f64).sqrt()).ceil() as u32;
-    let (nw, nh) = ((w / f).max(8), (h / f).max(8));
-    let a2 = super::resample::resize(a, w, h, 1, nw, nh, image::imageops::FilterType::Triangle);
-    let b2 = super::resample::resize(b, w, h, 1, nw, nh, image::imageops::FilterType::Triangle);
-    ssim(&a2, &b2, nw as usize, nh as usize)
 }

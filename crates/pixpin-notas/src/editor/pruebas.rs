@@ -464,7 +464,7 @@ fn insertar_una_foto_la_pone_en_su_renglon_con_la_ruta_de_adjuntar() {
         Box::new(|_: &Path| Some("pixpin:files/guardados/pc/p1/notas/9-alzado.png".into()));
     let e = abrir_con(p, false, (1000, 760));
     // Lo que haria C_IMAGEN tras el dialogo.
-    let md = (|| Some("pixpin:files/guardados/pc/p1/notas/9-alzado.png".to_string()))().unwrap();
+    let md = "pixpin:files/guardados/pc/p1/notas/9-alzado.png".to_string();
     let _ = &ruta;
     insertar_renglon(&e, &format!("![alzado]({md})"));
     assert_eq!(markdown(&e), format!("texto\n![alzado]({md})"));

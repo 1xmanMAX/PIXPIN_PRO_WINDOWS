@@ -97,6 +97,8 @@ const OUTER: [&[u8]; 6] = [
 
 /// Apply the "outer" (generic) filters only, returning bytes for the final
 /// image codec (or the raw samples when there is none).
+// Tupla interna de un solo uso (bytes, parametros, dict del codec); un alias no aclara nada.
+#[allow(clippy::type_complexity)]
 fn outer_decoded(stream: &Stream) -> Option<(Vec<u8>, Option<Vec<u8>>, Option<Dictionary>)> {
     let filters: Vec<Vec<u8>> = stream
         .filters()
@@ -450,7 +452,7 @@ fn expand_cs(samples: Vec<u8>, cs: &Cs, bpc: u8) -> Option<(Vec<u8>, u8, ColorKi
                 if off + n <= lookup.len() {
                     out.extend_from_slice(&lookup[off..off + n]);
                 } else {
-                    out.extend(std::iter::repeat(0).take(n));
+                    out.extend(std::iter::repeat_n(0, n));
                 }
             }
             Some((out, n as u8, kind))
