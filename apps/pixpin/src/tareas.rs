@@ -219,6 +219,11 @@ pub fn firma(raiz: &Path, proyectos: &[String]) -> Vec<Option<(SystemTime, u64)>
                 .iter()
                 .map(|id| de(&almacen::carpeta(raiz, id).join("guardados.jsonl"))),
         )
+        // Lo reescrito desde esta app, aunque el disco no mueva la fecha.
+        .chain(std::iter::once(Some((
+            SystemTime::UNIX_EPOCH,
+            pedidos::reescritos(),
+        ))))
         .collect()
 }
 

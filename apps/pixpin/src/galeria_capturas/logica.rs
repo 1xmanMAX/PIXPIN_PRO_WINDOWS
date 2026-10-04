@@ -402,7 +402,8 @@ mod pruebas {
 
     #[test]
     fn los_filtros_dejan_pasar_lo_suyo() {
-        let ahora = 1000 * DIA_MS;
+        // A mediodia: a medianoche, «hace un segundo» ya es ayer en UTC (la CI).
+        let ahora = 1000 * DIA_MS + DIA_MS / 2;
         let hoy = ficha("png", ahora - 1000, Some(ahora + 7 * DIA_MS), Some("hola"));
         let vieja = ficha("gif", ahora - 20 * DIA_MS, Some(ahora + DIA_MS), Some(""));
         let video = ficha("MP4", ahora - 20 * DIA_MS, None, None);

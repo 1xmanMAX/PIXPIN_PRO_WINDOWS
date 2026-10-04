@@ -1200,12 +1200,24 @@ pub(crate) fn marcar_tarea(
     })
 }
 
+/// Cuantas veces se reescribio un mensaje desde que arranco la app. Tachar
+/// una tarea deja el cuaderno del mismo tamano, y hay discos que no mueven
+/// la fecha a tiempo (paso en la CI): con esto la ventana de tareas se entera
+/// siempre de lo escrito aqui. Lo llegado de fuera lo dice la fecha.
+static REESCRITOS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Ver [`REESCRITOS`].
+pub(crate) fn reescritos() -> u64 {
+    REESCRITOS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Escribe el documento cambiado en su mensaje, como `guardar_mini` del
 /// chat: `cuaderno::reemplazar` toma el cerrojo de los cuadernos y copia tal
 /// cual lo que no entiende. Si el mensaje desaparecio entre leerlo y
 /// escribirlo (lo borro el chat, o una sincronizacion), se dice.
 pub(crate) fn reescribir(raiz: &Path, proyecto: &str, m: &cuaderno::Mensaje) -> Result<(), Fallo> {
     if cuaderno::reemplazar(&almacen::carpeta(raiz, proyecto), m)? {
+        REESCRITOS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Ok(())
     } else {
         Err(Fallo::SinMensaje(m.id.clone()))
