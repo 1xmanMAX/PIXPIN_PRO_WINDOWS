@@ -39,7 +39,7 @@
   <!-- Marca -->
   <g transform="translate(72,92)">
     <rect width="76" height="76" rx="20" fill="url(#acento)"/>
-    <path d="M38 18 l14 14 -6 6 6 14 -6 6 -14 -6 -6 6 v-12 l-8 -8 h12 z" fill="#fff" opacity="0.95"/>
+    <g fill="#fff"><circle cx="38" cy="27" r="11"/><path d="M27 36 h22 l-4 10 h-14 z"/><rect x="36.5" y="46" width="3" height="16" rx="1.5"/></g>
   </g>
   <text x="172" y="140" font-family="Segoe UI Variable Display, Segoe UI, sans-serif" font-size="58" font-weight="700" fill="#F5F5F7">PixPin Max</text>
   <text x="174" y="178" font-family="Segoe UI, sans-serif" font-size="22" fill="#C7C7CC">Capturas, pines flotantes, lienzo y proyectos para Windows</text>

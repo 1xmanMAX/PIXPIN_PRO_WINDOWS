@@ -99,9 +99,20 @@ Todo lo que se pinea queda **siempre encima**: fotos, vídeos, PDF, notas, lista
 herramientas (contador, ruleta, gastos…) y **pines en vivo** que copian una zona de la pantalla
 en tiempo real.
 
-| Barra común al pasar el ratón | Panel «Pines abiertos» |
-|---|---|
-| ![Barra del pin](docs/img/v2/pin-barra.png) | ![Pines abiertos](docs/img/v2/pines-abiertos.png) |
+<table>
+  <tr>
+    <td width="58%" valign="top">
+      <b>Barra común al pasar el ratón</b><br><br>
+      <img src="docs/img/v2/pin-barra.png" alt="Barra del pin" width="100%"><br><br>
+      Con su chapita de atajo en cada botón («Copiar Ctrl C»). En un vídeo, el control propio es
+      reproducir, la línea de tiempo y el volumen; en un PDF, la página; en un pin en vivo, congelar.
+    </td>
+    <td width="42%" valign="top">
+      <b>Panel «Pines abiertos»</b><br><br>
+      <img src="docs/img/v2/pines-abiertos.png" alt="Pines abiertos" width="100%">
+    </td>
+  </tr>
+</table>
 
 - **La misma barra en todos**: primero su control propio (zoom, página del PDF, reproducir…),
   después Copiar, Anotar y Más; Cerrar aparte.
@@ -122,9 +133,24 @@ Cada proyecto es un chat, como en el móvil: notas, fotos con su descripción, n
 documentos, PDF, tablas y lienzos. La tarjeta del proyecto enseña la portada y las hojas en
 miniatura.
 
-| Menú de un mensaje | Botón de adjuntar | Enviar varias fotos |
-|---|---|---|
-| ![Menú del mensaje](docs/img/v2/menu-mensaje.png) | ![Adjuntar](docs/img/v2/adjuntar.png) | ![Enviar fotos](docs/img/v2/enviar-fotos.png) |
+<table>
+  <tr>
+    <td width="50%" valign="top" rowspan="2">
+      <b>Menú de un mensaje</b><br><br>
+      <img src="docs/img/v2/menu-mensaje.png" alt="Menú de un mensaje con iconos y teclas" width="100%">
+    </td>
+    <td width="50%" valign="top">
+      <b>Botón de adjuntar</b><br><br>
+      <img src="docs/img/v2/adjuntar.png" alt="Adjuntar como cuadrícula con buscador" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <b>Enviar varias fotos con descripción</b><br><br>
+      <img src="docs/img/v2/enviar-fotos.png" alt="Enviar varias fotos" width="100%">
+    </td>
+  </tr>
+</table>
 
 - **Menú de cada mensaje** con iconos y letras: Responder `R`, Copiar, Pinear `P`, Anotar `A`,
   Editar descripción `E`, Reenviar `F`, Hacer lección `L`… Lo menos usado va en «Más». Encima,
