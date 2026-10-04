@@ -1477,3 +1477,87 @@ tareas-pegar-repetida = Esa imagen ya está como { $ficha }.
 
 # Abrir una foto que Windows solo lee con una extension de Microsoft Store.
 abrir-falta-extension = No se puede abrir { $nombre }: Windows necesita «{ $extension }», gratis en Microsoft Store. Instálala y vuelve a abrirla.
+
+## v2-buscar
+comando-buscar = 🔍 Buscar en PixPin…
+buscar-todo-titulo = Buscar en PixPin
+buscar-todo-pista = Busca archivos, tareas, lecciones, capturas… o una letra
+buscar-todo-pestana-todo = Todo
+buscar-todo-pestana-archivos = Archivos
+buscar-todo-pestana-tareas = Tareas
+buscar-todo-pestana-lecciones = Lecciones
+buscar-todo-pestana-capturas = Capturas
+buscar-todo-pestana-acciones = Acciones
+buscar-todo-cambia = cambia
+buscar-todo-resultados = { $n ->
+    [one] 1 resultado
+   *[other] { $n } resultados
+  }
+buscar-todo-ninguno = Nada con «{ $consulta }»
+buscar-todo-vacia = Aquí no hay nada todavía
+buscar-todo-ninguno-pista = Prueba con menos letras, o mira en otra pestaña (Tab)
+buscar-todo-recientes = Búsquedas recientes
+buscar-todo-borrar-todas = Borrar todas
+buscar-todo-abierto-hace-poco = Abierto hace poco
+buscar-todo-letras = Escribe una letra y espacio
+buscar-todo-mejor = Mejor resultado
+buscar-todo-grupo-tareas = Tareas y lecciones
+buscar-todo-grupo-archivos = Archivos
+buscar-todo-grupo-capturas = Capturas
+buscar-todo-grupo-acciones = Acciones
+buscar-todo-n-de-m = { $n } de { $total }
+buscar-todo-pegar = Pega una imagen con
+buscar-todo-pegar-2 = y se adjunta a lo que escribas:
+buscar-todo-pegar-ejemplo = t revisar fisura
+buscar-todo-letra-t = Nueva tarea
+buscar-todo-letra-t-sub = al Inbox · «t comprar cemento»
+buscar-todo-letra-n = Nueva nota
+buscar-todo-letra-n-sub = en Mensajes guardados · «n idea @proyecto»
+buscar-todo-letra-l = Nuevo lienzo
+buscar-todo-letra-l-sub = en blanco · «l plano @proyecto»
+buscar-todo-letra-g = Galería de capturas
+buscar-todo-letra-g-sub = «g muro» busca dentro
+buscar-todo-letra-c = Capturar
+buscar-todo-letra-c-sub = una zona de la pantalla
+buscar-todo-letra-u = Pinear la última captura
+buscar-todo-letra-u-sub-nada = aún no hay capturas
+buscar-todo-letra-a = Nueva lección
+buscar-todo-letra-a-sub = lo aprendido · «a revisar la escala»
+buscar-todo-accion-pinear = Pinear
+buscar-todo-accion-abrir = Abrir
+buscar-todo-accion-apuntar = Apuntar
+buscar-todo-accion-capturar = Capturar
+buscar-todo-accion-crear = Crear
+buscar-todo-accion-grabar = Grabar
+buscar-todo-accion-enviar = Enviar
+buscar-todo-accion-copiar = Copiar
+buscar-todo-accion-reproducir = Reproducir
+buscar-todo-accion-hecha = Hecha
+buscar-todo-accion-desmarcar = Desmarcar
+buscar-todo-accion-entrar = Entrar
+buscar-todo-accion-mostrar = Mostrar
+buscar-todo-accion-pegar = Pegar
+buscar-todo-ver-chat = Ver en el chat
+buscar-todo-mas = Más acciones
+buscar-todo-pie-moverse = moverse
+buscar-todo-pie-abrir = abrir
+buscar-todo-pie-adjuntar = adjuntar imagen
+buscar-todo-pie-cerrar = cerrar
+buscar-todo-pie-borrar = borrar
+buscar-todo-pie-mas = más acciones
+buscar-todo-pie-volver = volver
+buscar-todo-pie-flow = Igual en Flow Launcher con «p»
+buscar-todo-abrir-con = Abrir con…
+buscar-todo-borrar = Borrar (se puede deshacer)
+buscar-todo-medidas = Captura · { $ancho } × { $alto } · { $peso }
+buscar-todo-caduca = Caduca en { $dias ->
+    [one] 1 día
+   *[other] { $dias } días
+  }
+buscar-todo-caduca-hoy = Caduca hoy
+buscar-todo-conservada = Conservada: no caduca
+buscar-todo-conservada-ya = Conservada
+buscar-todo-conservar = Conservar
+buscar-todo-borrada = Captura borrada
+buscar-todo-deshacer = Deshacer
+buscar-todo-copiado = Copiado

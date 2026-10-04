@@ -650,7 +650,7 @@ fn el_menu_de_cada_tipo() {
     // La foto.
     assert_eq!(
         t(1),
-        ["Abrir", "Sacar a la pantalla (pin)", "Ver en el chat", "Abrir con el programa de Windows", "Mostrar en la carpeta", "Copiar ruta"]
+        ["Abrir", "Pinear", "Ver en el chat", "Abrir con el programa de Windows", "Mostrar en la carpeta", "Copiar ruta"]
     );
     let m = menu_de(&v[1]);
     let carpeta = r.join("proyectos").join("P1").join("archivos");
@@ -661,7 +661,7 @@ fn el_menu_de_cada_tipo() {
     assert_eq!(m[4].accion, Accion::Carpeta { carpeta: carpeta.to_string_lossy().to_string(), fichero: foto.clone() });
     assert_eq!(m[5].accion, Accion::Copiar(foto));
     // Un texto: pin por su codigo y copiar el texto entero.
-    assert_eq!(t(2), ["Abrir", "Sacar a la pantalla (pin)", "Ver en el chat", "Copiar texto", "Abrir la carpeta del proyecto"]);
+    assert_eq!(t(2), ["Abrir", "Pinear", "Ver en el chat", "Copiar texto", "Abrir la carpeta del proyecto"]);
     let m = menu_de(&v[2]);
     assert_eq!(*pedido_de(&m[1]), json!({ "pixpin": 1, "accion": "pinear", "proyecto": "P1", "codigo": "x1" }));
     assert_eq!(m[3].accion, Accion::Copiar("hola equipo, mañana a las 9\nsegunda línea".into()));
@@ -670,7 +670,7 @@ fn el_menu_de_cada_tipo() {
     // Un archivo que no esta en este equipo: nada de Windows ni de pin.
     assert_eq!(t(7), ["Abrir", "Ver en el chat", "Abrir la carpeta del proyecto"]);
     // El lienzo.
-    assert_eq!(t(10), ["Abrir", "Sacar a la pantalla (pin)", "Ver en el chat", "Abrir la carpeta del proyecto"]);
+    assert_eq!(t(10), ["Abrir", "Pinear", "Ver en el chat", "Abrir la carpeta del proyecto"]);
     // El audio: sin pin, con su transcripcion.
     assert_eq!(
         t(11),
@@ -703,7 +703,7 @@ fn modo_v1_consulta_menu_y_acciones() {
     // El menu de la foto.
     let (menu, _, _) = v1(&r, json!({ "method": "context_menu", "parameters": [lista[2]["contextData"]] }));
     let menu = menu["result"].as_array().unwrap().clone();
-    assert_eq!(menu[1]["title"], "Sacar a la pantalla (pin)");
+    assert_eq!(menu[1]["title"], "Pinear");
     // Cada accion del menu, como la manda Flow v1: sus parametros sin envolver.
     let accion = |i: usize| {
         let a = &menu[i]["jsonRPCAction"];
@@ -944,7 +944,7 @@ fn el_menu_de_una_leccion() {
     let m = menu_de(&v[0]);
     assert_eq!(
         titulos(&m),
-        ["Abrir la ficha", "Ver en la lista de lecciones", "Copiar texto", "Sacar su foto a la pantalla (pin)", "Mostrar en la carpeta"]
+        ["Abrir la ficha", "Ver en la lista de lecciones", "Copiar texto", "Pinear su foto", "Mostrar en la carpeta"]
     );
     assert_eq!(m[0].accion, v[0].accion);
     assert_eq!(
@@ -956,7 +956,7 @@ fn el_menu_de_una_leccion() {
     assert!(matches!(&m[4].accion, Accion::Carpeta { carpeta: c, fichero } if *c == carpeta && fichero.ends_with("k1.leccion")));
     // Caso negativo: sin foto no hay pin, y la de un proyecto lo lleva.
     let m = menu_de(&buscar(&r, "lecciones acta")[0]);
-    assert!(!titulos(&m).contains(&"Sacar su foto a la pantalla (pin)"));
+    assert!(!titulos(&m).contains(&"Pinear su foto"));
     assert_eq!(pedido_de(&m[1])["proyecto"], "P1");
 }
 

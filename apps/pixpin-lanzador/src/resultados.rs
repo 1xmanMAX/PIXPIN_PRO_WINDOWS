@@ -500,7 +500,7 @@ fn resultado_funcion(f: Funcion, ctx: &Contexto) -> Resultado {
         Funcion::Galeria => ("Galería de capturas", "Abre la galería · «g»", glifo::GALERIA, Accion::Pedido(pedido_ventana("galeria"))),
         Funcion::Ultima => (
             "Última captura",
-            "Sácala a la pantalla como pin · «u»",
+            "Pinéala · «u»",
             glifo::PIN,
             Accion::Pedido(pedido("pinear_ultima", json!({}))),
         ),
@@ -1626,7 +1626,7 @@ fn anadir_al_inbox(texto: &str, inbox: Option<&Lista>, proyectos: &[Proyecto], v
 fn resultado_ultima(ctx: &Contexto) -> Resultado {
     let mut r = Resultado::nuevo(
         "Última captura",
-        "Sácala a la pantalla como pin",
+        "Pinéala",
         glifo::PIN,
         Accion::Pedido(pedido("pinear_ultima", json!({}))),
     );

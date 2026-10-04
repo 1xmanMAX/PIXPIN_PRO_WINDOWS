@@ -86,6 +86,9 @@ pub enum Comando {
     Salir,
     /// Abrir Sincronizar: tus aparatos, y recibir y enviar por Wi-Fi.
     Sincronizar,
+    /// Buscar en PixPin (rediseno v2): archivos, tareas, lecciones y
+    /// capturas, con lo mismo que el plugin de Flow. Nace sin atajo.
+    Buscar,
 }
 
 /// La ficha de un comando en el catalogo.
@@ -315,6 +318,14 @@ pub const CATALOGO: &[Descriptor] = &[
         atajo_por_defecto: None,
         en_bandeja: true,
     },
+    // Al final, como Sincronizar: meterlo en medio correria los numeros.
+    Descriptor {
+        comando: Comando::Buscar,
+        nombre: "buscar",
+        clave_titulo: "comando-buscar",
+        atajo_por_defecto: None,
+        en_bandeja: true,
+    },
 ];
 
 impl Comando {
@@ -502,6 +513,7 @@ mod pruebas {
         Comando::RecibirDelMovil,
         Comando::Salir,
         Comando::Sincronizar,
+        Comando::Buscar,
     ];
 
     #[test]

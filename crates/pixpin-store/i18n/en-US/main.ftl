@@ -1476,3 +1476,87 @@ tareas-pegar-repetida = That image is already in as { $ficha }.
 
 # Opening a photo that Windows can only read with a Microsoft Store extension.
 abrir-falta-extension = Can't open { $nombre }: Windows needs "{ $extension }", free in the Microsoft Store. Install it and open the file again.
+
+## v2-buscar
+comando-buscar = 🔍 Search PixPin…
+buscar-todo-titulo = Search PixPin
+buscar-todo-pista = Search files, tasks, lessons, screenshots… or type a letter
+buscar-todo-pestana-todo = All
+buscar-todo-pestana-archivos = Files
+buscar-todo-pestana-tareas = Tasks
+buscar-todo-pestana-lecciones = Lessons
+buscar-todo-pestana-capturas = Screenshots
+buscar-todo-pestana-acciones = Actions
+buscar-todo-cambia = switch
+buscar-todo-resultados = { $n ->
+    [one] 1 result
+   *[other] { $n } results
+  }
+buscar-todo-ninguno = Nothing for “{ $consulta }”
+buscar-todo-vacia = Nothing here yet
+buscar-todo-ninguno-pista = Try fewer letters, or look in another tab (Tab)
+buscar-todo-recientes = Recent searches
+buscar-todo-borrar-todas = Clear all
+buscar-todo-abierto-hace-poco = Recently opened
+buscar-todo-letras = Type a letter and space
+buscar-todo-mejor = Top result
+buscar-todo-grupo-tareas = Tasks and lessons
+buscar-todo-grupo-archivos = Files
+buscar-todo-grupo-capturas = Screenshots
+buscar-todo-grupo-acciones = Actions
+buscar-todo-n-de-m = { $n } of { $total }
+buscar-todo-pegar = Paste an image with
+buscar-todo-pegar-2 = and it goes with what you type:
+buscar-todo-pegar-ejemplo = t check crack
+buscar-todo-letra-t = New task
+buscar-todo-letra-t-sub = to the Inbox · “t buy cement”
+buscar-todo-letra-n = New note
+buscar-todo-letra-n-sub = in Saved messages · “n idea @project”
+buscar-todo-letra-l = New canvas
+buscar-todo-letra-l-sub = blank · “l plan @project”
+buscar-todo-letra-g = Screenshot gallery
+buscar-todo-letra-g-sub = “g wall” searches inside
+buscar-todo-letra-c = Capture
+buscar-todo-letra-c-sub = an area of the screen
+buscar-todo-letra-u = Pin the last screenshot
+buscar-todo-letra-u-sub-nada = no screenshots yet
+buscar-todo-letra-a = New lesson
+buscar-todo-letra-a-sub = what you learned · “a check the scale”
+buscar-todo-accion-pinear = Pin
+buscar-todo-accion-abrir = Open
+buscar-todo-accion-apuntar = Add
+buscar-todo-accion-capturar = Capture
+buscar-todo-accion-crear = Create
+buscar-todo-accion-grabar = Record
+buscar-todo-accion-enviar = Send
+buscar-todo-accion-copiar = Copy
+buscar-todo-accion-reproducir = Play
+buscar-todo-accion-hecha = Done
+buscar-todo-accion-desmarcar = Undo done
+buscar-todo-accion-entrar = Enter
+buscar-todo-accion-mostrar = Show
+buscar-todo-accion-pegar = Paste
+buscar-todo-ver-chat = Show in chat
+buscar-todo-mas = More actions
+buscar-todo-pie-moverse = move
+buscar-todo-pie-abrir = open
+buscar-todo-pie-adjuntar = attach image
+buscar-todo-pie-cerrar = close
+buscar-todo-pie-borrar = clear
+buscar-todo-pie-mas = more actions
+buscar-todo-pie-volver = back
+buscar-todo-pie-flow = Same in Flow Launcher with “p”
+buscar-todo-abrir-con = Open with…
+buscar-todo-borrar = Delete (can be undone)
+buscar-todo-medidas = Screenshot · { $ancho } × { $alto } · { $peso }
+buscar-todo-caduca = Expires in { $dias ->
+    [one] 1 day
+   *[other] { $dias } days
+  }
+buscar-todo-caduca-hoy = Expires today
+buscar-todo-conservada = Kept: never expires
+buscar-todo-conservada-ya = Kept
+buscar-todo-conservar = Keep
+buscar-todo-borrada = Screenshot deleted
+buscar-todo-deshacer = Undo
+buscar-todo-copiado = Copied
