@@ -14,6 +14,8 @@
 //!   aviso por contexto (`Buscador.kt`).
 //! - [`dictado`]: una frase dicha de corrido, repartida en sus campos
 //!   (`Dictado.kt`).
+//! - [`rapida`]: **lo que el PC anade (v2)**: la barra «¿Que aprendiste?»
+//!   que reparte una frase y propone area, gravedad y proyecto.
 //! - [`fusion`]: **lo que el PC anade**: cuando la sincronizacion trae otra
 //!   version de una leccion que tambien cambio aqui, se juntan en vez de
 //!   pisarse (ver el modulo).
@@ -29,10 +31,11 @@ pub mod dictado;
 pub mod etiquetador;
 pub mod fusion;
 pub mod leccion;
+pub mod rapida;
 pub mod texto;
 
 pub use buscador::{Indice, Resultado};
-pub use leccion::{Leccion, Repaso};
+pub use leccion::{Leccion, Nota, Repaso};
 
 #[cfg(test)]
 mod pruebas;

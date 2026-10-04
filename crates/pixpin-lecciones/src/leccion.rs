@@ -397,6 +397,19 @@ pub fn base36(n: i64) -> String {
     String::from_utf8(v).unwrap_or_default()
 }
 
+/// Lo que se contesta en el repaso: «¿lo recordabas?».
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Nota {
+    Recordaba,
+    AMedias,
+    Olvide,
+}
+
+impl Nota {
+    /// Las tres, en el orden de sus teclas 1, 2 y 3.
+    pub const TODAS: [Nota; 3] = [Nota::Recordaba, Nota::AMedias, Nota::Olvide];
+}
+
 /// **El repaso espaciado**: acordarse sube de caja y aleja el siguiente;
 /// olvidarse vuelve a empezar.
 pub struct Repaso;
@@ -438,6 +451,34 @@ impl Repaso {
             tocada: ahora,
             ..l.clone()
         }
+    }
+
+    /// **A medias** (lo anade el PC, v2): ni sube ni vuelve a empezar; baja
+    /// una caja, para verla antes que si se hubiera recordado. Solo cambia
+    /// `caja` y `repasar`, los mismos campos que el movil: el formato no se
+    /// toca y el telefono la sigue repasando igual.
+    pub fn a_medias(l: &Leccion, ahora: i64) -> Leccion {
+        let caja = (l.caja - 1).clamp(0, INTERVALOS.len() as i64 - 1);
+        Leccion {
+            caja,
+            repasar: ahora + INTERVALOS[caja as usize] * DIA,
+            ..l.clone()
+        }
+    }
+
+    /// La leccion tras contestar `nota`.
+    pub fn calificar(l: &Leccion, nota: Nota, ahora: i64) -> Leccion {
+        match nota {
+            Nota::Recordaba => Repaso::recordada(l, ahora),
+            Nota::AMedias => Repaso::a_medias(l, ahora),
+            Nota::Olvide => Repaso::olvidada(l, ahora),
+        }
+    }
+
+    /// **Cuantos dias tarda en volver** si se contesta `nota`: lo que dice
+    /// cada boton («vuelve en 30 dias», «manana»).
+    pub fn dias_hasta(l: &Leccion, nota: Nota) -> i64 {
+        Repaso::calificar(l, nota, 0).repasar / DIA
     }
 
     /// Las que tocan hoy, primero las graves y las que mas se repiten.
