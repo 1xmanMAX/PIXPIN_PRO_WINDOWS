@@ -488,6 +488,13 @@ struct Estado {
     deshacer: Vec<Borrada>,
     moviendo: Option<(pixpin_geom::Punto, Rect)>,
     ultimo_clic: Option<(Accion, Instant)>,
+    /// El desplazamiento con el que se pinto lo que se ve: las zonas de los
+    /// botones son de entonces.
+    scroll_pintado: f32,
+    /// Un clic que llego con la rejilla movida desde el ultimo pintado (la
+    /// rueda y el clic en la misma tanda): se atiende tras repintar, para que
+    /// caiga en la foto que se ve y no en la de antes.
+    clic_pendiente: Option<pixpin_geom::Punto>,
     en_papelera: usize,
     fotograma: u64,
     ahora: i64,
@@ -516,6 +523,8 @@ impl Estado {
             deshacer: Vec::new(),
             moviendo: None,
             ultimo_clic: None,
+            scroll_pintado: 0.0,
+            clic_pendiente: None,
             en_papelera: 0,
             fotograma: 0,
             ahora: pixpin_shell::entorno::ahora_utc_ms(),
@@ -731,21 +740,13 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
                 }
                 EventoOverlay::BotonPulsado(p) => {
                     e.botones.raton = local(p, marco);
-                    match e.botones.bajo_el_raton() {
-                        Some(Accion::Mover) => {
-                            e.escribiendo = false;
-                            e.moviendo = Some((p, marco));
-                            ventana.capturar_raton();
-                        }
-                        Some(a) => {
-                            preparar(&mut e, z.rejilla.ancho, escala, textos);
-                            let doble = e
-                                .ultimo_clic
-                                .is_some_and(|(b, t)| b == a && t.elapsed() < TECLA_DOBLE);
-                            e.ultimo_clic = Some((a, Instant::now()));
-                            hacer(&mut e, a, doble, textos, ubicacion, &mut vivo);
-                        }
-                        None => e.escribiendo = false,
+                    if (e.scroll - e.scroll_pintado).abs() > 0.5 {
+                        // Las zonas son de antes de la rueda: tras repintar.
+                        e.clic_pendiente = Some(p);
+                    } else {
+                        clic(
+                            &mut e, p, marco, &ventana, z, escala, textos, ubicacion, &mut vivo,
+                        );
                     }
                 }
                 EventoOverlay::BotonSoltado(_) => {
@@ -756,8 +757,14 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
                 EventoOverlay::Rueda(m) => {
                     let sobre_panel = z.panel.is_some_and(|r| dentro(r, e.botones.raton));
                     if !sobre_panel {
+                        // `m` viene en 120 por muesca (y en trozos pequenos
+                        // desde un panel tactil): 0,6 filas por muesca. Sin
+                        // dividir, cada muesca saltaba al principio o al final.
                         e.scroll = (e.scroll
-                            - m as f32 * (logica::CELDA_ALTO + logica::HUECO) * escala * 0.6)
+                            - m as f32 / 120.0
+                                * (logica::CELDA_ALTO + logica::HUECO)
+                                * escala
+                                * 0.6)
                             .clamp(0.0, e.disp.scroll_maximo(z.rejilla.alto));
                     }
                 }
@@ -841,8 +848,18 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
                 });
                 let _ = superficie.presentar();
             }
+            e.scroll_pintado = e.scroll;
             soltar_lejanas(&mut e, z);
             pintar = false;
+            if let Some(p) = e.clic_pendiente.take() {
+                e.botones.raton = local_de(p, marco);
+                clic(
+                    &mut e, p, marco, &ventana, z, escala, textos, ubicacion, &mut vivo,
+                );
+                // Lo que cambio el clic se ve ya, sin esperar a otro evento.
+                pintar = true;
+                continue;
+            }
         }
         let espera = if e.aviso.is_some() || e.escribiendo {
             250
@@ -853,6 +870,42 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> Resul
     }
     tracing::info!("galeria de capturas cerrada");
     Ok(())
+}
+
+/// Un punto de pantalla en coordenadas de la ventana.
+fn local_de(p: pixpin_geom::Punto, m: Rect) -> (f32, f32) {
+    ((p.x - m.x) as f32, (p.y - m.y) as f32)
+}
+
+/// Un clic con el boton izquierdo, sobre las zonas del ultimo pintado.
+#[allow(clippy::too_many_arguments)] // el bucle de la ventana, entero
+fn clic(
+    e: &mut Estado,
+    p: pixpin_geom::Punto,
+    marco: Rect,
+    ventana: &VentanaOverlay,
+    z: Zonas,
+    escala: f32,
+    textos: &Catalogo,
+    ubicacion: &Ubicacion,
+    vivo: &mut bool,
+) {
+    match e.botones.bajo_el_raton() {
+        Some(Accion::Mover) => {
+            e.escribiendo = false;
+            e.moviendo = Some((p, marco));
+            ventana.capturar_raton();
+        }
+        Some(a) => {
+            preparar(e, z.rejilla.ancho, escala, textos);
+            let doble = e
+                .ultimo_clic
+                .is_some_and(|(b, t)| b == a && t.elapsed() < TECLA_DOBLE);
+            e.ultimo_clic = Some((a, Instant::now()));
+            hacer(e, a, doble, textos, ubicacion, vivo);
+        }
+        None => e.escribiendo = false,
+    }
 }
 
 /// Pide el texto de las que aun no se pidieron, de la mas vieja a la mas

@@ -527,7 +527,8 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
                     }
                 }
                 EventoOverlay::Rueda(m) => {
-                    e.scroll -= m as f32 * 60.0 * escala;
+                    // 120 por muesca: unos 100 px cada una.
+                    e.scroll -= m as f32 / 120.0 * 100.0 * escala;
                 }
                 EventoOverlay::Caracter(c) => {
                     if let Some(f) = e.foco {

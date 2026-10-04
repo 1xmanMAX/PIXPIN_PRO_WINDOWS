@@ -620,7 +620,8 @@ fn bucle(
                         ventana.soltar_raton();
                     }
                 }
-                EventoOverlay::Rueda(m) => e.scroll -= m as f32 * 0.6 * FILA * 2.0 * escala,
+                // La rueda llega en 120 por muesca (y en trozos desde un panel tactil).
+                EventoOverlay::Rueda(m) => e.scroll -= m as f32 / 120.0 * FILA * 1.5 * escala,
                 // Lo que se escribe va siempre a la caja de apuntar.
                 EventoOverlay::Caracter(c) => {
                     e.campo.letra(c);

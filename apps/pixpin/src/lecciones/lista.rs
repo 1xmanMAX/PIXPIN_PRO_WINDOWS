@@ -1254,7 +1254,8 @@ fn bucle(recursos: &Recursos, pedido: Pedido) -> Result<()> {
                     }
                 }
                 EventoOverlay::Rueda(m) => {
-                    let d = m as f32 * 70.0 * escala;
+                    // 120 por muesca: unos 100 px cada una.
+                    let d = m as f32 / 120.0 * 100.0 * escala;
                     if crate::ventanita::dentro(e.zona_lista, e.botones.raton) {
                         e.scroll_lista -= d;
                     } else {
