@@ -1152,7 +1152,9 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         && !e.panel
         && !e.poniendo_marca
         && e.hojas.cuantas() > 0
-        && (e.pastilla_hasta > ahora_ms() || lector::raton_abajo(e.raton.1, m.alto, m.e))
+        // Solo con el raton abajo: al abrir no salen solos (queja del usuario:
+        // el «+» solo donde se dibuja; el movil los ensena al tocar).
+        && lector::raton_abajo(e.raton.1, m.alto, m.e)
     {
         let izq = u32::from(e.ajustes.espacios & vista::ESPACIO_IZQUIERDA != 0);
         let der = u32::from(e.ajustes.espacios & vista::ESPACIO_DERECHA != 0);

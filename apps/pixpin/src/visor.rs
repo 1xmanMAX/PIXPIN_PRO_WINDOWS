@@ -1018,7 +1018,9 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
         && !e.panel
         && !e.poniendo_marca
         && !e.viendo_indice
-        && (e.pastilla_hasta > ahora_ms() || lector::raton_abajo(e.raton.1, m.alto, m.e))
+        // Solo con el raton abajo: al abrir no salen solos (queja del usuario:
+        // el «+» solo donde se dibuja; el movil los ensena al tocar).
+        && lector::raton_abajo(e.raton.1, m.alto, m.e)
     {
         let (izq, der, tope) = pasos_de_los_lados(e);
         for (r, b) in lector::pintar_mandos_de_los_lados(p, m.ancho, m.alto, m.e, izq, der, tope, e.ajustes.sin_lado) {
