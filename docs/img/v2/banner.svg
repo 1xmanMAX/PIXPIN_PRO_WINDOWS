@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320">
+  <defs>
+    <linearGradient id="fondo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0E1424"/>
+      <stop offset="0.55" stop-color="#16213E"/>
+      <stop offset="1" stop-color="#2A1B4A"/>
+    </linearGradient>
+    <linearGradient id="acento" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0A84FF"/>
+      <stop offset="1" stop-color="#BF5AF2"/>
+    </linearGradient>
+    <filter id="sombra" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="320" rx="24" fill="url(#fondo)"/>
+  <g opacity="0.18" stroke="#64D2FF" stroke-width="1">
+    <path d="M0 260 Q 320 200 640 250 T 1280 230" fill="none"/>
+    <path d="M0 290 Q 320 240 640 280 T 1280 265" fill="none"/>
+  </g>
+  <!-- Ventanas flotantes (pines) -->
+  <g filter="url(#sombra)">
+    <rect x="860" y="54" width="250" height="160" rx="16" fill="#2C2C2E" stroke="#3A3A3C"/>
+    <rect x="876" y="70" width="218" height="104" rx="10" fill="#5D7FA6"/>
+    <text x="985" y="128" font-family="Segoe UI, sans-serif" font-size="15" fill="#F5F5F7" text-anchor="middle">[captura]</text>
+    <rect x="876" y="184" width="90" height="18" rx="9" fill="#0060DF"/>
+    <text x="921" y="197" font-family="Segoe UI, sans-serif" font-size="11" fill="#fff" text-anchor="middle">Pinear</text>
+  </g>
+  <g filter="url(#sombra)">
+    <rect x="1040" y="150" width="190" height="130" rx="16" fill="#1C1C1E" stroke="#3A3A3C"/>
+    <text x="1060" y="180" font-family="Segoe UI, sans-serif" font-size="14" font-weight="600" fill="#F5F5F7">Tareas</text>
+    <rect x="1060" y="196" width="12" height="12" rx="3" fill="none" stroke="#30D158" stroke-width="2"/>
+    <text x="1080" y="207" font-family="Segoe UI, sans-serif" font-size="12" fill="#C7C7CC">Revisar la grieta</text>
+    <rect x="1060" y="220" width="12" height="12" rx="3" fill="#30D158"/>
+    <text x="1080" y="231" font-family="Segoe UI, sans-serif" font-size="12" fill="#98989D">Comprar sellador</text>
+    <rect x="1080" y="244" width="58" height="16" rx="8" fill="#0A84FF" opacity="0.25"/>
+    <text x="1109" y="256" font-family="Consolas, monospace" font-size="10" fill="#64D2FF" text-anchor="middle">[img 01]</text>
+  </g>
+  <!-- Marca -->
+  <g transform="translate(72,92)">
+    <rect width="76" height="76" rx="20" fill="url(#acento)"/>
+    <path d="M38 18 l14 14 -6 6 6 14 -6 6 -14 -6 -6 6 v-12 l-8 -8 h12 z" fill="#fff" opacity="0.95"/>
+  </g>
+  <text x="172" y="140" font-family="Segoe UI Variable Display, Segoe UI, sans-serif" font-size="58" font-weight="700" fill="#F5F5F7">PixPin Max</text>
+  <text x="174" y="178" font-family="Segoe UI, sans-serif" font-size="22" fill="#C7C7CC">Capturas, pines flotantes, lienzo y proyectos para Windows</text>
+  <g font-family="Segoe UI, sans-serif" font-size="14" fill="#F5F5F7">
+    <rect x="174" y="206" width="92" height="30" rx="15" fill="#FFFFFF" fill-opacity="0.08"/>
+    <text x="220" y="226" text-anchor="middle">Rust</text>
+    <rect x="276" y="206" width="118" height="30" rx="15" fill="#FFFFFF" fill-opacity="0.08"/>
+    <text x="335" y="226" text-anchor="middle">Direct2D · GPU</text>
+    <rect x="404" y="206" width="150" height="30" rx="15" fill="#FFFFFF" fill-opacity="0.08"/>
+    <text x="479" y="226" text-anchor="middle">Sync con Android</text>
+    <rect x="564" y="206" width="140" height="30" rx="15" fill="#FFFFFF" fill-opacity="0.08"/>
+    <text x="634" y="226" text-anchor="middle">Sin nube · local</text>
+  </g>
+</svg>
